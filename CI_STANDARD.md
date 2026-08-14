@@ -242,6 +242,50 @@ Runner line + ephemeral fleet, armor removal, Node 26 / `.node-version` / fnm,
 pnpm 10 alignment (client-manager parked), image-publish gating, concurrency,
 SHA-pinning + Dependabot, CI junk removal, AUR-565 stabilization round 1.
 
+### Phase A task board (live status — update as items land)
+
+Execution loop per item: branch → PR → watch CI → merge when green → fix and
+re-push on failure. Lanes run in parallel; items within a lane are sequential
+unless noted.
+
+- [x] **A0a** [TS] Onboard wardley-mapper to full standard — **PR open:**
+      aurum-alpha/wardley-mapper#1 (validated locally: lint/typecheck/build/
+      compose smoke on :9600/prod image; merge when its first-ever CI run is
+      green). Follow-ups noted on the PR: make Replit auth optional locally;
+      lint ratchet debt (no-explicit-any ×176, no-unused-vars ×51); no tests yet.
+- [ ] **A0b** [embedded] lid-firmware CI baseline: runner line, SHA pins +
+      dependabot, concurrency, ci-ok. Local checkout is on branch `lid-99` —
+      work from a worktree off origin/main.
+- [ ] **A1** [TS] Script renames `check`/`tsc` → `typecheck`, `test` →
+      `test:unit` (non-watch) — package.json AND workflow refs in the same PR.
+      Repos in turn: credit-watch, expense-splitter, flight-watch,
+      jewelry-factory, hiring-tracker.
+- [ ] **A2** [TS, after A1] jewelry-factory: remove ESLint PR-annotation
+      machinery (Principle 10) — plain `pnpm lint`, drop github-script +
+      status steps + `pull-requests: write`; lint script drops `--format json`.
+      Verify the code lints clean first; report if violations surface.
+- [ ] **A3** [TS, after A1] hiring-tracker tier-2 → tier-3: drop the
+      pipeline-base builder image; setup-node (`node-version-file`) + pnpm
+      (`packageManager`) + store cache; remove the reusable builder-image
+      workflow call.
+- [ ] **A4** [TS, after A1] Add canonical `build` job emitting the `dist`
+      artifact: credit-watch, expense-splitter, flight-watch. Gates gain
+      `needs: build`.
+- [ ] **A5** [TS, after A4] Prod Dockerfiles → thin runtime COPY of `dist`
+      (Principle 8); `image` job downloads the artifact. All TS repos. Verify
+      each image boots (docker run + healthcheck) before PR; fall back to
+      CI-level verification if no local docker.
+- [ ] **A6** [Go] Go 1.26.5 → 1.26.6 (gofast; gha-runner-controller from
+      1.25.4): go.mod, SHA-pinned golang image digests, docs.
+- [ ] **A7** [Go, after A6] Catalog fill: gofast build dedupe (compile once,
+      artifact to test+docker), add `vet`, wire web lint, coverage upload;
+      gha-runner-controller vet/gofmt/coverage.
+- [ ] **A8** [PHP] event-manager composer scripts → canonical names
+      (`typecheck` = phpstan, `test:unit`, `test:integration`); workflows call
+      the scripts.
+- [ ] **A9** [converges all lanes] Canonical job ids + `ci-ok` rollup in every
+      repo (blocked by A2, A3, A5, A7, A8, A0b).
+
 ### Phase A — per-repo catalog conformance *(next)*
 
 Each repo converges on the catalog **in place** — no shared repo involvement yet.

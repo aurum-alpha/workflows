@@ -179,6 +179,18 @@ Same ids where meaningful: `builder-image` (tier 2, reusable) → `install`
 `test-integration` (service containers) → `test-e2e` (compose) → `image` →
 `ci-ok`. Stays repo-local until a second PHP repo exists.
 
+### Embedded job catalog (lid-firmware — PlatformIO)
+
+| Job id | needs | Does |
+|---|---|---|
+| `build` | — | `pio run` env matrix → firmware artifacts (BUILD-ONCE) |
+| `test-unit` | build | `pio test` native suite (when adopted) |
+| `ci-ok` | all | rollup |
+
+Toolchain pins: platform versions in `platformio.ini`; Python via setup-python
+(pin a `.python-version` when standardizing). Stays repo-local until a second
+embedded repo exists.
+
 ### Gap matrix (planning baseline, 2026-08-14)
 
 ✓ conforms · Δ exists but drifted · ✗ missing
@@ -194,6 +206,8 @@ Same ids where meaningful: `builder-image` (tier 2, reusable) → `install`
 | gofast | Δ (dup build in test) | ✗ (oxlint unused) | n/a | Δ (no coverage) | ✓ | ✗ | Go catalog; no vet |
 | gha-runner-controller | Δ | ✗ | n/a | Δ | ✓ | ✗ | Go catalog, minimal |
 | event-manager | ✓ | ✗ (no eslint/prettier) | n/a | ✓ | ✓ | ✗ | PHP catalog; phpstan advisory |
+| wardley-mapper | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | **No CI at all** — greenfield; gets born conformant (A0a) |
+| lid-firmware | Δ (pio matrix) | ✗ | n/a | ✗ | n/a | ✗ | Embedded catalog; needs runner line, pins, ci-ok (A0b) |
 
 All catalog decisions are resolved and live under **Principles** (rule: decisions,
 once made, move to Principles). Phase-A work items arising from them:

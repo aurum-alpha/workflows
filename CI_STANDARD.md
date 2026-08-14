@@ -292,12 +292,14 @@ Each repo converges on the catalog **in place** — no shared repo involvement y
 
 | Work item | Repos |
 |---|---|
+| Onboard to full standard in one pass (A0a — done, PR open) | wardley-mapper |
+| CI baseline: runner line, SHA pins + Dependabot, concurrency, `ci-ok` (A0b) | lid-firmware |
 | Script renames: `check`/`tsc` → `typecheck`; `test` → `test:unit` (non-watch) | credit-watch, expense-splitter, flight-watch, jewelry-factory, hiring-tracker |
 | Remove ESLint PR-annotation machinery (Principle 10) | jewelry-factory |
 | Tier-2 → tier-3 migration (drop pipeline-base builder) | hiring-tracker |
 | Add missing `build` job; emit `dist` artifact (BUILD-ONCE) | credit-watch, expense-splitter, flight-watch |
 | Prod Dockerfile → thin runtime COPY of artifact (Principle 8); `image` job downloads artifact | all TS repos |
-| Canonical job ids + `ci-ok` rollup | every repo |
+| Canonical job ids + `ci-ok` rollup | every repo (incl. wardley-mapper, lid-firmware) |
 | Go catalog fill: dedupe double build, add `vet`, lint, coverage | gofast, gha-runner-controller |
 | Composer scripts renamed to canonical names | event-manager |
 | Go 1.26.6 bump (stdlib advisories, matches client-manager) | gofast, gha-runner-controller |

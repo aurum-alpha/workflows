@@ -248,11 +248,10 @@ Execution loop per item: branch → PR → watch CI → merge when green → fix
 re-push on failure. Lanes run in parallel; items within a lane are sequential
 unless noted.
 
-- [x] **A0a** [TS] Onboard wardley-mapper to full standard — **PR open:**
-      aurum-alpha/wardley-mapper#1 (validated locally: lint/typecheck/build/
-      compose smoke on :9600/prod image; merge when its first-ever CI run is
-      green). Follow-ups noted on the PR: make Replit auth optional locally;
-      lint ratchet debt (no-explicit-any ×176, no-unused-vars ×51); no tests yet.
+- [x] **A0a** [TS] Onboard wardley-mapper — **MERGED** (wardley-mapper#1;
+      first-ever CI run green 5/5). Follow-ups tracked on the PR: make Replit
+      auth optional locally; lint ratchet debt (no-explicit-any ×176,
+      no-unused-vars ×51); no tests yet (Phase B).
 - [ ] **A0b** [embedded] lid-firmware CI baseline: runner line, SHA pins +
       dependabot, concurrency, ci-ok. Local checkout is on branch `lid-99` —
       work from a worktree off origin/main.

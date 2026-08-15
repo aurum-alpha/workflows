@@ -280,12 +280,15 @@ unless noted.
       event-manager-fork reusable workflow deleted; all jobs on setup-node
       + pnpm + store cache; container/--user-root dance gone.
 - [ ] **A4** [TS, after A1] Add canonical `build` job emitting the `dist`
-      artifact: credit-watch, expense-splitter, flight-watch. Gates gain
-      `needs: build`.
+      artifact: credit-watch **merged** (#15), expense-splitter (PR #13,
+      gates green, docker finishing), flight-watch (commit staged locally,
+      pushes when expense-splitter lands). Gates gain `needs: build`.
 - [ ] **A5** [TS, after A4] Prod Dockerfiles → thin runtime COPY of `dist`
       (Principle 8); `image` job downloads the artifact. All TS repos. Verify
       each image boots (docker run + healthcheck) before PR; fall back to
       CI-level verification if no local docker.
+      *In progress:* credit-watch PR #16 open — image verified locally
+      (booted against postgres 16, migrations applied, HTTP served).
 - [x] **A6** [Go] Go 1.26.6 bump — **COMPLETE**: gha-runner-controller
       #41 and gofast #72 both merged. gofast also picked up a real vet
       finding on 1.26.6 (SMTP dial addr broken for IPv6 → net.JoinHostPort)

@@ -290,7 +290,11 @@ unless noted.
       1.25.4): go.mod, SHA-pinned golang image digests, docs.
       *In progress:* gha-runner-controller **merged** (#41, CI green);
       gofast (now **aurum-alpha/gofast** after the org move) running in a
-      dedicated session.
+      dedicated session — its PR #72 CI sat queued 75+ min while other
+      repos' fleet jobs ran fine: the aj78-docker **runner group likely
+      does not include the newly-transferred repo yet** (needs org admin:
+      Settings → Actions → Runner groups → add gofast). Session advised
+      to pin GitHub-hosted temporarily and land A6.
 - [ ] **A7** [Go, after A6] Catalog fill: gofast build dedupe (compile once,
       artifact to test+docker), add `vet`, wire web lint, coverage upload;
       gha-runner-controller vet/gofmt/coverage.

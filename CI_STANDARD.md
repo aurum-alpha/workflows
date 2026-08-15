@@ -67,7 +67,7 @@ jobs reuse (e.g. binaries handed to docker packaging).
 install ──► build ──► lint ─────────┐
                   ──► typecheck ────┤──► integration / e2e ──► package / publish
                   ──► unit tests ───┘         (main + tags only)
-                              └──► "ci ok" rollup job (the only required check)
+                              └──► "ci-ok" rollup job (the only required check)
 ```
 
 - Quality gates run in parallel *after* build, never serialized among themselves.
@@ -78,8 +78,10 @@ install ──► build ──► lint ─────────┐
 - Stack note: for TS, `tsc --noEmit` is the compile assertion and stays a gate;
   "build" means the real bundle/transpile (vite/esbuild) — this is where the
   production artifact is produced.
-- `ci ok` (`if: always()`, fails on any failure/cancel in needs) is the single
+- `ci-ok` (`if: always()`, fails on any failure/cancel in needs) is the single
   required check, so adding/removing gates never touches branch protection.
+  The check reports under the job id `ci-ok` (no display-name override) —
+  that exact string is what branch protection requires, fleet-wide.
 
 ## Publishing
 
@@ -323,7 +325,8 @@ unless noted.
       canonical ids collide (go-unit-tests vs vitest → test-unit); the
       dual-stack naming convention is a Phase B decision (event-manager's
       react jobs got the same treatment). AFTER MERGE (needs admin):
-      point each repo's required status check at `ci ok`.
+      point each repo's required status check at `ci-ok` (exact string;
+      display-name overrides dropped fleet-wide 2026-08-15).
 
 ### Phase A — per-repo catalog conformance *(COMPLETE 2026-08-15)*
 

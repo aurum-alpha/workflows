@@ -268,8 +268,9 @@ unless noted.
 - [ ] **A1** [TS] Script renames `check`/`tsc` → `typecheck`, `test` →
       `test:unit` (non-watch) — package.json AND workflow refs in the same PR.
       Repos in turn: credit-watch **merged** (#14), expense-splitter
-      **merged** (#12, lint indirection fixed too), flight-watch (PR #13
-      open), jewelry-factory, hiring-tracker.
+      **merged** (#12, lint indirection fixed too), flight-watch **merged**
+      (#13), jewelry-factory (PR #12 open; test:unit now explicitly
+      non-watch), hiring-tracker.
 - [ ] **A2** [TS, after A1] jewelry-factory: remove ESLint PR-annotation
       machinery (Principle 10) — plain `pnpm lint`, drop github-script +
       status steps + `pull-requests: write`; lint script drops `--format json`.
@@ -293,9 +294,13 @@ unless noted.
 - [ ] **A7** [Go, after A6] Catalog fill: gofast build dedupe (compile once,
       artifact to test+docker), add `vet`, wire web lint, coverage upload;
       gha-runner-controller vet/gofmt/coverage.
-- [ ] **A8** [PHP] event-manager composer scripts → canonical names
-      (`typecheck` = phpstan, `test:unit`, `test:integration`); workflows call
-      the scripts.
+- [x] **A8** [PHP] event-manager composer scripts → canonical names —
+      **MERGED** (event-manager#42; full pipeline green including
+      integration, functional and e2e). Workflows call the scripts
+      (indirection rule). Found and fixed en route: composer's default
+      300s process-timeout killed the functional suite once invoked via
+      `composer run-script` — `config.process-timeout: 0` set in both
+      composer.json files.
 - [ ] **A9** [converges all lanes] Canonical job ids + `ci-ok` rollup in every
       repo (blocked by A2, A3, A5, A7, A8, A0b).
 

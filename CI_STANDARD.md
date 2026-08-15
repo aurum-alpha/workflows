@@ -265,17 +265,16 @@ unless noted.
       Runner line, SHA pins + dependabot, concurrency, least-privilege
       permissions, ci-ok rollup; publish-firmware deliberately
       GitHub-hosted (Principle 4).
-- [ ] **A1** [TS] Script renames `check`/`tsc` → `typecheck`, `test` →
-      `test:unit` (non-watch) — package.json AND workflow refs in the same PR.
-      Repos in turn: credit-watch **merged** (#14), expense-splitter
-      **merged** (#12, lint indirection fixed too), flight-watch **merged**
-      (#13), jewelry-factory **merged** (#12), hiring-tracker (PR #13
-      open; found the old typecheck script chained a broken
-      check-server-types referencing a deleted tsconfig — removed).
-- [ ] **A2** [TS, after A1] jewelry-factory: remove ESLint PR-annotation
-      machinery (Principle 10) — plain `pnpm lint`, drop github-script +
-      status steps + `pull-requests: write`; lint script drops `--format json`.
-      Verified clean locally (no masked violations); **PR #13 open**.
+- [x] **A1** [TS] Script renames — **COMPLETE**, all five repos merged:
+      credit-watch #14, expense-splitter #12 (lint indirection fixed too),
+      flight-watch #13, jewelry-factory #12 (test:unit now explicitly
+      non-watch), hiring-tracker #13 (also removed a broken
+      check-server-types chained in its old typecheck script — it
+      referenced a deleted tsconfig.server.json).
+- [x] **A2** [TS, after A1] jewelry-factory ESLint PR-annotation machinery
+      removed — **MERGED** (jewelry-factory#13; −48 lines of YAML,
+      `pull-requests: write` gone, plain `pnpm lint`). Code verified
+      lint-clean beforehand; no masked violations surfaced.
 - [ ] **A3** [TS, after A1] hiring-tracker tier-2 → tier-3: drop the
       pipeline-base builder image; setup-node (`node-version-file`) + pnpm
       (`packageManager`) + store cache; remove the reusable builder-image

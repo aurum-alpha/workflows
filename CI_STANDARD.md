@@ -259,9 +259,11 @@ unless noted.
       first-ever CI run green 5/5). Follow-ups tracked on the PR: make Replit
       auth optional locally; lint ratchet debt (no-explicit-any ×176,
       no-unused-vars ×51); no tests yet (Phase B).
-- [ ] **A0b** [embedded] lid-firmware CI baseline: runner line, SHA pins +
-      dependabot, concurrency, ci-ok. Local checkout is on branch `lid-99` —
-      work from a worktree off origin/main.
+- [x] **A0b** [embedded] lid-firmware CI baseline — **MERGED**
+      (lid-firmware#2; ci-ok green, all three env builds + test pass).
+      Runner line, SHA pins + dependabot, concurrency, least-privilege
+      permissions, ci-ok rollup; publish-firmware deliberately
+      GitHub-hosted (Principle 4).
 - [ ] **A1** [TS] Script renames `check`/`tsc` → `typecheck`, `test` →
       `test:unit` (non-watch) — package.json AND workflow refs in the same PR.
       Repos in turn: credit-watch, expense-splitter, flight-watch,

@@ -368,11 +368,28 @@ SHA-bump PRs to every consumer.
 - Held for future consideration: reply-able review-thread lint annotations
   (fleet-wide or not at all); per-branch images once per-branch staging
   spin-up/teardown exists.
+- **Held: build-tooling consistency sweep (Make question).** Audit of
+  2026-08-15: Make exists in event-manager (genuine fileset builder with
+  file-target dependencies — the model use; runs in the tier-2 container),
+  gha-runner-controller (.PHONY task runner + the `deb` packaging chain;
+  GitHub-hosted so make is present), and gofast (local-dev wrapper only —
+  CI calls scripts/). client-manager uses tools/checks/* executables, no
+  Make; TS repos use package scripts. Nothing today needs make on the
+  fleet runner image, so it stays out of tier 1 FOR NOW — but Make MAY
+  become a tier-1 dependency if repos adopt it properly. Direction of
+  travel, deliberately shelved as a later cleanup: per-repo one-off build
+  scripts accumulate drift and black-box logic; prefer native toolchains
+  or a real build system (Make used as designed — file sets, dependency
+  edges), possibly converting the Go repos to Make. When picked up, do it
+  as a fleet-wide assessment of ALL per-repo tools/scripts (tools/checks/*,
+  scripts/*.sh, tools/testing/*, package scripts) for consistency,
+  black-box one-offs, and drift — not repo by repo.
 
 ## Decisions log
 
 | Question | Decision |
 |---|---|
+| Make on the runner image | Not tier-1 today (no repo needs it there); revisit with the held build-tooling sweep — Make may become tier-1 if repos adopt it as a real build system |
 | Action pinning | SHA-pin everything + `# vX.Y.Z` comment + Dependabot |
 | Coverage | Codecov v7 everywhere supportable |
 | Per-branch images | Deferred until staging infra exists |

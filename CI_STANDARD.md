@@ -395,22 +395,22 @@ fix and re-push on failure. B0–B1 are in flight; B2→B3→B4→B5 run in orde
       colliding canonical ids: `go-test-unit` / `web-test-unit`) +
       client-manager and event-manager react-job renames (safe now: only
       `ci-ok` is or will be required).
-- [ ] **B5** Byte-identity checker + normalization — **IN FLIGHT**.
-      Checker landed as `tools/check-job-identity` (per-cohort job-block
-      comparison over local clones; wiring it as this repo's CI gate
-      needs cross-repo checkout and waits for Phase C). Normalization
-      PRs open, verified locally at **PASS — zero diffs in both
-      cohorts**: npm cohort converges on the wardley template + version
-      build-args (wardley-mapper#9, credit-watch#20 — drops its separate
-      install job, expense-splitter#18, flight-watch#19; all gain
-      build-push v6.19.2, tag-event rule, latest tag); pnpm cohort on
-      the cleaned hiring-tracker template (hiring-tracker#20 — version
-      info folds into the build script per the indirection rule,
+- [x] **B5** Byte-identity checker + normalization — **COMPLETE
+      2026-08-15**: `tools/check-job-identity` reports **PASS on merged
+      mains — every shared canonical job block byte-identical in both
+      cohorts**. All six normalization PRs merged: npm cohort on the
+      wardley template + version build-args (wardley-mapper#9,
+      credit-watch#20 — dropped its separate install job,
+      expense-splitter#18, flight-watch#19; all on build-push v6.19.2,
+      tag-event rule, latest tag); pnpm cohort on the cleaned
+      hiring-tracker template (hiring-tracker#20 — version info folded
+      into the build script per the indirection rule,
       update-version-info no longer gates ci-ok; jewelry-factory#17 —
-      typecheck becomes its own job, image job sheds dead version-info
-      and pnpm setup). image and ci-ok blocks are additionally
-      byte-identical ACROSS cohorts (pm-agnostic — Phase C seed).
-      Checker green on merged mains = Phase B exit criteria met.
+      typecheck split into its own job, image job shed dead
+      version-info/pnpm setup). image and ci-ok blocks are additionally
+      byte-identical ACROSS cohorts (pm-agnostic — the Phase C
+      extraction seed). Wiring the checker as this repo's CI gate needs
+      cross-repo checkout and waits for Phase C.
 
 ### Phase A — per-repo catalog conformance *(COMPLETE 2026-08-15)*
 

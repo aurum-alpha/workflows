@@ -287,12 +287,14 @@ unless noted.
       each image boots (docker run + healthcheck) before PR; fall back to
       CI-level verification if no local docker.
       *In progress:* credit-watch **merged** (#16), expense-splitter
-      **merged** (#14), flight-watch PR #15 open (image verified locally:
-      loads airport/airline data files, serves HTTP). Remaining:
-      hiring-tracker, jewelry-factory (their build jobs also need the
-      dist-artifact upload added — they build but don't emit yet).
-      Pre-existing runtime notes: Replit OIDC env mandatory at boot in
-      the Replit-derived apps (wardley-mapper#1 follow-up class).
+      **merged** (#14), flight-watch **merged** (#15), hiring-tracker
+      PR #15 open, jewelry-factory PR #14 open (both also wire the
+      dist-artifact upload into their build jobs). All five images
+      boot-verified locally against postgres. Findings: hiring-tracker's
+      OLD image could build but never boot (missing migrations dir;
+      server bundle imports vite at runtime → full install kept, noted
+      as app debt); stale pnpm@10.8.1 pins in both pnpm Dockerfiles
+      replaced by packageManager-derived installs.
 - [x] **A6** [Go] Go 1.26.6 bump — **COMPLETE**: gha-runner-controller
       #41 and gofast #72 both merged. gofast also picked up a real vet
       finding on 1.26.6 (SMTP dial addr broken for IPv6 → net.JoinHostPort)
@@ -301,9 +303,13 @@ unless noted.
       repo — its jobs queued 75+ min until CI was temporarily pinned
       GitHub-hosted. Add gofast to the runner group (Settings → Actions →
       Runner groups), then drop the temporary pin.
-- [ ] **A7** [Go, after A6] Catalog fill: gofast build dedupe (compile once,
-      artifact to test+docker), add `vet`, wire web lint, coverage upload;
-      gha-runner-controller vet/gofmt/coverage.
+- [ ] **A7** [Go, after A6] Catalog fill. gofast **merged** (#73, by the
+      dedicated session, now [DONE]): full canonical DAG go-mod → build →
+      gofmt/vet/test-unit/lint → image → ci-ok, coverage collected,
+      oxlint wired, scripts/ as canonical entrypoints.
+      gha-runner-controller PR #60 open: monolithic job split into the
+      same DAG, test-unit now -race -cover, stays GitHub-hosted
+      (Principle 4).
 - [x] **A8** [PHP] event-manager composer scripts → canonical names —
       **MERGED** (event-manager#42; full pipeline green including
       integration, functional and e2e). Workflows call the scripts

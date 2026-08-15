@@ -334,15 +334,17 @@ Same execution loop as Phase A: branch → PR → watch CI → merge when green 
 fix and re-push on failure. B0–B1 are in flight; B2→B3→B4→B5 run in order
 (B5 is the convergence gate and lands last).
 
-- [ ] **B0** `ci-ok` reporting-name sweep (drop `name:` overrides so the
-      check reports as the exact string `ci-ok`) — 10/11 merged:
-      workflows#1, wardley-mapper#7, credit-watch#18, expense-splitter#16,
-      flight-watch#17, gha-runner-controller#61, hiring-tracker#17,
-      jewelry-factory#16, lid-firmware#9, client-manager#24.
-      event-manager#44 in flight: all 13 gates green (e2e passed on this
-      run), awaiting the ci-ok rollup job. AFTER MERGE (needs admin):
-      Jared enables the required status check — exact string `ci-ok` —
-      fleet-wide; any earlier `ci ok`-with-space entries must be replaced.
+- [x] **B0** `ci-ok` reporting-name sweep (drop `name:` overrides so the
+      check reports as the exact string `ci-ok`) — **COMPLETE**, all 11
+      merged: workflows#1, wardley-mapper#7, credit-watch#18,
+      expense-splitter#16, flight-watch#17, gha-runner-controller#61,
+      hiring-tracker#17, jewelry-factory#16, lid-firmware#9,
+      client-manager#24, event-manager#44 (full pipeline green — e2e
+      passed outright on this run, first since AUR-565 tolerated-red).
+      READY FOR ADMIN: enable the required status check — exact string
+      `ci-ok` — fleet-wide; replace any earlier `ci ok`-with-space
+      entries. B4's job-id renames wait on this flip so rename PRs can't
+      strand on old required-check names.
 - [ ] **B1** hiring-tracker lint/script normalization — PR #18 open
       (in CI). `lint` drops the JSON-report indirection, `lint-dev`
       removed, dead jest script family removed (jest/cross-env not

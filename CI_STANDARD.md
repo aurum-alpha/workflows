@@ -269,12 +269,13 @@ unless noted.
       `test:unit` (non-watch) — package.json AND workflow refs in the same PR.
       Repos in turn: credit-watch **merged** (#14), expense-splitter
       **merged** (#12, lint indirection fixed too), flight-watch **merged**
-      (#13), jewelry-factory (PR #12 open; test:unit now explicitly
-      non-watch), hiring-tracker.
+      (#13), jewelry-factory **merged** (#12), hiring-tracker (PR #13
+      open; found the old typecheck script chained a broken
+      check-server-types referencing a deleted tsconfig — removed).
 - [ ] **A2** [TS, after A1] jewelry-factory: remove ESLint PR-annotation
       machinery (Principle 10) — plain `pnpm lint`, drop github-script +
       status steps + `pull-requests: write`; lint script drops `--format json`.
-      Verify the code lints clean first; report if violations surface.
+      Verified clean locally (no masked violations); **PR #13 open**.
 - [ ] **A3** [TS, after A1] hiring-tracker tier-2 → tier-3: drop the
       pipeline-base builder image; setup-node (`node-version-file`) + pnpm
       (`packageManager`) + store cache; remove the reusable builder-image

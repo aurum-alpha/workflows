@@ -313,7 +313,17 @@ unless noted.
       `composer run-script` — `config.process-timeout: 0` set in both
       composer.json files.
 - [ ] **A9** [converges all lanes] Canonical job ids + `ci-ok` rollup in every
-      repo (blocked by A2, A3, A5, A7, A8, A0b).
+      repo — **all seven PRs open**, ids + rollup only, no step changes:
+      credit-watch #17, event-manager #43, expense-splitter #15,
+      flight-watch #16, hiring-tracker #16, jewelry-factory #15,
+      lid-firmware #7 (rename only; its ci-ok landed in A0b). Already
+      conformant: wardley-mapper, gofast (#73), gha-runner-controller
+      (#60). client-manager: ci-ok already present; job-id normalization
+      deliberately deferred — it is dual-stack (Go + TS), so single
+      canonical ids collide (go-unit-tests vs vitest → test-unit); the
+      dual-stack naming convention is a Phase B decision (event-manager's
+      react jobs got the same treatment). AFTER MERGE (needs admin):
+      point each repo's required status check at `ci ok`.
 
 ### Phase A — per-repo catalog conformance *(next)*
 

@@ -373,16 +373,17 @@ fix and re-push on failure. B0–B1 are in flight; B2→B3→B4→B5 run in orde
       not installed), `watch:test` → `test:watch` (vitest), duplicate
       `coverage` script dropped; CI lint job calls `pnpm lint`.
 - [ ] **B2** Codecov v7 rollout (SHA-pinned action, per-tree flags,
-      `fail_ci_if_error: true`) — hiring-tracker#19 (CLI → action)
-      **MERGED**; credit-watch#19 and event-manager#45 in CI;
-      gofast#74 BLOCKED on admin: gofast needs adding to the
+      `fail_ci_if_error: true`) — hiring-tracker#19 (CLI → action),
+      credit-watch#19, and event-manager#45 all **MERGED**; remaining:
+      gofast#74 BLOCKED on admin — gofast needs adding to the
       CODECOV_TOKEN org secret's repository list (post-transfer gap;
-      upload fails "Token required", fail-closed working as designed).
-      Working uploads exposed two event-manager coverage bugs, fixed on
-      #45: jest collected only the legacy src/client/js/app tree (react
-      flag read 0.00%), and codecov.yml's absolute 70% project target
-      (repo is at ~24%) kept codecov/project permanently red → now
-      target: auto, threshold 1% (regression guard); patch keeps 70%.
+      upload fails "Token required", fail-closed working as designed;
+      tests themselves pass). Working uploads exposed two event-manager
+      coverage bugs, fixed on #45: jest collected only the legacy
+      src/client/js/app tree (react flag read 0.00% — real coverage is
+      6.26%), and codecov.yml's absolute 70% project target (repo is at
+      ~30%) kept codecov/project permanently red → now target: auto,
+      threshold 1% (regression guard); patch keeps 70%.
 - [x] **B3** Test scaffolding where none exists — **COMPLETE**, all
       three merged: expense-splitter#17 (27 tests), flight-watch#18
       (26 tests over the real domain logic: ATIS parsing, ATC squawk
@@ -391,10 +392,13 @@ fix and re-push on failure. B0–B1 are in flight; B2→B3→B4→B5 run in orde
       vitest + @vitest/coverage-v8; `test-unit` wired after build with
       the standard codecov block; image/ci-ok gate on it. All verified
       locally pre-PR. Gap matrix: no `test-unit ✗` cells remain.
-- [ ] **B4** Dual-stack job-id naming principle recorded (prefix only
-      colliding canonical ids: `go-test-unit` / `web-test-unit`) +
-      client-manager and event-manager react-job renames (safe now: only
-      `ci-ok` is or will be required).
+- [ ] **B4** Dual-stack job-id naming — principle recorded (see "Dual-
+      stack job ids" under the catalog) and event-manager renames
+      **MERGED** (#46: php-/web- prefixes on colliding ids, full
+      pipeline green, coverage exactly flat). Remaining: client-manager
+      renames, deliberately HELD until Jared flips the fleet required
+      check to `ci-ok` (its current ids may be referenced by branch
+      protection; renaming first could strand PRs).
 - [x] **B5** Byte-identity checker + normalization — **COMPLETE
       2026-08-15**: `tools/check-job-identity` reports **PASS on merged
       mains — every shared canonical job block byte-identical in both

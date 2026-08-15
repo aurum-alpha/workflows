@@ -345,21 +345,30 @@ fix and re-push on failure. B0–B1 are in flight; B2→B3→B4→B5 run in orde
       `ci-ok` — fleet-wide; replace any earlier `ci ok`-with-space
       entries. B4's job-id renames wait on this flip so rename PRs can't
       strand on old required-check names.
-- [ ] **B1** hiring-tracker lint/script normalization — PR #18 open
-      (in CI). `lint` drops the JSON-report indirection, `lint-dev`
-      removed, dead jest script family removed (jest/cross-env not
-      installed), `watch:test` → `test:watch` (vitest), duplicate
+- [x] **B1** hiring-tracker lint/script normalization — **MERGED**
+      (hiring-tracker#18). `lint` drops the JSON-report indirection,
+      `lint-dev` removed, dead jest script family removed (jest/cross-env
+      not installed), `watch:test` → `test:watch` (vitest), duplicate
       `coverage` script dropped; CI lint job calls `pnpm lint`.
 - [ ] **B2** Codecov v7 rollout (SHA-pinned action, per-tree flags,
-      `fail_ci_if_error: true`): add to credit-watch + gofast, convert
-      hiring-tracker CLI → action, normalize event-manager's
-      `fail_ci_if_error: false`. Depends on CODECOV_TOKEN secret being
-      present in each repo (admin).
-- [ ] **B3** Test scaffolding where none exists — expense-splitter,
-      flight-watch, wardley-mapper (alphabetical): vitest +
-      @vitest/coverage-v8 + starter suites; `test-unit` job wired into
-      the DAG (needs build; image/ci-ok gain the edge). Verified locally
-      before each PR.
+      `fail_ci_if_error: true`) — hiring-tracker#19 (CLI → action)
+      **MERGED**; credit-watch#19 and event-manager#45 in CI;
+      gofast#74 BLOCKED on admin: gofast needs adding to the
+      CODECOV_TOKEN org secret's repository list (post-transfer gap;
+      upload fails "Token required", fail-closed working as designed).
+      Working uploads exposed two event-manager coverage bugs, fixed on
+      #45: jest collected only the legacy src/client/js/app tree (react
+      flag read 0.00%), and codecov.yml's absolute 70% project target
+      (repo is at ~24%) kept codecov/project permanently red → now
+      target: auto, threshold 1% (regression guard); patch keeps 70%.
+- [x] **B3** Test scaffolding where none exists — **COMPLETE**, all
+      three merged: expense-splitter#17 (27 tests), flight-watch#18
+      (26 tests over the real domain logic: ATIS parsing, ATC squawk
+      state machine, speech formatting), wardley-mapper#8 (19 tests:
+      canvas math, value-chain topological layout, stripe helpers).
+      vitest + @vitest/coverage-v8; `test-unit` wired after build with
+      the standard codecov block; image/ci-ok gate on it. All verified
+      locally pre-PR. Gap matrix: no `test-unit ✗` cells remain.
 - [ ] **B4** Dual-stack job-id naming principle recorded (prefix only
       colliding canonical ids: `go-test-unit` / `web-test-unit`) +
       client-manager and event-manager react-job renames (safe now: only

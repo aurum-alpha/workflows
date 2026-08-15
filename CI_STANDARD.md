@@ -416,6 +416,60 @@ fix and re-push on failure. B0–B1 are in flight; B2→B3→B4→B5 run in orde
       extraction seed). Wiring the checker as this repo's CI gate needs
       cross-repo checkout and waits for Phase C.
 
+### Phase D task board (planned 2026-08-15 — awaiting go)
+
+Sequencing: Phase C (extraction, as specified below) remains the natural
+next execution phase — its payoff compounds into everything after. D0–D2
+are event-manager-local and small enough to run before or alongside C;
+D3–D6 are independent of C. Same execution loop as A/B.
+
+- [ ] **D0** [event-manager] Integration + e2e become hard gates —
+      remove `continue-on-error` from test-integration and test-e2e
+      (three sites in ci.yml). Evidence for flipping now: four
+      consecutive fully-green full-pipeline runs on 2026-08-15 (#44,
+      #45 ×2, #46), including e2e. The AUR-565 round-2 hardening list
+      (static bundle serve, globalTeardown sweep, scoped guards,
+      keycloak-init hardening) becomes ordinary bugfix work under a
+      hard gate — red is real signal once the gate is closed.
+      RECOMMENDATION: flip first, harden under the gate. (Alternative:
+      harden first — Jared's call.)
+- [ ] **D1** [event-manager] PHPStan hard gate — fix the phpstan.neon
+      bootstrap (the documented blocker), then remove
+      `continue-on-error` from static-analysis. Principle 3's last
+      documented stabilization window closes.
+- [ ] **D2** [event-manager] Web lint gates — the gap matrix's last ✗:
+      eslint + prettier for the react tree (deferred out of Phase B).
+      New canonical `lint` job (no collision — PHP side has none; the
+      dual-stack rule keeps it bare) wired needs: web-install → gates
+      ci-ok. Ratchet config so current code passes; debt burns down
+      like wardley's.
+- [ ] **D3** [fleet] Build-tooling consistency sweep (the shelved Make
+      question) — inventory ALL per-repo build/check tooling
+      (tools/checks/*, scripts/*.sh, tools/testing/*, package scripts,
+      Makefiles), classify each as native-toolchain / thin canonical
+      wrapper / black-box one-off, then converge: native toolchains
+      where they suffice, Make used as designed (file sets, dependency
+      edges) where a real build system earns its place — including the
+      decision on converting the Go repos to Make and whether Make
+      becomes tier 1. Fleet-wide assessment, not repo by repo.
+- [ ] **D4** [fleet] Coverage policy normalization — codecov.yml in
+      every repo with the event-manager pattern (project: target auto,
+      threshold 1% — regression guard; patch: 70% for new code).
+      Known app-level debt flagged for engineering backlog, NOT CI
+      scope: jewelry-factory's 0.25% suite, wardley-mapper's lint
+      ratchet (no-explicit-any ×176), hiring-tracker's runtime vite
+      import.
+- [ ] **D5** [decisions] Held items resolved explicitly: reply-able
+      review-thread lint annotations — fleet-wide or not at all
+      (decide, don't drift); per-branch images — re-affirm deferred
+      until per-branch staging spin-up/teardown exists.
+- [ ] **D6** [fleet health] Runner-loss investigation — four losses on
+      2026-08-15, all the same signature (job dies at exactly the
+      10-min communication timeout, logs 404) under ~11 parallel runs:
+      look at aj78 host memory/contention, consider controller-side
+      watchdog/alerting. Interim runbook (documented): empty-commit
+      re-trigger; the rerun API returns 403 for this integration.
+
 ### Phase A — per-repo catalog conformance *(COMPLETE 2026-08-15)*
 
 **Exit criteria met 2026-08-15**: every gap-matrix row shows ✓ for jobs that

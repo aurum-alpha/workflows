@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Docs-only repo today, so there are no gates yet. The rollup exists so the
+  # fleet-wide required check (ci-ok) can be enforced here like everywhere
+  # else; real gates (actionlint over the shared workflows) arrive with
+  # Phase C extraction.
+  ci-ok:
+    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+    steps:
+      - name: OK
+        run: exit 0

@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Manual fallback: pull_request events from app-authored branches have been
+  # observed not to spawn runs in this repo (see PR #2); dispatching against
+  # the branch still lands the ci-ok check on the head commit.
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

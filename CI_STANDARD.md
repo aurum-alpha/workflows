@@ -197,6 +197,28 @@ Same ids where meaningful: `builder-image` (tier 2, reusable) → `install`
 | `test-unit` | build | `pio test` native suite (when adopted) |
 | `ci-ok` | all | rollup |
 
+### Dual-stack job ids (B4 decision)
+
+A repo hosting two stacks in one pipeline (client-manager: Go + TS;
+event-manager: PHP + React) prefixes a canonical id with its stack —
+`go-` / `web-` / `php-` — **only when both stacks in that pipeline have
+the job** (e.g. `go-test-unit` / `web-test-unit`). Single-owner jobs keep
+the bare canonical id (`test-integration`, `static-analysis`, `image`,
+`ci-ok`), so bare ids stay meaningful for byte-identity matching (B5) and
+prefixes appear only where a collision forces them. Display names remain
+free-form human labels; ids are what the standard governs (`ci-ok` is the
+exception: no display-name override, it reports by id).
+
+Executed mappings — event-manager (first executed example):
+`install-composer-deps` → `php-install`, `install-composer-deps-prod` →
+`php-install-prod`, `install-node-deps` → `web-install`, `build-php` →
+`php-build`, `build-react` → `web-build`, `test-unit` → `php-test-unit`,
+`test-react-unit` → `web-test-unit`. Unchanged: `test-integration`,
+`test-e2e`, `static-analysis`, `image`, `ci-ok`, the two builder-image
+jobs (repo-specific, not canonical). client-manager's mapping lands after
+the `ci-ok` required-check flip (its current ids may be referenced by
+branch protection).
+
 Toolchain pins: platform versions in `platformio.ini`; Python via setup-python
 (pin a `.python-version` when standardizing). Stays repo-local until a second
 embedded repo exists.
@@ -327,6 +349,72 @@ unless noted.
       react jobs got the same treatment). AFTER MERGE (needs admin):
       point each repo's required status check at `ci-ok` (exact string;
       display-name overrides dropped fleet-wide 2026-08-15).
+
+### Phase B task board (live status — update as items land)
+
+Same execution loop as Phase A: branch → PR → watch CI → merge when green →
+fix and re-push on failure. B0–B1 are in flight; B2→B3→B4→B5 run in order
+(B5 is the convergence gate and lands last).
+
+- [x] **B0** `ci-ok` reporting-name sweep (drop `name:` overrides so the
+      check reports as the exact string `ci-ok`) — **COMPLETE**, all 11
+      merged: workflows#1, wardley-mapper#7, credit-watch#18,
+      expense-splitter#16, flight-watch#17, gha-runner-controller#61,
+      hiring-tracker#17, jewelry-factory#16, lid-firmware#9,
+      client-manager#24, event-manager#44 (full pipeline green — e2e
+      passed outright on this run, first since AUR-565 tolerated-red).
+      READY FOR ADMIN: enable the required status check — exact string
+      `ci-ok` — fleet-wide; replace any earlier `ci ok`-with-space
+      entries. B4's job-id renames wait on this flip so rename PRs can't
+      strand on old required-check names.
+- [x] **B1** hiring-tracker lint/script normalization — **MERGED**
+      (hiring-tracker#18). `lint` drops the JSON-report indirection,
+      `lint-dev` removed, dead jest script family removed (jest/cross-env
+      not installed), `watch:test` → `test:watch` (vitest), duplicate
+      `coverage` script dropped; CI lint job calls `pnpm lint`.
+- [ ] **B2** Codecov v7 rollout (SHA-pinned action, per-tree flags,
+      `fail_ci_if_error: true`) — hiring-tracker#19 (CLI → action),
+      credit-watch#19, and event-manager#45 all **MERGED**; remaining:
+      gofast#74 BLOCKED on admin — gofast needs adding to the
+      CODECOV_TOKEN org secret's repository list (post-transfer gap;
+      upload fails "Token required", fail-closed working as designed;
+      tests themselves pass). Working uploads exposed two event-manager
+      coverage bugs, fixed on #45: jest collected only the legacy
+      src/client/js/app tree (react flag read 0.00% — real coverage is
+      6.26%), and codecov.yml's absolute 70% project target (repo is at
+      ~30%) kept codecov/project permanently red → now target: auto,
+      threshold 1% (regression guard); patch keeps 70%.
+- [x] **B3** Test scaffolding where none exists — **COMPLETE**, all
+      three merged: expense-splitter#17 (27 tests), flight-watch#18
+      (26 tests over the real domain logic: ATIS parsing, ATC squawk
+      state machine, speech formatting), wardley-mapper#8 (19 tests:
+      canvas math, value-chain topological layout, stripe helpers).
+      vitest + @vitest/coverage-v8; `test-unit` wired after build with
+      the standard codecov block; image/ci-ok gate on it. All verified
+      locally pre-PR. Gap matrix: no `test-unit ✗` cells remain.
+- [ ] **B4** Dual-stack job-id naming — principle recorded (see "Dual-
+      stack job ids" under the catalog) and event-manager renames
+      **MERGED** (#46: php-/web- prefixes on colliding ids, full
+      pipeline green, coverage exactly flat). Remaining: client-manager
+      renames, deliberately HELD until Jared flips the fleet required
+      check to `ci-ok` (its current ids may be referenced by branch
+      protection; renaming first could strand PRs).
+- [x] **B5** Byte-identity checker + normalization — **COMPLETE
+      2026-08-15**: `tools/check-job-identity` reports **PASS on merged
+      mains — every shared canonical job block byte-identical in both
+      cohorts**. All six normalization PRs merged: npm cohort on the
+      wardley template + version build-args (wardley-mapper#9,
+      credit-watch#20 — dropped its separate install job,
+      expense-splitter#18, flight-watch#19; all on build-push v6.19.2,
+      tag-event rule, latest tag); pnpm cohort on the cleaned
+      hiring-tracker template (hiring-tracker#20 — version info folded
+      into the build script per the indirection rule,
+      update-version-info no longer gates ci-ok; jewelry-factory#17 —
+      typecheck split into its own job, image job shed dead
+      version-info/pnpm setup). image and ci-ok blocks are additionally
+      byte-identical ACROSS cohorts (pm-agnostic — the Phase C
+      extraction seed). Wiring the checker as this repo's CI gate needs
+      cross-repo checkout and waits for Phase C.
 
 ### Phase A — per-repo catalog conformance *(COMPLETE 2026-08-15)*
 

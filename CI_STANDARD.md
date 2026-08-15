@@ -416,6 +416,50 @@ fix and re-push on failure. B0–B1 are in flight; B2→B3→B4→B5 run in orde
       extraction seed). Wiring the checker as this repo's CI gate needs
       cross-repo checkout and waits for Phase C.
 
+### Phase C task board (planned 2026-08-15 — awaiting go)
+
+Starting position (from B5): the four npm repos share an entirely
+byte-identical ci.yml; the two pnpm repos share every canonical block;
+`image` and `ci-ok` are identical across all six. The two cohorts differ
+only in the package-manager prelude. Execution loop as ever; wardley
+(npm) and hiring-tracker (pnpm) go first as templates, then alphabetical.
+
+- [ ] **C0** Author `node-ci.yml` reusable workflow in this repo — the
+      canonical DAG (build → lint/typecheck/test-unit → image → ci-ok)
+      as `on: workflow_call` with a `pm: npm|pnpm` input selecting the
+      install prelude; callers pass secrets via `secrets: inherit`
+      (org CODECOV_TOKEN) and `vars.RUNNER` resolves in the caller's
+      context (org var — verify on the first caller). Repo-specific
+      extras (hiring-tracker's update-version-info) stay caller-side
+      alongside the call.
+- [ ] **C1** Convert the npm cohort to thin callers pinned by SHA
+      (`uses: aurum-alpha/workflows/.github/workflows/node-ci.yml@<sha>
+      # <tag>`): wardley-mapper first (proves C0), then credit-watch,
+      expense-splitter, flight-watch.
+- [ ] **C2** Convert the pnpm cohort: hiring-tracker (keeps its extra
+      job caller-side), jewelry-factory.
+- [ ] **C3** Composite actions for shared step sequences other repos
+      can adopt piecemeal (first candidate: pnpm store setup — used by
+      client-manager's per-job prelude); written only where a real
+      second consumer exists (Principle 5 discipline).
+- [ ] **C4** This repo's CI grows real gates, replacing the exit-0
+      stub: actionlint over the shared workflows + a caller-thinness
+      check (byte-identity is enforced by construction once extraction
+      lands, so tools/check-job-identity retires in favor of "callers
+      contain no inline job logic").
+- [ ] **C5** Propagation proof: Dependabot (github-actions ecosystem)
+      on every consumer tracks the shared-workflow SHA; land one canary
+      change in node-ci.yml and verify it arrives everywhere as
+      reviewable SHA-bump PRs. Tag releases in this repo so bump PRs
+      are readable (SHA pin + tag comment, fleet pinning policy).
+- [ ] **C6** event-manager's tier-2 builder-image workflow moves here
+      (the hiring-tracker fork died in A3; this centralizes the
+      remaining copy); event-manager becomes a caller. Its main ci.yml
+      stays repo-local until a second PHP repo exists.
+
+**Exit criteria** (unchanged from the phase plan): a fix to a shared job
+lands once and propagates by Dependabot SHA-bump PRs to every consumer.
+
 ### Phase D task board (planned 2026-08-15 — awaiting go)
 
 Sequencing: Phase C (extraction, as specified below) remains the natural

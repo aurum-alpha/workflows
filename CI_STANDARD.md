@@ -328,6 +328,48 @@ unless noted.
       point each repo's required status check at `ci-ok` (exact string;
       display-name overrides dropped fleet-wide 2026-08-15).
 
+### Phase B task board (live status — update as items land)
+
+Same execution loop as Phase A: branch → PR → watch CI → merge when green →
+fix and re-push on failure. B0–B1 are in flight; B2→B3→B4→B5 run in order
+(B5 is the convergence gate and lands last).
+
+- [ ] **B0** `ci-ok` reporting-name sweep (drop `name:` overrides so the
+      check reports as the exact string `ci-ok`) — 10/11 merged:
+      workflows#1, wardley-mapper#7, credit-watch#18, expense-splitter#16,
+      flight-watch#17, gha-runner-controller#61, hiring-tracker#17,
+      jewelry-factory#16, lid-firmware#9, client-manager#24.
+      event-manager#44 in flight: all 13 gates green (e2e passed on this
+      run), awaiting the ci-ok rollup job. AFTER MERGE (needs admin):
+      Jared enables the required status check — exact string `ci-ok` —
+      fleet-wide; any earlier `ci ok`-with-space entries must be replaced.
+- [ ] **B1** hiring-tracker lint/script normalization — PR #18 open
+      (in CI). `lint` drops the JSON-report indirection, `lint-dev`
+      removed, dead jest script family removed (jest/cross-env not
+      installed), `watch:test` → `test:watch` (vitest), duplicate
+      `coverage` script dropped; CI lint job calls `pnpm lint`.
+- [ ] **B2** Codecov v7 rollout (SHA-pinned action, per-tree flags,
+      `fail_ci_if_error: true`): add to credit-watch + gofast, convert
+      hiring-tracker CLI → action, normalize event-manager's
+      `fail_ci_if_error: false`. Depends on CODECOV_TOKEN secret being
+      present in each repo (admin).
+- [ ] **B3** Test scaffolding where none exists — expense-splitter,
+      flight-watch, wardley-mapper (alphabetical): vitest +
+      @vitest/coverage-v8 + starter suites; `test-unit` job wired into
+      the DAG (needs build; image/ci-ok gain the edge). Verified locally
+      before each PR.
+- [ ] **B4** Dual-stack job-id naming principle recorded (prefix only
+      colliding canonical ids: `go-test-unit` / `web-test-unit`) +
+      client-manager and event-manager react-job renames (safe now: only
+      `ci-ok` is or will be required).
+- [ ] **B5** Byte-identity checker in this repo (per-package-manager
+      cohort job-block comparison; becomes this repo's first real CI
+      gate) + normalization PRs — npm cohort converges on wardley-mapper
+      shapes (incl. dropping credit-watch's separate install job,
+      unifying action pins), pnpm cohort on hiring-tracker shapes —
+      until the checker reports zero diffs. Checker green = Phase B exit
+      criteria met.
+
 ### Phase A — per-repo catalog conformance *(COMPLETE 2026-08-15)*
 
 **Exit criteria met 2026-08-15**: every gap-matrix row shows ✓ for jobs that

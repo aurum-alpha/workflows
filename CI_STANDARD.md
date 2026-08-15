@@ -275,10 +275,10 @@ unless noted.
       removed — **MERGED** (jewelry-factory#13; −48 lines of YAML,
       `pull-requests: write` gone, plain `pnpm lint`). Code verified
       lint-clean beforehand; no masked violations surfaced.
-- [ ] **A3** [TS, after A1] hiring-tracker tier-2 → tier-3: drop the
-      pipeline-base builder image; setup-node (`node-version-file`) + pnpm
-      (`packageManager`) + store cache; remove the reusable builder-image
-      workflow call.
+- [x] **A3** [TS, after A1] hiring-tracker tier-2 → tier-3 — **MERGED**
+      (hiring-tracker#14; −138 lines). pipeline-base builder image and the
+      event-manager-fork reusable workflow deleted; all jobs on setup-node
+      + pnpm + store cache; container/--user-root dance gone.
 - [ ] **A4** [TS, after A1] Add canonical `build` job emitting the `dist`
       artifact: credit-watch, expense-splitter, flight-watch. Gates gain
       `needs: build`.
@@ -286,15 +286,14 @@ unless noted.
       (Principle 8); `image` job downloads the artifact. All TS repos. Verify
       each image boots (docker run + healthcheck) before PR; fall back to
       CI-level verification if no local docker.
-- [ ] **A6** [Go] Go 1.26.5 → 1.26.6 (gofast; gha-runner-controller from
-      1.25.4): go.mod, SHA-pinned golang image digests, docs.
-      *In progress:* gha-runner-controller **merged** (#41, CI green);
-      gofast (now **aurum-alpha/gofast** after the org move) running in a
-      dedicated session — its PR #72 CI sat queued 75+ min while other
-      repos' fleet jobs ran fine: the aj78-docker **runner group likely
-      does not include the newly-transferred repo yet** (needs org admin:
-      Settings → Actions → Runner groups → add gofast). Session advised
-      to pin GitHub-hosted temporarily and land A6.
+- [x] **A6** [Go] Go 1.26.6 bump — **COMPLETE**: gha-runner-controller
+      #41 and gofast #72 both merged. gofast also picked up a real vet
+      finding on 1.26.6 (SMTP dial addr broken for IPv6 → net.JoinHostPort)
+      and re-pinned its golang image digest. NOTE (needs org admin): the
+      aj78-docker runner group does not serve the newly-transferred gofast
+      repo — its jobs queued 75+ min until CI was temporarily pinned
+      GitHub-hosted. Add gofast to the runner group (Settings → Actions →
+      Runner groups), then drop the temporary pin.
 - [ ] **A7** [Go, after A6] Catalog fill: gofast build dedupe (compile once,
       artifact to test+docker), add `vet`, wire web lint, coverage upload;
       gha-runner-controller vet/gofmt/coverage.

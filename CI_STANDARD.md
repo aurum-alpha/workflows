@@ -267,9 +267,9 @@ unless noted.
       GitHub-hosted (Principle 4).
 - [ ] **A1** [TS] Script renames `check`/`tsc` → `typecheck`, `test` →
       `test:unit` (non-watch) — package.json AND workflow refs in the same PR.
-      Repos in turn: credit-watch **merged** (#14, all gates green),
-      expense-splitter (PR #12 open), flight-watch, jewelry-factory,
-      hiring-tracker.
+      Repos in turn: credit-watch **merged** (#14), expense-splitter
+      **merged** (#12, lint indirection fixed too), flight-watch (PR #13
+      open), jewelry-factory, hiring-tracker.
 - [ ] **A2** [TS, after A1] jewelry-factory: remove ESLint PR-annotation
       machinery (Principle 10) — plain `pnpm lint`, drop github-script +
       status steps + `pull-requests: write`; lint script drops `--format json`.

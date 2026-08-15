@@ -211,7 +211,7 @@ embedded repo exists.
 | flight-watch | ✓ | ✓ | ✓ | ✗ (no tests, Phase B) | ✓ | ✓ | |
 | jewelry-factory | ✓ | ✓ | ✓ (in lint job) | ✓ | ✓ | ✓ | |
 | hiring-tracker | ✓ | ✓ | ✓ | ✓ (codecov CLI → action: Phase B) | ✓ | ✓ | Tier 3 since A3 |
-| gofast | ✓ | ✓ | n/a | ✓ | ✓ | ✓ | Temporarily GitHub-hosted (runner-group gap, see A6 note) |
+| gofast | ✓ | ✓ | n/a | ✓ | ✓ | ✓ | On aj78-docker since 2026-08-15 (runner group fixed; main run #163 all-green on fleet) |
 | gha-runner-controller | ✓ | n/a (golangci: Phase B) | n/a | ✓ | ✓ (.deb) | ✓ | Deliberately GitHub-hosted (Principle 4) |
 | event-manager | ✓ | ✗ (no eslint/prettier — Phase B) | n/a | ✓ | ✓ | ✓ | phpstan advisory until Phase D |
 | wardley-mapper | ✓ | ✓ | ✓ | ✗ (no tests, Phase B) | ✓ | ✓ | Born conformant (A0a) |
@@ -294,11 +294,11 @@ unless noted.
 - [x] **A6** [Go] Go 1.26.6 bump — **COMPLETE**: gha-runner-controller
       #41 and gofast #72 both merged. gofast also picked up a real vet
       finding on 1.26.6 (SMTP dial addr broken for IPv6 → net.JoinHostPort)
-      and re-pinned its golang image digest. NOTE (needs org admin): the
-      aj78-docker runner group does not serve the newly-transferred gofast
-      repo — its jobs queued 75+ min until CI was temporarily pinned
-      GitHub-hosted. Add gofast to the runner group (Settings → Actions →
-      Runner groups), then drop the temporary pin.
+      and re-pinned its golang image digest. RESOLVED 2026-08-15: Jared added
+      gofast to the aj78-docker runner group; the standard vars.RUNNER
+      line was already in the merged workflow (the GitHub-hosted pin never
+      reached main), and main run #163 ran every job green on
+      aj78-docker-* runners.
 - [x] **A7** [Go, after A6] Catalog fill — **COMPLETE**: gofast #73
       (dedicated session, [DONE]; full canonical DAG with coverage,
       oxlint wired, scripts/ entrypoints) and gha-runner-controller #60

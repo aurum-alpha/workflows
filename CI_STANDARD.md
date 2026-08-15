@@ -279,20 +279,20 @@ unless noted.
       (hiring-tracker#14; −138 lines). pipeline-base builder image and the
       event-manager-fork reusable workflow deleted; all jobs on setup-node
       + pnpm + store cache; container/--user-root dance gone.
-- [ ] **A4** [TS, after A1] Add canonical `build` job emitting the `dist`
-      artifact: credit-watch **merged** (#15), expense-splitter **merged**
-      (#13), flight-watch (PR #14 open — last repo). Gates gain
-      `needs: build`.
+- [x] **A4** [TS, after A1] Canonical `build` job emitting the `dist`
+      artifact — **COMPLETE**: credit-watch #15, expense-splitter #13,
+      flight-watch #14 all merged. Gates run after build everywhere.
 - [ ] **A5** [TS, after A4] Prod Dockerfiles → thin runtime COPY of `dist`
       (Principle 8); `image` job downloads the artifact. All TS repos. Verify
       each image boots (docker run + healthcheck) before PR; fall back to
       CI-level verification if no local docker.
-      *In progress:* credit-watch **merged** (#16; image verified locally —
-      booted against postgres 16, migrations applied, HTTP served — and CI
-      confirmed artifact download + thin build). expense-splitter PR #14
-      open (verified locally; pre-existing runtime needs noted: drizzle
-      schema push + mandatory Replit OIDC env, same class as
-      wardley-mapper#1's follow-up).
+      *In progress:* credit-watch **merged** (#16), expense-splitter
+      **merged** (#14), flight-watch PR #15 open (image verified locally:
+      loads airport/airline data files, serves HTTP). Remaining:
+      hiring-tracker, jewelry-factory (their build jobs also need the
+      dist-artifact upload added — they build but don't emit yet).
+      Pre-existing runtime notes: Replit OIDC env mandatory at boot in
+      the Replit-derived apps (wardley-mapper#1 follow-up class).
 - [x] **A6** [Go] Go 1.26.6 bump — **COMPLETE**: gha-runner-controller
       #41 and gofast #72 both merged. gofast also picked up a real vet
       finding on 1.26.6 (SMTP dial addr broken for IPv6 → net.JoinHostPort)

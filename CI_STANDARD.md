@@ -49,6 +49,13 @@ Status: **agreed 2026-08-14** (rev 2 after Jared's review). Remaining open items
     optional `$GITHUB_STEP_SUMMARY` totals. No custom PR-comment machinery —
     reply-able review-thread annotations are a possible future improvement,
     fleet-wide or not at all.
+11. **Registry auth lives in user-level npmrc, never project `.npmrc`.**
+    pnpm 10+ deliberately ignores auth settings in project npmrc (supply-chain
+    hardening) — a project-level `_authToken` line is silently dead. CI gets it
+    via setup-node's `registry-url`; Docker builds and compose commands write
+    `~/.npmrc` before install; hosts via dev-init. (Learned the hard way:
+    client-manager#22.) Fleet pnpm version: **10.34.5** via `packageManager`,
+    confirmed across all pnpm repos including client-manager.
 
 ## Standard job DAG — build first
 
@@ -339,7 +346,7 @@ SHA-bump PRs to every consumer.
 - AUR-565 round 2 (static bundle serve, globalTeardown sweep, scoped guards,
   keycloak-init hardening) → e2e/integration `continue-on-error` comes OFF.
 - PHPStan bootstrap fixed → static analysis hard-gates.
-- client-manager pnpm 10/11 resolution (GitHub-Packages tarball auth).
+- ~~client-manager pnpm 10/11~~ **resolved** (user-level npmrc — Principle 11).
 - Held for future consideration: reply-able review-thread lint annotations
   (fleet-wide or not at all); per-branch images once per-branch staging
   spin-up/teardown exists.
@@ -357,5 +364,5 @@ SHA-bump PRs to every consumer.
 ## Open items
 
 Tracked inside the phase plan above: AUR-565 round 2 and PHPStan bootstrap
-(Phase D), Go 1.26.6 bumps (Phase A), pnpm 10 vs 11 (Phase D), test scaffolding
+(Phase D), Go 1.26.6 bumps (Phase A), test scaffolding
 for expense-splitter/flight-watch (Phase B).

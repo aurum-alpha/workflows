@@ -199,23 +199,23 @@ Toolchain pins: platform versions in `platformio.ini`; Python via setup-python
 (pin a `.python-version` when standardizing). Stays repo-local until a second
 embedded repo exists.
 
-### Gap matrix (planning baseline, 2026-08-14)
+### Gap matrix (end of Phase A, 2026-08-15; planning baseline was 2026-08-14)
 
 ✓ conforms · Δ exists but drifted · ✗ missing
 
 | Repo | build | lint | typecheck | test-unit | image | ci-ok | Notes |
 |---|---|---|---|---|---|---|---|
-| client-manager | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | Catalog source; job *names* differ (tools/checks labels) |
-| credit-watch | ✗ (docker builds) | Δ | Δ (`check`) | Δ (no codecov) | Δ (in-image build) | ✗ | |
-| expense-splitter | ✗ | Δ (`npx eslint`) | Δ (`check`) | ✗ (no tests) | Δ | ✗ | |
-| flight-watch | ✗ | Δ | Δ (`check`) | ✗ (no tests) | Δ | ✗ | |
-| jewelry-factory | ✓ | Δ (custom PR annotations) | Δ (inside lint job) | ✓ | Δ (in-image build) | ✗ | |
-| hiring-tracker | ✓ | ✓ | Δ (script `tsc`) | Δ (codecov CLI) | Δ (in-image build) | ✗ | Runs tier-2 builder image; catalog says TS = tier 3 — decide |
-| gofast | Δ (dup build in test) | ✗ (oxlint unused) | n/a | Δ (no coverage) | ✓ | ✗ | Go catalog; no vet |
-| gha-runner-controller | Δ | ✗ | n/a | Δ | ✓ | ✗ | Go catalog, minimal |
-| event-manager | ✓ | ✗ (no eslint/prettier) | n/a | ✓ | ✓ | ✗ | PHP catalog; phpstan advisory |
-| wardley-mapper | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | **No CI at all** — greenfield; gets born conformant (A0a) |
-| lid-firmware | Δ (pio matrix) | ✗ | n/a | ✗ | n/a | ✗ | Embedded catalog; needs runner line, pins, ci-ok (A0b) |
+| client-manager | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | Catalog source; dual-stack job-id naming → Phase B |
+| credit-watch | ✓ | ✓ | ✓ | ✓ (codecov: Phase B) | ✓ | ✓ | |
+| expense-splitter | ✓ | ✓ | ✓ | ✗ (no tests, Phase B) | ✓ | ✓ | |
+| flight-watch | ✓ | ✓ | ✓ | ✗ (no tests, Phase B) | ✓ | ✓ | |
+| jewelry-factory | ✓ | ✓ | ✓ (in lint job) | ✓ | ✓ | ✓ | |
+| hiring-tracker | ✓ | ✓ | ✓ | ✓ (codecov CLI → action: Phase B) | ✓ | ✓ | Tier 3 since A3 |
+| gofast | ✓ | ✓ | n/a | ✓ | ✓ | ✓ | Temporarily GitHub-hosted (runner-group gap, see A6 note) |
+| gha-runner-controller | ✓ | n/a (golangci: Phase B) | n/a | ✓ | ✓ (.deb) | ✓ | Deliberately GitHub-hosted (Principle 4) |
+| event-manager | ✓ | ✗ (no eslint/prettier — Phase B) | n/a | ✓ | ✓ | ✓ | phpstan advisory until Phase D |
+| wardley-mapper | ✓ | ✓ | ✓ | ✗ (no tests, Phase B) | ✓ | ✓ | Born conformant (A0a) |
+| lid-firmware | ✓ | n/a | n/a | ✓ (compile-check; on-device: future) | n/a | ✓ | Embedded catalog |
 
 All catalog decisions are resolved and live under **Principles** (rule: decisions,
 once made, move to Principles). Phase-A work items arising from them:
@@ -312,11 +312,11 @@ unless noted.
       300s process-timeout killed the functional suite once invoked via
       `composer run-script` — `config.process-timeout: 0` set in both
       composer.json files.
-- [ ] **A9** [converges all lanes] Canonical job ids + `ci-ok` rollup in every
-      repo — six of seven **merged** with their new ci-ok green on first
-      run: credit-watch #17, expense-splitter #15, flight-watch #16,
-      hiring-tracker #16, jewelry-factory #15, lid-firmware #7.
-      event-manager #43 mid-pipeline (gates green, long tail running). Already
+- [x] **A9** [converges all lanes] Canonical job ids + `ci-ok` rollup in every
+      repo — **COMPLETE**, all seven merged with their new ci-ok green on
+      first run: credit-watch #17, event-manager #43 (full pipeline incl.
+      integration/e2e/image), expense-splitter #15, flight-watch #16,
+      hiring-tracker #16, jewelry-factory #15, lid-firmware #7. Already
       conformant: wardley-mapper, gofast (#73), gha-runner-controller
       (#60). client-manager: ci-ok already present; job-id normalization
       deliberately deferred — it is dual-stack (Go + TS), so single
@@ -325,7 +325,12 @@ unless noted.
       react jobs got the same treatment). AFTER MERGE (needs admin):
       point each repo's required status check at `ci ok`.
 
-### Phase A — per-repo catalog conformance *(next)*
+### Phase A — per-repo catalog conformance *(COMPLETE 2026-08-15)*
+
+**Exit criteria met 2026-08-15**: every gap-matrix row shows ✓ for jobs that
+exist; remaining ✗/deferrals (test scaffolding for expense-splitter,
+flight-watch, wardley-mapper; codecov rollout; dual-stack job-id naming;
+event-manager eslint) are Phase B work by design.
 
 Each repo converges on the catalog **in place** — no shared repo involvement yet.
 

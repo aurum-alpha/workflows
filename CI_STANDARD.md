@@ -395,13 +395,22 @@ fix and re-push on failure. B0–B1 are in flight; B2→B3→B4→B5 run in orde
       colliding canonical ids: `go-test-unit` / `web-test-unit`) +
       client-manager and event-manager react-job renames (safe now: only
       `ci-ok` is or will be required).
-- [ ] **B5** Byte-identity checker in this repo (per-package-manager
-      cohort job-block comparison; becomes this repo's first real CI
-      gate) + normalization PRs — npm cohort converges on wardley-mapper
-      shapes (incl. dropping credit-watch's separate install job,
-      unifying action pins), pnpm cohort on hiring-tracker shapes —
-      until the checker reports zero diffs. Checker green = Phase B exit
-      criteria met.
+- [ ] **B5** Byte-identity checker + normalization — **IN FLIGHT**.
+      Checker landed as `tools/check-job-identity` (per-cohort job-block
+      comparison over local clones; wiring it as this repo's CI gate
+      needs cross-repo checkout and waits for Phase C). Normalization
+      PRs open, verified locally at **PASS — zero diffs in both
+      cohorts**: npm cohort converges on the wardley template + version
+      build-args (wardley-mapper#9, credit-watch#20 — drops its separate
+      install job, expense-splitter#18, flight-watch#19; all gain
+      build-push v6.19.2, tag-event rule, latest tag); pnpm cohort on
+      the cleaned hiring-tracker template (hiring-tracker#20 — version
+      info folds into the build script per the indirection rule,
+      update-version-info no longer gates ci-ok; jewelry-factory#17 —
+      typecheck becomes its own job, image job sheds dead version-info
+      and pnpm setup). image and ci-ok blocks are additionally
+      byte-identical ACROSS cohorts (pm-agnostic — Phase C seed).
+      Checker green on merged mains = Phase B exit criteria met.
 
 ### Phase A — per-repo catalog conformance *(COMPLETE 2026-08-15)*
 

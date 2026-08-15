@@ -313,10 +313,10 @@ unless noted.
       `composer run-script` — `config.process-timeout: 0` set in both
       composer.json files.
 - [ ] **A9** [converges all lanes] Canonical job ids + `ci-ok` rollup in every
-      repo — **all seven PRs open**, ids + rollup only, no step changes:
-      credit-watch #17, event-manager #43, expense-splitter #15,
-      flight-watch #16, hiring-tracker #16, jewelry-factory #15,
-      lid-firmware #7 (rename only; its ci-ok landed in A0b). Already
+      repo — six of seven **merged** with their new ci-ok green on first
+      run: credit-watch #17, expense-splitter #15, flight-watch #16,
+      hiring-tracker #16, jewelry-factory #15, lid-firmware #7.
+      event-manager #43 mid-pipeline (gates green, long tail running). Already
       conformant: wardley-mapper, gofast (#73), gha-runner-controller
       (#60). client-manager: ci-ok already present; job-id normalization
       deliberately deferred — it is dual-stack (Go + TS), so single

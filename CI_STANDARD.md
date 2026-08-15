@@ -197,6 +197,28 @@ Same ids where meaningful: `builder-image` (tier 2, reusable) → `install`
 | `test-unit` | build | `pio test` native suite (when adopted) |
 | `ci-ok` | all | rollup |
 
+### Dual-stack job ids (B4 decision)
+
+A repo hosting two stacks in one pipeline (client-manager: Go + TS;
+event-manager: PHP + React) prefixes a canonical id with its stack —
+`go-` / `web-` / `php-` — **only when both stacks in that pipeline have
+the job** (e.g. `go-test-unit` / `web-test-unit`). Single-owner jobs keep
+the bare canonical id (`test-integration`, `static-analysis`, `image`,
+`ci-ok`), so bare ids stay meaningful for byte-identity matching (B5) and
+prefixes appear only where a collision forces them. Display names remain
+free-form human labels; ids are what the standard governs (`ci-ok` is the
+exception: no display-name override, it reports by id).
+
+Executed mappings — event-manager (first executed example):
+`install-composer-deps` → `php-install`, `install-composer-deps-prod` →
+`php-install-prod`, `install-node-deps` → `web-install`, `build-php` →
+`php-build`, `build-react` → `web-build`, `test-unit` → `php-test-unit`,
+`test-react-unit` → `web-test-unit`. Unchanged: `test-integration`,
+`test-e2e`, `static-analysis`, `image`, `ci-ok`, the two builder-image
+jobs (repo-specific, not canonical). client-manager's mapping lands after
+the `ci-ok` required-check flip (its current ids may be referenced by
+branch protection).
+
 Toolchain pins: platform versions in `platformio.ini`; Python via setup-python
 (pin a `.python-version` when standardizing). Stays repo-local until a second
 embedded repo exists.

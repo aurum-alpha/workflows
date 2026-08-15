@@ -111,10 +111,11 @@ rewrote existing tags to malicious code and SHA-pinned consumers were untouched.
 ## Shared infrastructure — aurum-alpha/workflows
 
 **Created 2026-08-14, public** (NOT gha-runner-controller — the fleet controller
-consumes shared workflows; hosting them there mixes concerns). Public visibility
-lets j27-aurum/gofast consume the workflows; note gofast still cannot use the
-aj78-docker runners (org-scoped to aurum-alpha), so it stays on GitHub-hosted
-unless moved into the org.
+consumes shared workflows; hosting them there mixes concerns). Update
+2026-08-15: gofast has moved into the org (**aurum-alpha/gofast**), so the
+cross-org consumption rationale no longer applies to it and gofast may now use
+the aj78-docker runners (adopt the standard runner line when its workflows
+next change).
 
 - Reusable **workflows** must live in `.github/workflows/` (GitHub requirement — no
   subdirs), so stacks are organized by filename: `node-ci.yml`, `go-ci.yml`,
@@ -286,8 +287,8 @@ unless noted.
 - [ ] **A6** [Go] Go 1.26.5 → 1.26.6 (gofast; gha-runner-controller from
       1.25.4): go.mod, SHA-pinned golang image digests, docs.
       *In progress:* gha-runner-controller **merged** (#41, CI green);
-      gofast running in a dedicated cross-org session (repo lives in
-      j27-aurum).
+      gofast (now **aurum-alpha/gofast** after the org move) running in a
+      dedicated session.
 - [ ] **A7** [Go, after A6] Catalog fill: gofast build dedupe (compile once,
       artifact to test+docker), add `vet`, wire web lint, coverage upload;
       gha-runner-controller vet/gofmt/coverage.

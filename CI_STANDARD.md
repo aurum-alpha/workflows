@@ -285,6 +285,9 @@ unless noted.
       CI-level verification if no local docker.
 - [ ] **A6** [Go] Go 1.26.5 → 1.26.6 (gofast; gha-runner-controller from
       1.25.4): go.mod, SHA-pinned golang image digests, docs.
+      *In progress:* gha-runner-controller **merged** (#41, CI green);
+      gofast running in a dedicated cross-org session (repo lives in
+      j27-aurum).
 - [ ] **A7** [Go, after A6] Catalog fill: gofast build dedupe (compile once,
       artifact to test+docker), add `vet`, wire web lint, coverage upload;
       gha-runner-controller vet/gofmt/coverage.

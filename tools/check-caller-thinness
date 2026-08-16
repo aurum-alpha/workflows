@@ -30,11 +30,22 @@ CONVERTED = [
     "hiring-tracker",
     "jewelry-factory",
     "wardley-mapper",
+    "gha-runner-controller",
 ]
 
 # Repo-local jobs that are allowed to keep a body in the caller.
 LOCAL_ALLOWLIST = {
     "hiring-tracker": {"update-version-info"},
+    # The compile and the two packaging jobs are genuinely repo-specific: a
+    # version-stamped .deb via nfpm and a controller image. Both consume the
+    # one compiled artifact rather than rebuilding it, which is the property
+    # that matters; there is no shared job that models either.
+    "gha-runner-controller": {
+        "build",
+        "test-integration",
+        "package-deb",
+        "package-image",
+    },
 }
 
 # `permissions` is a stub key, not drift: a called workflow can never hold more
@@ -68,17 +79,30 @@ def parse_jobs(text: str) -> dict[str, dict[str, str]]:
         return {}
     jobs: dict[str, dict[str, str]] = {}
     current = None
+    last_key = None
     for ln in lines[jobs_at + 1 :]:
         if ln.strip() and not ln.startswith("  "):
             break  # dedent out of jobs:
         m = re.match(r"^  ([\w-]+):\s*$", ln)
         if m:
             current = m.group(1)
+            last_key = None
             jobs[current] = {}
             continue
         m = re.match(r"^    ([\w-]+):\s*(.*)$", ln)
         if m and current is not None:
-            jobs[current][m.group(1)] = m.group(2).strip()
+            last_key = m.group(1)
+            jobs[current][last_key] = m.group(2).strip()
+            continue
+        # A key written as a block sequence has its items on following lines:
+        #   needs:
+        #     - build
+        # Fold them back into the key's value so `needs: [build]` and the
+        # block form are read the same way.
+        m = re.match(r"^      - (.+)$", ln)
+        if m and current is not None and last_key is not None:
+            existing = jobs[current][last_key]
+            jobs[current][last_key] = f"{existing} {m.group(1).strip()}".strip()
     return jobs
 
 
@@ -115,7 +139,11 @@ def check_repo(repo: str, text: str) -> list[str]:
             problems.append(f"job '{job_id}' must use secrets: inherit")
 
     if "ci-ok" in jobs and stub_ids:
+        # needs: accepts a scalar, an inline list, or a block sequence; the
+        # parser hands back a str or a list depending on which was written.
         needs_raw = jobs["ci-ok"].get("needs", "")
+        if not isinstance(needs_raw, str):
+            needs_raw = " ".join(str(n) for n in needs_raw)
         needed = set(re.findall(r"[\w-]+", needs_raw))
         missing = [j for j in stub_ids if j not in needed]
         if missing:

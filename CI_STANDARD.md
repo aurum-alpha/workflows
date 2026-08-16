@@ -509,7 +509,11 @@ irrelevant to branch protection.
       web jobs adopt the same shared `job-node-*` definitions
       (`workdir` input). Heavier than pure CI work (test-framework
       migration touches the suite) — sequenced after C1/C2, allowed to
-      slip behind C4/C5 without blocking them.
+      slip behind C4/C5 without blocking them. *Scoped 2026-08-16,
+      deferred to daytime by design: the vitest half is small (6 test
+      files, only 2 using jest-specific APIs); the real work is
+      npm→pnpm + tier-3 conversion and reconciling the webpack build
+      output with the shared build job's dist/ artifact contract.*
 - [x] **C3** Composite action `setup/node-pnpm` for the steps-level
       prelude, consumed by the shared jobs internally AND by bespoke
       caller-side jobs (client-manager's prettier/golden-corpus) — one
@@ -555,7 +559,7 @@ irrelevant to branch protection.
       client-manager's web stubs for that reason. Tags remain
       admin-side (git proxy scopes writes to refs/heads/*): one pass
       at the end per Jared.*
-- [ ] **C6** event-manager's tier-2 builder-image workflow moves here
+- [x] **C6** event-manager's tier-2 builder-image workflow moves here
       (the hiring-tracker fork died in A3; this centralizes the
       remaining copy); event-manager becomes a caller. Its main ci.yml
       stays repo-local until a second PHP repo exists. *Shared half
@@ -564,7 +568,10 @@ irrelevant to branch protection.
       `job-image-cached.yml` (inputs image_name/dockerfile/
       file_patterns/build_args/force_rebuild → outputs changed/image;
       build-push normalized v5.4.0→v6.19.2). event-manager caller flip
-      rides the D9 PR.*
+      rides the D9 PR.* *Caller flip landed 2026-08-16 (event-manager#49
+      merged): both image jobs are now SHA-pinned stubs of
+      job-image-cached (v1.4.0), local workflow copies deleted. C6
+      complete.*
 
 **Exit criteria** (unchanged from the phase plan): a fix to a shared job
 lands once and propagates by Dependabot SHA-bump PRs to every consumer.
@@ -574,8 +581,9 @@ packages: read, checkout v7, D7 junit analytics) each landed once and
 reached all seven consumers as mechanical SHA re-pins; the fleet wave
 merged 7/7 green and tools/check-caller-thinness passes every converted
 caller against main. Phase C is COMPLETE except C2b (event-manager
-react convergence, tracked below) and the C6 caller flip (in flight
-with D9). Dependabot-authored bump PRs (vs tonight's scripted re-pins)
+react convergence, tracked below — deliberate daytime work); the C6
+caller flip landed with event-manager#49.
+Dependabot-authored bump PRs (vs tonight's scripted re-pins)
 arrive with its next daily run now that the callers reference this
 repo — the propagation mechanism itself is proven either way.
 
@@ -587,7 +595,7 @@ next execution phase — its payoff compounds into everything after. D0–D2
 are event-manager-local and small enough to run before or alongside C;
 D3–D6 are independent of C. Same execution loop as A/B.
 
-- [ ] **D0** [event-manager] Integration + e2e become hard gates —
+- [x] **D0** [event-manager] Integration + e2e become hard gates —
       remove `continue-on-error` from test-integration and test-e2e
       (three sites in ci.yml). Evidence for flipping now: four
       consecutive fully-green full-pipeline runs on 2026-08-15 (#44,
@@ -597,13 +605,33 @@ D3–D6 are independent of C. Same execution loop as A/B.
       hard gate — red is real signal once the gate is closed.
       RECOMMENDATION: flip first, harden under the gate. (Alternative:
       harden first — Jared's call.) *Flipped 2026-08-16 per the
-      overnight go (event-manager#48, in CI): test-integration and
+      overnight go (event-manager#48, merged): test-integration and
       test-e2e drop continue-on-error; PHPStan's advisory step stays
-      until D1.*
-- [ ] **D1** [event-manager] PHPStan hard gate — fix the phpstan.neon
+      until D1.* *The gate earned its keep within hours. First red
+      06:57 UTC: 3/67 auth-adjacent Playwright failures (AUR-565
+      class). The persistent one was then root-caused as a
+      test-authorship bug, not infra: event-registration-config's
+      cleanup clicked through the Delete confirm dialog, which can
+      commit and close between the isVisible() check and the button
+      click, stranding the locator until the 60s test timeout —
+      identical trace on both attempts across two PRs. Fixed by moving
+      cleanup to DELETE /api/events/{id}/questions/{qid}
+      (event-manager#49/#50). Lesson: e2e cleanup paths belong on the
+      API, not the UI.*
+- [x] **D1** [event-manager] PHPStan hard gate — fix the phpstan.neon
       bootstrap (the documented blocker), then remove
       `continue-on-error` from static-analysis. Principle 3's last
-      documented stabilization window closes.
+      documented stabilization window closes. *Landed 2026-08-16
+      (event-manager#50): constants-only tools/phpstan-bootstrap.php
+      (defines FCPATH/APPPATH/etc. without booting the framework),
+      blanket ignores retired down to the two CI4 magic-method
+      patterns, 277-finding baseline checked in
+      (phpstan-baseline.neon), continue-on-error removed. The gate
+      caught two config follow-ons on its own first enforced run —
+      a non-ignorable unknown-class (runtime-only JWTAuthentication →
+      excludePaths per PHPStan's own guidance) and stale unmatched
+      ignores (PHPStan fails on those) — both fixed same night.
+      Debt burns down by shrinking the baseline.*
 - [ ] **D2** [event-manager] Web lint gates — the gap matrix's last ✗:
       eslint + prettier for the react tree (deferred out of Phase B).
       New canonical `lint` job (no collision — PHP side has none; the
@@ -628,7 +656,7 @@ D3–D6 are independent of C. Same execution loop as A/B.
       one fleet standard of eslint 9 flat + vitest 4 + vite 7 + one TS
       version — is deliberate daytime work (flat-config migration ×4
       repos + vitest major ×3 repos), not an overnight bulk edit.*
-- [ ] **D4** [fleet] Coverage policy normalization — codecov.yml in
+- [x] **D4** [fleet] Coverage policy normalization — codecov.yml in
       every repo with the event-manager pattern (project: target auto,
       threshold 1% — regression guard; patch: 70% for new code).
       Known app-level debt flagged for engineering backlog, NOT CI
@@ -649,7 +677,7 @@ D3–D6 are independent of C. Same execution loop as A/B.
       review-thread lint annotations — fleet-wide or not at all
       (decide, don't drift); per-branch images — re-affirm deferred
       until per-branch staging spin-up/teardown exists.
-- [ ] **D9** [event-manager] E2E stack-image caching — measured on run
+- [x] **D9** [event-manager] E2E stack-image caching — measured on run
       31900653354: "Build stack images" is 15m42s of the 31m53s e2e job
       (49%), a plain `docker compose build` on an empty ephemeral dind
       while the prod-image job builds the same app in ~70s via buildx +
@@ -657,7 +685,14 @@ D3–D6 are independent of C. Same execution loop as A/B.
       `cache-from: type=registry` (inline cache), push stack images to
       ghcr on main pushes so PR runs hit a warm cache. Also fold the
       pre-migrated-DB idea from D10 into the stack db image. Expected:
-      e2e drops from ~32 to ~17 min.
+      e2e drops from ~32 to ~17 min. *Landed 2026-08-16
+      (event-manager#49): server + webpack get ghcr
+      e2e-cache-{server,webpack}:latest image/cache_from refs with
+      BUILDKIT_INLINE_CACHE, main runs push them, e2e build list
+      trimmed to the two services that actually build. First
+      cache-seeding main run follows the merge; warm-build timing vs
+      the 15m42s baseline measurable on the next PR run after it.
+      Pre-migrated DB image NOT folded in yet — stays with D10.*
 - [ ] **D10** [event-manager] Functional-suite wall time — 22m48s of
       the 36m44s integration job (62%) is `composer test:functional`;
       this is PHP time, not infrastructure. Cheapest first: shard via

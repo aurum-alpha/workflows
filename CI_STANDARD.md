@@ -174,6 +174,45 @@ install ──► build ──► lint ─────────┐
   The check reports under the job id `ci-ok` (no display-name override) —
   that exact string is what branch protection requires, fleet-wide.
 
+### Multi-codebase repos — one DAG per stack, converging at packaging
+
+Several repos hold two codebases in one tree: React/TS + Go (gofast), React +
+Node (client-manager, event-manager's web), React + PHP (event-manager). **Each
+stack runs the standard DAG independently, and they converge only at packaging
+and integration.** All of it lives in the one `ci.yml` (Principle 18) — a second
+stack is not a second workflow.
+
+```
+web-build ───► web-lint ──────────┐
+          ───► web-typecheck ─────┤
+          ───► web-test-unit ─────┤
+                                  ├──► image / package ──► test-integration ──► ci-ok
+api-build ───► api-lint ──────────┤          (converge)
+          ───► api-test-unit ─────┘
+```
+
+- A stack's gates depend on **that stack's** build and nothing else. A failing
+  Go vet must not hold up the React lint, and a broken `tsc` must not stop the
+  Go tests from telling you what else is wrong. Cross-stack `needs:` serialize
+  two independent pipelines into one long one and hide half the failures behind
+  the other half.
+- The convergence point is wherever the two stacks first meet in a real
+  artifact: the image that ships the compiled binary *and* the built UI, the
+  package that contains both. That job needs every stack's build **and** every
+  stack's gates — it is the first place a cross-stack failure legitimately
+  blocks something.
+- Integration/e2e sits after the converged artifact, because that is the first
+  point at which the thing under test exists.
+- Naming follows B4 dual-stack rules: a bare `lint` in a two-stack repo reads as
+  whichever stack the reader assumes, so both get a prefix (`web-lint`,
+  `go-lint`).
+- *Learned from event-manager, whose DAG ran backwards — `web-build` needed
+  `web-test-unit`, and `php-build` needed four gates plus `web-build` — so the
+  cheapest, most fundamental signal in the repo was the last thing to run, and a
+  compile break surfaced only after every test had finished. Also from
+  lid-firmware, where `publish-firmware` needed `build` alone: firmware
+  published from main without unit tests ever having passed.*
+
 ## Publishing
 
 - Registry: ghcr. Tags: `<sha>` always; `latest` only on the default branch;

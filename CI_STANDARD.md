@@ -467,14 +467,19 @@ irrelevant to branch protection.
       phantom deps nanoid ×3, @types/pg ×2, js-tiktoken; wardley on
       vite 5 vs vitest 4 (now vite 7 like the fleet); credit-watch's
       npm-style overrides silently ignored (now pnpm.overrides).
-- [ ] **C1** Convert the six Node repos to thin stub callers pinned by
-      SHA (header + five 4-line job stubs + local ci-ok) — **IN FLIGHT**:
-      expense-splitter#20 is the showcase (182 -> 50 lines) and its live
-      run proved the whole calling contract: caller-context vars.RUNNER,
-      secrets: inherit (codecov upload flat at 63.86%), dist artifact
-      flow, `build / build`-style check names, flat required ci-ok.
-      Remaining five convert once it merges. Repo-specific extras
-      (hiring-tracker's update-version-info) stay caller-side.
+- [x] **C1** Convert the six Node repos to thin stub callers pinned by
+      SHA (header + five 4-line job stubs + local ci-ok) — **COMPLETE
+      2026-08-16**: all six landed (wardley-mapper#11, credit-watch#22,
+      flight-watch#21, hiring-tracker#21, jewelry-factory#18,
+      expense-splitter#20), every one green through the shared jobs on
+      first run — zero job-body fixes needed after the showcase proved
+      the contract (caller-context vars.RUNNER, secrets: inherit, dist
+      artifact flow, `build / build`-style check names, flat required
+      ci-ok). Repo-specific extras (hiring-tracker's
+      update-version-info) stay caller-side. Each repo's stale
+      github-actions Dependabot bump PRs closed post-merge (27 total) —
+      pins now live here only. tools/check-caller-thinness passes all
+      six.
       Tag note (Jared, 2026-08-16): release tags (v1.0.0 on the C0
       commit) deferred until the C wave is done and working — one
       tagging pass over a stable repo; tag pushes are admin-side (the
@@ -521,6 +526,16 @@ irrelevant to branch protection.
       change in node-ci.yml and verify it arrives everywhere as
       reviewable SHA-bump PRs. Tag releases in this repo so bump PRs
       are readable (SHA pin + tag comment, fleet pinning policy).
+      *Material ready 2026-08-16: this repo's own Dependabot opened
+      #6–#10 within minutes of dependabot.yml landing (checkout v7,
+      setup-node v7, upload-artifact v7, download-artifact v8, buildx
+      v4 — all cross-major bumps to the fleet's shared pins). HELD
+      until canary process runs: a workflows-repo PR only proves
+      actionlint, so plan is merge one bump → cut SHA → re-pin ONE
+      caller → watch its full run → then batch the rest + fleet
+      re-pin. Compat evidence in hand: lid-firmware main run
+      31920424032 ran upload-artifact v7 → download-artifact v8
+      cross-major in one run, publish-firmware green (02:10 UTC).*
 - [ ] **C6** event-manager's tier-2 builder-image workflow moves here
       (the hiring-tracker fork died in A3; this centralizes the
       remaining copy); event-manager becomes a caller. Its main ci.yml
@@ -625,6 +640,18 @@ D3–D6 are independent of C. Same execution loop as A/B.
       controller-side watchdog/alerting. Interim runbook (documented):
       empty-commit re-trigger; the rerun API returns 403 for this
       integration.
+      More evidence 2026-08-16 early UTC: (a) expense-splitter#20 image
+      job wedged queued 34 min (01:07-01:41) while sibling jobs
+      scheduled; (b) sustained 10-25 min assignment waits across the
+      whole 01:00-02:15 window on an unsaturated fleet; (c) NEW failure
+      mode — a *started* job hung mid-step: event-manager
+      test-integration (job 95091214278, runner aj78-docker-9eed654c)
+      sat 96+ min inside "Run functional tests" (norm ~23 min, started
+      00:36:40) with the runner still heartbeating — not the 10-min
+      timeout/404 signature; cancel API also 403, cleared 02:13 by
+      empty-commit push (concurrency-group cancel). Suggests wedged
+      dind/container I/O rather than runner death — worth checking that
+      host's dockerd/dind sidecar logs around 00:36-02:13.
 
 ### Phase A — per-repo catalog conformance *(COMPLETE 2026-08-15)*
 

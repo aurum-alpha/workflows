@@ -390,7 +390,22 @@ simply absent, and that absence is accurate rather than missing.
 The two middle tokens are not redundant: **they select two different tiers of
 tooling.** `client-ts-react` says both the language tier (`tsc`, `eslint`) and
 the framework tier (`vite build`) apply to it. `server-go` says only the
-language tier does. The name tells you which shared jobs a unit can call.
+language tier does.
+
+**Name the framework whenever there is one, even when it owns no build tool.**
+Naming and the job catalog are independent decisions:
+
+- the framework token is *identity* — present whenever a framework is in use
+- a framework-tier *job* exists only where the framework owns a tool
+
+So `server-ts-express-build` names Express and calls a language-tier build job;
+Express is a request-routing library and owns no bundler. That is not a
+contradiction — the name says what the unit **is**, the job says what **runs**
+it. Two reasons this matters: replacing Express with Nest is an expensive,
+consequential change and the id should show it the day it happens; and an
+`express` token tells a reader the build is framework-shaped rather than
+bespoke. Which makes the empty slot informative in its own right — `server-ts`
+with no framework token means exactly that: no framework, a custom build.
 
 **A job spanning more than one unit takes no purpose prefix** — `image`,
 `package`, `release`, `test-e2e`, `changes`, `ci-ok`, and a repo-wide

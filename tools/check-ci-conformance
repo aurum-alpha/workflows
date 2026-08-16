@@ -72,9 +72,14 @@ def is_library(path: pathlib.Path) -> bool:
             triggers.add(m.group(1))
     return triggers == {"workflow_call"}
 
+# A graph root is the first node of a stack, or the change-detection job the
+# rest keys off. Matched by SHAPE, not by an enumerated list of names: the list
+# version hardcoded `build`, `web-build`, `go-mod` and friends, so the moment a
+# repo renamed `build` to `react-build` — obeying N1 — the checker called its
+# own standard a violation. Enumerating names is how a checker acquires the
+# drift it exists to prevent.
 ROOT_RE = re.compile(
-    r"^(changes|build|go-mod|install|web-build|web-install|php-install(-prod)?"
-    r"|create-docker-[\w-]+-image)$"
+    r"^(changes|create-docker-[\w-]+-image|([a-z]+-)?(mod|build|install(-prod)?))$"
 )
 BUILD_RE = re.compile(r"(^|-)(build|install)$")
 GATE_RE = re.compile(r"(lint|typecheck|test|vet|gofmt|prettier|analysis|scanner|check|audit)")

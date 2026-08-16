@@ -575,12 +575,20 @@ D3–D6 are independent of C. Same execution loop as A/B.
       job-node-test-unit.yml and propagates to every caller — the
       Phase C payoff in action; Go/PHP test jobs get the same step
       where they live. Sequence after C1/C2.
-- [ ] **D6** [fleet health] Runner-loss investigation — four losses on
-      2026-08-15, all the same signature (job dies at exactly the
-      10-min communication timeout, logs 404) under ~11 parallel runs:
-      look at aj78 host memory/contention, consider controller-side
-      watchdog/alerting. Interim runbook (documented): empty-commit
-      re-trigger; the rerun API returns 403 for this integration.
+- [ ] **D6** [fleet health] Runner assignment latency + mid-job losses.
+      REFRAMED 2026-08-16 (Jared: aj78 has 24 slots, never fully
+      filled, more available): capacity is NOT the constraint, so the
+      observed 10-25 min "queued" waits are assignment-path latency —
+      investigate gha-runner-controller's ephemeral spin-up time,
+      scale-trigger/webhook lag, and label matching against idle slots.
+      Five runner losses on 2026-08-15/16 (job dies at exactly the
+      10-min communication timeout, logs 404) on an unsaturated fleet
+      point at runner lifecycle/host issues (runner reaped or wedged
+      mid-job), not contention — correlate controller logs at the loss
+      timestamps (~14:38-14:43 x3, 16:20, 23:42 UTC). Consider
+      controller-side watchdog/alerting. Interim runbook (documented):
+      empty-commit re-trigger; the rerun API returns 403 for this
+      integration.
 
 ### Phase A — per-repo catalog conformance *(COMPLETE 2026-08-15)*
 

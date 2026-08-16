@@ -57,6 +57,16 @@ Status: **agreed 2026-08-14** (rev 2 after Jared's review). Remaining open items
     client-manager#22.) Fleet pnpm version: **10.34.5** via `packageManager`,
     confirmed across all pnpm repos including client-manager.
 
+12. **One way per capability.** The unit of CI consistency is the
+    *capability*, not the repo: a repo that has a React frontend builds,
+    artifacts, and tests it the ONE fleet way; a TS codebase is eslinted
+    the ONE way; a Go backend is built/vetted/tested the ONE way; PHP
+    likewise. Repos differ only in *which* capabilities they compose and
+    in the `needs:` wiring between them — never in how a capability is
+    executed. Phase C realizes this as single-job reusable workflows
+    (one shared definition per capability job) consumed by every repo
+    that has that capability, single- or dual-stack alike.
+
 ## Standard job DAG — build first
 
 The cheapest, most fundamental gate is "does it build." A broken compile fails one
@@ -461,11 +471,19 @@ irrelevant to branch protection.
       pattern once gofast + client-manager converge on shapes (their
       Go jobs are not yet block-identical — a mini-B5 for the Go
       cohort precedes extraction there).
+- [ ] **C2b** Capability convergence: event-manager's react side — the
+      last React frontend not built the fleet way (jest not vitest, npm
+      not pnpm, tier-2 container jobs). Migrate its react tests to
+      vitest, node side to pnpm + tier-3, canonical scripts; then its
+      web jobs adopt the same shared `job-node-*` definitions
+      (`workdir` input). Heavier than pure CI work (test-framework
+      migration touches the suite) — sequenced after C1/C2, allowed to
+      slip behind C4/C5 without blocking them.
 - [ ] **C3** Composite action `setup/node-pnpm` for the steps-level
       prelude, consumed by the shared jobs internally AND by bespoke
-      caller-side jobs (client-manager's prettier/golden-corpus,
-      event-manager's react jobs later) — one definition of the Node
-      toolchain setup fleet-wide even where the job shape is local.
+      caller-side jobs (client-manager's prettier/golden-corpus) — one
+      definition of the Node toolchain setup fleet-wide even where the
+      job shape is local.
 - [ ] **C4** This repo's CI grows real gates, replacing the exit-0
       stub: actionlint over the shared workflows + a caller-thinness
       check (byte-identity is enforced by construction once extraction

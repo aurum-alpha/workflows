@@ -500,11 +500,22 @@ irrelevant to branch protection.
       caller-side jobs (client-manager's prettier/golden-corpus) — one
       definition of the Node toolchain setup fleet-wide even where the
       job shape is local.
-- [ ] **C4** This repo's CI grows real gates, replacing the exit-0
+- [x] **C4** This repo's CI grows real gates, replacing the exit-0
       stub: actionlint over the shared workflows + a caller-thinness
       check (byte-identity is enforced by construction once extraction
       lands, so tools/check-job-identity retires in favor of "callers
-      contain no inline job logic").
+      contain no inline job logic"). *Landed 2026-08-16: `lint` job runs
+      actionlint 1.7.7 (docker, tag-pinned) with shellcheck over every
+      workflow in this repo; `tools/check-caller-thinness` replaces
+      `tools/check-job-identity` — verifies each converted caller's jobs
+      are pure `uses:` stubs (SHA-pinned to this repo, `secrets:
+      inherit`, no non-stub keys) with a local `ci-ok` whose `needs:`
+      covers every stub; repo-local exceptions are an explicit
+      allow-list (hiring-tracker `update-version-info`). Runs locally
+      against fleet clones (`--root`), not in CI — cross-repo checkout
+      is out of scope for the repo-scoped GITHUB_TOKEN. First actionlint
+      run caught SC2086 (unquoted `$GITHUB_ENV`) in all four node jobs —
+      fixed same commit.*
 - [ ] **C5** Propagation proof: Dependabot (github-actions ecosystem)
       on every consumer tracks the shared-workflow SHA; land one canary
       change in node-ci.yml and verify it arrives everywhere as

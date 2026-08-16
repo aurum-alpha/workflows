@@ -1,0 +1,148 @@
+#!/usr/bin/env python3
+"""Caller-thinness checker (Phase C exit gate).
+
+Phase B's byte-identity checker is obsolete: job bodies now live in this
+repo as single-job reusable workflows, so identity is true by construction.
+What can still drift is the callers. This gate verifies that each converted
+repo's ci.yml is a thin stub: every job either
+
+  * calls a shared job workflow in aurum-alpha/workflows, pinned to a
+    40-hex commit SHA with a version comment, carrying nothing but
+    uses/needs/with/secrets/if (secrets must be `inherit`), or
+  * is the local ci-ok rollup, whose needs: must cover every stub job, or
+  * is an explicitly allow-listed repo-local job.
+
+Usage: check-caller-thinness [--root DIR] [--repo NAME ...]
+  DIR contains one clone per repo (default: /workspace).
+Exit: 0 if every checked caller is thin, 1 otherwise, 2 on missing clones.
+"""
+
+import argparse
+import pathlib
+import re
+import sys
+
+# Repos converted to thin stub callers (C1 wave). Extend as conversions land.
+CONVERTED = [
+    "credit-watch",
+    "expense-splitter",
+    "flight-watch",
+    "hiring-tracker",
+    "jewelry-factory",
+    "wardley-mapper",
+]
+
+# Repo-local jobs that are allowed to keep a body in the caller.
+LOCAL_ALLOWLIST = {
+    "hiring-tracker": {"update-version-info"},
+}
+
+STUB_KEYS = {"uses", "needs", "with", "secrets", "if"}
+USES_RE = re.compile(
+    r"^aurum-alpha/workflows/\.github/workflows/job-[a-z0-9-]+\.ya?ml"
+    r"@[0-9a-f]{40}\s+# v\S+$"
+)
+
+CI_PATHS = [".github/workflows/ci.yml", ".github/workflows/ci.yaml"]
+
+
+def load_ci(root: pathlib.Path, repo: str) -> str | None:
+    for rel in CI_PATHS:
+        p = root / repo / rel
+        if p.is_file():
+            return p.read_text()
+    return None
+
+
+def parse_jobs(text: str) -> dict[str, dict[str, str]]:
+    """Map job id -> {property key: raw value} for 2-space-indented jobs."""
+    lines = text.splitlines()
+    try:
+        jobs_at = next(i for i, ln in enumerate(lines) if re.match(r"^jobs:\s*$", ln))
+    except StopIteration:
+        return {}
+    jobs: dict[str, dict[str, str]] = {}
+    current = None
+    for ln in lines[jobs_at + 1 :]:
+        if ln.strip() and not ln.startswith("  "):
+            break  # dedent out of jobs:
+        m = re.match(r"^  ([\w-]+):\s*$", ln)
+        if m:
+            current = m.group(1)
+            jobs[current] = {}
+            continue
+        m = re.match(r"^    ([\w-]+):\s*(.*)$", ln)
+        if m and current is not None:
+            jobs[current][m.group(1)] = m.group(2).strip()
+    return jobs
+
+
+def check_repo(repo: str, text: str) -> list[str]:
+    problems = []
+    jobs = parse_jobs(text)
+    if not jobs:
+        return [f"no jobs found in ci workflow"]
+    if "ci-ok" not in jobs:
+        problems.append("missing local ci-ok rollup job")
+
+    allow = LOCAL_ALLOWLIST.get(repo, set())
+    stub_ids = []
+    for job_id, props in jobs.items():
+        if job_id == "ci-ok":
+            if "uses" in props:
+                problems.append("ci-ok must be a local job, not a stub")
+            continue
+        if job_id in allow:
+            continue
+        if "uses" not in props:
+            problems.append(f"job '{job_id}' has a local body (not a stub, not allow-listed)")
+            continue
+        stub_ids.append(job_id)
+        extra = set(props) - STUB_KEYS
+        if extra:
+            problems.append(f"job '{job_id}' carries non-stub keys: {', '.join(sorted(extra))}")
+        if not USES_RE.match(props["uses"]):
+            problems.append(
+                f"job '{job_id}' uses '{props['uses']}' — must reference a shared "
+                "job workflow pinned to a 40-hex SHA with a version comment"
+            )
+        if props.get("secrets", "inherit") != "inherit":
+            problems.append(f"job '{job_id}' must use secrets: inherit")
+
+    if "ci-ok" in jobs and stub_ids:
+        needs_raw = jobs["ci-ok"].get("needs", "")
+        needed = set(re.findall(r"[\w-]+", needs_raw))
+        missing = [j for j in stub_ids if j not in needed]
+        if missing:
+            problems.append(f"ci-ok needs: does not cover: {', '.join(missing)}")
+    return problems
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--root", default="/workspace", type=pathlib.Path)
+    ap.add_argument("--repo", action="append", help="limit to specific repo(s)")
+    args = ap.parse_args()
+
+    repos = args.repo or CONVERTED
+    failures = 0
+    for repo in repos:
+        text = load_ci(args.root, repo)
+        if text is None:
+            print(f"{repo}: ci workflow not found under {args.root}", file=sys.stderr)
+            return 2
+        problems = check_repo(repo, text)
+        if problems:
+            failures += 1
+            print(f"{repo}: THICK")
+            for p in problems:
+                print(f"  - {p}")
+        else:
+            print(f"{repo}: thin")
+
+    print(f"\n{'PASS: all callers are thin' if failures == 0 else f'FAIL: {failures} caller(s) with local drift'}")
+    return 0 if failures == 0 else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

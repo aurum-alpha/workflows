@@ -10,9 +10,11 @@ on:
   # the branch still lands the ci-ok check on the head commit.
   workflow_dispatch:
 
+# Principle 6, which this repo defines and so had better follow: cancel
+# superseded pull-request runs, never the default branch.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
@@ -31,8 +33,19 @@ jobs:
           docker run --rm -v "$PWD:/repo" --workdir /repo
           rhysd/actionlint:1.7.7 -color
 
+  # This repo defines the standard, so it is the first thing the standard has
+  # to hold against. Run from the working tree, not a pinned release: a rule
+  # added in a pull request must gate that same pull request, or the checker
+  # and the document can disagree for as long as it takes someone to notice.
+  conformance:
+    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check our own ci.yml against CI_STANDARD
+        run: tools/check-ci-conformance --repo-root .
+
   ci-ok:
-    needs: [lint]
+    needs: [lint, conformance]
     if: always()
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
     steps:

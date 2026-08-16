@@ -45,8 +45,21 @@ LOCAL_ALLOWLIST = {
         "test-integration",
         "package-deb",
         "package-image",
+        "release",
+        # Splits the repo's two unrelated products so a Dockerfile edit does
+        # not compile Go, and a Go change does not rebuild an image that
+        # shares no source with it.
+        "changes",
+        # The runner image is the actions-runner base plus packages: no repo
+        # source, so no shared job models it.
+        "runner-image",
     },
 }
+
+# Shared jobs that report rather than gate. A caller may leave these out of
+# ci-ok: putting a job that only posts a comment into the rollup would let a
+# commenting failure block a merge, which inverts the point of it.
+REPORTING_JOBS = {"job-release-risk.yml"}
 
 # `permissions` is a stub key, not drift: a called workflow can never hold more
 # than the job calling it, so a stub whose shared job needs a stronger scope
@@ -126,7 +139,8 @@ def check_repo(repo: str, text: str) -> list[str]:
         if "uses" not in props:
             problems.append(f"job '{job_id}' has a local body (not a stub, not allow-listed)")
             continue
-        stub_ids.append(job_id)
+        if not any(f"/{name}@" in props["uses"] for name in REPORTING_JOBS):
+            stub_ids.append(job_id)
         extra = set(props) - STUB_KEYS
         if extra:
             problems.append(f"job '{job_id}' carries non-stub keys: {', '.join(sorted(extra))}")

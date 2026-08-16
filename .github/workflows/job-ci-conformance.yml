@@ -1,0 +1,51 @@
+name: ci-conformance
+
+# Asserts the calling repo's ci.yml obeys CI_STANDARD, inside that repo's own
+# CI, gated by its own ci-ok. This is the difference between a standard and a
+# document: every principle it checks was written down first and violated
+# afterwards, in a repo whose CI was green the whole time.
+#
+# It reads the caller's workflow file and nothing else — no build, no network
+# beyond two checkouts, a few seconds. It is a gate, so it belongs in ci-ok
+# like any other.
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: Override the runner (Principle 4 escape hatch).
+        type: string
+        required: false
+        default: ""
+      standard_ref:
+        description: >-
+          Commit of aurum-alpha/workflows to take the checker from. Defaults to
+          the release this job shipped in, so a caller pinning this workflow by
+          SHA gets a fixed checker too. Bumped with the rest of the pins.
+        type: string
+        required: false
+        default: 81b6b622969e0c4c3f2843761e959f6e033ae452
+
+jobs:
+  ci-conformance:
+    name: ci-conformance
+    runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-26.04' }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout the repo under test
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      # aurum-alpha/workflows is public, so this needs no token — which is the
+      # whole reason the check can live inside each repo instead of in a
+      # fleet-wide sweep that only ever ran when someone remembered to run it.
+      - name: Checkout the standard
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: aurum-alpha/workflows
+          ref: ${{ inputs.standard_ref }}
+          path: .aurum-standard
+          persist-credentials: false
+
+      - name: Check ci.yml against CI_STANDARD
+        run: .aurum-standard/tools/check-ci-conformance --repo-root .

@@ -47,7 +47,19 @@ Status: **agreed 2026-08-14** (rev 2 after Jared's review). Remaining open items
      stack images (`ci-node`, `ci-go`, `ci-php`) publish from aurum-alpha/workflows
      and are consumed by digest. hiring-tracker migrates tier 2 → tier 3.
 6. **Concurrency everywhere**: `${{ github.workflow }}-${{ github.ref }}` +
-   cancel-in-progress — except release workflows (cancel-in-progress: false).
+   cancel-in-progress on pull requests — but **never cancel a run that can
+   publish**, which now means never cancel the default branch:
+   `cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}`.
+   This rule used to read "except release workflows", which keyed on the file.
+   Principle 17 folded publishing into `ci.yml`, and the exemption silently
+   stopped applying — the act moved, the carve-out did not follow it.
+   *Caught in production 2026-08-16: gha-runner-controller run 31968542199
+   carried the first `.version` change, a second merge landed four minutes
+   later and cancelled it, and the release never ran. Nothing reported it: a
+   cancelled run is not a failed one, so the rollup stayed green and the
+   release simply did not exist.* Publish jobs that need stricter
+   serialization than the workflow (an image tag several runs race to move)
+   take a job-level `concurrency:` group of their own.
 7. **BUILD ONCE.** The `build` job is the only compiler anywhere. It produces
    every required artifact variant; packaging, docker, and release steps consume
    those artifacts — nothing downstream rebuilds.
@@ -120,6 +132,41 @@ Status: **agreed 2026-08-14** (rev 2 after Jared's review). Remaining open items
     instead of being the least-tested code in the repo at the exact moment it
     matters most.
 
+    Two mechanical consequences, because writing the principle was not enough
+    to make anyone follow it:
+
+    - **The main-only condition goes on the publishing *step*, never on the
+      job.** `if:` at the job level means the job never runs on a pull
+      request, so its first execution ever is the one that has to work. Guard
+      `docker push` / `gh release create`, and let everything above it —
+      artifact downloads, packaging, assertions — run on every PR.
+    - **Publish jobs belong in `ci-ok`'s `needs:`.** A publish job outside the
+      rollup can fail into a green required check.
+
+    *Learned from gha-runner-controller's `release`, which broke both rules at
+    once. It was job-level gated to main, so it had never run before the merge
+    that had to cut 0.11.1; it failed there on an artifact download a pull
+    request would have caught. And it was missing from `ci-ok`, so the required
+    check reported success at 20:06:39 while `release` failed at 20:17:21 —
+    eleven minutes later, into a main branch that stayed green. Nobody would
+    have noticed except that the release was visibly absent.*
+
+18. **One workflow per repo.** `ci.yml` IS the pipeline. A second workflow file
+    cannot be gated by `ci-ok`, so branch protection cannot see it, so nothing
+    stops it publishing from a commit that failed — and nothing reviews it
+    against the rules the rest of the repo follows. *Learned from
+    gha-runner-controller, which carried four workflow files and gated one:
+    `controller-image.yaml` published on push to main without waiting for a
+    single test, recompiled the binary inside a multi-stage Dockerfile against
+    Principles 7 and 8, and still tag-pinned its actions against the SHA-pin
+    rule — three violations that survived every sweep because nothing looked
+    there.* Work in a repo that genuinely shares no source with the rest (a
+    base image rebuilt on a schedule) still lives in `ci.yml`, split by a
+    `changes` job so a Dockerfile edit does not compile Go and a code change
+    does not rebuild an unrelated image. Where two things need different
+    concurrency, use a job-level `concurrency:` group rather than a second
+    file.
+
 ## Standard job DAG — build first
 
 The cheapest, most fundamental gate is "does it build." A broken compile fails one
@@ -145,6 +192,45 @@ install ──► build ──► lint ─────────┐
   required check, so adding/removing gates never touches branch protection.
   The check reports under the job id `ci-ok` (no display-name override) —
   that exact string is what branch protection requires, fleet-wide.
+
+### Multi-codebase repos — one DAG per stack, converging at packaging
+
+Several repos hold two codebases in one tree: React/TS + Go (gofast), React +
+Node (client-manager, event-manager's web), React + PHP (event-manager). **Each
+stack runs the standard DAG independently, and they converge only at packaging
+and integration.** All of it lives in the one `ci.yml` (Principle 18) — a second
+stack is not a second workflow.
+
+```
+web-build ───► web-lint ──────────┐
+          ───► web-typecheck ─────┤
+          ───► web-test-unit ─────┤
+                                  ├──► image / package ──► test-integration ──► ci-ok
+api-build ───► api-lint ──────────┤          (converge)
+          ───► api-test-unit ─────┘
+```
+
+- A stack's gates depend on **that stack's** build and nothing else. A failing
+  Go vet must not hold up the React lint, and a broken `tsc` must not stop the
+  Go tests from telling you what else is wrong. Cross-stack `needs:` serialize
+  two independent pipelines into one long one and hide half the failures behind
+  the other half.
+- The convergence point is wherever the two stacks first meet in a real
+  artifact: the image that ships the compiled binary *and* the built UI, the
+  package that contains both. That job needs every stack's build **and** every
+  stack's gates — it is the first place a cross-stack failure legitimately
+  blocks something.
+- Integration/e2e sits after the converged artifact, because that is the first
+  point at which the thing under test exists.
+- Naming follows B4 dual-stack rules: a bare `lint` in a two-stack repo reads as
+  whichever stack the reader assumes, so both get a prefix (`web-lint`,
+  `go-lint`).
+- *Learned from event-manager, whose DAG ran backwards — `web-build` needed
+  `web-test-unit`, and `php-build` needed four gates plus `web-build` — so the
+  cheapest, most fundamental signal in the repo was the last thing to run, and a
+  compile break surfaced only after every test had finished. Also from
+  lid-firmware, where `publish-firmware` needed `build` alone: firmware
+  published from main without unit tests ever having passed.*
 
 ## Publishing
 
@@ -347,6 +433,77 @@ the gap by adopting the shared standard job (never by writing a bespoke one).
 - **PHP monolith**: builder-image first step (tier 2) → composer/npm installs →
   build → unit/static in parallel → integration (service containers) → e2e (compose)
   → prod image.
+
+## Enforcement — what actually gates, and what does not
+
+A principle nobody can fail is a preference. Every rule below was written here
+first and violated afterwards, in a repo whose CI was green the entire time,
+because writing it down and enforcing it are different acts and only the second
+one holds. **A phase is not done when the rule is written. It is done when
+something fails if the rule is broken.**
+
+`tools/check-ci-conformance` is that something. It runs two ways from one
+source — `--repo-root` inside a repo's own CI via `job-ci-conformance.yml`, and
+`--fleet` for sweeps — because an audit and a gate that can disagree eventually
+will.
+
+| # | Principle | Enforced by | Status |
+|---|---|---|---|
+| 1 | One source of truth per pin | — | **review only** |
+| 2 | Local = CI | — | **review only** |
+| 3 | Fail closed | `check-ci-conformance` P3 | gated |
+| 4 | Standard runner line | `check-ci-conformance` P4 | gated |
+| 5 | Ephemeral-runner assumptions | — | **review only** |
+| 6 | Concurrency everywhere | `check-ci-conformance` P6 | gated |
+| 7 | BUILD ONCE | — | **review only** |
+| 8 | No multi-stage prod Dockerfiles | — | **review only** |
+| 9 | Canonical script names | `check-caller-thinness` (sweep) | audit only |
+| 10 | Lint output through standard channels | — | **review only** |
+| 11 | Registry auth in user-level npmrc | — | **review only** |
+| 12 | One way per capability | `check-caller-thinness` (sweep) | audit only |
+| 13 | Provenance in every artifact | — | **review only** |
+| 14 | A version is a commit, not a tag | — | **review only** |
+| 15 | The repo is versioned, not the artifact | — | **review only** |
+| 16 | A version exists only where consumed | — | **review only** |
+| 17 | Release is promotion, not production | `check-ci-conformance` D4, D5 | gated |
+| 18 | One workflow per repo | `check-ci-conformance` P18 | gated |
+| — | Standard job DAG | `check-ci-conformance` D1–D3 | gated |
+| — | Per-stack DAG in multi-codebase repos | — | **review only** |
+| — | SHA pinning | `check-ci-conformance` PIN | gated |
+| — | `ci-ok` is the only required check | branch protection | gated |
+| — | Fleet pnpm version | `check-fleet-versions` (sweep) | audit only |
+| — | Caller permissions cover shared jobs | `check-caller-permissions` (sweep) | audit only |
+
+Three tiers, and the difference between them matters:
+
+- **gated** — a violation turns that repo's `ci-ok` red. This is enforcement.
+- **audit only** — a checker exists but runs from a workstation when someone
+  remembers. This is a habit, and habits are what drifted in the first place.
+  Every one of these is a candidate for folding into the gate.
+- **review only** — nothing mechanical. Some of these resist automation
+  honestly (BUILD ONCE needs to know what an artifact is; the per-stack DAG
+  needs to know which stack a job belongs to). Saying so is the point: an
+  unenforced rule should be visibly unenforced, not quietly assumed.
+
+Rules that resist a checker get the next best thing — a review question
+someone has to answer, not a line someone has to remember.
+
+### Why this section exists
+
+Three rules in a row failed the same way, each in a new disguise, and the
+pattern only became visible when they were laid side by side:
+
+- `.pnpm-version` — the guard keyed on **a file**, so it stopped applying when
+  the duplication moved out of that file.
+- Principle 6's release exemption — keyed on **a filename**, so it stopped
+  applying when publishing moved into `ci.yml`.
+- Principle 17 — keyed on **an outcome** ("the publish path is exercised on
+  every pull request") with no mechanism named, so a job could satisfy the
+  sentence in prose and violate it in fact for months.
+
+The common shape: *a rule that names anything other than the act itself stops
+applying the moment the act moves.* Write rules against acts, then make
+something fail when the act is wrong.
 
 ## Phased build-out
 

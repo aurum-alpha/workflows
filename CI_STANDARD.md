@@ -362,15 +362,49 @@ Same ids where meaningful: `builder-image` (tier 2, reusable) → `install`
 | `test-unit` | build | `pio test` native suite (when adopted) |
 | `ci-ok` | all | rollup |
 
-### Dual-stack job ids (B4 decision)
+### Job ids name the codebase they act on
 
-A repo hosting two stacks in one pipeline (client-manager: Go + TS;
-event-manager: PHP + React) prefixes a canonical id with its stack —
-`go-` / `web-` / `php-` — **only when both stacks in that pipeline have
-the job** (e.g. `go-test-unit` / `web-test-unit`). Single-owner jobs keep
-the bare canonical id (`test-integration`, `static-analysis`, `image`,
-`ci-ok`), so bare ids stay meaningful for byte-identity matching (B5) and
-prefixes appear only where a collision forces them.
+**`<codebase>-<capability>`, always.** The prefix says which body of source the
+job touches; the capability says what it does to it. A reader landing on any
+repo in the fleet knows both from the id alone, and the same capability carries
+the same name everywhere.
+
+| codebase | prefix | ids |
+|---|---|---|
+| Go | `go-` | `go-mod`, `go-fmt`, `go-vet`, `go-lint`, `go-build`, `go-test-unit`, `go-test-integration` |
+| React | `react-` | `react-install`, `react-build`, `react-lint`, `react-typecheck`, `react-fmt`, `react-test-unit` |
+| PHP | `php-` | `php-install`, `php-install-prod`, `php-test-unit`, `php-static-analysis`, `php-test-integration` |
+| firmware | `firmware-` | `firmware-build`, `firmware-test-unit`, `firmware-publish` |
+
+**A job that acts on no single codebase takes no prefix.** These are the
+convergence and repo-level jobs — `changes`, `image`, `package`, `release`,
+`test-e2e`, `ci-ok`, `runner-image`, `contract`, `image-tag-parity`,
+`osv-scanner`. The absence of a prefix is information: it says *this one spans
+the repo*, which is exactly what the packaging and rollup jobs do.
+
+**Shared jobs are named for the toolchain; callers are named for the codebase.**
+`job-node-build.yml` runs pnpm and would serve a Vue app equally, so it stays
+`node`; the caller invoking it on a React app is `react-build`. The shared job's
+own internal id is the bare capability, so the check renders as the pair:
+
+```
+react-build / build      go-fmt / fmt      php-test-unit / test-unit
+   ↑ codebase   ↑ capability
+```
+
+*This replaces the B4 rule, which said prefixes "appear only where a collision
+forces them." That keyed the name on a **collision** rather than on the
+**codebase**, so the prefix vanished in any repo with one stack: `credit-watch`
+called it `build` while `gofast` called the identical act `web-build`, and
+`gha-runner-controller` managed `go-mod` alongside a bare `gofmt` and `vet` in
+the same file. Four names for one capability. It is the same mistake as
+`.pnpm-version` and Principle 6 in a new costume — a rule that names anything
+other than the thing itself stops applying the moment the thing moves.*
+
+*`web-` is retired in favour of `react-`: "web" names a medium, not a codebase,
+and every repo using it was building a React app. `gofmt` becomes `go-fmt`
+because `gofmt` is a tool name wearing a capability's clothes — the fleet names
+capabilities, not tools (Principle 9).*
 
 **Display names = job ids** (tightened 2026-08-16, superseding B4's
 free-form allowance): no job-level `name:` overrides anywhere — the

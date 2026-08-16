@@ -26,6 +26,13 @@ principle needed enforcing:
   D3  publish is gated     a publish job reaches a gate transitively
   D4  publish is in ci-ok  a publish job outside the rollup fails invisibly
   D5  publish runs on PRs  the main-check goes on the step, never the job
+  N1  job ids name the codebase  a stub calling job-go-* is named go-*, etc.
+
+N1 can only judge jobs that CALL a shared job, because the `uses:` line is the
+only thing in the file that proves which codebase a job acts on. A repo-local
+job named `web-build` or `static-analysis` is invisible to it — nothing there
+says what those touch. Those stay review-only, and saying so beats implying
+coverage that does not exist.
 
 Exit: 0 conformant, 1 violations, 2 no ci workflow found.
 """
@@ -65,9 +72,14 @@ def is_library(path: pathlib.Path) -> bool:
             triggers.add(m.group(1))
     return triggers == {"workflow_call"}
 
+# A graph root is the first node of a stack, or the change-detection job the
+# rest keys off. Matched by SHAPE, not by an enumerated list of names: the list
+# version hardcoded `build`, `web-build`, `go-mod` and friends, so the moment a
+# repo renamed `build` to `react-build` — obeying N1 — the checker called its
+# own standard a violation. Enumerating names is how a checker acquires the
+# drift it exists to prevent.
 ROOT_RE = re.compile(
-    r"^(changes|build|go-mod|install|web-build|web-install|php-install(-prod)?"
-    r"|create-docker-[\w-]+-image)$"
+    r"^(changes|create-docker-[\w-]+-image|([a-z]+-)?(mod|build|install(-prod)?))$"
 )
 BUILD_RE = re.compile(r"(^|-)(build|install)$")
 GATE_RE = re.compile(r"(lint|typecheck|test|vet|gofmt|prettier|analysis|scanner|check|audit)")
@@ -82,6 +94,27 @@ REPORTING_RE = re.compile(r"risk$")
 #   runner-image    a base image plus packages, sharing no source with the
 #                   repo's code — there is nothing here to gate it on
 NOT_A_PRODUCT_RE = re.compile(r"parity$|^create-docker-[\w-]+-image$|^runner-image$")
+
+# Which caller prefix a shared job's toolchain implies. The shared job is named
+# for the toolchain it runs (job-node-build runs pnpm, and would serve a Vue app
+# just as well); the caller is named for the codebase it runs that toolchain on.
+# So "react-build / build", not "web-build / build" or "build / build".
+#
+# B4 let the prefix appear "only where a collision forces them", which keyed the
+# name on a collision rather than on the codebase — so it disappeared in
+# single-stack repos and the fleet ended up with four names for one capability.
+# This keys on the shared job actually being called, which cannot move.
+STACK_OF_SHARED_JOB = {
+    "job-go-": "go",
+    "job-node-": "react",
+}
+# Jobs that act on no single codebase take no prefix: their bare name is the
+# information, saying "this one spans the repo".
+SPANS_REPO = {
+    "ci-ok", "changes", "image", "package", "release", "test-e2e",
+    "runner-image", "contract", "image-tag-parity", "osv-scanner",
+    "release-risk", "package-deb", "package-image",
+}
 
 MAIN_GATE_RE = re.compile(
     r"refs/heads/main|is_default_branch|event_name\s*==\s*'push'"
@@ -203,6 +236,16 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
                 inv = sorted(n for n in graph[job] if GATE_RE.search(n) and not BUILD_RE.search(n))
                 if inv:
                     bad("D2", f"'{job}' is a build but needs gate(s): {', '.join(inv)}")
+
+            uses = props.get("uses", "")
+            for marker, stack in STACK_OF_SHARED_JOB.items():
+                if marker in uses and not job.startswith(f"{stack}-"):
+                    bad(
+                        "N1",
+                        f"'{job}' calls a {marker}* shared job, so it acts on the "
+                        f"{stack} codebase and must be named '{stack}-<capability>' "
+                        "— a job id names the codebase it acts on",
+                    )
 
             if (
                 PUBLISH_RE.search(job)

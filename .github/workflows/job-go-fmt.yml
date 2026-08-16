@@ -23,7 +23,7 @@ on:
         default: ""
 
 jobs:
-  gofmt:
+  fmt:
     runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-26.04' }}
     permissions:
       contents: read

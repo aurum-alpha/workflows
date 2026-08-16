@@ -565,6 +565,23 @@ D3–D6 are independent of C. Same execution loop as A/B.
       review-thread lint annotations — fleet-wide or not at all
       (decide, don't drift); per-branch images — re-affirm deferred
       until per-branch staging spin-up/teardown exists.
+- [ ] **D9** [event-manager] E2E stack-image caching — measured on run
+      31900653354: "Build stack images" is 15m42s of the 31m53s e2e job
+      (49%), a plain `docker compose build` on an empty ephemeral dind
+      while the prod-image job builds the same app in ~70s via buildx +
+      gha cache. BUILD ONCE applies: build the e2e stack images with
+      `cache-from: type=registry` (inline cache), push stack images to
+      ghcr on main pushes so PR runs hit a warm cache. Also fold the
+      pre-migrated-DB idea from D10 into the stack db image. Expected:
+      e2e drops from ~32 to ~17 min.
+- [ ] **D10** [event-manager] Functional-suite wall time — 22m48s of
+      the 36m44s integration job (62%) is `composer test:functional`;
+      this is PHP time, not infrastructure. Cheapest first: shard via
+      matrix (2-3 shards, suite split by directory; wall ~8-11 min at
+      the cost of extra runner slots, which exist); or paratest for
+      in-process parallelism. Plus: nightly pre-migrated database
+      image kills the 2m54s migrations step in every run. Profile for
+      pathological tests before deeper surgery.
 - [ ] **D8** [decision] Package-ecosystem Dependabot — every repo
       currently watches github-actions ONLY; npm/pnpm, gomod, and
       composer dependencies get no bumps anywhere (audit 2026-08-16).

@@ -430,35 +430,42 @@ byte-identical ci.yml; the two pnpm repos share every canonical block;
 only in the package-manager prelude. Execution loop as ever; wardley
 (npm) and hiring-tracker (pnpm) go first as templates, then alphabetical.
 
-- [ ] **C0** Author `node-ci.yml` reusable workflow in this repo — the
-      canonical DAG (build → lint/typecheck/test-unit → image → ci-ok)
-      as `on: workflow_call` with a `pm: npm|pnpm` input selecting the
-      install prelude; callers pass secrets via `secrets: inherit`
-      (org CODECOV_TOKEN) and `vars.RUNNER` resolves in the caller's
-      context (org var — verify on the first caller). Repo-specific
-      extras (hiring-tracker's update-version-info) stay caller-side
-      alongside the call.
-- [ ] **C1** Convert the npm cohort to thin callers pinned by SHA
-      (`uses: aurum-alpha/workflows/.github/workflows/node-ci.yml@<sha>
-      # <tag>`): wardley-mapper first (proves C0), then credit-watch,
-      expense-splitter, flight-watch.
-- [ ] **C2** Convert the pnpm cohort: hiring-tracker (keeps its extra
-      job caller-side), jewelry-factory.
-- [ ] **C3** Composite actions — the sharing unit for dual-stack repos,
-      which cannot call node-ci.yml (it is a whole DAG with its own
-      image/ci-ok; client-manager interleaves Go + web + cross-stack
-      jobs under one rollup). Extract the identical machinery, not the
-      job shape: `setup/node-pnpm` (setup-node from .node-version, pnpm
-      from packageManager, store cache, frozen install) and optionally
-      the codecov upload block. node-ci.yml consumes the composite
-      internally; client-manager's web jobs (and later event-manager's
-      react jobs) consume the same composite directly, keeping their
-      repo-local DAG wiring (changes-gating, needs edges, tools/checks
-      indirection). One definition of the toolchain setup fleet-wide;
-      DAG shape stays local only where it genuinely differs. (A
-      gates-only nested reusable workflow was considered and rejected
-      for now — it would force client-manager's web side onto the
-      cohort's artifact flow for little extra dedup.)
+**The sharing unit is the JOB, not the workflow** (decision 2026-08-16):
+single-job reusable workflows — `job-node-build.yml`, `job-node-lint.yml`,
+`job-node-typecheck.yml`, `job-node-test-unit.yml`, `job-docker-image.yml`
+(flat filenames; GitHub requires reusable workflows directly under
+.github/workflows/). The caller's ci.yml keeps only what is genuinely
+repo-specific — job id, `needs:` edges, inputs — and the shared repo owns
+the entire job body (runner line, permissions, steps). This works
+identically for single-stack and dual-stack repos, so no monolithic
+node-ci.yml exists at all. Rules: `ci-ok` stays a plain LOCAL job
+everywhere (repo-specific needs list; preserves the exact required-check
+string — a called job would report nested); inputs are minimal (one knob:
+`workdir`, default `.` — client-manager passes `web`); callers use
+`secrets: inherit` (org CODECOV_TOKEN) and `vars.RUNNER` resolves in the
+caller's context. Cosmetic cost, accepted: called jobs report as
+`<caller id> / <inner name>` (e.g. `build / build`) — uniform, and
+irrelevant to branch protection.
+
+- [ ] **C0** Author the five job-sized reusable workflows in this repo.
+- [ ] **C1** Convert the six Node repos to thin stub callers pinned by
+      SHA (header + five 4-line job stubs + local ci-ok): wardley-mapper
+      first (proves runner/secret/check-name mechanics), then
+      alphabetical. Repo-specific extras (hiring-tracker's
+      update-version-info) stay caller-side.
+- [ ] **C2** client-manager's web jobs adopt the SAME shared jobs with
+      `workdir: web` (`lint`, `typecheck`, `web-test-unit`; prereq: A1
+      script rename `test` → `test:unit` in web/package.json). Its
+      bespoke web gates (prettier, golden-corpus) and changes-gating
+      stay local. Go-side `job-go-*` definitions follow the same
+      pattern once gofast + client-manager converge on shapes (their
+      Go jobs are not yet block-identical — a mini-B5 for the Go
+      cohort precedes extraction there).
+- [ ] **C3** Composite action `setup/node-pnpm` for the steps-level
+      prelude, consumed by the shared jobs internally AND by bespoke
+      caller-side jobs (client-manager's prettier/golden-corpus,
+      event-manager's react jobs later) — one definition of the Node
+      toolchain setup fleet-wide even where the job shape is local.
 - [ ] **C4** This repo's CI grows real gates, replacing the exit-0
       stub: actionlint over the shared workflows + a caller-thinness
       check (byte-identity is enforced by construction once extraction

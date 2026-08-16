@@ -24,7 +24,7 @@ on:
           SHA gets a fixed checker too. Bumped with the rest of the pins.
         type: string
         required: false
-        default: 24f5c59d4f73a00a23ea617f030f12722be9b63e
+        default: 81b6b622969e0c4c3f2843761e959f6e033ae452
 
 jobs:
   ci-conformance:

@@ -80,6 +80,13 @@ jobs:
           path: ${{ inputs.artifact_path }}
       - name: Unit tests
         working-directory: ${{ inputs.workdir }}
+        env:
+          # -race is implemented in C and refuses to run without cgo. The fleet
+          # runners default CGO_ENABLED=0 (the repos ship static binaries), so
+          # this must be set for the test run or every -race invocation dies
+          # with "go: -race requires cgo". Set here rather than left to the
+          # environment so the job behaves the same on any runner.
+          CGO_ENABLED: "1"
         run: |
           set -euo pipefail
           mkdir -p coverage

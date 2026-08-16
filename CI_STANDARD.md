@@ -457,7 +457,16 @@ caller's context. Cosmetic cost, accepted: called jobs report as
 `<caller id> / <inner name>` (e.g. `build / build`) — uniform, and
 irrelevant to branch protection.
 
-- [ ] **C0** Author the five job-sized reusable workflows in this repo.
+- [x] **C0** Author the five job-sized reusable workflows in this repo —
+      **LANDED** (job-node-build, job-node-lint, job-node-typecheck,
+      job-node-test-unit, job-docker-image; single `workdir` input,
+      default `.`). C-pre note: all four npm repos migrated to pnpm
+      first (wardley-mapper#10, credit-watch#21, expense-splitter#19,
+      flight-watch#20) — single Node cohort, no package-manager input
+      needed. pnpm's strict resolution surfaced real latent bugs:
+      phantom deps nanoid ×3, @types/pg ×2, js-tiktoken; wardley on
+      vite 5 vs vitest 4 (now vite 7 like the fleet); credit-watch's
+      npm-style overrides silently ignored (now pnpm.overrides).
 - [ ] **C1** Convert the six Node repos to thin stub callers pinned by
       SHA (header + five 4-line job stubs + local ci-ok): wardley-mapper
       first (proves runner/secret/check-name mechanics), then

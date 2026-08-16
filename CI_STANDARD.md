@@ -7,6 +7,20 @@ Status: **agreed 2026-08-14** (rev 2 after Jared's review). Remaining open items
 1. **One source of truth per pin.** `.node-version`, `go.mod`, `.php-version`,
    `packageManager` — CI *derives* versions (`node-version-file`, `go-version-file`),
    never restates them. A version bump is a one-file diff.
+   This binds container images too. A Dockerfile that needs a version at
+   build time reads the pin file, it does not get a copy of its own: two
+   files naming the same version is a pin that will eventually disagree with
+   itself, and the image then bakes a different toolchain than the one
+   developers and CI actually run. A validation step comparing the two
+   copies is not a fix — it is a second thing to maintain guarding a
+   duplication that should not exist. *Learned the hard way 2026-08-16:
+   event-manager's pnpm conversion added `.pnpm-version` beside
+   `packageManager` so the builder image had something to read, and the two
+   promptly disagreed (11.22.0 vs the fleet's 10.34.5). Both now come from
+   `packageManager`, and the guard is gone with the duplication.*
+   The pin also lives beside what it pins: the node app directory owns its
+   `.node-version`, because that is where the shared jobs look
+   (`<workdir>/.node-version`).
 2. **Local = CI.** Every gate is a runnable script in the repo (`tools/checks/*` pattern);
    the workflow job is a thin wrapper with the same name. No logic that exists only in YAML.
 3. **Fail closed.** Nothing publishes unless every gate passes. `continue-on-error` is

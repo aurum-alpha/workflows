@@ -46,6 +46,13 @@ LOCAL_ALLOWLIST = {
         "package-deb",
         "package-image",
         "release",
+        # Splits the repo's two unrelated products so a Dockerfile edit does
+        # not compile Go, and a Go change does not rebuild an image that
+        # shares no source with it.
+        "changes",
+        # The runner image is the actions-runner base plus packages: no repo
+        # source, so no shared job models it.
+        "runner-image",
     },
 }
 

@@ -883,19 +883,48 @@ claim becomes a diff someone can challenge (Principle 14).
 - [ ] **E3** Release paths consume CI artifacts. *Principle 7 and 17, not new
       policy — gha-runner-controller's release.yaml recompiles and re-runs the
       tests, a fourth build of the same code. Audit every repo's release path.*
-- [ ] **E4** Release-risk PR comment. A version bump may ride along with the
-      change that justifies it — no added friction — but a reviewer must not
-      merge a feature and cut a release without noticing. CI posts (and
-      updates in place, never duplicates) a comment when a PR changes
-      `.version`: old → new, that merging publishes a release, and for a major
-      bump an explicit prompt about the breaking-change claim. Needs job-level
-      `pull-requests: write` against the read-only floor.
+- [x] **E4** Release-risk PR comment — **shared job, every repo gets it.**
+      A version bump may ride along with the change that justifies it (no
+      added friction, and the semver judgement stays next to the code that
+      motivated it), but a reviewer must not approve a feature and cut a
+      release without noticing. *Landed 2026-08-16 as
+      `job-release-risk.yml`: reads the version file at the PR base and at
+      HEAD, and when they differ posts old → new, states that merging
+      publishes, calls out separately when the PR carries code as well as a
+      version, and on a major bump names the breaking-change claim as the
+      reviewer's to confirm. Updates one marker-keyed comment in place rather
+      than adding one per push — a comment that reappears is a comment people
+      learn to ignore. Never fails the build: blocking would be friction for
+      something a reviewer is entitled to do deliberately, and the job's
+      purpose is only to make sure it IS deliberate. Carries job-level
+      `pull-requests: write`, the one escalation above the read-only floor.*
+- [ ] **E4b** Adopt the release-risk stub in every repo, not only versioned
+      ones. A repo with no version file is a no-op today and correctly
+      flags the day someone adds one — which is exactly when a reviewer has
+      never seen a release from that repo before. Wire it as an ordinary stub
+      in each caller; it is not part of `ci-ok`, since it reports rather than
+      gates.
 - [ ] **E5** [decision, deferred] Digest pinning for first-party images. We
       SHA-pin third-party actions because tags are mutable, then ship
       ourselves `latest`. *Resolved for the runner image 2026-08-16: the
       controller's config.yaml already allows pinning, the repo is public and
       operators may run whatever runner image they choose, so `latest` stays.
       The general question is open for the rest of the fleet.*
+
+- [ ] **E6** Cross-repo rollout order, once E1's generator exists. Go first
+      (gofast is already the reference implementation, so the shared job only
+      has to generalize what works); then TS across the six converted repos
+      plus the two web halves, which share one build job and so land as a
+      single re-pin wave; PHP last, since event-manager is the only consumer
+      and has no second repo to prove the shape against. Each stack is a
+      canary-then-wave, the C5 process: one repo green end to end before the
+      rest re-pin.
+- [ ] **E7** Retire what the new rules obsolete: gha-runner-controller's
+      `git describe` version derivation (reads tags as authority, contrary to
+      Principle 14) and the `fetch-depth: 0` it forces on jobs that only need
+      a version. client-manager's CalVer + `edge` tag is the other case —
+      under Principle 16 it needs a named consumer or it collapses into
+      provenance metadata like everything else.
 
 **Exit criteria:** every artifact reports its own build timestamp and commit;
 the only version numbers left are semver ones with a named machine consumer;

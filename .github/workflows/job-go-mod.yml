@@ -25,7 +25,7 @@ on:
         default: ""
 
 jobs:
-  go-mod:
+  mod:
     runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-26.04' }}
     permissions:
       contents: read

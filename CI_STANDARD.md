@@ -120,6 +120,22 @@ Status: **agreed 2026-08-14** (rev 2 after Jared's review). Remaining open items
     instead of being the least-tested code in the repo at the exact moment it
     matters most.
 
+18. **One workflow per repo.** `ci.yml` IS the pipeline. A second workflow file
+    cannot be gated by `ci-ok`, so branch protection cannot see it, so nothing
+    stops it publishing from a commit that failed — and nothing reviews it
+    against the rules the rest of the repo follows. *Learned from
+    gha-runner-controller, which carried four workflow files and gated one:
+    `controller-image.yaml` published on push to main without waiting for a
+    single test, recompiled the binary inside a multi-stage Dockerfile against
+    Principles 7 and 8, and still tag-pinned its actions against the SHA-pin
+    rule — three violations that survived every sweep because nothing looked
+    there.* Work in a repo that genuinely shares no source with the rest (a
+    base image rebuilt on a schedule) still lives in `ci.yml`, split by a
+    `changes` job so a Dockerfile edit does not compile Go and a code change
+    does not rebuild an unrelated image. Where two things need different
+    concurrency, use a job-level `concurrency:` group rather than a second
+    file.
+
 ## Standard job DAG — build first
 
 The cheapest, most fundamental gate is "does it build." A broken compile fails one

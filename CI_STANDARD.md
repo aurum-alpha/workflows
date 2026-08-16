@@ -7,6 +7,20 @@ Status: **agreed 2026-08-14** (rev 2 after Jared's review). Remaining open items
 1. **One source of truth per pin.** `.node-version`, `go.mod`, `.php-version`,
    `packageManager` — CI *derives* versions (`node-version-file`, `go-version-file`),
    never restates them. A version bump is a one-file diff.
+   This binds container images too. A Dockerfile that needs a version at
+   build time reads the pin file, it does not get a copy of its own: two
+   files naming the same version is a pin that will eventually disagree with
+   itself, and the image then bakes a different toolchain than the one
+   developers and CI actually run. A validation step comparing the two
+   copies is not a fix — it is a second thing to maintain guarding a
+   duplication that should not exist. *Learned the hard way 2026-08-16:
+   event-manager's pnpm conversion added `.pnpm-version` beside
+   `packageManager` so the builder image had something to read, and the two
+   promptly disagreed (11.22.0 vs the fleet's 10.34.5). Both now come from
+   `packageManager`, and the guard is gone with the duplication.*
+   The pin also lives beside what it pins: the node app directory owns its
+   `.node-version`, because that is where the shared jobs look
+   (`<workdir>/.node-version`).
 2. **Local = CI.** Every gate is a runnable script in the repo (`tools/checks/*` pattern);
    the workflow job is a thin wrapper with the same name. No logic that exists only in YAML.
 3. **Fail closed.** Nothing publishes unless every gate passes. `continue-on-error` is
@@ -66,6 +80,45 @@ Status: **agreed 2026-08-14** (rev 2 after Jared's review). Remaining open items
     executed. Phase C realizes this as single-job reusable workflows
     (one shared definition per capability job) consumed by every repo
     that has that capability, single- or dual-stack alike.
+13. **Every artifact carries its provenance.** Build timestamp and commit SHA
+    are baked into every artifact at build time and surfaced by the software
+    itself: `-ldflags` for Go, a generated file at a fixed path in `dist/`
+    read through one helper for TS and PHP. This is not a version — it is
+    metadata, it needs no scheme and no bookkeeping, and it is why the fleet
+    does not use CalVer. "How old is this?" and "what commit is this?" are
+    questions a timestamp and a SHA answer exactly, for free, on every build.
+    A date-shaped version number answers them worse, and demands increment
+    rules, format debates and a validator to enforce both.
+14. **A version is a commit, not a tag.** Where a repo has a version, it lives
+    in a committed file and the build stamps what that file says. Tags are
+    mutable pointers — the reason we SHA-pin every third-party action — so
+    trusting our own is the same bet with the same downside. A version in a
+    file is immutable, reproducible from history, and *reviewable*: the claim
+    "this release is 2.0.0" arrives as a diff someone can challenge. CI may
+    create a tag afterwards as a human index; the direction is always
+    file → build → tag, never tag → build.
+15. **The repo is versioned, not the artifact.** Artifacts built from one
+    commit share one provenance and therefore one version — a repo shipping
+    three images does not give them three version files, for the same reason
+    a repo does not pin pnpm twice. Something in the repo that is not built
+    from its source (a base image rebuilt on a schedule) is not a versioned
+    product at all: it carries provenance metadata and nothing else.
+16. **A version exists only where something consumes it.** The test is not
+    what kind of application it is, it is whether anything outside the repo
+    makes a decision from the version string. apt does, when it compares
+    versions to decide upgrade against downgrade. A dependency resolver does.
+    `docker compose pull :latest` does not. Where nothing decides, there is no
+    version — only provenance — and no release event to maintain.
+17. **Release is promotion, not production.** A release publishes bytes that
+    already exist and already passed: same artifact, new name, wider audience.
+    It never compiles, never re-tests, and cannot change what is shipped. It
+    follows that publishing is a conditional job inside the normal CI run, not
+    a separate workflow — the run that built and gated the artifact is the run
+    that publishes it, so there is no cross-run artifact fetch and no question
+    of which build a release came from. It also means the publish path is
+    exercised on every pull request with only the final push suppressed,
+    instead of being the least-tested code in the repo at the exact moment it
+    matters most.
 
 ## Standard job DAG — build first
 
@@ -96,8 +149,24 @@ install ──► build ──► lint ─────────┐
 ## Publishing
 
 - Registry: ghcr. Tags: `<sha>` always; `latest` only on the default branch;
-  `pr-N` build-only (no push). Release channel via CalVer tags + `edge` moving tag
-  (client-manager pattern) where a repo has real releases.
+  `pr-N` build-only (no push).
+- **Every green build publishes.** A run that passes the gates makes its
+  artifacts available — images under `sha-<short>`, build outputs as run
+  artifacts — release or not. Anything green is installable and testable
+  without ceremony; that availability is the normal state, not a privilege a
+  release confers.
+- **What a release adds is a name, durability and an audience — never
+  different bytes.** Run artifacts expire and are addressed by run id; a
+  release republishes the identical artifact under a stable version anyone can
+  ask for by name, in the place consumers fetch from (a GitHub Release for the
+  `.deb`, a `vX.Y.Z` image tag alongside `latest`). It is also the point where
+  a human blessing becomes visible: someone claimed this build is fit to
+  consume. That is the whole of it — see Principle 17.
+- **SemVer is the only version scheme**, and only for repos that pass the
+  Principle 16 test (today: gha-runner-controller's `.deb`, where apt orders
+  versions to decide upgrades). CalVer is not used anywhere: provenance
+  metadata answers recency better (Principle 13). Repos with no consumer have
+  no version file, no release step, and deploy from `latest` or a SHA.
 - **Per-branch images: deferred** until per-branch staging spin-up/teardown infra
   exists. Revisit then.
 
@@ -764,6 +833,104 @@ D3–D6 are independent of C. Same execution loop as A/B.
       04:05:57-04:15:58. Three lifecycle deaths in one night on an
       unsaturated fleet — controller-log correlation at these
       timestamps is the highest-value D6 next step.
+
+### Phase E task board — versioning and releases *(scoped 2026-08-16)*
+
+Phases A–D standardized how code is *gated* and *built*. Nothing had ever
+standardized how it is *versioned and released*, and it showed: four schemes
+across the fleet, and the single line of guidance we had (CalVer + an `edge`
+tag) contradicted gha-runner-controller, which ships semver and follows the
+standard in every other respect.
+
+**How the decision was reached**, because the reasoning matters more than the
+rule. We started by asking which scheme suits which kind of application and
+got nowhere — two container-deployed web apps can want opposite things. The
+question that actually discriminates is *who consumes the version*: a version
+is either identity ("what exactly is running") or a promise ("you can upgrade
+safely"). Identity is needed everywhere and is free — it is the SHA and the
+build timestamp. A promise is only worth maintaining if something reads it and
+acts, and where nothing acts, a hand-maintained number is ceremony that
+eventually drifts or lies. That became Principle 16.
+
+CalVer then fell out entirely. It had been the candidate for "how old is
+this", but a build timestamp baked into the artifact answers that precisely,
+for free, with no format debate, no increment bookkeeping and no validator —
+and it answers "which commit" at the same time. CalVer was a lossy encoding of
+metadata we should carry directly (Principle 13). Its removal also deleted the
+CalVer-compliance checker the design had been about to require.
+
+That leaves SemVer as the only version scheme, used only where a machine
+consumes it. Automation was considered as a way to keep semver honest, and it
+helps mechanically — format, monotonicity, no skipped numbers — but it cannot
+decide whether a change is breaking. Conventional-commit tooling only
+relocates that judgement to a commit-message prefix typed by whoever wrote the
+change. Putting the version in a reviewed file is the better mitigation: the
+claim becomes a diff someone can challenge (Principle 14).
+
+- [ ] **E1** Build provenance everywhere (Principle 13). Timestamp + SHA baked
+      in at build time and surfaced by the software. Go is solved and is the
+      reference: gofast stamps `internal/version` via `-ldflags` and shows it
+      on `/healthz` and Status → System. TS and PHP need one agreed generated
+      file at a fixed path in `dist/` plus one read helper. The generation
+      step is identical across repos, so it belongs in the shared build jobs,
+      not per repo.
+- [ ] **E2** `.version` file + publish-as-CI-job for gha-runner-controller —
+      the only repo that passes the Principle 16 test today. Replaces the
+      `git describe` derivation, which reads tags as authority. Includes the
+      `workflow_dispatch` re-run path: a failed publish must be retryable
+      without inventing a new version, which is also why the publish job has
+      to stay trivial.
+- [ ] **E3** Release paths consume CI artifacts. *Principle 7 and 17, not new
+      policy — gha-runner-controller's release.yaml recompiles and re-runs the
+      tests, a fourth build of the same code. Audit every repo's release path.*
+- [x] **E4** Release-risk PR comment — **shared job, every repo gets it.**
+      A version bump may ride along with the change that justifies it (no
+      added friction, and the semver judgement stays next to the code that
+      motivated it), but a reviewer must not approve a feature and cut a
+      release without noticing. *Landed 2026-08-16 as
+      `job-release-risk.yml`: reads the version file at the PR base and at
+      HEAD, and when they differ posts old → new, states that merging
+      publishes, calls out separately when the PR carries code as well as a
+      version, and on a major bump names the breaking-change claim as the
+      reviewer's to confirm. Updates one marker-keyed comment in place rather
+      than adding one per push — a comment that reappears is a comment people
+      learn to ignore. Never fails the build: blocking would be friction for
+      something a reviewer is entitled to do deliberately, and the job's
+      purpose is only to make sure it IS deliberate. Carries job-level
+      `pull-requests: write`, the one escalation above the read-only floor.*
+- [ ] **E4b** Adopt the release-risk stub in every repo, not only versioned
+      ones. A repo with no version file is a no-op today and correctly
+      flags the day someone adds one — which is exactly when a reviewer has
+      never seen a release from that repo before. Wire it as an ordinary stub
+      in each caller; it is not part of `ci-ok`, since it reports rather than
+      gates.
+- [ ] **E5** [decision, deferred] Digest pinning for first-party images. We
+      SHA-pin third-party actions because tags are mutable, then ship
+      ourselves `latest`. *Resolved for the runner image 2026-08-16: the
+      controller's config.yaml already allows pinning, the repo is public and
+      operators may run whatever runner image they choose, so `latest` stays.
+      The general question is open for the rest of the fleet.*
+
+- [ ] **E6** Cross-repo rollout order, once E1's generator exists. Go first
+      (gofast is already the reference implementation, so the shared job only
+      has to generalize what works); then TS across the six converted repos
+      plus the two web halves, which share one build job and so land as a
+      single re-pin wave; PHP last, since event-manager is the only consumer
+      and has no second repo to prove the shape against. Each stack is a
+      canary-then-wave, the C5 process: one repo green end to end before the
+      rest re-pin.
+- [ ] **E7** Retire what the new rules obsolete: gha-runner-controller's
+      `git describe` version derivation (reads tags as authority, contrary to
+      Principle 14) and the `fetch-depth: 0` it forces on jobs that only need
+      a version. client-manager's CalVer + `edge` tag is the other case —
+      under Principle 16 it needs a named consumer or it collapses into
+      provenance metadata like everything else.
+
+**Exit criteria:** every artifact reports its own build timestamp and commit;
+the only version numbers left are semver ones with a named machine consumer;
+no release path rebuilds what CI already built; and a version bump is visible
+to a reviewer before it ships.
+
 
 ### Phase A — per-repo catalog conformance *(COMPLETE 2026-08-15)*
 

@@ -779,6 +779,70 @@ D3–D6 are independent of C. Same execution loop as A/B.
       unsaturated fleet — controller-log correlation at these
       timestamps is the highest-value D6 next step.
 
+### Phase E task board — versioning and releases *(DRAFT 2026-08-16)*
+
+Phases A–D standardized how code is *gated* and *built*. Nothing has ever
+standardized how it is *versioned and released*, and it shows: the fleet runs
+four schemes, and the one line of guidance we have contradicts a repo that
+follows it. This phase closes that.
+
+**What the standard says today, in full.** Principle 7 already binds releases
+("packaging, docker, and release steps consume those artifacts — nothing
+downstream rebuilds"), Principle 4 hardcodes release jobs to GitHub-hosted, and
+Principle 6 exempts release workflows from cancel-in-progress. Image tagging is
+well specified under Publishing: ghcr, `<sha>` always, `latest` only on the
+default branch, `pr-N` build-only. That is the whole of it. Everything else
+rests on one sentence — "Release channel via CalVer tags + `edge` moving tag
+(client-manager pattern) where a repo has real releases" — which names a
+pattern without defining it, leaves "real releases" undefined, and says CalVer
+while gha-runner-controller ships semver `v*` tags. It has never been reconciled.
+
+**Current state, surveyed 2026-08-16:**
+
+| repo | how a version is derived | who consumes it |
+|------|--------------------------|-----------------|
+| gha-runner-controller | `git describe --tags` + monotonic `DEB_VERSION` (`0.1.0+git3.ab12cd3`); semver `v*` tags | apt (ordering decides upgrade vs downgrade) |
+| client-manager | CalVer tags + `edge` moving tag, `VERSION=${GITHUB_REF_NAME#v}` | operators |
+| gofast | no tags: `build-<run_number>` + `sha-*` + `latest` | homelab compose pull |
+| event-manager | none — versions read from toolchain pin files only | nothing |
+| lid-firmware | none detected, but `publish-firmware` ships artifacts | devices / whoever flashes |
+| wardley-mapper, credit-watch, expense-splitter, flight-watch, hiring-tracker, jewelry-factory | none detected | nothing |
+
+- [ ] **E0** [decision] **Does a version have a consumer?** The discriminator
+      is not application type, it is whether anything outside the repo makes a
+      decision from the version string. apt does. A dependency resolver does.
+      A human choosing a firmware image does. `docker compose pull` of
+      `:latest` does not. Classify every repo against that test first —
+      everything below follows from it.
+- [ ] **E1** [decision] **How many schemes.** Proposal: two, not one and not
+      five. (a) *Traceable build identity* as the default — `sha-<short>` plus
+      `latest` on main, no hand-maintained product version, no release
+      ceremony. (b) *Ordered release version* — derived from tags via
+      `git describe`, monotonic and sortable — only where E0 found a real
+      consumer. A third, true semver with human judgement per release, applies
+      only if the fleet publishes a library whose dependents' resolver reads it
+      (today: the `@aurum-alpha/*` packages client-manager consumes).
+- [ ] **E2** [decision] **semver or CalVer** for scheme (b), and reconcile the
+      standard with whichever loses. They answer different questions: semver
+      promises compatibility, CalVer reports recency. A repo that cannot keep
+      the compatibility promise should not make it.
+- [ ] **E3** Release workflows consume CI artifacts. *This is Principle 7,
+      not new policy — gha-runner-controller's release.yaml recompiles and
+      re-runs the tests, a fourth build of the same code. Audit every repo's
+      release path for the same violation.*
+- [ ] **E4** [decision] **Moving tags vs the pinning principle.** We SHA-pin
+      every third-party action because "version tags are mutable pointers",
+      then ship ourselves `latest` and `edge`, which are exactly that. Either
+      the risk is different for first-party images (state why) or deploys
+      should pin digests. Currently unexamined.
+- [ ] **E5** Once E0–E2 land: write the rule into Publishing, replacing the
+      CalVer sentence, and add a checker where it is mechanizable (a repo
+      claiming scheme (b) has tags; a repo on (a) has no stale version file).
+
+**Exit criteria:** every repo's version scheme is a deliberate choice traceable
+to a named consumer, the standard states the rule without contradicting any
+repo that follows it, and no release path rebuilds what CI already built.
+
 ### Phase A — per-repo catalog conformance *(COMPLETE 2026-08-15)*
 
 **Exit criteria met 2026-08-15**: every gap-matrix row shows ✓ for jobs that

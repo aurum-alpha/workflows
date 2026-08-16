@@ -565,6 +565,14 @@ D3–D6 are independent of C. Same execution loop as A/B.
       review-thread lint annotations — fleet-wide or not at all
       (decide, don't drift); per-branch images — re-affirm deferred
       until per-branch staging spin-up/teardown exists.
+- [ ] **D8** [decision] Package-ecosystem Dependabot — every repo
+      currently watches github-actions ONLY; npm/pnpm, gomod, and
+      composer dependencies get no bumps anywhere (audit 2026-08-16).
+      Enabling is a noise-policy decision: these dependency trees will
+      produce a large initial burst, so it wants `groups` config
+      (batch minor/patch into one PR), weekly cadence, and sequencing
+      after the C wave. Security-only alerts are already on via GitHub
+      defaults; this decision is about version currency.
 - [ ] **D7** [fleet] Codecov Test Analytics — test-run times, failure
       rates, flaky-test detection. Two-part rollout per capability:
       (a) canonical test scripts emit JUnit XML (vitest:

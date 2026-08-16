@@ -205,9 +205,15 @@ event-manager: PHP + React) prefixes a canonical id with its stack —
 the job** (e.g. `go-test-unit` / `web-test-unit`). Single-owner jobs keep
 the bare canonical id (`test-integration`, `static-analysis`, `image`,
 `ci-ok`), so bare ids stay meaningful for byte-identity matching (B5) and
-prefixes appear only where a collision forces them. Display names remain
-free-form human labels; ids are what the standard governs (`ci-ok` is the
-exception: no display-name override, it reports by id).
+prefixes appear only where a collision forces them.
+
+**Display names = job ids** (tightened 2026-08-16, superseding B4's
+free-form allowance): no job-level `name:` overrides anywhere — the
+lowercase id is what the YAML, the checks UI, and any required-check
+string all show. Human context lives in step names and comments.
+Executed: event-manager#47, lid-firmware#10; client-manager follows its
+B4 rename PR; the Node cohort's redundant `name:` lines drop with C0's
+node-ci.yml.
 
 Executed mappings — event-manager (first executed example):
 `install-composer-deps` → `php-install`, `install-composer-deps-prod` →

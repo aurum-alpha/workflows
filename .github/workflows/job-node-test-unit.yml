@@ -51,9 +51,11 @@ jobs:
         run: pnpm install --frozen-lockfile
       - working-directory: ${{ inputs.workdir }}
         # junit output feeds Codecov Test Analytics (flaky-test detection);
-        # the default reporter keeps terminal output readable.
+        # the default reporter keeps terminal output readable. No `--`
+        # before the flags: pnpm 10 forwards args directly and swallows a
+        # literal `--` (verified: with it, vitest never sees the flags).
         run: >
-          pnpm run test:unit --
+          pnpm run test:unit
           --reporter=default --reporter=junit
           --outputFile.junit=test-report.junit.xml
       - name: Upload coverage to Codecov

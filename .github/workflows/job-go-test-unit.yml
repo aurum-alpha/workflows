@@ -1,0 +1,99 @@
+# Fleet capability: test-unit, Go (CI_STANDARD Principle 12 — one way per
+# capability). Single-job reusable workflow: the caller owns the job id and
+# needs: wiring; this file owns the entire job body. Callers pass
+# secrets: inherit; vars.RUNNER resolves in the caller's context.
+#
+# One way: `go test -race -covermode=atomic -coverprofile=coverage/go-unit.out ./...`
+# followed by the fleet Codecov upload (flag `go`). Before extraction the
+# three repos disagreed on two axes — client-manager and gofast wrote the
+# coverage profile but skipped -race; the controller ran -race but produced
+# no profile. Taking the union is the standardization: race detection is the
+# highest-value Go test flag and coverage is fleet policy (Phase B2), so a
+# repo whose tests fail under -race has a real bug to fix, not a reason to
+# fork the job.
+name: job-go-test-unit
+
+on:
+  workflow_call:
+    inputs:
+      workdir:
+        description: Directory containing go.mod
+        type: string
+        default: "."
+      runner:
+        description: >-
+          Override runs-on. Leave empty for the fleet default. Set to a
+          GitHub-hosted label where a repo must not build on the fleet
+          (CI_STANDARD Principle 4 — e.g. the runner controller itself).
+        type: string
+        default: ""
+      needs_artifact:
+        description: >-
+          Name of an artifact to download before testing (repos that embed
+          generated assets need them present to compile). Empty to skip.
+        type: string
+        default: ""
+      artifact_path:
+        description: Destination path for needs_artifact.
+        type: string
+        default: ""
+
+jobs:
+  test-unit:
+    runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-26.04' }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: ${{ inputs.workdir }}/go.mod
+          cache: false
+      - name: Isolate Go caches to runner.temp
+        shell: bash
+        run: |
+          set -euo pipefail
+          mod="${RUNNER_TEMP}/go-mod"
+          build="${RUNNER_TEMP}/go-build"
+          mkdir -p "${mod}" "${build}"
+          {
+            echo "GOMODCACHE=${mod}"
+            echo "GOCACHE=${build}"
+          } >> "$GITHUB_ENV"
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ env.GOMODCACHE }}
+          key: go-mod-${{ runner.os }}-${{ hashFiles(format('{0}/go.sum', inputs.workdir)) }}
+          restore-keys: |
+            go-mod-${{ runner.os }}-
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ env.GOCACHE }}
+          key: go-build-${{ runner.os }}-${{ hashFiles(format('{0}/go.sum', inputs.workdir)) }}
+          restore-keys: |
+            go-build-${{ runner.os }}-
+      - name: Download embedded assets
+        if: inputs.needs_artifact != ''
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.needs_artifact }}
+          path: ${{ inputs.artifact_path }}
+      - name: Unit tests
+        working-directory: ${{ inputs.workdir }}
+        run: |
+          set -euo pipefail
+          mkdir -p coverage
+          go test ./... -race -covermode=atomic -coverprofile=coverage/go-unit.out
+      - name: Upload Go coverage to Codecov
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          # Org upload token requires the target repo slug.
+          slug: ${{ github.repository }}
+          files: ${{ inputs.workdir }}/coverage/go-unit.out
+          flags: go
+          name: go-unit
+          fail_ci_if_error: true
+          disable_search: true
+          # Actions runners intermittently fail Codecov CLI GPG key fetch.
+          skip_validation: true

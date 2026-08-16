@@ -1,0 +1,271 @@
+#!/usr/bin/env python3
+"""Assert a repo's ci.yml obeys CI_STANDARD. This is the gate, not a report.
+
+Every principle below was written down before it was enforced, and every one of
+them was violated by at least one repo while the text sat in CI_STANDARD.md
+saying otherwise. A principle nobody can fail is a preference. This script is
+the difference.
+
+It is deliberately built to run TWO ways from ONE source:
+
+  * `--repo-root .`  — inside a repo's own CI, via job-ci-conformance.yml, so a
+    repo cannot drift without its own ci-ok going red. This is the enforcement.
+  * `--fleet DIR`    — across every clone under DIR, for sweeps from a
+    workstation. This is the audit.
+
+Rules, each naming the principle it enforces and the incident that proved the
+principle needed enforcing:
+
+  P3  fail closed          continue-on-error only where the standard allows it
+  P4  standard runner line runs-on goes through vars.RUNNER, or is declared
+  P6  concurrency          cancel superseded PR runs, never main
+  P18 one workflow         ci.yml is the pipeline; dependabot is the exception
+  PIN sha pinning          every action at a 40-hex sha with a # vX.Y.Z comment
+  D1  no orphan jobs       every job has needs:, except declared roots
+  D2  no inverted DAG      a build never needs a gate
+  D3  publish is gated     a publish job reaches a gate transitively
+  D4  publish is in ci-ok  a publish job outside the rollup fails invisibly
+  D5  publish runs on PRs  the main-check goes on the step, never the job
+
+Exit: 0 conformant, 1 violations, 2 no ci workflow found.
+"""
+
+import argparse
+import pathlib
+import re
+import sys
+
+CI_NAMES = ("ci.yml", "ci.yaml")
+# The one workflow allowed to sit outside ci.yml: Dependabot's config is not a
+# pipeline, and cannot be gated by ci-ok because it is not a workflow run.
+ALLOWED_OTHER_WORKFLOWS = {"dependabot.yml", "dependabot.yaml"}
+
+ROOT_RE = re.compile(
+    r"^(changes|build|go-mod|install|web-build|web-install|php-install(-prod)?"
+    r"|create-docker-[\w-]+-image)$"
+)
+BUILD_RE = re.compile(r"(^|-)(build|install)$")
+GATE_RE = re.compile(r"(lint|typecheck|test|vet|gofmt|prettier|analysis|scanner|check|audit)")
+PUBLISH_RE = re.compile(r"(publish|release|package|image)")
+REPORTING_RE = re.compile(r"risk$")
+
+# Names that trip PUBLISH_RE without producing a product artifact. Ungated is
+# correct for each, for a different reason:
+#   *-parity        asserts pins match across files; a gate, not a build
+#   create-*-image  the CI toolchain image every other job runs inside, so by
+#                   construction upstream of every gate
+#   runner-image    a base image plus packages, sharing no source with the
+#                   repo's code — there is nothing here to gate it on
+NOT_A_PRODUCT_RE = re.compile(r"parity$|^create-docker-[\w-]+-image$|^runner-image$")
+
+MAIN_GATE_RE = re.compile(
+    r"refs/heads/main|is_default_branch|event_name\s*==\s*'push'"
+)
+
+CONCURRENCY_EXPECTED = "cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}"
+
+
+def find_ci(repo: pathlib.Path) -> pathlib.Path | None:
+    for n in CI_NAMES:
+        p = repo / ".github" / "workflows" / n
+        if p.is_file():
+            return p
+    return None
+
+
+def parse_jobs(text: str) -> dict[str, dict[str, str]]:
+    """job id -> {key: raw value}, folding block sequences into their key."""
+    lines = text.splitlines()
+    try:
+        start = next(i for i, ln in enumerate(lines) if ln.rstrip() == "jobs:")
+    except StopIteration:
+        return {}
+    jobs: dict[str, dict[str, str]] = {}
+    cur = key = None
+    for ln in lines[start + 1 :]:
+        if ln.strip() and not ln.startswith("  "):
+            break
+        m = re.match(r"^  ([\w-]+):\s*$", ln)
+        if m:
+            cur, key = m.group(1), None
+            jobs[cur] = {}
+            continue
+        m = re.match(r"^    ([\w-]+):\s*(.*)$", ln)
+        if m and cur is not None:
+            key = m.group(1)
+            jobs[cur][key] = m.group(2).strip()
+            continue
+        # Continuation lines: block-sequence items, or a folded scalar's body.
+        if cur is not None and key is not None and ln.startswith("      "):
+            jobs[cur][key] += " " + ln.strip().lstrip("- ")
+    return jobs
+
+
+def needs_of(props: dict[str, str]) -> set[str]:
+    return set(re.findall(r"[\w-]+", props.get("needs", "")))
+
+
+def ancestors(job: str, graph: dict[str, set[str]]) -> set[str]:
+    seen: set[str] = set()
+    stack = list(graph.get(job, ()))
+    while stack:
+        n = stack.pop()
+        if n in seen or n not in graph:
+            continue
+        seen.add(n)
+        stack.extend(graph[n])
+    return seen
+
+
+def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
+    ci = find_ci(repo)
+    if ci is None:
+        return [], None
+    text = ci.read_text()
+    jobs = parse_jobs(text)
+    graph = {j: needs_of(p) for j, p in jobs.items()}
+    rollup = graph.get("ci-ok", set())
+    out: list[str] = []
+
+    def bad(rule, msg):
+        out.append(f"[{rule}] {msg}")
+
+    # --- P18: ci.yml is the pipeline -------------------------------------
+    wf_dir = repo / ".github" / "workflows"
+    if wf_dir.is_dir():
+        extra = sorted(
+            p.name
+            for p in wf_dir.iterdir()
+            if p.suffix in (".yml", ".yaml")
+            and p.name not in CI_NAMES
+            and p.name not in ALLOWED_OTHER_WORKFLOWS
+        )
+        for name in extra:
+            bad("P18", f"{name} sits outside ci.yml — nothing gates it, nothing reviews it")
+
+    # --- P6: concurrency --------------------------------------------------
+    if "concurrency:" not in text:
+        bad("P6", "no concurrency block")
+    elif CONCURRENCY_EXPECTED not in text:
+        found = re.search(r"cancel-in-progress:\s*(.+)", text)
+        bad(
+            "P6",
+            f"cancel-in-progress is {found.group(1).strip() if found else 'unset'}; "
+            "main runs publish, and a cancelled run is not a failed one",
+        )
+
+    # --- PIN: sha-pinned actions with a version comment -------------------
+    for m in re.finditer(r"uses:\s*([\w.-]+/[^@\s]+)@([^\s#]+)[ \t]*(#.*)?$", text, re.M):
+        action, ref, comment = m.group(1), m.group(2), m.group(3)
+        if not re.fullmatch(r"[0-9a-f]{40}", ref):
+            bad("PIN", f"{action}@{ref} is not a 40-hex sha — tags are mutable pointers")
+        elif not comment or not re.match(r"#\s*v", comment.strip()):
+            bad("PIN", f"{action}@{ref[:8]} has no trailing '# vX.Y.Z' comment")
+
+    # --- P3 / P4 / D*: per job -------------------------------------------
+    for job, props in sorted(jobs.items()):
+        blob = props.get("__raw__", "")
+
+        if job != "ci-ok":
+            if not graph[job] and not ROOT_RE.match(job):
+                bad("D1", f"'{job}' has no needs: — it runs beside the build it should gate")
+
+            if BUILD_RE.search(job):
+                inv = sorted(n for n in graph[job] if GATE_RE.search(n) and not BUILD_RE.search(n))
+                if inv:
+                    bad("D2", f"'{job}' is a build but needs gate(s): {', '.join(inv)}")
+
+            if (
+                PUBLISH_RE.search(job)
+                and not REPORTING_RE.search(job)
+                and not NOT_A_PRODUCT_RE.search(job)
+            ):
+                reach = ancestors(job, graph)
+                if not any(
+                    GATE_RE.search(a) and not BUILD_RE.search(a) and not REPORTING_RE.search(a)
+                    for a in reach
+                ):
+                    bad("D3", f"'{job}' publishes but reaches no gate")
+                if "ci-ok" in jobs and job not in rollup:
+                    bad("D4", f"'{job}' publishes but is not in ci-ok's needs — it fails invisibly")
+                if MAIN_GATE_RE.search(props.get("if", "")):
+                    bad(
+                        "D5",
+                        f"'{job}' is gated to main at the JOB level, so it never runs on a pull "
+                        "request and its first execution is the push that has to work; put the "
+                        "condition on the publishing step instead (Principle 17)",
+                    )
+
+    # --- P4: runner line --------------------------------------------------
+    # A literal runner is allowed, but the decision has to be written down: an
+    # undeclared literal is drift, a declared one is a decision. Declare it per
+    # job in the comment above, or once in the file header when the whole
+    # pipeline is hosted for one reason (gha-runner-controller cannot build its
+    # own runner on its own runner).
+    lines = text.splitlines()
+    header_end = next((i for i, ln in enumerate(lines) if ln.rstrip() == "jobs:"), 0)
+    declared_file_wide = "Principle 4" in "\n".join(lines[:header_end])
+    for i, ln in enumerate(lines):
+        m = re.match(r"\s*runs-on:\s*(.+)$", ln)
+        if not m or "vars.RUNNER" in m.group(1):
+            continue
+        context = "\n".join(lines[max(0, i - 6) : i])
+        if not declared_file_wide and "Principle 4" not in context:
+            bad(
+                "P4",
+                f"runs-on: {m.group(1).strip()} bypasses vars.RUNNER with no "
+                "'Principle 4' note above it explaining why",
+            )
+
+    # --- P3: fail closed --------------------------------------------------
+    for m in re.finditer(r"continue-on-error:\s*(.+)$", text, re.M):
+        v = m.group(1).strip()
+        # inputs.warn_only is the sanctioned escape hatch: a shared job whose
+        # caller opted a specific linter into warn-only while it is adopted.
+        if "inputs.warn_only" not in v:
+            bad("P3", f"continue-on-error: {v} — nothing publishes unless every gate passes")
+
+    return out, str(ci.relative_to(repo))
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    g = ap.add_mutually_exclusive_group()
+    g.add_argument("--repo-root", type=pathlib.Path, help="check one repo (default: cwd)")
+    g.add_argument("--fleet", type=pathlib.Path, help="check every clone under DIR")
+    args = ap.parse_args()
+
+    if args.fleet:
+        repos = sorted(p for p in args.fleet.iterdir() if (p / ".github/workflows").is_dir())
+    else:
+        repos = [args.repo_root or pathlib.Path.cwd()]
+
+    failures = 0
+    checked = 0
+    for repo in repos:
+        problems, ci_path = check(repo)
+        if ci_path is None:
+            if args.fleet:
+                continue
+            print(f"no ci.yml under {repo}/.github/workflows", file=sys.stderr)
+            return 2
+        checked += 1
+        if problems:
+            failures += 1
+            print(f"{repo.name}/{ci_path}: {len(problems)} violation(s)")
+            for p in problems:
+                print(f"  {p}")
+        else:
+            print(f"{repo.name}: conformant")
+
+    if not checked:
+        print("no ci workflow found to check", file=sys.stderr)
+        return 2
+    print(
+        f"\n{'PASS' if failures == 0 else f'FAIL: {failures} of {checked} repo(s) violate CI_STANDARD'}"
+    )
+    return 0 if failures == 0 else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,15 @@
+{
+  "$comment": [
+    "Single source of truth for toolchain versions the fleet standardizes on.",
+    "Nothing reads this at build time — each repo still declares its own pin in",
+    "the file its tooling actually reads (package.json packageManager, go.mod,",
+    ".node-version), because that is what corepack, setup-go and setup-node",
+    "consume both in CI and on a developer's machine. This file is what those",
+    "per-repo pins are checked AGAINST: tools/check-fleet-versions compares every",
+    "repo to the values here, so drift is a failing check rather than something",
+    "noticed months later.",
+    "Bumping a version here is the start of a fleet wave, not the end: update the",
+    "value, then update every repo's own pin to match."
+  ],
+  "pnpm": "10.34.5"
+}

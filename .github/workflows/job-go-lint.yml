@@ -42,6 +42,15 @@ on:
         description: golangci-lint version to build from source.
         type: string
         default: "v2.12.2"
+      warn_only:
+        description: >-
+          Report findings without failing the job. This is a documented
+          stabilization window (CI_STANDARD Principle 3), not a permanent
+          mode: a repo adopting a linter against existing debt runs warn-only
+          while the debt burns down, then flips to a hard gate. Findings stay
+          visible in the step log and the step is marked failed-but-continued.
+        type: boolean
+        default: false
 
 jobs:
   lint:
@@ -96,6 +105,7 @@ jobs:
             go-mod-${{ runner.os }}-
       - name: Run ${{ inputs.linter }}
         working-directory: ${{ inputs.workdir }}
+        continue-on-error: ${{ inputs.warn_only }}
         run: |
           set -euo pipefail
           "${RUNNER_TEMP}/golangci-bin/golangci-lint" run \

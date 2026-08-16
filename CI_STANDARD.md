@@ -444,10 +444,21 @@ only in the package-manager prelude. Execution loop as ever; wardley
       expense-splitter, flight-watch.
 - [ ] **C2** Convert the pnpm cohort: hiring-tracker (keeps its extra
       job caller-side), jewelry-factory.
-- [ ] **C3** Composite actions for shared step sequences other repos
-      can adopt piecemeal (first candidate: pnpm store setup — used by
-      client-manager's per-job prelude); written only where a real
-      second consumer exists (Principle 5 discipline).
+- [ ] **C3** Composite actions — the sharing unit for dual-stack repos,
+      which cannot call node-ci.yml (it is a whole DAG with its own
+      image/ci-ok; client-manager interleaves Go + web + cross-stack
+      jobs under one rollup). Extract the identical machinery, not the
+      job shape: `setup/node-pnpm` (setup-node from .node-version, pnpm
+      from packageManager, store cache, frozen install) and optionally
+      the codecov upload block. node-ci.yml consumes the composite
+      internally; client-manager's web jobs (and later event-manager's
+      react jobs) consume the same composite directly, keeping their
+      repo-local DAG wiring (changes-gating, needs edges, tools/checks
+      indirection). One definition of the toolchain setup fleet-wide;
+      DAG shape stays local only where it genuinely differs. (A
+      gates-only nested reusable workflow was considered and rejected
+      for now — it would force client-manager's web side onto the
+      cohort's artifact flow for little extra dedup.)
 - [ ] **C4** This repo's CI grows real gates, replacing the exit-0
       stub: actionlint over the shared workflows + a caller-thinness
       check (byte-identity is enforced by construction once extraction

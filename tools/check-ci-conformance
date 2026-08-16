@@ -28,6 +28,12 @@ principle needed enforcing:
   D5  publish runs on PRs  the main-check goes on the step, never the job
   N1  job ids name the codebase  a stub calling job-go-* is named go-*, etc.
 
+N1 can only judge jobs that CALL a shared job, because the `uses:` line is the
+only thing in the file that proves which codebase a job acts on. A repo-local
+job named `web-build` or `static-analysis` is invisible to it — nothing there
+says what those touch. Those stay review-only, and saying so beats implying
+coverage that does not exist.
+
 Exit: 0 conformant, 1 violations, 2 no ci workflow found.
 """
 

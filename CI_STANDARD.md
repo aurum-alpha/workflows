@@ -366,7 +366,7 @@ unless noted.
       point each repo's required status check at `ci-ok` (exact string;
       display-name overrides dropped fleet-wide 2026-08-15).
 
-### Phase B task board (live status — update as items land)
+### Phase B task board *(COMPLETE 2026-08-16 — all items landed)*
 
 Same execution loop as Phase A: branch → PR → watch CI → merge when green →
 fix and re-push on failure. B0–B1 are in flight; B2→B3→B4→B5 run in order
@@ -408,13 +408,13 @@ fix and re-push on failure. B0–B1 are in flight; B2→B3→B4→B5 run in orde
       vitest + @vitest/coverage-v8; `test-unit` wired after build with
       the standard codecov block; image/ci-ok gate on it. All verified
       locally pre-PR. Gap matrix: no `test-unit ✗` cells remain.
-- [ ] **B4** Dual-stack job-id naming — principle recorded (see "Dual-
-      stack job ids" under the catalog) and event-manager renames
-      **MERGED** (#46: php-/web- prefixes on colliding ids, full
-      pipeline green, coverage exactly flat). Remaining: client-manager
-      renames, deliberately HELD until Jared flips the fleet required
-      check to `ci-ok` (its current ids may be referenced by branch
-      protection; renaming first could strand PRs).
+- [x] **B4** Dual-stack job-id naming — **COMPLETE 2026-08-16**:
+      principle recorded; event-manager renames merged (#46);
+      client-manager renames + matching tools/checks script moves
+      merged (#25) after Jared flipped the fleet required check to
+      `ci-ok`. Display-name follow-ups (names = ids) rode behind:
+      lid-firmware#10 merged, event-manager#47 / client-manager#26 in
+      flight.
 - [x] **B5** Byte-identity checker + normalization — **COMPLETE
       2026-08-15**: `tools/check-job-identity` reports **PASS on merged
       mains — every shared canonical job block byte-identical in both
@@ -468,10 +468,17 @@ irrelevant to branch protection.
       vite 5 vs vitest 4 (now vite 7 like the fleet); credit-watch's
       npm-style overrides silently ignored (now pnpm.overrides).
 - [ ] **C1** Convert the six Node repos to thin stub callers pinned by
-      SHA (header + five 4-line job stubs + local ci-ok): wardley-mapper
-      first (proves runner/secret/check-name mechanics), then
-      alphabetical. Repo-specific extras (hiring-tracker's
-      update-version-info) stay caller-side.
+      SHA (header + five 4-line job stubs + local ci-ok) — **IN FLIGHT**:
+      expense-splitter#20 is the showcase (182 -> 50 lines) and its live
+      run proved the whole calling contract: caller-context vars.RUNNER,
+      secrets: inherit (codecov upload flat at 63.86%), dist artifact
+      flow, `build / build`-style check names, flat required ci-ok.
+      Remaining five convert once it merges. Repo-specific extras
+      (hiring-tracker's update-version-info) stay caller-side.
+      Tag note (Jared, 2026-08-16): release tags (v1.0.0 on the C0
+      commit) deferred until the C wave is done and working — one
+      tagging pass over a stable repo; tag pushes are admin-side (the
+      session's git proxy scopes writes to refs/heads/*).
 - [ ] **C2** client-manager's web jobs adopt the SAME shared jobs with
       `workdir: web` (`lint`, `typecheck`, `web-test-unit`; prereq: A1
       script rename `test` → `test:unit` in web/package.json). Its
@@ -558,6 +565,16 @@ D3–D6 are independent of C. Same execution loop as A/B.
       review-thread lint annotations — fleet-wide or not at all
       (decide, don't drift); per-branch images — re-affirm deferred
       until per-branch staging spin-up/teardown exists.
+- [ ] **D7** [fleet] Codecov Test Analytics — test-run times, failure
+      rates, flaky-test detection. Two-part rollout per capability:
+      (a) canonical test scripts emit JUnit XML (vitest:
+      `--reporter=default --reporter=junit --outputFile=test-report.junit.xml`;
+      Go: gotestsum --junitfile; PHP: phpunit --log-junit), (b) the
+      SHA-pinned `codecov/test-results-action` step with
+      `if: ${{ !cancelled() }}` lands ONCE in the shared
+      job-node-test-unit.yml and propagates to every caller — the
+      Phase C payoff in action; Go/PHP test jobs get the same step
+      where they live. Sequence after C1/C2.
 - [ ] **D6** [fleet health] Runner-loss investigation — four losses on
       2026-08-15, all the same signature (job dies at exactly the
       10-min communication timeout, logs 404) under ~11 parallel runs:

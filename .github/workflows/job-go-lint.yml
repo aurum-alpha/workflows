@@ -1,0 +1,104 @@
+# Fleet capability: one Go linter, one job (CI_STANDARD Principle 12 — one
+# way per capability). Single-job reusable workflow: the caller owns the job
+# id and needs: wiring; this file owns the entire job body. Callers pass
+# secrets: inherit; vars.RUNNER resolves in the caller's context.
+#
+# GRANULARITY: this job runs exactly ONE linter, named by the `linter` input.
+# A caller that wants errcheck and staticcheck declares two jobs, so each
+# gate is short, independently named, and independently red — rather than one
+# opaque "lint" job whose failure could be any of several tools.
+#
+# WHY go install RATHER THAN THE OFFICIAL ACTION: golangci-lint's published
+# release binaries are built with an older Go than the fleet targets, and it
+# refuses to analyze a module whose Go version is newer than its own build
+# ("the Go language version used to build golangci-lint is lower than the
+# targeted Go version"). Building from source with the repo's own toolchain
+# is the only way to lint Go 1.26 modules today. This is the same class of
+# failure that made client-manager hand-roll tools/check-pgxpool after
+# forbidigo panicked on Go 1.26 export data.
+name: job-go-lint
+
+on:
+  workflow_call:
+    inputs:
+      linter:
+        description: >-
+          Exactly one golangci-lint linter to run (e.g. errcheck,
+          staticcheck, ineffassign, unused).
+        type: string
+        required: true
+      workdir:
+        description: Directory containing go.mod
+        type: string
+        default: "."
+      runner:
+        description: >-
+          Override runs-on. Leave empty for the fleet default. Set to a
+          GitHub-hosted label where a repo must not build on the fleet
+          (CI_STANDARD Principle 4 — e.g. the runner controller itself).
+        type: string
+        default: ""
+      golangci_version:
+        description: golangci-lint version to build from source.
+        type: string
+        default: "v2.12.2"
+
+jobs:
+  lint:
+    runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-26.04' }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: ${{ inputs.workdir }}/go.mod
+          cache: false
+      - name: Isolate Go caches to runner.temp
+        shell: bash
+        run: |
+          set -euo pipefail
+          mod="${RUNNER_TEMP}/go-mod"
+          build="${RUNNER_TEMP}/go-build"
+          mkdir -p "${mod}" "${build}"
+          {
+            echo "GOMODCACHE=${mod}"
+            echo "GOCACHE=${build}"
+          } >> "$GITHUB_ENV"
+      - name: Resolve toolchain version
+        id: toolchain
+        shell: bash
+        working-directory: ${{ inputs.workdir }}
+        run: |
+          set -euo pipefail
+          # go.mod's own version is what golangci-lint must be built with.
+          echo "go=$(go env GOVERSION)" >> "$GITHUB_OUTPUT"
+      - name: Cache golangci-lint binary
+        id: golangci-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ runner.temp }}/golangci-bin
+          key: golangci-${{ inputs.golangci_version }}-${{ steps.toolchain.outputs.go }}-${{ runner.os }}
+      - name: Build golangci-lint with the repo toolchain
+        if: steps.golangci-cache.outputs.cache-hit != 'true'
+        shell: bash
+        working-directory: ${{ inputs.workdir }}
+        env:
+          GOBIN: ${{ runner.temp }}/golangci-bin
+        run: |
+          set -euo pipefail
+          go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${{ inputs.golangci_version }}"
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ env.GOMODCACHE }}
+          key: go-mod-${{ runner.os }}-${{ hashFiles(format('{0}/go.sum', inputs.workdir)) }}
+          restore-keys: |
+            go-mod-${{ runner.os }}-
+      - name: Run ${{ inputs.linter }}
+        working-directory: ${{ inputs.workdir }}
+        run: |
+          set -euo pipefail
+          "${RUNNER_TEMP}/golangci-bin/golangci-lint" run \
+            --default=none \
+            --enable "${{ inputs.linter }}" \
+            ./...

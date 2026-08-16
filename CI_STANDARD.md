@@ -132,6 +132,25 @@ Status: **agreed 2026-08-14** (rev 2 after Jared's review). Remaining open items
     instead of being the least-tested code in the repo at the exact moment it
     matters most.
 
+    Two mechanical consequences, because writing the principle was not enough
+    to make anyone follow it:
+
+    - **The main-only condition goes on the publishing *step*, never on the
+      job.** `if:` at the job level means the job never runs on a pull
+      request, so its first execution ever is the one that has to work. Guard
+      `docker push` / `gh release create`, and let everything above it —
+      artifact downloads, packaging, assertions — run on every PR.
+    - **Publish jobs belong in `ci-ok`'s `needs:`.** A publish job outside the
+      rollup can fail into a green required check.
+
+    *Learned from gha-runner-controller's `release`, which broke both rules at
+    once. It was job-level gated to main, so it had never run before the merge
+    that had to cut 0.11.1; it failed there on an artifact download a pull
+    request would have caught. And it was missing from `ci-ok`, so the required
+    check reported success at 20:06:39 while `release` failed at 20:17:21 —
+    eleven minutes later, into a main branch that stayed green. Nobody would
+    have noticed except that the release was visibly absent.*
+
 18. **One workflow per repo.** `ci.yml` IS the pipeline. A second workflow file
     cannot be gated by `ci-ok`, so branch protection cannot see it, so nothing
     stops it publishing from a commit that failed — and nothing reviews it

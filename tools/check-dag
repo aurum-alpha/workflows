@@ -8,7 +8,7 @@ web-lint outside the graph entirely, client-manager hung three web gates off
 `changes` rather than off the install they need, and event-manager ran
 backwards with `web-build` needing `web-test-unit`.
 
-Three mechanical rules, which is all a generic checker can honestly assert:
+Four mechanical rules, which is all a generic checker can honestly assert:
 
   1. NO ORPHANS. Every job has `needs:`, except declared roots. A job with no
      needs runs immediately, in parallel with the build it is supposed to gate.
@@ -18,6 +18,10 @@ Three mechanical rules, which is all a generic checker can honestly assert:
   3. PUBLISH IS GATED. A job that publishes (name matches publish/release/
      package/image) needs at least one gate, transitively. This is the
      lid-firmware bug — the artifact shipped the moment it linked.
+  4. PUBLISH IS IN ci-ok. A publish job absent from the rollup can fail without
+     anything going red. gha-runner-controller's `release` was missing from it:
+     on the 0.11.1 run, ci-ok reported success at 20:06:39 and release failed
+     at 20:17:21 — eleven minutes later, into a green main.
 
 What this deliberately does NOT check is which stack a gate belongs to. That
 needs repo knowledge a regex does not have; the per-stack rule is enforced by
@@ -131,6 +135,7 @@ def check_repo(jobs: dict[str, set[str]]) -> list[str]:
     problems = []
     if not jobs:
         return ["no jobs found in ci workflow"]
+    rollup = jobs.get("ci-ok", set())
 
     for job, needs in sorted(jobs.items()):
         if job == "ci-ok":
@@ -165,6 +170,11 @@ def check_repo(jobs: dict[str, set[str]]) -> list[str]:
                 problems.append(
                     f"'{job}' publishes but reaches no gate — it ships whatever "
                     "builds, passing tests or not"
+                )
+            if "ci-ok" in jobs and job not in rollup:
+                problems.append(
+                    f"'{job}' publishes but is not in ci-ok's needs — it can "
+                    "fail without the required check ever going red"
                 )
     return problems
 

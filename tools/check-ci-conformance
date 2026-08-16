@@ -26,13 +26,14 @@ principle needed enforcing:
   D3  publish is gated     a publish job reaches a gate transitively
   D4  publish is in ci-ok  a publish job outside the rollup fails invisibly
   D5  publish runs on PRs  the main-check goes on the step, never the job
-  N1  job ids name the codebase  a stub calling job-go-* is named go-*, etc.
+  N1  the language token is true  a stub calling job-go-* has 'go' in position 2
 
-N1 can only judge jobs that CALL a shared job, because the `uses:` line is the
-only thing in the file that proves which codebase a job acts on. A repo-local
-job named `web-build` or `static-analysis` is invisible to it — nothing there
-says what those touch. Those stay review-only, and saying so beats implying
-coverage that does not exist.
+N1 checks the LANGUAGE token and nothing else, because the language is all a
+`uses:` line can prove. Purpose and framework are review-only: no line in the
+file says whether a job serves the client or the server, and assuming otherwise
+is precisely what renamed six repos' `build` to `react-build` when it compiles
+both a React client and an Express server. Repo-local jobs are invisible to N1
+for the same reason.
 
 Exit: 0 conformant, 1 violations, 2 no ci workflow found.
 """
@@ -95,18 +96,22 @@ REPORTING_RE = re.compile(r"risk$")
 #                   repo's code — there is nothing here to gate it on
 NOT_A_PRODUCT_RE = re.compile(r"parity$|^create-docker-[\w-]+-image$|^runner-image$")
 
-# Which caller prefix a shared job's toolchain implies. The shared job is named
-# for the toolchain it runs (job-node-build runs pnpm, and would serve a Vue app
-# just as well); the caller is named for the codebase it runs that toolchain on.
-# So "react-build / build", not "web-build / build" or "build / build".
+# A shared job proves the LANGUAGE of the source it runs against, and nothing
+# more. job-go-vet can only be pointed at Go; job-node-lint can only be pointed
+# at TypeScript/JavaScript.
 #
-# B4 let the prefix appear "only where a collision forces them", which keyed the
-# name on a collision rather than on the codebase — so it disappeared in
-# single-stack repos and the fleet ended up with four names for one capability.
-# This keys on the shared job actually being called, which cannot move.
-STACK_OF_SHARED_JOB = {
+# It does NOT prove the purpose or the framework. The first version of this rule
+# assumed it did — "calls job-node-* therefore it is React" — and renamed six
+# repos' `build` to `react-build` when that job compiles a React client AND an
+# Express server from one command. hiring-tracker's `react-test-unit` ran
+# fourteen server tests and zero client tests. The toolchain is not the codebase.
+#
+# So this checks the language token only: position two of the caller's id.
+LANGUAGE_OF_SHARED_JOB = {
     "job-go-": "go",
-    "job-node-": "react",
+    "job-node-": "ts",
+    "job-ts-": "ts",
+    "job-php-": "php",
 }
 # Jobs that act on no single codebase take no prefix: their bare name is the
 # information, saying "this one spans the repo".
@@ -238,13 +243,18 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
                     bad("D2", f"'{job}' is a build but needs gate(s): {', '.join(inv)}")
 
             uses = props.get("uses", "")
-            for marker, stack in STACK_OF_SHARED_JOB.items():
-                if marker in uses and not job.startswith(f"{stack}-"):
+            for marker, lang in LANGUAGE_OF_SHARED_JOB.items():
+                if marker not in uses:
+                    continue
+                parts = job.split("-")
+                if len(parts) < 2 or parts[1] != lang:
                     bad(
                         "N1",
-                        f"'{job}' calls a {marker}* shared job, so it acts on the "
-                        f"{stack} codebase and must be named '{stack}-<capability>' "
-                        "— a job id names the codebase it acts on",
+                        f"'{job}' calls a {marker}* shared job, so its source is "
+                        f"{lang}, but its language token is "
+                        f"'{parts[1] if len(parts) > 1 else '(absent)'}' — ids are "
+                        f"<purpose>-<language>[-<framework>]-<capability>, so this "
+                        f"should read <purpose>-{lang}-...",
                     )
 
             if (

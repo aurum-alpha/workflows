@@ -10,9 +10,11 @@ on:
   # the branch still lands the ci-ok check on the head commit.
   workflow_dispatch:
 
+# Principle 6, which this repo defines and so had better follow: cancel
+# superseded pull-request runs, never the default branch.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read

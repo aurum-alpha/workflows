@@ -50,7 +50,12 @@ jobs:
           NODE_AUTH_TOKEN: ${{ github.token }}
         run: pnpm install --frozen-lockfile
       - working-directory: ${{ inputs.workdir }}
-        run: pnpm run test:unit
+        # junit output feeds Codecov Test Analytics (flaky-test detection);
+        # the default reporter keeps terminal output readable.
+        run: >
+          pnpm run test:unit --
+          --reporter=default --reporter=junit
+          --outputFile.junit=test-report.junit.xml
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
@@ -58,3 +63,10 @@ jobs:
           directory: ${{ inputs.workdir }}/coverage
           flags: unittests
           fail_ci_if_error: true
+      - name: Upload test results to Codecov
+        # Runs on test failure too — failed runs are the analytics signal.
+        if: ${{ !cancelled() }}
+        uses: codecov/test-results-action@0fa95f0e1eeaafde2c782583b36b28ad0d8c77d3 # v1.2.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ${{ inputs.workdir }}/test-report.junit.xml

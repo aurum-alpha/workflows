@@ -1,0 +1,44 @@
+# Fleet capability: gofmt (CI_STANDARD Principle 12 — one way per
+# capability). Single-job reusable workflow: the caller owns the job id and
+# needs: wiring; this file owns the entire job body. Callers pass
+# secrets: inherit; vars.RUNNER resolves in the caller's context.
+#
+# All three Go repos ran the same `gofmt -l .` check behind three different
+# wrappers. The shared job runs the native toolchain directly.
+name: job-go-gofmt
+
+on:
+  workflow_call:
+    inputs:
+      workdir:
+        description: Directory containing go.mod
+        type: string
+        default: "."
+      runner:
+        description: >-
+          Override runs-on. Leave empty for the fleet default. Set to a
+          GitHub-hosted label where a repo must not build on the fleet
+          (CI_STANDARD Principle 4 — e.g. the runner controller itself).
+        type: string
+        default: ""
+
+jobs:
+  gofmt:
+    runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-26.04' }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: ${{ inputs.workdir }}/go.mod
+          cache: false
+      - name: gofmt
+        working-directory: ${{ inputs.workdir }}
+        run: |
+          set -euo pipefail
+          dirty="$(gofmt -l .)"
+          if [ -n "$dirty" ]; then
+            printf 'gofmt needed on:\n%s\n' "$dirty" >&2
+            exit 1
+          fi

@@ -1,0 +1,65 @@
+# Fleet capability: go-mod (CI_STANDARD Principle 12 — one way per
+# capability). Single-job reusable workflow: the caller owns the job id and
+# needs: wiring; this file owns the entire job body. Callers pass
+# secrets: inherit; vars.RUNNER resolves in the caller's context.
+#
+# All three Go repos ran byte-identical commands here behind three different
+# wrappers (tools/checks/go-mod, scripts/go-mod.sh, inline). The shared job
+# runs the native toolchain directly — no per-repo indirection to keep in
+# sync (CI_STANDARD D3: native toolchain where it suffices).
+name: job-go-mod
+
+on:
+  workflow_call:
+    inputs:
+      workdir:
+        description: Directory containing go.mod
+        type: string
+        default: "."
+      runner:
+        description: >-
+          Override runs-on. Leave empty for the fleet default. Set to a
+          GitHub-hosted label where a repo must not build on the fleet
+          (CI_STANDARD Principle 4 — e.g. the runner controller itself).
+        type: string
+        default: ""
+
+jobs:
+  go-mod:
+    runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-26.04' }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: ${{ inputs.workdir }}/go.mod
+          # Caching is handled below: setup-go's built-in cache writes to the
+          # shared HOME paths, which race across concurrent jobs on the
+          # persistent self-hosted hosts.
+          cache: false
+      - name: Isolate Go caches to runner.temp
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Keep module/build caches under runner.temp so concurrent jobs on a
+          # persistent self-hosted host do not race on ~/go and ~/.cache/go-build
+          # (actions/cache tar extract → ENOTEMPTY / "File exists").
+          mod="${RUNNER_TEMP}/go-mod"
+          build="${RUNNER_TEMP}/go-build"
+          mkdir -p "${mod}" "${build}"
+          {
+            echo "GOMODCACHE=${mod}"
+            echo "GOCACHE=${build}"
+          } >> "$GITHUB_ENV"
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ env.GOMODCACHE }}
+          key: go-mod-${{ runner.os }}-${{ hashFiles(format('{0}/go.sum', inputs.workdir)) }}
+          restore-keys: |
+            go-mod-${{ runner.os }}-
+      - name: Download and verify modules
+        working-directory: ${{ inputs.workdir }}
+        run: |
+          go mod download
+          go mod verify

@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+"""Verify every Node app in the fleet pins the same package manager version.
+
+The version each repo actually uses comes from package.json's packageManager
+field — that is what corepack activates locally and what pnpm/action-setup
+reads in the shared jobs, so CI and a developer's machine can never disagree
+with each other. What that field cannot do is agree ACROSS repos: nothing stops
+one repo drifting to a different pnpm. This check closes that gap by comparing
+every repo against fleet-versions.json.
+
+Run against local clones:  tools/check-fleet-versions --root /workspace
+"""
+
+import argparse
+import json
+import pathlib
+import sys
+
+# Node apps in the fleet, as paths to the directory holding package.json
+# relative to each repo root. Dual-stack repos keep their app in a subdirectory.
+NODE_APPS = {
+    "credit-watch": ".",
+    "expense-splitter": ".",
+    "flight-watch": ".",
+    "hiring-tracker": ".",
+    "jewelry-factory": ".",
+    "wardley-mapper": ".",
+    "client-manager": "web",
+    "gofast": "web",
+}
+
+
+def load_expected(repo_root: pathlib.Path) -> str:
+    data = json.loads((repo_root / "fleet-versions.json").read_text())
+    return data["pnpm"]
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--root", default="/workspace", type=pathlib.Path)
+    args = ap.parse_args()
+
+    here = pathlib.Path(__file__).resolve().parent.parent
+    expected = load_expected(here)
+    want = f"pnpm@{expected}"
+
+    failures = 0
+    for repo, subdir in sorted(NODE_APPS.items()):
+        pkg = args.root / repo / subdir / "package.json"
+        if not pkg.exists():
+            print(f"{repo}: package.json not found at {pkg}", file=sys.stderr)
+            failures += 1
+            continue
+
+        declared = json.loads(pkg.read_text()).get("packageManager")
+        if declared is None:
+            print(f"{repo}: no packageManager field — must declare {want}")
+            failures += 1
+        elif declared != want:
+            print(f"{repo}: packageManager is {declared}, fleet standard is {want}")
+            failures += 1
+        else:
+            print(f"{repo}: {declared}")
+
+    if failures:
+        print(
+            f"\nFAIL: {failures} repo(s) disagree with fleet-versions.json. "
+            "Either bring the repo to the fleet version, or bump "
+            "fleet-versions.json and roll the whole fleet."
+        )
+        return 1
+
+    print(f"\nPASS: all {len(NODE_APPS)} Node apps pin {want}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

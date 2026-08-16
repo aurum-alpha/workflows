@@ -47,7 +47,19 @@ Status: **agreed 2026-08-14** (rev 2 after Jared's review). Remaining open items
      stack images (`ci-node`, `ci-go`, `ci-php`) publish from aurum-alpha/workflows
      and are consumed by digest. hiring-tracker migrates tier 2 → tier 3.
 6. **Concurrency everywhere**: `${{ github.workflow }}-${{ github.ref }}` +
-   cancel-in-progress — except release workflows (cancel-in-progress: false).
+   cancel-in-progress on pull requests — but **never cancel a run that can
+   publish**, which now means never cancel the default branch:
+   `cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}`.
+   This rule used to read "except release workflows", which keyed on the file.
+   Principle 17 folded publishing into `ci.yml`, and the exemption silently
+   stopped applying — the act moved, the carve-out did not follow it.
+   *Caught in production 2026-08-16: gha-runner-controller run 31968542199
+   carried the first `.version` change, a second merge landed four minutes
+   later and cancelled it, and the release never ran. Nothing reported it: a
+   cancelled run is not a failed one, so the rollup stayed green and the
+   release simply did not exist.* Publish jobs that need stricter
+   serialization than the workflow (an image tag several runs race to move)
+   take a job-level `concurrency:` group of their own.
 7. **BUILD ONCE.** The `build` job is the only compiler anywhere. It produces
    every required artifact variant; packaging, docker, and release steps consume
    those artifacts — nothing downstream rebuilds.

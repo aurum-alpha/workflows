@@ -558,10 +558,26 @@ irrelevant to branch protection.
 - [ ] **C6** event-manager's tier-2 builder-image workflow moves here
       (the hiring-tracker fork died in A3; this centralizes the
       remaining copy); event-manager becomes a caller. Its main ci.yml
-      stays repo-local until a second PHP repo exists.
+      stays repo-local until a second PHP repo exists. *Shared half
+      landed 2026-08-16 (workflows#17): the create-docker-build-image /
+      create-docker-prod-base-image pair generalized into ONE
+      `job-image-cached.yml` (inputs image_name/dockerfile/
+      file_patterns/build_args/force_rebuild → outputs changed/image;
+      build-push normalized v5.4.0→v6.19.2). event-manager caller flip
+      rides the D9 PR.*
 
 **Exit criteria** (unchanged from the phase plan): a fix to a shared job
 lands once and propagates by Dependabot SHA-bump PRs to every consumer.
+**MET 2026-08-16, repeatedly, in production**: five distinct shared-job
+changes tonight (GITHUB_ENV quoting, registry-aware install,
+packages: read, checkout v7, D7 junit analytics) each landed once and
+reached all seven consumers as mechanical SHA re-pins; the fleet wave
+merged 7/7 green and tools/check-caller-thinness passes every converted
+caller against main. Phase C is COMPLETE except C2b (event-manager
+react convergence, tracked below) and the C6 caller flip (in flight
+with D9). Dependabot-authored bump PRs (vs tonight's scripted re-pins)
+arrive with its next daily run now that the callers reference this
+repo — the propagation mechanism itself is proven either way.
 
 ### Phase D task board (GO 2026-08-16 — Jared: "run all night work on
 Phase D"; overnight execution in progress)
@@ -625,7 +641,10 @@ D3–D6 are independent of C. Same execution loop as A/B.
       five node repos had NO codecov.yml (silent defaults),
       hiring-tracker's was toothless (1%/0%). client-manager keeps its
       deliberate config (project off, patch 48% historical baseline) —
-      documented exception, Jared's call to converge.*
+      documented exception, Jared's call to converge.* *ROLLED OUT
+      2026-08-16 with the fleet wave — [x] for the six node repos; the
+      auto ratchet passed jewelry-factory's 0.25% suite on first
+      contact exactly as designed.*
 - [ ] **D5** [decisions] Held items resolved explicitly: reply-able
       review-thread lint annotations — fleet-wide or not at all
       (decide, don't drift); per-branch images — re-affirm deferred
@@ -670,6 +689,13 @@ D3–D6 are independent of C. Same execution loop as A/B.
       through pnpm and uploads via test-results-action (0fa95f0e #
       v1.2.1) even on test failure — no caller or package.json changes,
       arrives fleet-wide with the C5 re-pin. Go/PHP repos remain.*
+      *VERIFIED IN PRODUCTION 2026-08-16 on all seven node consumers
+      ('All tests successful' Test Analytics lines in every wave PR's
+      codecov comment). One field lesson, fixed in workflows#16: pnpm
+      10 forwards script args directly and SWALLOWS a literal `--` —
+      the flags never reached vitest until the `--` was dropped.
+      Remaining: Go (gotestsum --junitfile) + PHP (phpunit --log-junit)
+      test jobs.*
 - [ ] **D6** [fleet health] Runner assignment latency + mid-job losses.
       REFRAMED 2026-08-16 (Jared: aj78 has 24 slots, never fully
       filled, more available): capacity is NOT the constraint, so the

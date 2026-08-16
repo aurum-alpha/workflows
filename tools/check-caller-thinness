@@ -37,7 +37,12 @@ LOCAL_ALLOWLIST = {
     "hiring-tracker": {"update-version-info"},
 }
 
-STUB_KEYS = {"uses", "needs", "with", "secrets", "if"}
+# `permissions` is a stub key, not drift: a called workflow can never hold more
+# than the job calling it, so a stub whose shared job needs a stronger scope
+# than the workflow default (an image build wanting packages: write) has to say
+# so here. tools/check-caller-permissions verifies the grant actually covers
+# what the shared job requests.
+STUB_KEYS = {"uses", "needs", "with", "secrets", "if", "permissions"}
 USES_RE = re.compile(
     r"^aurum-alpha/workflows/\.github/workflows/job-[a-z0-9-]+\.ya?ml"
     r"@[0-9a-f]{40}\s+# v\S+$"

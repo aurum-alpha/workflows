@@ -484,14 +484,24 @@ irrelevant to branch protection.
       commit) deferred until the C wave is done and working — one
       tagging pass over a stable repo; tag pushes are admin-side (the
       session's git proxy scopes writes to refs/heads/*).
-- [ ] **C2** client-manager's web jobs adopt the SAME shared jobs with
+- [x] **C2** client-manager's web jobs adopt the SAME shared jobs with
       `workdir: web` (`lint`, `typecheck`, `web-test-unit`; prereq: A1
       script rename `test` → `test:unit` in web/package.json). Its
       bespoke web gates (prettier, golden-corpus) and changes-gating
       stay local. Go-side `job-go-*` definitions follow the same
       pattern once gofast + client-manager converge on shapes (their
       Go jobs are not yet block-identical — a mini-B5 for the Go
-      cohort precedes extraction there).
+      cohort precedes extraction there). *Landed 2026-08-16
+      (client-manager#27). Two shared-job fixes were required and are
+      the C5 canary lesson in miniature: (1) pnpm 10+ only honors
+      registry auth from the user-level npmrc, so the shared install
+      became registry-aware for @aurum-alpha (workflows#12); (2) an
+      explicit job-level permissions block REPLACES the caller's token
+      grant — packages: read had to be added or private installs 403
+      (workflows#13). Web coverage now uploads under the fleet's
+      `unittests` flag (was `web`; history freezes, new flag starts).
+      client-manager stays partial-thin (dual-stack) until Go
+      extraction.*
 - [ ] **C2b** Capability convergence: event-manager's react side — the
       last React frontend not built the fleet way (jest not vitest, npm
       not pnpm, tier-2 container jobs). Migrate its react tests to
@@ -500,11 +510,17 @@ irrelevant to branch protection.
       (`workdir` input). Heavier than pure CI work (test-framework
       migration touches the suite) — sequenced after C1/C2, allowed to
       slip behind C4/C5 without blocking them.
-- [ ] **C3** Composite action `setup/node-pnpm` for the steps-level
+- [x] **C3** Composite action `setup/node-pnpm` for the steps-level
       prelude, consumed by the shared jobs internally AND by bespoke
       caller-side jobs (client-manager's prettier/golden-corpus) — one
       definition of the Node toolchain setup fleet-wide even where the
-      job shape is local.
+      job shape is local. *Landed 2026-08-16 with one deliberate
+      deviation: the shared job-node-* workflows keep the prelude
+      INLINE rather than calling the composite. They execute in the
+      caller's checkout, so a self-reference would need its own SHA pin
+      and every prelude change would take two commits (chicken-and-egg).
+      The composite serves bespoke caller-side jobs only; caller
+      adoption (client-manager setup-web replacement) is follow-up.*
 - [x] **C4** This repo's CI grows real gates, replacing the exit-0
       stub: actionlint over the shared workflows + a caller-thinness
       check (byte-identity is enforced by construction once extraction
@@ -521,21 +537,24 @@ irrelevant to branch protection.
       is out of scope for the repo-scoped GITHUB_TOKEN. First actionlint
       run caught SC2086 (unquoted `$GITHUB_ENV`) in all four node jobs —
       fixed same commit.*
-- [ ] **C5** Propagation proof: Dependabot (github-actions ecosystem)
+- [x] **C5** Propagation proof: Dependabot (github-actions ecosystem)
       on every consumer tracks the shared-workflow SHA; land one canary
       change in node-ci.yml and verify it arrives everywhere as
       reviewable SHA-bump PRs. Tag releases in this repo so bump PRs
       are readable (SHA pin + tag comment, fleet pinning policy).
-      *Material ready 2026-08-16: this repo's own Dependabot opened
-      #6–#10 within minutes of dependabot.yml landing (checkout v7,
-      setup-node v7, upload-artifact v7, download-artifact v8, buildx
-      v4 — all cross-major bumps to the fleet's shared pins). HELD
-      until canary process runs: a workflows-repo PR only proves
-      actionlint, so plan is merge one bump → cut SHA → re-pin ONE
-      caller → watch its full run → then batch the rest + fleet
-      re-pin. Compat evidence in hand: lid-firmware main run
-      31920424032 ran upload-artifact v7 → download-artifact v8
-      cross-major in one run, publish-firmware green (02:10 UTC).*
+      *Proven 2026-08-16. The canary process ran end to end: merged
+      workflows#6 (checkout 4.4.0→7.0.1) alone → re-pinned
+      expense-splitter (#21) to that SHA → full run green through all
+      five capabilities → then batched #7–#10 (upload-artifact v7,
+      buildx v4, download-artifact v8, setup-node v7; artifact
+      cross-major compat pre-proven by lid-firmware run 31920424032)
+      → fleet re-pin wave to the final SHA. The C2 rollout separately
+      demonstrated why single-caller canaries matter: two shared-job
+      bugs (registry auth, packages: read) only surfaced on the one
+      repo exercising private packages. Canary sets should include
+      client-manager's web stubs for that reason. Tags remain
+      admin-side (git proxy scopes writes to refs/heads/*): one pass
+      at the end per Jared.*
 - [ ] **C6** event-manager's tier-2 builder-image workflow moves here
       (the hiring-tracker fork died in A3; this centralizes the
       remaining copy); event-manager becomes a caller. Its main ci.yml
@@ -544,7 +563,8 @@ irrelevant to branch protection.
 **Exit criteria** (unchanged from the phase plan): a fix to a shared job
 lands once and propagates by Dependabot SHA-bump PRs to every consumer.
 
-### Phase D task board (planned 2026-08-15 — awaiting go)
+### Phase D task board (GO 2026-08-16 — Jared: "run all night work on
+Phase D"; overnight execution in progress)
 
 Sequencing: Phase C (extraction, as specified below) remains the natural
 next execution phase — its payoff compounds into everything after. D0–D2
@@ -560,7 +580,10 @@ D3–D6 are independent of C. Same execution loop as A/B.
       keycloak-init hardening) becomes ordinary bugfix work under a
       hard gate — red is real signal once the gate is closed.
       RECOMMENDATION: flip first, harden under the gate. (Alternative:
-      harden first — Jared's call.)
+      harden first — Jared's call.) *Flipped 2026-08-16 per the
+      overnight go (event-manager#48, in CI): test-integration and
+      test-e2e drop continue-on-error; PHPStan's advisory step stays
+      until D1.*
 - [ ] **D1** [event-manager] PHPStan hard gate — fix the phpstan.neon
       bootstrap (the documented blocker), then remove
       `continue-on-error` from static-analysis. Principle 3's last
@@ -580,13 +603,29 @@ D3–D6 are independent of C. Same execution loop as A/B.
       edges) where a real build system earns its place — including the
       decision on converting the Go repos to Make and whether Make
       becomes tier 1. Fleet-wide assessment, not repo by repo.
+      *Node-tooling matrix surveyed 2026-08-16 — two cohorts: (A)
+      credit-watch/expense-splitter/flight-watch/wardley on TS 5.6.3 +
+      vite 7 + vitest 4 + eslint 8 (legacy eslintrc); (B)
+      hiring-tracker/jewelry-factory (+ client-manager web) on TS
+      5.7-5.8 + vite 6 + vitest 3 + eslint 9 (flat config). Minor
+      alignment inside cohort A rides the C5 wave; the real remainder —
+      one fleet standard of eslint 9 flat + vitest 4 + vite 7 + one TS
+      version — is deliberate daytime work (flat-config migration ×4
+      repos + vitest major ×3 repos), not an overnight bulk edit.*
 - [ ] **D4** [fleet] Coverage policy normalization — codecov.yml in
       every repo with the event-manager pattern (project: target auto,
       threshold 1% — regression guard; patch: 70% for new code).
       Known app-level debt flagged for engineering backlog, NOT CI
       scope: jewelry-factory's 0.25% suite, wardley-mapper's lint
       ratchet (no-explicit-any ×176), hiring-tracker's runtime vite
-      import.
+      import. *Rolling out 2026-08-16 with the C5 fleet wave: standard
+      is target auto / threshold 1% for BOTH project and patch (auto
+      patch tracks project coverage — an absolute 70% would block the
+      low-coverage young repos outright; ratchet over wall). Survey:
+      five node repos had NO codecov.yml (silent defaults),
+      hiring-tracker's was toothless (1%/0%). client-manager keeps its
+      deliberate config (project off, patch 48% historical baseline) —
+      documented exception, Jared's call to converge.*
 - [ ] **D5** [decisions] Held items resolved explicitly: reply-able
       review-thread lint annotations — fleet-wide or not at all
       (decide, don't drift); per-branch images — re-affirm deferred
@@ -625,7 +664,12 @@ D3–D6 are independent of C. Same execution loop as A/B.
       `if: ${{ !cancelled() }}` lands ONCE in the shared
       job-node-test-unit.yml and propagates to every caller — the
       Phase C payoff in action; Go/PHP test jobs get the same step
-      where they live. Sequence after C1/C2.
+      where they live. Sequence after C1/C2. *Node side landed
+      2026-08-16 (workflows#14): the shared test-unit job passes
+      `--reporter=default --reporter=junit --outputFile.junit=...`
+      through pnpm and uploads via test-results-action (0fa95f0e #
+      v1.2.1) even on test failure — no caller or package.json changes,
+      arrives fleet-wide with the C5 re-pin. Go/PHP repos remain.*
 - [ ] **D6** [fleet health] Runner assignment latency + mid-job losses.
       REFRAMED 2026-08-16 (Jared: aj78 has 24 slots, never fully
       filled, more available): capacity is NOT the constraint, so the
@@ -652,6 +696,13 @@ D3–D6 are independent of C. Same execution loop as A/B.
       empty-commit push (concurrency-group cancel). Suggests wedged
       dind/container I/O rather than runner death — worth checking that
       host's dockerd/dind sidecar logs around 00:36-02:13.
+      Losses #6 and #7 (2026-08-16, both classic 10-min/404, both died
+      near job start): expense-splitter job 95109897071 on
+      aj78-docker-35742fc2, died inside "Set up job" 03:33:58-03:43:59;
+      event-manager job 95113009982 on aj78-docker-20654a1c,
+      04:05:57-04:15:58. Three lifecycle deaths in one night on an
+      unsaturated fleet — controller-log correlation at these
+      timestamps is the highest-value D6 next step.
 
 ### Phase A — per-repo catalog conformance *(COMPLETE 2026-08-15)*
 

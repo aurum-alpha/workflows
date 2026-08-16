@@ -57,6 +57,16 @@ Status: **agreed 2026-08-14** (rev 2 after Jared's review). Remaining open items
     client-manager#22.) Fleet pnpm version: **10.34.5** via `packageManager`,
     confirmed across all pnpm repos including client-manager.
 
+12. **One way per capability.** The unit of CI consistency is the
+    *capability*, not the repo: a repo that has a React frontend builds,
+    artifacts, and tests it the ONE fleet way; a TS codebase is eslinted
+    the ONE way; a Go backend is built/vetted/tested the ONE way; PHP
+    likewise. Repos differ only in *which* capabilities they compose and
+    in the `needs:` wiring between them — never in how a capability is
+    executed. Phase C realizes this as single-job reusable workflows
+    (one shared definition per capability job) consumed by every repo
+    that has that capability, single- or dual-stack alike.
+
 ## Standard job DAG — build first
 
 The cheapest, most fundamental gate is "does it build." A broken compile fails one
@@ -205,9 +215,15 @@ event-manager: PHP + React) prefixes a canonical id with its stack —
 the job** (e.g. `go-test-unit` / `web-test-unit`). Single-owner jobs keep
 the bare canonical id (`test-integration`, `static-analysis`, `image`,
 `ci-ok`), so bare ids stay meaningful for byte-identity matching (B5) and
-prefixes appear only where a collision forces them. Display names remain
-free-form human labels; ids are what the standard governs (`ci-ok` is the
-exception: no display-name override, it reports by id).
+prefixes appear only where a collision forces them.
+
+**Display names = job ids** (tightened 2026-08-16, superseding B4's
+free-form allowance): no job-level `name:` overrides anywhere — the
+lowercase id is what the YAML, the checks UI, and any required-check
+string all show. Human context lives in step names and comments.
+Executed: event-manager#47, lid-firmware#10; client-manager follows its
+B4 rename PR; the Node cohort's redundant `name:` lines drop with C0's
+node-ci.yml.
 
 Executed mappings — event-manager (first executed example):
 `install-composer-deps` → `php-install`, `install-composer-deps-prod` →
@@ -415,6 +431,130 @@ fix and re-push on failure. B0–B1 are in flight; B2→B3→B4→B5 run in orde
       byte-identical ACROSS cohorts (pm-agnostic — the Phase C
       extraction seed). Wiring the checker as this repo's CI gate needs
       cross-repo checkout and waits for Phase C.
+
+### Phase C task board (planned 2026-08-15 — awaiting go)
+
+Starting position (from B5): the four npm repos share an entirely
+byte-identical ci.yml; the two pnpm repos share every canonical block;
+`image` and `ci-ok` are identical across all six. The two cohorts differ
+only in the package-manager prelude. Execution loop as ever; wardley
+(npm) and hiring-tracker (pnpm) go first as templates, then alphabetical.
+
+**The sharing unit is the JOB, not the workflow** (decision 2026-08-16):
+single-job reusable workflows — `job-node-build.yml`, `job-node-lint.yml`,
+`job-node-typecheck.yml`, `job-node-test-unit.yml`, `job-docker-image.yml`
+(flat filenames; GitHub requires reusable workflows directly under
+.github/workflows/). The caller's ci.yml keeps only what is genuinely
+repo-specific — job id, `needs:` edges, inputs — and the shared repo owns
+the entire job body (runner line, permissions, steps). This works
+identically for single-stack and dual-stack repos, so no monolithic
+node-ci.yml exists at all. Rules: `ci-ok` stays a plain LOCAL job
+everywhere (repo-specific needs list; preserves the exact required-check
+string — a called job would report nested); inputs are minimal (one knob:
+`workdir`, default `.` — client-manager passes `web`); callers use
+`secrets: inherit` (org CODECOV_TOKEN) and `vars.RUNNER` resolves in the
+caller's context. Cosmetic cost, accepted: called jobs report as
+`<caller id> / <inner name>` (e.g. `build / build`) — uniform, and
+irrelevant to branch protection.
+
+- [ ] **C0** Author the five job-sized reusable workflows in this repo.
+- [ ] **C1** Convert the six Node repos to thin stub callers pinned by
+      SHA (header + five 4-line job stubs + local ci-ok): wardley-mapper
+      first (proves runner/secret/check-name mechanics), then
+      alphabetical. Repo-specific extras (hiring-tracker's
+      update-version-info) stay caller-side.
+- [ ] **C2** client-manager's web jobs adopt the SAME shared jobs with
+      `workdir: web` (`lint`, `typecheck`, `web-test-unit`; prereq: A1
+      script rename `test` → `test:unit` in web/package.json). Its
+      bespoke web gates (prettier, golden-corpus) and changes-gating
+      stay local. Go-side `job-go-*` definitions follow the same
+      pattern once gofast + client-manager converge on shapes (their
+      Go jobs are not yet block-identical — a mini-B5 for the Go
+      cohort precedes extraction there).
+- [ ] **C2b** Capability convergence: event-manager's react side — the
+      last React frontend not built the fleet way (jest not vitest, npm
+      not pnpm, tier-2 container jobs). Migrate its react tests to
+      vitest, node side to pnpm + tier-3, canonical scripts; then its
+      web jobs adopt the same shared `job-node-*` definitions
+      (`workdir` input). Heavier than pure CI work (test-framework
+      migration touches the suite) — sequenced after C1/C2, allowed to
+      slip behind C4/C5 without blocking them.
+- [ ] **C3** Composite action `setup/node-pnpm` for the steps-level
+      prelude, consumed by the shared jobs internally AND by bespoke
+      caller-side jobs (client-manager's prettier/golden-corpus) — one
+      definition of the Node toolchain setup fleet-wide even where the
+      job shape is local.
+- [ ] **C4** This repo's CI grows real gates, replacing the exit-0
+      stub: actionlint over the shared workflows + a caller-thinness
+      check (byte-identity is enforced by construction once extraction
+      lands, so tools/check-job-identity retires in favor of "callers
+      contain no inline job logic").
+- [ ] **C5** Propagation proof: Dependabot (github-actions ecosystem)
+      on every consumer tracks the shared-workflow SHA; land one canary
+      change in node-ci.yml and verify it arrives everywhere as
+      reviewable SHA-bump PRs. Tag releases in this repo so bump PRs
+      are readable (SHA pin + tag comment, fleet pinning policy).
+- [ ] **C6** event-manager's tier-2 builder-image workflow moves here
+      (the hiring-tracker fork died in A3; this centralizes the
+      remaining copy); event-manager becomes a caller. Its main ci.yml
+      stays repo-local until a second PHP repo exists.
+
+**Exit criteria** (unchanged from the phase plan): a fix to a shared job
+lands once and propagates by Dependabot SHA-bump PRs to every consumer.
+
+### Phase D task board (planned 2026-08-15 — awaiting go)
+
+Sequencing: Phase C (extraction, as specified below) remains the natural
+next execution phase — its payoff compounds into everything after. D0–D2
+are event-manager-local and small enough to run before or alongside C;
+D3–D6 are independent of C. Same execution loop as A/B.
+
+- [ ] **D0** [event-manager] Integration + e2e become hard gates —
+      remove `continue-on-error` from test-integration and test-e2e
+      (three sites in ci.yml). Evidence for flipping now: four
+      consecutive fully-green full-pipeline runs on 2026-08-15 (#44,
+      #45 ×2, #46), including e2e. The AUR-565 round-2 hardening list
+      (static bundle serve, globalTeardown sweep, scoped guards,
+      keycloak-init hardening) becomes ordinary bugfix work under a
+      hard gate — red is real signal once the gate is closed.
+      RECOMMENDATION: flip first, harden under the gate. (Alternative:
+      harden first — Jared's call.)
+- [ ] **D1** [event-manager] PHPStan hard gate — fix the phpstan.neon
+      bootstrap (the documented blocker), then remove
+      `continue-on-error` from static-analysis. Principle 3's last
+      documented stabilization window closes.
+- [ ] **D2** [event-manager] Web lint gates — the gap matrix's last ✗:
+      eslint + prettier for the react tree (deferred out of Phase B).
+      New canonical `lint` job (no collision — PHP side has none; the
+      dual-stack rule keeps it bare) wired needs: web-install → gates
+      ci-ok. Ratchet config so current code passes; debt burns down
+      like wardley's.
+- [ ] **D3** [fleet] Build-tooling consistency sweep (the shelved Make
+      question) — inventory ALL per-repo build/check tooling
+      (tools/checks/*, scripts/*.sh, tools/testing/*, package scripts,
+      Makefiles), classify each as native-toolchain / thin canonical
+      wrapper / black-box one-off, then converge: native toolchains
+      where they suffice, Make used as designed (file sets, dependency
+      edges) where a real build system earns its place — including the
+      decision on converting the Go repos to Make and whether Make
+      becomes tier 1. Fleet-wide assessment, not repo by repo.
+- [ ] **D4** [fleet] Coverage policy normalization — codecov.yml in
+      every repo with the event-manager pattern (project: target auto,
+      threshold 1% — regression guard; patch: 70% for new code).
+      Known app-level debt flagged for engineering backlog, NOT CI
+      scope: jewelry-factory's 0.25% suite, wardley-mapper's lint
+      ratchet (no-explicit-any ×176), hiring-tracker's runtime vite
+      import.
+- [ ] **D5** [decisions] Held items resolved explicitly: reply-able
+      review-thread lint annotations — fleet-wide or not at all
+      (decide, don't drift); per-branch images — re-affirm deferred
+      until per-branch staging spin-up/teardown exists.
+- [ ] **D6** [fleet health] Runner-loss investigation — four losses on
+      2026-08-15, all the same signature (job dies at exactly the
+      10-min communication timeout, logs 404) under ~11 parallel runs:
+      look at aj78 host memory/contention, consider controller-side
+      watchdog/alerting. Interim runbook (documented): empty-commit
+      re-trigger; the rerun API returns 403 for this integration.
 
 ### Phase A — per-repo catalog conformance *(COMPLETE 2026-08-15)*
 

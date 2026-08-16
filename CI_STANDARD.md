@@ -434,6 +434,77 @@ the gap by adopting the shared standard job (never by writing a bespoke one).
   build → unit/static in parallel → integration (service containers) → e2e (compose)
   → prod image.
 
+## Enforcement — what actually gates, and what does not
+
+A principle nobody can fail is a preference. Every rule below was written here
+first and violated afterwards, in a repo whose CI was green the entire time,
+because writing it down and enforcing it are different acts and only the second
+one holds. **A phase is not done when the rule is written. It is done when
+something fails if the rule is broken.**
+
+`tools/check-ci-conformance` is that something. It runs two ways from one
+source — `--repo-root` inside a repo's own CI via `job-ci-conformance.yml`, and
+`--fleet` for sweeps — because an audit and a gate that can disagree eventually
+will.
+
+| # | Principle | Enforced by | Status |
+|---|---|---|---|
+| 1 | One source of truth per pin | — | **review only** |
+| 2 | Local = CI | — | **review only** |
+| 3 | Fail closed | `check-ci-conformance` P3 | gated |
+| 4 | Standard runner line | `check-ci-conformance` P4 | gated |
+| 5 | Ephemeral-runner assumptions | — | **review only** |
+| 6 | Concurrency everywhere | `check-ci-conformance` P6 | gated |
+| 7 | BUILD ONCE | — | **review only** |
+| 8 | No multi-stage prod Dockerfiles | — | **review only** |
+| 9 | Canonical script names | `check-caller-thinness` (sweep) | audit only |
+| 10 | Lint output through standard channels | — | **review only** |
+| 11 | Registry auth in user-level npmrc | — | **review only** |
+| 12 | One way per capability | `check-caller-thinness` (sweep) | audit only |
+| 13 | Provenance in every artifact | — | **review only** |
+| 14 | A version is a commit, not a tag | — | **review only** |
+| 15 | The repo is versioned, not the artifact | — | **review only** |
+| 16 | A version exists only where consumed | — | **review only** |
+| 17 | Release is promotion, not production | `check-ci-conformance` D4, D5 | gated |
+| 18 | One workflow per repo | `check-ci-conformance` P18 | gated |
+| — | Standard job DAG | `check-ci-conformance` D1–D3 | gated |
+| — | Per-stack DAG in multi-codebase repos | — | **review only** |
+| — | SHA pinning | `check-ci-conformance` PIN | gated |
+| — | `ci-ok` is the only required check | branch protection | gated |
+| — | Fleet pnpm version | `check-fleet-versions` (sweep) | audit only |
+| — | Caller permissions cover shared jobs | `check-caller-permissions` (sweep) | audit only |
+
+Three tiers, and the difference between them matters:
+
+- **gated** — a violation turns that repo's `ci-ok` red. This is enforcement.
+- **audit only** — a checker exists but runs from a workstation when someone
+  remembers. This is a habit, and habits are what drifted in the first place.
+  Every one of these is a candidate for folding into the gate.
+- **review only** — nothing mechanical. Some of these resist automation
+  honestly (BUILD ONCE needs to know what an artifact is; the per-stack DAG
+  needs to know which stack a job belongs to). Saying so is the point: an
+  unenforced rule should be visibly unenforced, not quietly assumed.
+
+Rules that resist a checker get the next best thing — a review question
+someone has to answer, not a line someone has to remember.
+
+### Why this section exists
+
+Three rules in a row failed the same way, each in a new disguise, and the
+pattern only became visible when they were laid side by side:
+
+- `.pnpm-version` — the guard keyed on **a file**, so it stopped applying when
+  the duplication moved out of that file.
+- Principle 6's release exemption — keyed on **a filename**, so it stopped
+  applying when publishing moved into `ci.yml`.
+- Principle 17 — keyed on **an outcome** ("the publish path is exercised on
+  every pull request") with no mechanism named, so a job could satisfy the
+  sentence in prose and violate it in fact for months.
+
+The common shape: *a rule that names anything other than the act itself stops
+applying the moment the act moves.* Write rules against acts, then make
+something fail when the act is wrong.
+
 ## Phased build-out
 
 Execution mechanics for every phase: per-repo branch → PR → watch CI → merge →

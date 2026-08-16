@@ -36,9 +36,34 @@ import re
 import sys
 
 CI_NAMES = ("ci.yml", "ci.yaml")
-# The one workflow allowed to sit outside ci.yml: Dependabot's config is not a
-# pipeline, and cannot be gated by ci-ok because it is not a workflow run.
+# Dependabot's config is not a pipeline and cannot be gated by ci-ok, because
+# it is not a workflow run.
 ALLOWED_OTHER_WORKFLOWS = {"dependabot.yml", "dependabot.yaml"}
+
+
+def is_library(path: pathlib.Path) -> bool:
+    """A workflow whose only trigger is workflow_call is a library.
+
+    Principle 18 is about pipelines: a second *pipeline* cannot be gated by
+    ci-ok, so nothing stops it publishing from a commit that failed. A reusable
+    workflow has no trigger of its own — it only ever runs as a job inside the
+    caller's pipeline, gated by the caller's ci-ok. The shared job catalog in
+    this very repo is thirteen such files, so a filename allowlist would have
+    called the standard's own home the worst offender in the fleet.
+    """
+    lines = path.read_text().splitlines()
+    try:
+        start = next(i for i, ln in enumerate(lines) if re.match(r"^on:\s*$", ln))
+    except StopIteration:
+        return False
+    triggers = set()
+    for ln in lines[start + 1 :]:
+        if ln.strip() and not ln.startswith(" "):
+            break  # dedent out of the on: block
+        m = re.match(r"^  ([\w-]+):", ln)
+        if m:
+            triggers.add(m.group(1))
+    return triggers == {"workflow_call"}
 
 ROOT_RE = re.compile(
     r"^(changes|build|go-mod|install|web-build|web-install|php-install(-prod)?"
@@ -125,6 +150,9 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
     jobs = parse_jobs(text)
     graph = {j: needs_of(p) for j, p in jobs.items()}
     rollup = graph.get("ci-ok", set())
+    # "Gates hang off the build" presumes a build. A repo that compiles nothing
+    # — this one checks yaml — has no such node, and its gates are the roots.
+    has_build = any(BUILD_RE.search(j) for j in jobs)
     out: list[str] = []
 
     def bad(rule, msg):
@@ -139,6 +167,7 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
             if p.suffix in (".yml", ".yaml")
             and p.name not in CI_NAMES
             and p.name not in ALLOWED_OTHER_WORKFLOWS
+            and not is_library(p)
         )
         for name in extra:
             bad("P18", f"{name} sits outside ci.yml — nothing gates it, nothing reviews it")
@@ -167,7 +196,7 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
         blob = props.get("__raw__", "")
 
         if job != "ci-ok":
-            if not graph[job] and not ROOT_RE.match(job):
+            if has_build and not graph[job] and not ROOT_RE.match(job):
                 bad("D1", f"'{job}' has no needs: — it runs beside the build it should gate")
 
             if BUILD_RE.search(job):
@@ -243,6 +272,7 @@ def main() -> int:
     failures = 0
     checked = 0
     for repo in repos:
+        repo = repo.resolve()
         problems, ci_path = check(repo)
         if ci_path is None:
             if args.fleet:

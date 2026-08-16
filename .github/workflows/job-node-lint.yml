@@ -1,0 +1,42 @@
+# Fleet capability: lint (CI_STANDARD Principle 12 — one way per
+# capability). Single-job reusable workflow: the caller owns the job id and
+# needs: wiring; this file owns the entire job body. Callers pass
+# secrets: inherit; vars.RUNNER resolves in the caller's context.
+name: job-node-lint
+
+on:
+  workflow_call:
+    inputs:
+      workdir:
+        description: Directory containing the Node app (package.json, .node-version)
+        type: string
+        default: "."
+
+jobs:
+  lint:
+    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: ${{ inputs.workdir }}/.node-version
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          package_json_file: ${{ inputs.workdir }}/package.json
+      - name: Get pnpm store directory
+        shell: bash
+        working-directory: ${{ inputs.workdir }}
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+      - working-directory: ${{ inputs.workdir }}
+        run: pnpm install --frozen-lockfile
+      - working-directory: ${{ inputs.workdir }}
+        run: pnpm run lint

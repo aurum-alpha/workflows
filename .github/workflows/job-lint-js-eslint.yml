@@ -1,0 +1,58 @@
+# Fleet capability: lint for one deployable unit (CI_STANDARD Principle 12).
+# Language tier — eslint is JavaScript tooling, so one job serves a React client
+# and an Express server alike; the caller says which by passing `dir`.
+name: job-lint-js-eslint
+
+on:
+  workflow_call:
+    inputs:
+      workdir:
+        description: Directory holding package.json and .node-version.
+        type: string
+        default: "."
+      dir:
+        description: >-
+          The unit's source directory relative to workdir — `client`, `server`.
+          eslint is pointed at exactly this path, so the job lints one unit.
+        type: string
+        required: true
+
+jobs:
+  lint:
+    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ${{ inputs.workdir }}/.node-version
+          # Org registry for private @aurum-alpha packages; harmless no-op for
+          # repos that don't consume the scope (pnpm 10+ only reads auth from
+          # the user-level npmrc this writes).
+          registry-url: https://npm.pkg.github.com
+          scope: "@aurum-alpha"
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          package_json_file: ${{ inputs.workdir }}/package.json
+      - name: Get pnpm store directory
+        shell: bash
+        working-directory: ${{ inputs.workdir }}
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+      - working-directory: ${{ inputs.workdir }}
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+        run: pnpm install --frozen-lockfile
+      # eslint invoked directly, not via a `lint:client` script: a script whose
+      # only content is a path is repo-specific machinery the fleet should not
+      # carry (Phase F2). --max-warnings 0 because a warning nobody must fix is
+      # a warning nobody reads.
+      - working-directory: ${{ inputs.workdir }}
+        run: pnpm exec eslint ${{ inputs.dir }} --max-warnings 0

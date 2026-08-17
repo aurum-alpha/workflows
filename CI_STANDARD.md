@@ -374,9 +374,15 @@ firmware-cpp-arduino-build     billing-py-django-test-unit
 
 **purpose** — what the unit *is*, and the first thing a reader wants. Use the
 role when there is one of a kind (`client`, `server`, `service`, `worker`,
-`cli`, `firmware`); use the unit's **name** the moment there are several
+`cli`, `firmware`, `lib`); use the unit's **name** the moment there are several
 (`billing`, `auth`), because with three Django services the language stops
 discriminating and only the name does.
+
+`lib` is the one purpose that is not deployable: shared source compiled into
+other units. It earns a place because its tests are otherwise homeless —
+wardley-mapper's `shared/stripe-config.test.ts` belongs to neither client nor
+server, and pointing per-unit jobs at `client` and `server` alone would silently
+stop running it.
 
 **language** — always present, always second. `ts`, `go`, `php`, `cpp`, `py`.
 

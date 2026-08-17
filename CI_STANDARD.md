@@ -1042,6 +1042,78 @@ D3–D6 are independent of C. Same execution loop as A/B.
       unsaturated fleet — controller-log correlation at these
       timestamps is the highest-value D6 next step.
 
+### Phase F task board — one DAG per deployable unit *(scoped 2026-08-17)*
+
+Phases A–D standardized how code is gated and built; Phase E, how it is
+versioned and released. Phase F is about what the pipeline **says it is doing**,
+because in six repos it was saying something untrue.
+
+**How it surfaced.** A job-id rename claimed six repos' `build` acted on React.
+It does not: each of those repos holds a React client *and* an Express server
+under one `package.json`, and one `build` compiles both. hiring-tracker was the
+proof — its `test-unit` runs **fourteen server tests and zero client tests**, so
+the React label was not merely vague, it was inverted. The DAG showed one
+undifferentiated blob where two deployable units live, and nobody could see
+whether the server was built, linted or tested at all. It was not.
+
+**F1 — Split the DAG per deployable unit.** Each unit runs its own build and
+its own gates, converging at packaging (the multi-codebase rule). For the six
+Express repos:
+
+```
+client-ts-react-build ──► client-ts-react-lint, client-ts-react-test-unit ────┐
+server-ts-express-build ──► server-ts-express-lint, ...-test-unit ────────────┤──► image
+typecheck  (one tsconfig.json — genuinely repo-wide, so it stays bare) ───────┘
+```
+
+**F2 — Delete the repo-specific build scripts.** `credit-watch`,
+`expense-splitter` and `flight-watch` each carry a `script/build.ts` that hand-
+curates 28 dependencies to bundle. The other three already use plain
+`esbuild --platform=node --bundle --packages=external --format=esm`, which is
+the standard and the majority. The shared job owns that invocation; repos keep
+only `server/index.ts` as the entry point and no build script at all.
+
+*Known trade, recorded rather than discovered later: the allowlist exists "to
+reduce openat(2) syscalls which helps cold start times". Whether that was
+measured is unknown. Standardizing gives it up.*
+
+**F3 — Tests exist for every unit.** Splitting the test job makes absence
+visible for the first time:
+
+| repo | server tests | client tests |
+|---|---|---|
+| credit-watch | 0 | 3 |
+| flight-watch | 0 | 1 |
+| jewelry-factory | 0 | 2 |
+| wardley-mapper | 0 | 3 |
+| expense-splitter | 1 | 2 |
+| hiring-tracker | 14 | 0 |
+
+**A unit with no tests warns, it does not block — for now.** The gap is
+pre-existing and predates the standard; failing five of six repos on the day the
+split lands would punish repos for a condition this project exists to fix. F3
+closes it, and the warning is what makes the debt visible until it does.
+
+The mechanism matters: the job runs with `--passWithNoTests` and a step that
+counts test files and emits a warning annotation when the count is zero. **A
+real test failure still fails the job.** Blanket `continue-on-error` would
+suppress genuine breakage too, which is the trap this avoids.
+
+**F4 — Rename every job id** to `<purpose>-<language>[-<framework>]-<capability>`
+once F1 lands, since the split creates the jobs the names describe.
+
+**F5 — Framework-tier shared jobs.** A framework earns a shared job only when
+it owns a tool: React does (`vite build`), CodeIgniter 4 does (`spark test`),
+Arduino does (`pio run`). Express does not — it routes requests and owns no
+bundler, so its build is a language-tier job. The test for admitting a new
+framework job is "what command would it run?"; if there is no single answer,
+there is no job.
+
+**F6 — Enforce what F1–F5 establish.** Rules with no gate drift; this document
+has proved that five times. N1 already checks the language token. Purpose and
+framework cannot be proved from the file and stay review-only, and the checker
+says so rather than implying coverage it lacks.
+
 ### Phase E task board — versioning and releases *(scoped 2026-08-16)*
 
 Phases A–D standardized how code is *gated* and *built*. Nothing had ever

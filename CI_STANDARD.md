@@ -21,8 +21,29 @@ Status: **agreed 2026-08-14** (rev 2 after Jared's review). Remaining open items
    The pin also lives beside what it pins: the node app directory owns its
    `.node-version`, because that is where the shared jobs look
    (`<workdir>/.node-version`).
-2. **Local = CI.** Every gate is a runnable script in the repo (`tools/checks/*` pattern);
-   the workflow job is a thin wrapper with the same name. No logic that exists only in YAML.
+2. **Local = CI.** A developer must be able to run any gate locally with one
+   command, and get what CI gets. **The shared job is that command's single
+   definition** — not a per-repo script it wraps.
+
+   *Amended 2026-08-17.* This originally read "every gate is a runnable script
+   in the repo (`tools/checks/*`); the workflow job is a thin wrapper with the
+   same name." That put the definition in eleven places and made drift the
+   default — B5 existed solely to police byte-identity between copies that kept
+   diverging, which is the tell that the shape was wrong. Reproducibility was
+   the goal; a script per repo was only ever the mechanism, and a shared job
+   serves the goal better because there is one definition rather than eleven
+   that agree today.
+
+   What the original rule was right about, and still binds: **no logic that
+   exists only in YAML.** A shared job runs a tool with flags — `pnpm exec
+   eslint client --max-warnings 0` — which a developer can read off the job and
+   run verbatim. It must not grow branching, conditionals or computation that
+   cannot be reproduced by typing the command. The moment a job needs logic, the
+   logic belongs in a committed script that both CI and the developer invoke.
+
+   Repo-specific *policy* still goes in the repo — but as configuration the tool
+   reads (`vite.config.ts`, `eslint.config.mjs`), never as a wrapper script whose
+   job is to pass a path.
 3. **Fail closed.** Nothing publishes unless every gate passes. `continue-on-error` is
    allowed only as a documented stabilization window with a ticket reference and an
    expiry expectation.

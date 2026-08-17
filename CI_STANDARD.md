@@ -27,12 +27,13 @@ Status: **agreed 2026-08-14** (rev 2 after Jared's review). Remaining open items
 
    *Amended 2026-08-17.* This originally read "every gate is a runnable script
    in the repo (`tools/checks/*`); the workflow job is a thin wrapper with the
-   same name." That put the definition in eleven places and made drift the
-   default — B5 existed solely to police byte-identity between copies that kept
-   diverging, which is the tell that the shape was wrong. Reproducibility was
-   the goal; a script per repo was only ever the mechanism, and a shared job
-   serves the goal better because there is one definition rather than eleven
-   that agree today.
+   same name." That is backwards under Principle 19: it makes each repo the
+   author of its own gate and the catalog a wrapper around eleven opinions.
+   Best practice is defined once, in the catalog, per language and framework;
+   repos adopt it. Reproducibility was the goal and a per-repo script was only
+   ever the mechanism — and a poor one, since B5 existed solely to police
+   byte-identity between copies that kept diverging, which is the tell that
+   there should have been one copy.
 
    What the original rule was right about, and still binds: **no logic that
    exists only in YAML.** A shared job runs a tool with flags — `pnpm exec
@@ -187,6 +188,31 @@ Status: **agreed 2026-08-14** (rev 2 after Jared's review). Remaining open items
     does not rebuild an unrelated image. Where two things need different
     concurrency, use a job-level `concurrency:` group rather than a second
     file.
+
+19. **The catalog is where best practice lives; a repo-local job is a gap in
+    it.** `aurum-alpha/workflows` is not a convenience library of things several
+    repos happened to need. It is the definition of how this organisation builds,
+    lints, tests and ships each language and framework it uses — and repos are
+    standardized *onto* those definitions rather than each arriving at its own
+    answer.
+
+    The target state is a repo with **no repo-local jobs at all**. Its `ci.yml`
+    names its deployable units, wires the DAG, and calls the catalog.
+
+    A repo-local job is therefore not a style violation, it is a **claim about
+    the catalog**: *"nothing here covers this case."* That claim is sometimes
+    true — gha-runner-controller packages a `.deb` with nfpm and builds a runner
+    image from the actions-runner base, and no other repo does either. It is
+    often false, and then the fix is a catalog job, not a local one.
+
+    So every local job carries the gap it represents, and closing that gap is
+    backlog rather than decoration. `tools/check-caller-thinness` holds the
+    allow-list; an entry there is a debt with a name, not a permission.
+
+    *This is what makes the difference between a standard and a suggestion. Two
+    repos solving the same problem two ways is not diversity, it is the fleet
+    having no opinion — and an organisation with no opinion re-litigates the
+    same decision every time someone starts a service.*
 
 ## Standard job DAG — build first
 

@@ -91,6 +91,14 @@ jobs:
       # --passWithNoTests is what makes the warning above the *only* signal for
       # an empty unit; without it vitest exits non-zero and the job blocks,
       # which is the F3 decision reversed.
+      #
+      # --coverage.include scopes the report to this unit. --dir already scopes
+      # which TESTS run, but coverage is configured separately: the canary's
+      # server job printed a table of client/src/lib and shared files, because
+      # the repo's vitest.config.ts still listed them. Uploaded under the
+      # `server` flag that would have attributed client code to the server and
+      # made every per-unit coverage number a lie. Set here, not in the repo, so
+      # it cannot drift back.
       - name: Unit tests
         working-directory: ${{ inputs.workdir }}
         # No `--` before the flags: pnpm 10 swallows a literal `--`, so vitest
@@ -100,6 +108,7 @@ jobs:
           --dir ${{ inputs.dir }}
           --passWithNoTests
           --coverage
+          --coverage.include='${{ inputs.dir }}/**'
           --reporter=default --reporter=junit
           --outputFile.junit=test-report-${{ inputs.dir }}.junit.xml
 

@@ -423,6 +423,27 @@ hiring-tracker's `react-test-unit` ran fourteen server tests and zero client
 tests. Naming a thing after the tool that happens to process it is the same
 error as naming it after a collision. Name the unit.*
 
+### Capability names: category first, specialisation second
+
+`test-unit`, `test-integration`, `test-e2e` — not `unit-test`. English says
+"unit test"; we invert it deliberately, for the same reason purpose comes first
+in a job id: **the general category leads, so families group.**
+
+```
+test-e2e            e2e-test
+test-integration    integration-test      ← scattered
+test-unit           unit-test
+```
+
+Sorted, listed in a checks UI, or grepped, the inverted form keeps every kind of
+test together and makes a missing one visible. The uninverted form scatters them
+across the alphabet.
+
+The rule generalises: any capability with variants takes the family name first
+and the variant second. Capabilities with no variants stay single words —
+`lint`, `build`, `typecheck`, `fmt`, `vet` — and `lint` is not a member of the
+test family however much it feels adjacent.
+
 ### Shared job names: `<function>-<language>-<runner|framework>`
 
 A caller names the **unit**; a shared job names the **tool it runs**. Same

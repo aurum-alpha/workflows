@@ -78,9 +78,13 @@ def is_library(path: pathlib.Path) -> bool:
 # version hardcoded `build`, `web-build`, `go-mod` and friends, so the moment a
 # repo renamed `build` to `react-build` — obeying N1 — the checker called its
 # own standard a violation. Enumerating names is how a checker acquires the
-# drift it exists to prevent.
+# drift it exists to prevent. The prefix repeats — `([a-z0-9]+-)*` — because a
+# job id carries purpose, language and framework before the capability, and an
+# earlier version allowed exactly one segment, so `client-ts-react-build` read
+# as an orphan the first time a real three-token id appeared.
 ROOT_RE = re.compile(
-    r"^(changes|create-docker-[\w-]+-image|([a-z]+-)?(mod|build|install(-prod)?))$"
+    r"^(changes|create-docker-[\w-]+-image"
+    r"|([a-z0-9]+-)*(mod|build|install(-prod)?))$"
 )
 BUILD_RE = re.compile(r"(^|-)(build|install)$")
 GATE_RE = re.compile(r"(lint|typecheck|test|vet|gofmt|prettier|analysis|scanner|check|audit)")

@@ -92,25 +92,38 @@ jobs:
       # an empty unit; without it vitest exits non-zero and the job blocks,
       # which is the F3 decision reversed.
       #
-      # --coverage.include scopes the report to this unit. --dir already scopes
-      # which TESTS run, but coverage is configured separately: the canary's
-      # server job printed a table of client/src/lib and shared files, because
-      # the repo's vitest.config.ts still listed them. Uploaded under the
-      # `server` flag that would have attributed client code to the server and
-      # made every per-unit coverage number a lie. Set here, not in the repo, so
-      # it cannot drift back.
+      # Coverage is configured separately from --dir, so the canary's server job
+      # printed a table of client/src/lib and shared files. Under the `server`
+      # flag that attributes client code to the server and makes every per-unit
+      # number a lie.
+      #
+      # The fix SUBTRACTS the other units rather than redefining the set.
+      # Overriding --coverage.include='<dir>/**' also removed the leak, but
+      # replaced the repo's curated include (client/src/lib) with every .tsx in
+      # client/src — coverage fell from 49% to 4% and turned codecov red. That
+      # is not a truer number, just a different question. Excluding siblings
+      # keeps the repo's intent and removes only what does not belong.
       - name: Unit tests
         working-directory: ${{ inputs.workdir }}
+        env:
+          UNIT: ${{ inputs.dir }}
         # No `--` before the flags: pnpm 10 swallows a literal `--`, so vitest
         # would never see them (verified the hard way).
-        run: >
-          pnpm exec vitest run
-          --dir ${{ inputs.dir }}
-          --passWithNoTests
-          --coverage
-          --coverage.include='${{ inputs.dir }}/**'
-          --reporter=default --reporter=junit
-          --outputFile.junit=test-report-${{ inputs.dir }}.junit.xml
+        run: |
+          set -euo pipefail
+          # The standard unit directories (F0). Everything that is not this unit
+          # is excluded from coverage, so a repo conforms to the job rather than
+          # the job taking a per-caller input.
+          excludes=()
+          for u in client server shared; do
+            [ "$u" = "$UNIT" ] || excludes+=(--coverage.exclude="$u/**")
+          done
+          pnpm exec vitest run \
+            --dir "$UNIT" \
+            --passWithNoTests \
+            --coverage "${excludes[@]}" \
+            --reporter=default --reporter=junit \
+            --outputFile.junit="test-report-$UNIT.junit.xml"
 
       - name: Upload coverage to Codecov
         # Nothing ran, so there is no coverage to upload and Codecov would fail

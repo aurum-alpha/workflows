@@ -7,7 +7,7 @@
 # body. It invokes vitest directly rather than a per-repo `test:unit` script,
 # because a script that only forwards a path is repo-specific machinery the
 # fleet should not be carrying (Phase F2).
-name: job-ts-test-unit
+name: job-test-unit-js-vitest
 
 on:
   workflow_call:

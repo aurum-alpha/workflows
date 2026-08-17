@@ -423,6 +423,32 @@ hiring-tracker's `react-test-unit` ran fourteen server tests and zero client
 tests. Naming a thing after the tool that happens to process it is the same
 error as naming it after a collision. Name the unit.*
 
+### Shared job names: `<function>-<language>-<runner|framework>`
+
+A caller names the **unit**; a shared job names the **tool it runs**. Same
+three-part discipline, different subject.
+
+```
+job-test-unit-js-vitest      job-lint-js-eslint        job-typecheck-ts-tsc
+job-build-js-vite            job-bundle-js-esbuild
+job-test-unit-go             job-fmt-go                job-vet-go
+job-test-unit-php-phpunit    job-build-cpp-pio
+```
+
+The third token is the runner or framework that actually executes the function,
+and it is **absent where the language is the tool**: `go test`, `go vet` and
+`gofmt` are Go itself, so `job-test-unit-go` has nothing to add. Swapping vitest
+for jest is then a visible rename — `job-test-unit-js-jest` — rather than a
+silent change of behaviour inside a file whose name never moved.
+
+Language here is the **tool's ecosystem**, not the source's: vitest is a
+JavaScript runner that happens to read TypeScript, so it is `js`, while
+`typecheck-ts-tsc` is `ts` because `tsc` exists only for TypeScript. A caller
+written in TypeScript therefore calls a `js` job, and that is correct — the
+caller names its source, the job names its tool. This is the same distinction
+that broke once already: a shared job proves the language of the tooling, never
+which unit the source belongs to.
+
 **Display names = job ids** (tightened 2026-08-16, superseding B4's
 free-form allowance): no job-level `name:` overrides anywhere — the
 lowercase id is what the YAML, the checks UI, and any required-check
@@ -1055,6 +1081,25 @@ proof — its `test-unit` runs **fourteen server tests and zero client tests**, 
 the React label was not merely vague, it was inverted. The DAG showed one
 undifferentiated blob where two deployable units live, and nobody could see
 whether the server was built, linted or tested at all. It was not.
+
+**F0 — The standard shape of a TS client+server repo.** The variations below
+are not constraints to design around; they are the drift Phase F removes. Every
+one of the six converges on this, and the shared jobs then need no per-repo
+inputs beyond which unit they are pointed at.
+
+| | standard | seen today |
+|---|---|---|
+| unit source | `client/`, `server/` | already uniform |
+| test files | `*.test.ts(x)` colocated under the unit dir | uniform where they exist |
+| vitest `include` | **absent** — the job passes `--dir client\|server` | `client/src/lib/**`, `client/src/**`, `**/*.{test,spec}.{js,ts}` — each pins tests to one unit and makes a per-unit split impossible |
+| client bundle | `dist/public` (vite default target) | uniform |
+| server bundle | `dist/index.js`, esm, `--packages=external` | 3 repos match; 3 emit `dist/index.cjs` via a bespoke script |
+| `start` | `node dist/index.js` | follows the bundle |
+| build scripts | **none** | `script/build.ts` in 3 repos |
+
+The vitest `include` line is the one that matters most: while it pins every test
+to `client/`, pointing a job at `server/` finds nothing no matter how the DAG is
+drawn, and the split would be cosmetic.
 
 **F1 — Split the DAG per deployable unit.** Each unit runs its own build and
 its own gates, converging at packaging (the multi-codebase rule). For the six

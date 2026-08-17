@@ -27,6 +27,9 @@ principle needed enforcing:
   D4  publish is in ci-ok  a publish job outside the rollup fails invisibly
   D5  publish runs on PRs  the main-check goes on the step, never the job
   N1  the language token is true  a stub calling job-go-* has 'go' in position 2
+  PERM caller grant covers callee  a called workflow can never hold more than
+       the job calling it — exceed it and GitHub rejects the whole FILE at
+       startup: zero jobs, no logs, and actionlint sees nothing wrong
 
 N1 checks the LANGUAGE token and nothing else, because the language is all a
 `uses:` line can prove. Purpose and framework are review-only: no line in the
@@ -129,6 +132,37 @@ MAIN_GATE_RE = re.compile(
     r"refs/heads/main|is_default_branch|event_name\s*==\s*'push'"
 )
 
+# What each shared job asks for, so a caller's grant can be checked against it.
+# This lived in a separate tool that had to be REMEMBERED, and the Phase F canary
+# failed its first run because it was not. A checker you must remember to run is
+# the same failure mode as a rule nobody enforces — so it moves in here, where
+# every repo's own CI runs it.
+CALLEE_NEEDS = {
+    "job-image-docker": {"packages": "write"},
+    "job-docker-image": {"packages": "write"},
+    "job-image-cached": {"packages": "write"},
+    "job-release-risk": {"pull-requests": "write"},
+}
+PERM_RANK = {"none": 0, "read": 1, "write": 2}
+
+
+def workflow_permissions(text: str) -> dict[str, str]:
+    """The workflow-level permissions block, which is the default every job gets."""
+    lines = text.splitlines()
+    try:
+        start = next(i for i, ln in enumerate(lines) if re.match(r"^permissions:\s*$", ln))
+    except StopIteration:
+        return {}
+    out = {}
+    for ln in lines[start + 1 :]:
+        if ln.strip() and not ln.startswith(" "):
+            break
+        m = re.match(r"^  ([\w-]+):\s*(\S+)", ln)
+        if m:
+            out[m.group(1)] = m.group(2)
+    return out
+
+
 CONCURRENCY_EXPECTED = "cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}"
 
 
@@ -195,6 +229,7 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
     # "Gates hang off the build" presumes a build. A repo that compiles nothing
     # — this one checks yaml — has no such node, and its gates are the roots.
     has_build = any(BUILD_RE.search(j) for j in jobs)
+    wf_perms = workflow_permissions(text)
     out: list[str] = []
 
     def bad(rule, msg):
@@ -247,6 +282,24 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
                     bad("D2", f"'{job}' is a build but needs gate(s): {', '.join(inv)}")
 
             uses = props.get("uses", "")
+            for callee, needed in CALLEE_NEEDS.items():
+                if f"/{callee}.yml@" not in uses:
+                    continue
+                # A job-level block REPLACES the workflow default rather than
+                # adding to it, so naming any scope zeroes every unnamed one.
+                job_perms = re.findall(r"([\w-]+):\s*(read|write|none)", props.get("permissions", ""))
+                effective = dict(job_perms) if job_perms else wf_perms
+                for scope, level in needed.items():
+                    have = effective.get(scope, "none")
+                    if PERM_RANK.get(have, 0) < PERM_RANK[level]:
+                        bad(
+                            "PERM",
+                            f"'{job}' calls {callee} which requests {scope}: {level}, "
+                            f"but its effective grant is {scope}: {have} — GitHub "
+                            "rejects the whole file at startup, with zero jobs and "
+                            "no logs",
+                        )
+
             for marker, lang in LANGUAGE_OF_SHARED_JOB.items():
                 if marker not in uses:
                     continue

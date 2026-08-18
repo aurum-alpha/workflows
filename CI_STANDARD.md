@@ -1407,6 +1407,39 @@ no rule that was even capable of noticing — which is the failure mode Principl
 17 describes, arriving somewhere new. `ci-ok` is a rollup of gates, and a rollup
 is only as honest as the weakest claim underneath it.
 
+**F9 — The two `.cjs` repos change module format, and that is not cosmetic.**
+`credit-watch` and `expense-splitter` both declare `"type": "module"` in
+package.json while their `script/build.ts` emits `format: "cjs"` to
+`dist/index.cjs`. The `.cjs` extension is what makes Node read it as CommonJS
+despite the type field, so it works today by extension alone.
+
+The catalog emits `--format=esm` to `dist/index.js`. Under `"type": "module"`
+that is ESM — correct, and it breaks both repos, because `server/static.ts` in
+each resolves the client bundle with a bare `__dirname`:
+
+```ts
+const distPath = path.resolve(__dirname, "public");   // undefined under ESM
+```
+
+`__dirname` exists in those repos only as a side effect of the CJS bundle. The
+server throws on startup the moment the format changes — the same class of
+break as the vite import, arriving by a different route, and invisible to every
+gate we have because nothing starts the container (see F8).
+
+So the wave for these two is not a re-wire. It carries, per repo:
+
+- `server/static.ts` → `import.meta.dirname` (or `fileURLToPath(import.meta.url)`,
+  which is what the two pilot repos use)
+- `start` script → `dist/index.js`
+- a local boot of the built artifact before the PR opens, not after
+
+`jewelry-factory` is not affected — it already builds `dist/index.js` — but it
+does carry the unguarded static `vite` import that hiring-tracker had.
+
+*Found by reading the three remaining repos before touching them rather than by
+a red pipeline, which is the only reason it is written here and not in a
+post-mortem.*
+
 **F7 — Rollout order.** wardley-mapper went first (#15, twelve checks green on
 workflows `684617a9`). What that run proved, stated precisely: **the catalog
 works.** All three defects it caught live in `workflows`, not in the repo —

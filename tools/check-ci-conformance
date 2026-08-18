@@ -33,6 +33,11 @@ principle needed enforcing:
                           needs. Distinct from D1: a job can sit correctly
                           downstream of the build and still be absent from the
                           rollup, and then its failure stops nothing
+  D8  needs.<id> resolves    every ${{ needs.X.* }} expression names a job that
+                          exists and that this job declares in needs:. A rename
+                          that updates job ids and needs: lists still leaves
+                          these dangling, and the expression silently evaluates
+                          to empty rather than failing
   D7  something runs it    a job that builds an image either starts it
                           (assert_starts, the default) or is depended on by a
                           job that runs it — an e2e suite against the container
@@ -302,7 +307,7 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
 
     # --- P3 / P4 / D*: per job -------------------------------------------
     for job, props in sorted(jobs.items()):
-        blob = props.get("__raw__", "")
+        blob = job_block(text, job)
 
         if job != "ci-ok":
             # Build first, fail fast. A gate running beside the build burns a
@@ -338,6 +343,17 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
                     bad("IN", f"'{job}' passes '{k}', which {uses.split('/')[-1].split('@')[0]} does not declare — the whole file fails at startup")
                 for k in sorted(required - passed):
                     bad("IN", f"'{job}' omits required input '{k}'")
+
+            # --- D8: needs.<id> expressions resolve ------------------------
+            # A rename moves job ids and needs: lists; ${{ needs.X.outputs.Y }}
+            # is easy to miss, and GitHub does not fail on it — the expression
+            # just evaluates to empty, so a version tag becomes "v" and nobody
+            # notices until the artifact is wrong.
+            for ref in sorted(set(re.findall(r"needs\.([\w-]+)\.", blob))):
+                if ref not in jobs:
+                    bad("D8", f"'{job}' reads needs.{ref}.* but no job '{ref}' exists")
+                elif ref not in graph[job]:
+                    bad("D8", f"'{job}' reads needs.{ref}.* but does not list '{ref}' in needs:")
 
             # --- D7: an image nothing runs ---------------------------------
             if "job-image-docker" in uses or "job-docker-image" in uses:
@@ -451,6 +467,24 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
             bad("P3", f"continue-on-error: {v} — nothing publishes unless every gate passes")
 
     return out, str(ci.relative_to(repo))
+
+
+def job_block(text: str, job: str) -> str:
+    """The raw lines of one job, from the original file.
+
+    parse_jobs folds continuation lines into per-key strings, which is enough
+    for `needs:` and `uses:` but loses step bodies — where ${{ needs.X.* }}
+    expressions actually live.
+    """
+    m = re.search(rf"^  {re.escape(job)}:\s*$", text, re.M)
+    if not m:
+        return ""
+    out = []
+    for ln in text[m.end():].splitlines()[1:]:
+        if ln.strip() and not ln.startswith("    "):
+            break
+        out.append(ln)
+    return "\n".join(out)
 
 
 def with_block(text: str, job: str) -> str:

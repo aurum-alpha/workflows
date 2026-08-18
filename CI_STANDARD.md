@@ -290,6 +290,17 @@ telling you what else is wrong.
   required check, so adding/removing gates never touches branch protection.
   The check reports under the job id `ci-ok` (no display-name override) —
   that exact string is what branch protection requires, fleet-wide.
+- **`always()` and not `!cancelled()`, deliberately.** A push that supersedes an
+  in-flight run cancels its jobs, and `ci-ok` then runs, sees `cancelled`, and
+  goes red — so every quick follow-up push leaves a red check behind on a run
+  nobody cares about. The tempting fix is `if: !cancelled()`, which skips the
+  rollup when the *run* was cancelled while still catching an individual job
+  that was cancelled by its own timeout.
+
+  Do not. A skipped required check can satisfy branch protection, so a
+  cancelled run would leave a PR mergeable with no gate having reported. The
+  noise is the cheaper failure: a stale red is confusing, a silent green is
+  dangerous. Read the newest run, not the superseded one.
 
 ### Multi-codebase repos — one DAG per stack, converging at packaging
 

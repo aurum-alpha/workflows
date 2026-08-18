@@ -33,9 +33,19 @@ on:
       start_env:
         description: >-
           Newline-separated KEY=VALUE pairs the container needs to reach the
-          point of listening — a DATABASE_URL pointing at the service below, a
+          point of listening — a DATABASE_URL pointing at a service below, a
           dummy API key. Not secrets: this proves the image boots, not that it
           works against production.
+        type: string
+        default: ""
+      start_services:
+        description: >-
+          Newline-separated `hostname=image` backing services to start first, on
+          a shared network, e.g. `db=postgres:17`. An app that runs migrations
+          at boot needs a database to start at all, so "it runs" means "it runs
+          with what it needs" — exempting those repos would leave the check
+          covering only the ones that were never going to break. Reference them
+          from start_env by hostname.
         type: string
         default: ""
 
@@ -114,19 +124,38 @@ jobs:
           TAGS: ${{ steps.meta.outputs.tags }}
           PORT: ${{ inputs.port }}
           START_ENV: ${{ inputs.start_env }}
+          START_SERVICES: ${{ inputs.start_services }}
         run: |
           set -euo pipefail
           image=$(printf '%s\n' "$TAGS" | head -n1)
-          echo "Starting $image"
+          net="imgcheck-$GITHUB_RUN_ID"
+          docker network create "$net" >/dev/null
+
+          # Backing services first, addressable by hostname on the shared net.
+          svc=()
+          while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            name="${line%%=*}"; img="${line#*=}"
+            echo "Starting service $name ($img)"
+            svc+=("$(docker run -d --rm --network "$net" --network-alias "$name" \
+                      -e POSTGRES_PASSWORD=postgres -e POSTGRES_USER=postgres \
+                      -e POSTGRES_DB=postgres "$img")")
+          done <<< "$START_SERVICES"
 
           args=()
           while IFS= read -r line; do
             [ -n "$line" ] && args+=(-e "$line")
           done <<< "$START_ENV"
 
-          cid=$(docker run -d --rm -p "127.0.0.1:$PORT:$PORT" \
+          echo "Starting $image"
+          cid=$(docker run -d --rm --network "$net" -p "127.0.0.1:$PORT:$PORT" \
                   -e "PORT=$PORT" "${args[@]}" "$image")
-          trap 'docker logs "$cid" 2>&1 | tail -40 || true; docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
+          cleanup() {
+            docker logs "$cid" 2>&1 | tail -40 || true
+            docker rm -f "$cid" "${svc[@]}" >/dev/null 2>&1 || true
+            docker network rm "$net" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
 
           for i in $(seq 1 30); do
             # Died is a verdict, not something to wait out.

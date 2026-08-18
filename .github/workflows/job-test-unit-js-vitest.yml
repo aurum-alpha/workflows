@@ -92,7 +92,7 @@ jobs:
       # an empty unit; without it vitest exits non-zero and the job blocks,
       # which is the F3 decision reversed.
       #
-      # Coverage is configured separately from --dir, so the canary's server job
+      # Coverage is configured separately from --dir, so the one-box repo's server job
       # printed a table of client/src/lib and shared files. Under the `server`
       # flag that attributes client code to the server and makes every per-unit
       # number a lie.

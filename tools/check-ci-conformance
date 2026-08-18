@@ -29,7 +29,10 @@ principle needed enforcing:
   N1  the language token is true  a stub calling job-go-* has 'go' in position 2
   PERM caller grant covers callee  a called workflow can never hold more than
        the job calling it — exceed it and GitHub rejects the whole FILE at
-       startup: zero jobs, no logs, and actionlint sees nothing wrong
+       startup: zero jobs, no logs, and actionlint sees nothing wrong. A caller
+       that declares nothing is reported too, but as what it is: reliance on the
+       repository default, which the file cannot show and an org setting can
+       revoke from every caller at once
 
 N1 checks the LANGUAGE token and nothing else, because the language is all a
 `uses:` line can prove. Purpose and framework are review-only: no line in the
@@ -133,8 +136,8 @@ MAIN_GATE_RE = re.compile(
 )
 
 # What each shared job asks for, so a caller's grant can be checked against it.
-# This lived in a separate tool that had to be REMEMBERED, and the Phase F canary
-# failed its first run because it was not. A checker you must remember to run is
+# This lived in a separate tool that had to be REMEMBERED, and the Phase F one-box
+# run failed its first attempt because it was not. A checker you must remember to run is
 # the same failure mode as a rule nobody enforces — so it moves in here, where
 # every repo's own CI runs it.
 CALLEE_NEEDS = {
@@ -288,8 +291,26 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
                 # A job-level block REPLACES the workflow default rather than
                 # adding to it, so naming any scope zeroes every unnamed one.
                 job_perms = re.findall(r"([\w-]+):\s*(read|write|none)", props.get("permissions", ""))
+                # Three cases, and only two of them are provable from the file.
+                # With no block at either level the grant is the REPOSITORY
+                # default, which this file cannot show — so do not claim a
+                # startup failure that may not happen. Reported, but for what it
+                # actually is: an implicit grant that an org-wide flip to
+                # read-only would revoke from every caller at once, as a
+                # startup_failure with no logs.
+                declared = bool(job_perms) or bool(wf_perms)
                 effective = dict(job_perms) if job_perms else wf_perms
                 for scope, level in needed.items():
+                    if not declared:
+                        bad(
+                            "PERM",
+                            f"'{job}' calls {callee} which requests {scope}: {level}, "
+                            f"but grants nothing at job or workflow level — it runs "
+                            f"on the repository default token permissions. Declare "
+                            f"{scope}: {level} on the job so the grant survives a "
+                            f"change to that default",
+                        )
+                        continue
                     have = effective.get(scope, "none")
                     if PERM_RANK.get(have, 0) < PERM_RANK[level]:
                         bad(

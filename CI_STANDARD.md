@@ -339,6 +339,31 @@ next change).
 - Callers reference by SHA (same pinning policy).
 - Access: resolved — the repo is public.
 
+### One-box before the wave — and why it is not a canary
+
+A change to a shared job reaches every consumer at once. So one repo re-pins
+first, its CI is watched end to end, and only then does the fleet follow. This
+is the **one-box stage**: deploy to a single instance, watch it, proceed.
+
+**It is not a canary.** A canary is ongoing synthetic automation running against
+a live production system, whose job is to find issues before customers report
+them. Nothing described in this document does that — there is no live system in
+the loop and nothing runs continuously. Calling a one-box run a canary inflates
+what it proves: a one-box stage retires *integration* risk in the changed
+artifact, on one instance, once.
+
+Two consequences that follow from stating it correctly:
+
+- **A one-box repo must be drawn for representativeness, not for ease.** It
+  generalises to the fleet only on the axes it shares with the fleet. Pick the
+  repo carrying the work the others carry; where no single repo covers every
+  axis, the one-box stage is a *set*, not a repo. C2 is the precedent: two
+  shared-job bugs surfaced only on the one repo exercising private packages,
+  because it was the only repo that could surface them.
+- **The fleet has no canary at all.** No repo here runs synthetic checks against
+  a deployed system. That is a real gap, and it is outside this document's
+  scope — CI proves an artifact is sound, not that a running system is.
+
 ## Standard job catalog
 
 Convergence plan: **(A)** every repo adopts the standard DAG with these canonical
@@ -870,7 +895,7 @@ irrelevant to branch protection.
       Go jobs are not yet block-identical — a mini-B5 for the Go
       cohort precedes extraction there). *Landed 2026-08-16
       (client-manager#27). Two shared-job fixes were required and are
-      the C5 canary lesson in miniature: (1) pnpm 10+ only honors
+      the C5 one-box lesson in miniature: (1) pnpm 10+ only honors
       registry auth from the user-level npmrc, so the shared install
       became registry-aware for @aurum-alpha (workflows#12); (2) an
       explicit job-level permissions block REPLACES the caller's token
@@ -919,20 +944,20 @@ irrelevant to branch protection.
       run caught SC2086 (unquoted `$GITHUB_ENV`) in all four node jobs —
       fixed same commit.*
 - [x] **C5** Propagation proof: Dependabot (github-actions ecosystem)
-      on every consumer tracks the shared-workflow SHA; land one canary
+      on every consumer tracks the shared-workflow SHA; land one one-box
       change in node-ci.yml and verify it arrives everywhere as
       reviewable SHA-bump PRs. Tag releases in this repo so bump PRs
       are readable (SHA pin + tag comment, fleet pinning policy).
-      *Proven 2026-08-16. The canary process ran end to end: merged
+      *Proven 2026-08-16. The one-box process ran end to end: merged
       workflows#6 (checkout 4.4.0→7.0.1) alone → re-pinned
       expense-splitter (#21) to that SHA → full run green through all
       five capabilities → then batched #7–#10 (upload-artifact v7,
       buildx v4, download-artifact v8, setup-node v7; artifact
       cross-major compat pre-proven by lid-firmware run 31920424032)
       → fleet re-pin wave to the final SHA. The C2 rollout separately
-      demonstrated why single-caller canaries matter: two shared-job
+      demonstrated why single-caller one-box stages matter: two shared-job
       bugs (registry auth, packages: read) only surfaced on the one
-      repo exercising private packages. Canary sets should include
+      repo exercising private packages. One-box repos should include
       client-manager's web stubs for that reason. Tags remain
       admin-side (git proxy scopes writes to refs/heads/*): one pass
       at the end per Jared.*
@@ -1233,6 +1258,30 @@ has proved that five times. N1 already checks the language token. Purpose and
 framework cannot be proved from the file and stay review-only, and the checker
 says so rather than implying coverage it lacks.
 
+**F7 — Rollout order.** wardley-mapper went first (#15, twelve checks green on
+workflows `684617a9`). What that run proved, stated precisely: **the catalog
+works.** All three defects it caught live in `workflows`, not in the repo —
+a job-level `permissions:` block that replaced the caller grant and produced a
+`startup_failure` with no jobs and no logs; coverage scoped repo-wide while
+`--dir` scoped the tests; and the `--coverage.include` fix that replaced the
+curated set and dropped the project number 49.46% → 4.24%. Zero of the three
+were migration defects.
+
+It therefore does **not** generalise to the wave, because it is unrepresentative
+on the two axes the wave turns on: it has no `script/build.ts` (F2 ran zero
+times) and no server tests (its server job took the warn path, so per-unit
+coverage never had to produce a number on the server side).
+
+So the one-box stage is a *pair*, chosen for coverage of those axes:
+
+| repo | why it is in the set | axis it proves |
+|---|---|---|
+| flight-watch | `script/build.ts`, 0 server tests, smallest surface | F2 deletion, warn path |
+| hiring-tracker | 14 server tests, 0 client tests, no build script | F1 split, per-unit coverage on a real suite |
+
+Between them every axis credit-watch, expense-splitter and jewelry-factory vary
+on is covered, so those three follow as interpolation rather than new risk.
+
 ### Phase E task board — versioning and releases *(scoped 2026-08-16)*
 
 Phases A–D standardized how code is *gated* and *built*. Nothing had ever
@@ -1316,7 +1365,7 @@ claim becomes a diff someone can challenge (Principle 14).
       plus the two web halves, which share one build job and so land as a
       single re-pin wave; PHP last, since event-manager is the only consumer
       and has no second repo to prove the shape against. Each stack is a
-      canary-then-wave, the C5 process: one repo green end to end before the
+      one-box-then-wave, the C5 process: one repo green end to end before the
       rest re-pin.
 - [ ] **E7** Retire what the new rules obsolete: gha-runner-controller's
       `git describe` version derivation (reads tags as authority, contrary to

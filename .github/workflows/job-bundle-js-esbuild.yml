@@ -81,35 +81,41 @@ jobs:
         working-directory: ${{ inputs.workdir }}
         run: |
           set -euo pipefail
-          node -e '
-            const fs = require("fs");
-            const src = fs.readFileSync("dist/index.js", "utf8");
-            const builtins = new Set(require("module").builtinModules);
-            const prod = new Set(Object.keys(
-              JSON.parse(fs.readFileSync("package.json", "utf8")).dependencies || {}
-            ));
-            const specs = new Set();
-            for (const m of src.matchAll(/(?:^|[;\s])import\s*(?:[^"'"'"';]*?\sfrom\s*)?"([^"]+)"/g)) {
-              let s = m[1];
-              if (s.startsWith(".") || s.startsWith("node:")) continue;
-              s = s.startsWith("@") ? s.split("/").slice(0, 2).join("/") : s.split("/")[0];
-              if (!builtins.has(s)) specs.add(s);
-            }
-            const missing = [...specs].filter((s) => !prod.has(s)).sort();
-            if (missing.length) {
-              console.error(
-                "dist/index.js imports at runtime, but these are not in " +
-                "dependencies:\n  " + missing.join("\n  ") +
-                "\n\nThe runtime image installs --prod, so the container will " +
-                "fail to start with ERR_MODULE_NOT_FOUND. Either move them to " +
-                "dependencies, or stop importing them from the server entry " +
-                "(a dev-only module belongs behind await import(), not a " +
-                "top-level import)."
-              );
-              process.exit(1);
-            }
-            console.log(`ok - ${specs.size} external import(s), all production dependencies`);
-          '
+          # Quoted heredoc: the shell expands nothing, so the JS below is exactly
+          # the JS that runs. An inline `node -e` needs a quote-escaping dance for
+          # every apostrophe in a character class, which is how a check meant to
+          # prevent breakage becomes the breakage.
+          cat > prod-import-check.cjs <<'JS'
+          const fs = require("fs");
+          const src = fs.readFileSync("dist/index.js", "utf8");
+          const builtins = new Set(require("module").builtinModules);
+          const prod = new Set(Object.keys(
+            JSON.parse(fs.readFileSync("package.json", "utf8")).dependencies || {}
+          ));
+          const IMPORT = /(?:^|[;\s])import\s*(?:[^;]*?\sfrom\s*)?"([^"]+)"/g;
+          const specs = new Set();
+          for (const m of src.matchAll(IMPORT)) {
+            let s = m[1];
+            if (s.startsWith(".") || s.startsWith("node:")) continue;
+            s = s.startsWith("@") ? s.split("/").slice(0, 2).join("/") : s.split("/")[0];
+            if (!builtins.has(s)) specs.add(s);
+          }
+          const missing = [...specs].filter((s) => !prod.has(s)).sort();
+          if (missing.length) {
+            console.error(
+              "dist/index.js imports these at runtime, but they are not in " +
+              "dependencies:\n  " + missing.join("\n  ") +
+              "\n\nThe runtime image installs --prod, so the container fails to start " +
+              "with ERR_MODULE_NOT_FOUND before any application code runs. Either move " +
+              "them to dependencies, or stop importing them from the server entry - a " +
+              "dev-only module belongs behind await import(), not a top-level import."
+            );
+            process.exit(1);
+          }
+          console.log("ok - " + specs.size + " external import(s), all production dependencies");
+          JS
+          node prod-import-check.cjs
+          rm -f prod-import-check.cjs
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

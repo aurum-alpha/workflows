@@ -422,7 +422,18 @@ Vite is a dev server and a frontend build tool. Nothing in `server/` may
 reference it — not behind `NODE_ENV`, not behind a dynamic import, not at all.
 
 The standard is **`vite dev` on its own port, proxying `/api` to the backend**;
-one `dev` script starts both. The middleware-mode arrangement — Express hosting
+one `dev` script starts both, under `concurrently -k` so Ctrl-C stops the pair.
+
+Ports come from the app-wide plan, not from vite's default. Each repo owns a
+20-port block; the docker side clusters at the low end and is not uniform (+0 is
+always the ingress, but +2, +3 and +8 are variously postgres, pgadmin and
+https), so **native dev takes the top of the block: +10 client, +11 server**.
+That way the rule reads the same in every repo instead of being arithmetic
+around whatever each one already exposes.
+
+Set **`strictPort: true`**. Vite's default is to increment silently when its
+port is taken — during Phase F testing that put it on +11 and left the proxy
+pointing at itself, which looks like a backend bug and is not one. The middleware-mode arrangement — Express hosting
 vite in-process, branching on `NODE_ENV` — is retired fleet-wide.
 
 That arrangement looked convenient (one process, one port, no CORS) and it cost

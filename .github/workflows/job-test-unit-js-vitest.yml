@@ -160,7 +160,21 @@ jobs:
           # set: --coverage.include replaces the repo's curated list and tanks
           # the baseline (it took wardley-mapper from 49% to 4%). With UNIT="."
           # there are no siblings — the workdir is the whole project.
-          excludes=()
+          #
+          # --coverage.exclude REPLACES the config's exclude array rather than
+          # extending it, so passing siblings alone silently re-admits
+          # node_modules, dist, .d.ts and every *.config.* file to the
+          # denominator. hiring-tracker measured vite.config.ts at 0% over 11
+          # lines because of exactly that. The defaults are restated here so the
+          # flag adds to them instead of standing in for them.
+          excludes=(
+            --coverage.exclude='**/node_modules/**'
+            --coverage.exclude='**/dist/**'
+            --coverage.exclude='**/coverage/**'
+            --coverage.exclude='**/*.d.ts'
+            --coverage.exclude='**/*.config.*'
+            --coverage.exclude='**/.{idea,git,cache,output,temp}/**'
+          )
           if [ "$UNIT" != "." ]; then
             for u in client server shared; do
               [ "$u" = "$UNIT" ] || excludes+=(--coverage.exclude="$u/**")

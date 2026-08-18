@@ -356,6 +356,24 @@ api-build ───► api-lint ──────────┤          (conv
 
 ## Coverage
 
+**A CLI `--coverage.exclude` replaces the config's list; it does not extend it.**
+That is true of vitest's array options generally, and it has now caused two
+regressions in this project from opposite directions:
+
+- `--coverage.include='<unit>/**'` replaced wardley-mapper's curated include and
+  took the baseline from 49.46% to 4.24%, turning `codecov/project` red on a
+  change that added no code.
+- `--coverage.exclude='<sibling>/**'`, the fix for the first, replaced every
+  repo's exclude list — so `node_modules`, `dist`, `*.d.ts` and every
+  `*.config.*` file re-entered the denominator. hiring-tracker was measuring
+  `vite.config.ts` at 0% across 11 lines and counting it against patch coverage.
+
+So the shared job restates the standard exclusions alongside the sibling units,
+and the flag adds to a known baseline rather than standing in for the repo's.
+A repo needing more than that baseline cannot express it through
+`coverage.exclude` in its config and expect it to survive — narrow
+`coverage.include` instead.
+
 - **Codecov everywhere it can be supported**: `codecov/codecov-action` **v7**
   (v7.0.0 current as of 2026-06; client-manager already on it), SHA-pinned,
   per-tree flags, `fail_ci_if_error: true`, thresholds in `codecov.yml`.

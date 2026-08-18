@@ -52,12 +52,64 @@ jobs:
         run: pnpm install --frozen-lockfile
       # server/index.ts -> dist/index.js, esm, dependencies left external.
       # Entry and output are conventions every repo meets, not inputs: an input
-      # is how six repos ended up with six answers to one question.
+      # is how six repos ended up with six answers to one function.
+      #
+      # --define is not decoration. These repos guard the dev server with
+      # `if (process.env.NODE_ENV === "production") serveStatic() else await
+      # import("./vite")`. Without the define that branch survives bundling, so
+      # the output top-level-imports vite — a devDependency the runtime image
+      # never installs, because it runs `pnpm install --prod`. The image builds,
+      # CI goes green, and the container dies at load with ERR_MODULE_NOT_FOUND
+      # before a line of application code runs. Verified against all six repos.
       - working-directory: ${{ inputs.workdir }}
         run: >
           pnpm exec esbuild server/index.ts
           --platform=node --bundle --packages=external --format=esm
+          --define:process.env.NODE_ENV='"production"'
           --outfile=dist/index.js
+
+      # The define above fixes the repos that guard the import. It cannot fix a
+      # server entry that imports the dev server STATICALLY — no flag can, the
+      # reference is unconditional. So this asserts the property we actually
+      # want rather than trusting the flag: every bare specifier the bundle
+      # imports must be a production dependency.
+      #
+      # A build that succeeds says nothing about a process that starts, and
+      # nothing else in this pipeline ever starts the artifact. That gap is why
+      # six repos shipped an unstartable image with a green tick.
+      - name: Every external import must be a production dependency
+        working-directory: ${{ inputs.workdir }}
+        run: |
+          set -euo pipefail
+          node -e '
+            const fs = require("fs");
+            const src = fs.readFileSync("dist/index.js", "utf8");
+            const builtins = new Set(require("module").builtinModules);
+            const prod = new Set(Object.keys(
+              JSON.parse(fs.readFileSync("package.json", "utf8")).dependencies || {}
+            ));
+            const specs = new Set();
+            for (const m of src.matchAll(/(?:^|[;\s])import\s*(?:[^"'"'"';]*?\sfrom\s*)?"([^"]+)"/g)) {
+              let s = m[1];
+              if (s.startsWith(".") || s.startsWith("node:")) continue;
+              s = s.startsWith("@") ? s.split("/").slice(0, 2).join("/") : s.split("/")[0];
+              if (!builtins.has(s)) specs.add(s);
+            }
+            const missing = [...specs].filter((s) => !prod.has(s)).sort();
+            if (missing.length) {
+              console.error(
+                "dist/index.js imports at runtime, but these are not in " +
+                "dependencies:\n  " + missing.join("\n  ") +
+                "\n\nThe runtime image installs --prod, so the container will " +
+                "fail to start with ERR_MODULE_NOT_FOUND. Either move them to " +
+                "dependencies, or stop importing them from the server entry " +
+                "(a dev-only module belongs behind await import(), not a " +
+                "top-level import)."
+              );
+              process.exit(1);
+            }
+            console.log(`ok - ${specs.size} external import(s), all production dependencies`);
+          '
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

@@ -1217,9 +1217,14 @@ curates 28 dependencies to bundle. The other three already use plain
 the standard and the majority. The shared job owns that invocation; repos keep
 only `server/index.ts` as the entry point and no build script at all.
 
-*Known trade, recorded rather than discovered later: the allowlist exists "to
-reduce openat(2) syscalls which helps cold start times". Whether that was
-measured is unknown. Standardizing gives it up.*
+*Known trades, recorded rather than discovered later.* The allowlist exists "to
+reduce openat(2) syscalls which helps cold start times"; whether that was
+measured is unknown, and standardizing gives it up. The scripts also `minify`,
+which the shared job does not — flight-watch's bundle goes 856kb to 66kb because
+dependencies stop being inlined, so the minification argument largely dissolves
+with them. And the allowlists have rotted: 11 of flight-watch's 25 entries name
+packages the repo no longer depends on at all, which is what an unenforced
+hand-curated list does over time.
 
 **F3 — Tests exist for every unit.** Splitting the test job makes absence
 visible for the first time:
@@ -1257,6 +1262,66 @@ there is no job.
 has proved that five times. N1 already checks the language token. Purpose and
 framework cannot be proved from the file and stay review-only, and the checker
 says so rather than implying coverage it lacks.
+
+**F8 — The artifact must start, and CI must say so.** Adopting the shared
+bundle job exposed a defect that every gate in this document was blind to,
+because every gate stops at "it built".
+
+The six Express repos guard their dev server one of two ways:
+
+```ts
+// three repos — guarded, so a define can eliminate it
+if (process.env.NODE_ENV === "production") serveStatic(app);
+else { const { setupVite } = await import("./vite"); await setupVite(...); }
+
+// three repos — unconditional, so nothing can eliminate it
+import { setupVite, serveStatic, log } from "./vite";   // -> imports "vite"
+```
+
+`vite` is a devDependency. The runtime image runs `pnpm install --prod`. So the
+bundle top-level-imports a package the image does not contain, and
+`node dist/index.js` dies at module resolution with `ERR_MODULE_NOT_FOUND`
+before a line of application code runs.
+
+Verified by bundling all six and starting each one against a dependency tree
+containing only its declared `dependencies`:
+
+| repo | as bundled today | with `--define` | why |
+|---|---|---|---|
+| credit-watch | fails to load | starts | guarded import |
+| expense-splitter | fails to load | starts | guarded import |
+| flight-watch | fails to load | starts | guarded import |
+| hiring-tracker | fails to load | **fails to load** | `server/index.ts:14` static |
+| jewelry-factory | fails to load | **fails to load** | `server/index.ts:5` static |
+| wardley-mapper | fails to load | **fails to load** | `server/index.ts:3` static |
+
+**This is not something Phase F introduced.** The three static-import repos
+already build with `--packages=external` on `main` and already ship an image
+that cannot start; Phase F inherited it. What Phase F would have introduced is
+the other three: their `script/build.ts` inlines dependencies and eliminates
+the dev branch, so deleting it without the define regresses a working image.
+
+Three changes follow:
+
+1. `job-bundle-js-esbuild` passes
+   `--define:process.env.NODE_ENV='"production"'`. A production bundle built
+   without a production NODE_ENV is a contradiction, and it fixes the guarded
+   three.
+2. The same job then **asserts the property instead of trusting the flag**:
+   every bare specifier the bundle imports must appear in `dependencies`. No
+   flag can fix a static import, so the check does not depend on one. It agreed
+   with the twelve start-up simulations in all twelve cases and needs no
+   install.
+3. The static-import three move `serveStatic`/`log` into a production-safe
+   module and leave `setupVite` behind the dynamic import — one line each.
+
+**The general lesson, because it outlives Phase F.** A green pipeline here meant
+the artifact compiled, was linted, was typechecked, was tested, and was packaged
+into an image. Not one of those steps ever started the thing. Six repos held a
+full row of green ticks over an image that could not boot, and the standard had
+no rule that was even capable of noticing — which is the failure mode Principle
+17 describes, arriving somewhere new. `ci-ok` is a rollup of gates, and a rollup
+is only as honest as the weakest claim underneath it.
 
 **F7 — Rollout order.** wardley-mapper went first (#15, twelve checks green on
 workflows `684617a9`). What that run proved, stated precisely: **the catalog

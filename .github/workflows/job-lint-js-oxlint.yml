@@ -1,0 +1,100 @@
+# Fleet capability: lint for one deployable unit's JS/TS source, oxlint flavour
+# (CI_STANDARD Principle 12 — one way per capability, and this is the second
+# way, deliberately).
+#
+# oxlint and eslint are not interchangeable. oxlint is Rust, runs ~50-100x
+# faster, and implements a subset of the rules: no eslint plugins, and no
+# type-aware linting at all — the @typescript-eslint rules that need the type
+# checker do not exist there. So it is a fast first pass, not a replacement,
+# and a repo on oxlint is getting less checking than one on eslint, not
+# different checking.
+#
+# Both jobs exist so no repo is blocked on a linter migration it did not ask
+# for. gofast is the only oxlint caller today; the fleet target is one linter,
+# and until that is decided this file is the honest way to say "we run two".
+name: job-lint-js-oxlint
+
+on:
+  workflow_call:
+    inputs:
+      workdir:
+        description: >-
+          DEPRECATED. Directory holding package.json and .node-version. Exists
+          only for the two repos still keeping their React app in `web/`; it is
+          removed once they move to `client/` (CI_STANDARD "Standard repository
+          layout"). Do not add new callers that set it.
+        type: string
+        default: "."
+      dir:
+        description: >-
+          Which standard unit to act on: `client`, `server` or `shared`. Not a
+          path — the layout is fixed fleet-wide, and any other value fails.
+        type: string
+        required: true
+      warn_only:
+        description: >-
+          Report findings without failing the job. This is a documented
+          stabilization window (CI_STANDARD Principle 3), not a permanent mode:
+          a repo adopting --max-warnings 0 against existing debt runs warn-only
+          while the debt burns down, then flips to a hard gate. Findings stay
+          visible in the step log and the step is marked failed-but-continued.
+          Same contract as job-go-lint's input of the same name.
+        type: boolean
+        default: false
+
+jobs:
+  lint:
+    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      # The unit is one of three names, fleet-wide (CI_STANDARD "Standard
+      # repository layout"). This input says *which* standard unit, never
+      # *where a repo happens to keep it* — a free-form path here would make the
+      # catalog accommodate variance instead of removing it.
+      - name: Validate unit
+        env:
+          UNIT: ${{ inputs.dir }}
+        run: |
+          set -euo pipefail
+          case "$UNIT" in
+            client|server|shared) ;;
+            *) echo "::error::dir must be client, server or shared; got '$UNIT'." \
+                    "See CI_STANDARD 'Standard repository layout'."; exit 1 ;;
+          esac
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ${{ inputs.workdir }}/.node-version
+          # Org registry for private @aurum-alpha packages; harmless no-op for
+          # repos that don't consume the scope (pnpm 10+ only reads auth from
+          # the user-level npmrc this writes).
+          registry-url: https://npm.pkg.github.com
+          scope: "@aurum-alpha"
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          package_json_file: ${{ inputs.workdir }}/package.json
+      - name: Get pnpm store directory
+        shell: bash
+        working-directory: ${{ inputs.workdir }}
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+      - working-directory: ${{ inputs.workdir }}
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+        run: pnpm install --frozen-lockfile
+      # oxlint invoked directly, not via a `lint` script whose only content is a
+      # path (Phase F2). --deny-warnings because a warning nobody must fix is a
+      # warning nobody reads.
+      - name: Lint ${{ inputs.dir }}
+        working-directory: ${{ inputs.workdir }}
+        continue-on-error: ${{ inputs.warn_only }}
+        run: pnpm exec oxlint ${{ inputs.dir }} --deny-warnings

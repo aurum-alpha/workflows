@@ -669,6 +669,23 @@ and the variant second. Capabilities with no variants stay single words —
 `lint`, `build`, `typecheck`, `fmt`, `vet` — and `lint` is not a member of the
 test family however much it feels adjacent.
 
+### Two linters, on purpose, for now
+
+`job-lint-js-eslint` and `job-lint-js-oxlint` both exist. That is a deliberate
+exception to "one way per capability" and it is written down rather than
+allowed to look accidental.
+
+They are not interchangeable. oxlint is Rust, runs 50-100x faster, and
+implements a **subset** of the rules: no eslint plugins, and no type-aware
+linting at all — every `@typescript-eslint` rule that needs the type checker is
+simply absent. A repo on oxlint is getting *less* checking than one on eslint,
+not different checking.
+
+gofast is the only oxlint caller. Two jobs exist so that repo is not blocked on
+a linter migration nobody asked for, and so the fleet is not blocked on gofast.
+The target is one linter; this is the honest way to hold the position until
+that is decided, instead of pretending the fleet already agrees.
+
 ### Shared job names: `<function>-<language>-<runner|framework>`
 
 A caller names the **unit**; a shared job names the **tool it runs**. Same

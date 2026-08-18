@@ -51,7 +51,9 @@ jobs:
           set -euo pipefail
           case "$UNIT" in
             client|server|shared) ;;
-            *) echo "::error::dir must be client, server or shared; got '$UNIT'." \
+            # The workdir is itself the unit — see job-test-unit-js-vitest.
+            .) ;;
+            *) echo "::error::dir must be client, server, shared or '.'; got '$UNIT'." \
                     "See CI_STANDARD 'Standard repository layout'."; exit 1 ;;
           esac
 

@@ -54,7 +54,12 @@ jobs:
           set -euo pipefail
           case "$UNIT" in
             client|server|shared) ;;
-            *) echo "::error::dir must be client, server or shared; got '$UNIT'." \
+            # `.` is the second repo shape: the JS project lives inside a Go or
+            # PHP tree, workdir already points at it, and the project *is* the
+            # unit — there is no client/server split within it to scope to.
+            .) ;;
+            *) echo "::error::dir must be client, server, shared, or '.' when the" \
+                    "workdir is itself the unit; got '$UNIT'." \
                     "See CI_STANDARD 'Standard repository layout'."; exit 1 ;;
           esac
 
@@ -135,16 +140,22 @@ jobs:
           # The standard unit directories (F0). Everything that is not this unit
           # is excluded from coverage, so a repo conforms to the job rather than
           # the job taking a per-caller input.
+          # Subtract the sibling units from coverage rather than redefining the
+          # set: --coverage.include replaces the repo's curated list and tanks
+          # the baseline (it took wardley-mapper from 49% to 4%). With UNIT="."
+          # there are no siblings — the workdir is the whole project.
           excludes=()
-          for u in client server shared; do
-            [ "$u" = "$UNIT" ] || excludes+=(--coverage.exclude="$u/**")
-          done
+          if [ "$UNIT" != "." ]; then
+            for u in client server shared; do
+              [ "$u" = "$UNIT" ] || excludes+=(--coverage.exclude="$u/**")
+            done
+          fi
           pnpm exec vitest run \
             --dir "$UNIT" \
             --passWithNoTests \
             --coverage "${excludes[@]}" \
             --reporter=default --reporter=junit \
-            --outputFile.junit="test-report-$UNIT.junit.xml"
+            --outputFile.junit="test-report-${UNIT//./root}.junit.xml"
 
       - name: Upload coverage to Codecov
         # Nothing ran, so there is no coverage to upload and Codecov would fail

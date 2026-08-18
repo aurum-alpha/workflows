@@ -530,6 +530,42 @@ install (store-cached) → its one script. All SHA-pinned, least-privilege.
 | `image` | the gates | packages **prebuilt binaries** (gofast pattern) |
 | `ci-ok` | all | rollup |
 
+### The Go baseline: every Go codebase runs the same seven
+
+Three repos hold Go codebases and each had picked a different subset. Measured
+before Phase F:
+
+| capability | gofast | gha-runner-controller | client-manager |
+|---|---|---|---|
+| `mod` | yes | yes | yes |
+| `build` | yes | yes | yes |
+| `fmt` | yes | yes | yes |
+| `vet` | yes | yes | yes |
+| `test-unit` | yes | yes | yes |
+| **`lint`** | — | — | — |
+| **`govulncheck`** | — | — | yes |
+| `test-integration` | — | yes | yes |
+
+Two things that table makes obvious and nothing else did:
+
+- **`job-go-lint.yml` has existed in the catalog since Phase A and no repo has
+  ever called it.** A shared job with zero adopters is not a standard, it is a
+  file. Either every Go repo lints or the job should not exist; the first.
+- **One repo scans for vulnerabilities.** client-manager did it behind
+  `tools/checks/govulncheck`, so it read as a client-manager concern rather than
+  a gap in the other two. It is now `job-go-govulncheck` in the catalog.
+
+`test-integration` is the honest exception: it belongs wherever integration
+tests exist, and gofast has none. Absence there is a fact about the repo, not a
+missing job.
+
+**Anything beyond those seven is repo-specific and needs a reason.**
+client-manager carries six — `forbidigo-pgxpool`, `conformance-suite`,
+`telemetry-canary`, `migration-expand-only`, `header-definition`,
+`header-staleness`. Those are policy about *that* codebase, which is the
+legitimate case under Principle 19: a debt with a name. Reviewing whether any of
+them generalise is worth doing, and is not the same job as this one.
+
 ### PHP job catalog (event-manager)
 
 Same ids where meaningful: `builder-image` (tier 2, reusable) → `install`

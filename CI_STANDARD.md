@@ -214,20 +214,40 @@ Status: **agreed 2026-08-14** (rev 2 after Jared's review). Remaining open items
     having no opinion — and an organisation with no opinion re-litigates the
     same decision every time someone starts a service.*
 
-## Standard job DAG — build first
+## Standard job DAG — an edge means data flows across it
 
-The cheapest, most fundamental gate is "does it build." A broken compile fails one
-job instead of ten, and the build job primes caches and emits artifacts downstream
-jobs reuse (e.g. binaries handed to docker packaging).
+A `needs:` edge is a claim that the downstream job **cannot run** until the
+upstream one finishes, because it consumes something the upstream produced. That
+is the only thing that justifies one. An edge added for tidiness costs
+wall-clock on every green run and, worse, converts a downstream failure into a
+`skipped` — so the one run where you needed to see the lint result is the run
+that hides it.
 
 ```
-install ──► build ──► lint ─────────┐
-                  ──► typecheck ────┤──► integration / e2e ──► package / publish
-                  ──► unit tests ───┘         (main + tags only)
-                              └──► "ci-ok" rollup job (the only required check)
+build ────────────────────────────────┐
+lint ─────────────────────────────────┤
+typecheck ────────────────────────────┼──► image / package ──► test-integration ──► ci-ok
+unit tests ───────────────────────────┘        (needs the artifact)
 ```
 
-- Quality gates run in parallel *after* build, never serialized among themselves.
+**Which edges are real, by stack:**
+
+| job | needs build? | why |
+|---|---|---|
+| `eslint`, `vitest`, `tsc --noEmit` | **no** | they read source; vitest transpiles it itself |
+| `go vet`, `go test` | **yes** | they consume the compiled artifact the build job uploads |
+| image / package | **yes** | it copies the build output in |
+| integration / e2e | **yes** | the thing under test does not exist until then |
+
+- **Do not copy an edge across languages.** The Go gates need the build because
+  Go's do; the JS gates were given the same shape by analogy and it meant
+  nothing. Check whether the job downloads an artifact. If it doesn't, the edge
+  is decoration. *Learned the hard way: the first TS repo through this catalog
+  had `lint needs: build` on jobs whose steps were checkout, install, eslint.*
+- What the build-first shape used to buy was noise reduction — a broken compile
+  showing one red job instead of five. That argument only holds when the jobs
+  would fail **for the same reason**, i.e. when each one compiles. Where they
+  don't share a compile step, the extra red jobs are information, not noise.
 - **Hard rule — BUILD ONCE.** The build step produces *every* required artifact
   type (all build-arg variants included) and later steps — packaging, docker,
   release — pull those artifacts from cache/artifact storage. Nothing downstream
@@ -235,6 +255,9 @@ install ──► build ──► lint ─────────┐
 - Stack note: for TS, `tsc --noEmit` is the compile assertion and stays a gate;
   "build" means the real bundle/transpile (vite/esbuild) — this is where the
   production artifact is produced.
+- **Every job must be reachable from `ci-ok`.** This is the invariant that
+  replaced "every job has a `needs:`". A job nobody lists can fail without
+  blocking anything, and that is true whether or not it has upstream edges.
 - `ci-ok` (`if: always()`, fails on any failure/cancel in needs) is the single
   required check, so adding/removing gates never touches branch protection.
   The check reports under the job id `ci-ok` (no display-name override) —
@@ -363,6 +386,55 @@ Two consequences that follow from stating it correctly:
 - **The fleet has no canary at all.** No repo here runs synthetic checks against
   a deployed system. That is a real gap, and it is outside this document's
   scope — CI proves an artifact is sound, not that a running system is.
+
+## Standard repository layout
+
+The catalog is opinionated about where code lives. A shared job that takes a
+path input so each repo can keep its own arrangement is not a standard — it is a
+switch statement with the branches spread across eleven repositories.
+
+**Three directory names, and they mean the same thing everywhere:**
+
+| dir | holds | present when |
+|---|---|---|
+| `client/` | the React app. `vite.config.ts` sets `root: client`, `outDir: ../dist/public` | the repo ships a browser UI |
+| `server/` | the backend. Entry is always `server/index.ts` (or the language's equivalent) | the repo ships a service |
+| `shared/` | code both sides import | **only when both sides are the same language** |
+
+`shared/` is not a junk drawer and not automatic. A React + Go repo has no
+`shared/` — the two halves cannot import each other's source, so a directory
+claiming they can is a lie. Where a repo builds two servers in the *same*
+language, `shared/` is exactly right, and the rule is unchanged: shared source
+requires a shared toolchain.
+
+Build outputs are equally fixed: `dist/public` for the client bundle,
+`dist/index.js` for the server bundle. The image copies those two paths and
+knows nothing else about the repo.
+
+**A repo that differs is a repo to fix.** `web/` is not an alias for `client/`;
+it names a medium rather than a deployable unit, and it forced a `workdir` input
+into four shared jobs so two repos could stay different for no reason anyone
+could state. That input is deprecated and goes away when the last `web/` does.
+
+### Dev mode: the server never imports vite
+
+Vite is a dev server and a frontend build tool. Nothing in `server/` may
+reference it — not behind `NODE_ENV`, not behind a dynamic import, not at all.
+
+The standard is **`vite dev` on its own port, proxying `/api` to the backend**;
+one `dev` script starts both. The middleware-mode arrangement — Express hosting
+vite in-process, branching on `NODE_ENV` — is retired fleet-wide.
+
+That arrangement looked convenient (one process, one port, no CORS) and it cost
+six broken production images: `server/index.ts` imported `./vite`, the bundler
+followed the import, and `vite` is not installed in the runtime image. Three of
+the six had been unable to start for months without anyone noticing, because
+nothing in CI ever started the container.
+
+Guarding the import is not the fix — it is the same defect with a condition on
+it. Removing the reference is the fix, and it has the side effect of making
+`client/` a genuinely independent unit, which is what lets it become its own
+package later without touching the server at all.
 
 ## Standard job catalog
 

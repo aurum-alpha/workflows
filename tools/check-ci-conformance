@@ -21,7 +21,12 @@ principle needed enforcing:
   P6  concurrency          cancel superseded PR runs, never main
   P18 one workflow         ci.yml is the pipeline; dependabot is the exception
   PIN sha pinning          every action at a 40-hex sha with a # vX.Y.Z comment
-  D1  no orphan jobs       every job has needs:, except declared roots
+  D1  every job blocks     every job is reachable from ci-ok's needs, so a
+                          failure cannot pass unnoticed. This replaced 'every
+                          job has needs:', which enforced edges that carried
+                          no data — eslint and vitest read source, so a
+                          `needs: build` on them was decoration that turned a
+                          broken build into skipped gates
   D2  no inverted DAG      a build never needs a gate
   D3  publish is gated     a publish job reaches a gate transitively
   D4  publish is in ci-ok  a publish job outside the rollup fails invisibly
@@ -229,6 +234,17 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
     jobs = parse_jobs(text)
     graph = {j: needs_of(p) for j, p in jobs.items()}
     rollup = graph.get("ci-ok", set())
+
+    # Transitive closure of ci-ok's needs: every job the rollup actually waits
+    # for, directly or through another job.
+    reachable_from_rollup = set()
+    frontier = list(rollup)
+    while frontier:
+        n = frontier.pop()
+        if n in reachable_from_rollup:
+            continue
+        reachable_from_rollup.add(n)
+        frontier.extend(graph.get(n, set()))
     # "Gates hang off the build" presumes a build. A repo that compiles nothing
     # — this one checks yaml — has no such node, and its gates are the roots.
     has_build = any(BUILD_RE.search(j) for j in jobs)
@@ -276,8 +292,11 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
         blob = props.get("__raw__", "")
 
         if job != "ci-ok":
-            if has_build and not graph[job] and not ROOT_RE.match(job):
-                bad("D1", f"'{job}' has no needs: — it runs beside the build it should gate")
+            # A job outside the rollup can fail without blocking the merge. That
+            # is true whether or not it has upstream edges, which is why this
+            # keys on reachability from ci-ok rather than on having a `needs:`.
+            if "ci-ok" in jobs and job not in reachable_from_rollup:
+                bad("D1", f"'{job}' is not reachable from ci-ok — its failure blocks nothing")
 
             if BUILD_RE.search(job):
                 inv = sorted(n for n in graph[job] if GATE_RE.search(n) and not BUILD_RE.search(n))

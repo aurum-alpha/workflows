@@ -13,13 +13,17 @@ on:
   workflow_call:
     inputs:
       workdir:
-        description: Directory holding package.json and .node-version.
+        description: >-
+          DEPRECATED. Directory holding package.json and .node-version. Exists
+          only for the two repos still keeping their React app in `web/`; it is
+          removed once they move to `client/` (CI_STANDARD "Standard repository
+          layout"). Do not add new callers that set it.
         type: string
         default: "."
       dir:
         description: >-
-          The unit's source directory, relative to workdir — `client`, `server`.
-          Sets vitest's scan root, so this job tests exactly one unit.
+          Which standard unit to act on: `client`, `server` or `shared`. Not a
+          path — the layout is fixed fleet-wide, and any other value fails.
         type: string
         required: true
       flag:
@@ -37,6 +41,21 @@ jobs:
       # installs 403 (C2 first run).
       packages: read
     steps:
+      # The unit is one of three names, fleet-wide (CI_STANDARD "Standard
+      # repository layout"). This input says *which* standard unit, never
+      # *where a repo happens to keep it* — a free-form path here would make the
+      # catalog accommodate variance instead of removing it.
+      - name: Validate unit
+        env:
+          UNIT: ${{ inputs.dir }}
+        run: |
+          set -euo pipefail
+          case "$UNIT" in
+            client|server|shared) ;;
+            *) echo "::error::dir must be client, server or shared; got '$UNIT'." \
+                    "See CI_STANDARD 'Standard repository layout'."; exit 1 ;;
+          esac
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:

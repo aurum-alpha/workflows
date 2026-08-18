@@ -8,7 +8,11 @@ on:
   workflow_call:
     inputs:
       workdir:
-        description: Directory holding package.json and vite.config.
+        description: >-
+          DEPRECATED. Directory holding package.json and .node-version. Exists
+          only for the two repos still keeping their React app in `web/`; it is
+          removed once they move to `client/` (CI_STANDARD "Standard repository
+          layout"). Do not add new callers that set it.
         type: string
         default: "."
       outdir:

@@ -51,6 +51,22 @@ jobs:
       contents: read
       packages: read
     steps:
+      # Two repo shapes, and this input distinguishes them: `.` where the JS
+      # project is the repo, `client` where it is its own pnpm project inside a
+      # Go or PHP tree. Anything else is a repo putting its UI somewhere of its
+      # own choosing, which is the variance the catalog exists to remove
+      # (CI_STANDARD "Standard repository layout").
+      - name: Validate workdir
+        env:
+          WD: ${{ inputs.workdir }}
+        run: |
+          set -euo pipefail
+          case "$WD" in
+            .|client) ;;
+            *) echo "::error::workdir must be '.' or 'client'; got '$WD'." \
+                    "See CI_STANDARD 'Standard repository layout'."; exit 1 ;;
+          esac
+
       # The unit is one of three names, fleet-wide (CI_STANDARD "Standard
       # repository layout"). This input says *which* standard unit, never
       # *where a repo happens to keep it* — a free-form path here would make the

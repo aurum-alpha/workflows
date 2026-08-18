@@ -824,6 +824,7 @@ will.
 | — | Every job blocks something | `check-ci-conformance` D6 | gated |
 | — | Something runs the image | `check-ci-conformance` D7 | gated |
 | — | `needs.<id>` expressions resolve | `check-ci-conformance` D8 | gated |
+| — | `workdir` names a shape, not a path | `check-ci-conformance` WD | gated |
 | — | Per-stack DAG in multi-codebase repos | — | **review only** |
 | — | SHA pinning | `check-ci-conformance` PIN | gated |
 | — | `ci-ok` is the only required check | branch protection | gated |

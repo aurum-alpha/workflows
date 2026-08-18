@@ -33,6 +33,9 @@ principle needed enforcing:
                           needs. Distinct from D1: a job can sit correctly
                           downstream of the build and still be absent from the
                           rollup, and then its failure stops nothing
+  WD  workdir is a shape       a JS shared job's workdir input is `.` or
+                          `client` and nothing else. It distinguishes two real
+                          repo shapes; it is not a per-repo path setting
   D8  needs.<id> resolves    every ${{ needs.X.* }} expression names a job that
                           exists and that this job declares in needs:. A rename
                           that updates job ids and needs: lists still leaves
@@ -343,6 +346,13 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
                     bad("IN", f"'{job}' passes '{k}', which {uses.split('/')[-1].split('@')[0]} does not declare — the whole file fails at startup")
                 for k in sorted(required - passed):
                     bad("IN", f"'{job}' omits required input '{k}'")
+
+            # --- WD: workdir names a shape, not a path ---------------------
+            if re.search(r"/job-(build|bundle|lint|test-unit|typecheck)-", uses) or "job-image-docker" in uses:
+                m = re.search(r"^      workdir:\s*(\S+)\s*$", props.get("__with_raw__", ""), re.M)
+                if m and m.group(1).strip("\"'") not in (".", "client"):
+                    bad("WD", f"'{job}' passes workdir: {m.group(1)} — it must be '.' or "
+                              "'client'; the input names a repo shape, not a path")
 
             # --- D8: needs.<id> expressions resolve ------------------------
             # A rename moves job ids and needs: lists; ${{ needs.X.outputs.Y }}

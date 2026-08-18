@@ -440,9 +440,22 @@ Build outputs are equally fixed: `dist/public` for the client bundle,
 knows nothing else about the repo.
 
 **A repo that differs is a repo to fix.** `web/` is not an alias for `client/`;
-it names a medium rather than a deployable unit, and it forced a `workdir` input
-into four shared jobs so two repos could stay different for no reason anyone
-could state. That input is deprecated and goes away when the last `web/` does.
+it names a medium rather than a deployable unit.
+
+But the rename alone does not retire the `workdir` input, and an earlier version
+of this section claimed it would. There are **two real repo shapes**, and the
+directory's name was never the difference:
+
+| shape | package.json | `client/` is | repos |
+|---|---|---|---|
+| JS repo | at the root | a source directory | the six TS repos |
+| JS inside another tree | at `client/` | its own pnpm project | gofast, client-manager |
+
+A Go repo with a React UI has a second `package.json`, a second lockfile and a
+second `.node-version` under `client/`, and no rename changes that. `workdir`
+distinguishes the two shapes and is legitimate; what is not legitimate is
+treating it as a free-form path so each repo can put its UI wherever. It takes
+`.` or `client`, and nothing else.
 
 ### Dev mode: the server never imports vite
 

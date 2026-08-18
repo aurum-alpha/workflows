@@ -14,10 +14,11 @@ on:
     inputs:
       workdir:
         description: >-
-          DEPRECATED. Directory holding package.json and .node-version. Exists
-          only for the two repos still keeping their React app in `web/`; it is
-          removed once they move to `client/` (CI_STANDARD "Standard repository
-          layout"). Do not add new callers that set it.
+          Directory holding package.json and .node-version. Empty (the repo
+          root) for a repo whose JS project *is* the repo; `client` for a repo
+          where the React app is its own pnpm project inside a Go or PHP tree.
+          Those are two real shapes and this input distinguishes them — it is
+          not a per-repo path setting, and no caller should pass anything else.
         type: string
         default: "."
       dir:

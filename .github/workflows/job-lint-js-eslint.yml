@@ -20,6 +20,16 @@ on:
           path — the layout is fixed fleet-wide, and any other value fails.
         type: string
         required: true
+      warn_only:
+        description: >-
+          Report findings without failing the job. This is a documented
+          stabilization window (CI_STANDARD Principle 3), not a permanent mode:
+          a repo adopting --max-warnings 0 against existing debt runs warn-only
+          while the debt burns down, then flips to a hard gate. Findings stay
+          visible in the step log and the step is marked failed-but-continued.
+          Same contract as job-go-lint's input of the same name.
+        type: boolean
+        default: false
 
 jobs:
   lint:

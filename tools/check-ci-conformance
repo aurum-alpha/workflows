@@ -32,6 +32,12 @@ principle needed enforcing:
   D4  publish is in ci-ok  a publish job outside the rollup fails invisibly
   D5  publish runs on PRs  the main-check goes on the step, never the job
   N1  the language token is true  a stub calling job-go-* has 'go' in position 2
+  IN  caller inputs exist      every key under `with:` is an input the shared
+                          job declares, and every required input is passed.
+                          GitHub rejects the whole FILE at startup for a
+                          misspelled or missing input — zero jobs, no logs,
+                          and actionlint cannot see it because the callee
+                          lives in another repository
   PERM caller grant covers callee  a called workflow can never hold more than
        the job calling it — exceed it and GitHub rejects the whole FILE at
        startup: zero jobs, no logs, and actionlint sees nothing wrong. A caller
@@ -304,6 +310,21 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
                     bad("D2", f"'{job}' is a build but needs gate(s): {', '.join(inv)}")
 
             uses = props.get("uses", "")
+
+            # --- IN: the caller's `with:` matches the callee's schema -------
+            # Only checkable when the catalog is on disk next to the repos,
+            # which is the case for a fleet run and for anyone with the
+            # workflows clone. Silent when it is not — an unenforceable rule
+            # should be visibly absent, not faked.
+            schema = catalog_inputs(uses)
+            if schema is not None:
+                declared, required = schema
+                passed = with_keys(text, job)
+                for k in sorted(passed - declared):
+                    bad("IN", f"'{job}' passes '{k}', which {uses.split('/')[-1].split('@')[0]} does not declare — the whole file fails at startup")
+                for k in sorted(required - passed):
+                    bad("IN", f"'{job}' omits required input '{k}'")
+
             for callee, needed in CALLEE_NEEDS.items():
                 if f"/{callee}.yml@" not in uses:
                     continue
@@ -405,6 +426,75 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
             bad("P3", f"continue-on-error: {v} — nothing publishes unless every gate passes")
 
     return out, str(ci.relative_to(repo))
+
+
+def with_keys(text: str, job: str) -> set[str]:
+    """Keys passed under a job's `with:`, read from the raw file.
+
+    parse_jobs folds continuation lines into a single string (comments included),
+    so the block has to be re-read here to tell an input name from a word in a
+    comment.
+    """
+    m = re.search(rf"^  {re.escape(job)}:\s*$", text, re.M)
+    if not m:
+        return set()
+    body = []
+    for ln in text[m.end():].splitlines()[1:]:
+        if ln.strip() and not ln.startswith("    "):
+            break
+        body.append(ln)
+    block = "\n".join(body)
+    w = re.search(r"^    with:\s*$", block, re.M)
+    if not w:
+        return set()
+    keys = set()
+    for ln in block[w.end():].splitlines()[1:]:
+        if ln.strip() and not ln.startswith("      "):
+            break
+        k = re.match(r"^      ([\w-]+):", ln)
+        if k:
+            keys.add(k.group(1))
+    return keys
+
+
+def catalog_inputs(uses: str):
+    """(declared, required) input names for a shared job, or None if unresolvable.
+
+    Resolves `aurum-alpha/workflows/.github/workflows/X.yml@sha` against a local
+    clone of the catalog, searched next to this checker and beside the repo
+    being checked. The pin is a sha, so a local clone may not hold that exact
+    commit — this compares against whatever the working tree has, which catches
+    the misspelling and the missing-required case without pretending to verify
+    the pinned revision. Parsed with regex like the rest of this file, so the
+    checker keeps running on a bare Python with no yaml installed.
+    """
+    m = re.match(r"([\w.-]+)/([\w.-]+)/\.github/workflows/([\w.-]+\.ya?ml)@", uses.strip())
+    if not m:
+        return None
+    _, repo_name, fname = m.groups()
+    here = pathlib.Path(__file__).resolve().parent.parent
+    for root in (here, *[q / repo_name for q in (here.parent, pathlib.Path.cwd().parent)]):
+        f = root / ".github/workflows" / fname
+        if not f.is_file():
+            continue
+        text = f.read_text()
+        block = re.search(
+            r"^  workflow_call:\n(?:.*\n)*?^    inputs:\n((?:^      \S.*\n|^        .*\n|^\s*\n)*)",
+            text, re.M)
+        if not block:
+            return set(), set()
+        body = block.group(1)
+        declared, required = set(), set()
+        current = None
+        for line in body.splitlines():
+            k = re.match(r"^      ([\w-]+):\s*$", line)
+            if k:
+                current = k.group(1)
+                declared.add(current)
+            elif current and re.match(r"^        required:\s*true\s*$", line):
+                required.add(current)
+        return declared, required
+    return None
 
 
 def main() -> int:

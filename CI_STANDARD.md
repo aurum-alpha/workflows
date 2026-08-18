@@ -720,6 +720,7 @@ will.
 | — | SHA pinning | `check-ci-conformance` PIN | gated |
 | — | `ci-ok` is the only required check | branch protection | gated |
 | — | Fleet pnpm version | `check-fleet-versions` (sweep) | audit only |
+| — | Caller `with:` matches the shared job's inputs | `check-ci-conformance` IN | gated |
 | — | Caller permissions cover shared jobs | `check-caller-permissions` (sweep) | audit only |
 
 Three tiers, and the difference between them matters:

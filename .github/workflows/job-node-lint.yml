@@ -15,6 +15,7 @@ on:
 jobs:
   lint:
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+    timeout-minutes: 15
     permissions:
       contents: read
       # The job-level permissions block REPLACES the caller's token grant,

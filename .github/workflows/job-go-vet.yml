@@ -37,6 +37,7 @@ on:
 jobs:
   vet:
     runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-26.04' }}
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:

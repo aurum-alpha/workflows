@@ -269,6 +269,12 @@ telling you what else is wrong.
 
 - **Quality gates run in parallel with each other, never serialized among
   themselves**, and never beside the build.
+- **Every job sets `timeout-minutes`.** A runner that hangs reports the same
+  failure a real break does, and takes the default six hours to say so — during
+  Phase F one job sat in "Set up job" for ten minutes on a self-hosted runner
+  while every other job in the run passed. Ceilings are generous enough never to
+  clip honest work (15m for gates, 20m for Go lint and tests, 30m for image
+  jobs) and exist only to bound a hang.
 - **Hard rule — BUILD ONCE.** The build step produces *every* required artifact
   type (all build-arg variants included) and later steps — packaging, docker,
   release — pull those artifacts from cache/artifact storage. Nothing downstream

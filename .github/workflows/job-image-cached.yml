@@ -42,6 +42,7 @@ on:
 jobs:
   image:
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+    timeout-minutes: 30
     outputs:
       changed: ${{ steps.check-changes.outputs.changed || steps.update-flag.outputs.changed }}
       image: ${{ steps.set-image.outputs.image }}

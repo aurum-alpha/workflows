@@ -242,9 +242,22 @@ Read as a sequence, because that is what it is:
 3. **integration / e2e** — against the artifacts from step 1, never a rebuild.
    This is the first point at which the thing under test exists.
 4. **image / package** — the shippable artifact, assembled from step 1's output.
-5. **the image starts** — run the container and prove it comes up. A build that
-   links and an image that boots are different claims, and only the second one
-   is what ships.
+5. **something runs the image.** A build that links and an image that boots are
+   different claims, and only the second one is what ships. Two ways to satisfy
+   this, and the requirement is the rule rather than either mechanism:
+
+   - **e2e or integration tests against the container.** Strictly stronger — it
+     proves the image runs *and* that it does its job — and where this exists
+     nothing else is needed. The image is then built before step 3 rather than
+     after it, because the tests need it.
+   - **start it.** For a service with no e2e suite, run the container and wait
+     for it to listen. `job-image-docker` does this by default.
+
+   A repo taking the first route sets `assert_starts: false` on the image job,
+   which is only legitimate when a job actually depends on that image — checked
+   by D7, not taken on trust. If the container needs a database to reach the
+   point of listening, give it one (`start_services`); an image that cannot
+   start without postgres is not exempt from having to start.
 6. **`ci-ok`** — the rollup, and the only required check.
 
 **Each artifact gets its own DAG.** A repo with a React client and an Express
@@ -737,6 +750,7 @@ will.
 | 18 | One workflow per repo | `check-ci-conformance` P18 | gated |
 | — | Standard job DAG (build first) | `check-ci-conformance` D1–D3 | gated |
 | — | Every job blocks something | `check-ci-conformance` D6 | gated |
+| — | Something runs the image | `check-ci-conformance` D7 | gated |
 | — | Per-stack DAG in multi-codebase repos | — | **review only** |
 | — | SHA pinning | `check-ci-conformance` PIN | gated |
 | — | `ci-ok` is the only required check | branch protection | gated |

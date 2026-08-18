@@ -23,6 +23,19 @@ on:
         description: Image name under ghcr.io/<owner>/. Defaults to the repo.
         type: string
         default: ""
+      assert_starts:
+        description: >-
+          Run the image and wait for it to listen. On by default, because
+          something in CI has to prove the image runs and for most repos this is
+          the only thing that does.
+
+          Set false ONLY when an e2e or integration job runs against this image
+          — that is a stronger assertion and this step would just repeat it. A
+          caller that sets false must have a job depending on this one, which is
+          what rule D7 checks; it is not a way to opt out of the requirement,
+          only a way to say something else already meets it.
+        type: boolean
+        default: true
       port:
         description: >-
           Port the container listens on. The start check waits for this to
@@ -109,17 +122,21 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Step 5 of the standard DAG. Everything above proves the image *builds*;
-      # this proves it *runs*, and those are different claims. Three repos in
-      # this fleet shipped images that could not start for months — the server
-      # bundle imported vite, which is not installed in the runtime image — and
-      # every gate was green throughout, because nothing ever started the thing.
+      # Step 5 of the standard DAG: something must run the image. Everything
+      # above proves it *builds*, and those are different claims — three repos
+      # in this fleet shipped images that could not start for months, green
+      # throughout, because nothing ever started them.
+      #
+      # This is the weaker of the two ways to satisfy that. A repo whose e2e
+      # suite runs against the container has already proved it and sets
+      # assert_starts: false. Everything else lands here.
       #
       # Deliberately not a health check: no endpoint, no readiness contract,
       # nothing an application has to opt into. It boots, it listens, it is
-      # still alive. That is the floor, and it is the floor every image can
-      # meet.
+      # still alive. That is the floor, and every image in the fleet can meet
+      # it.
       - name: The image starts
+        if: ${{ inputs.assert_starts }}
         env:
           TAGS: ${{ steps.meta.outputs.tags }}
           PORT: ${{ inputs.port }}

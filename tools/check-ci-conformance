@@ -33,6 +33,11 @@ principle needed enforcing:
                           needs. Distinct from D1: a job can sit correctly
                           downstream of the build and still be absent from the
                           rollup, and then its failure stops nothing
+  D7  something runs it    a job that builds an image either starts it
+                          (assert_starts, the default) or is depended on by a
+                          job that runs it — an e2e suite against the container
+                          proves more than a start check and makes it
+                          redundant, but nothing may satisfy this by assertion
   N1  the language token is true  a stub calling job-go-* has 'go' in position 2
   IN  caller inputs exist      every key under `with:` is an input the shared
                           job declares, and every required input is passed.
@@ -318,6 +323,7 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
                     bad("D2", f"'{job}' is a build but needs gate(s): {', '.join(inv)}")
 
             uses = props.get("uses", "")
+            props["__with_raw__"] = with_block(text, job)
 
             # --- IN: the caller's `with:` matches the callee's schema -------
             # Only checkable when the catalog is on disk next to the repos,
@@ -332,6 +338,17 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
                     bad("IN", f"'{job}' passes '{k}', which {uses.split('/')[-1].split('@')[0]} does not declare — the whole file fails at startup")
                 for k in sorted(required - passed):
                     bad("IN", f"'{job}' omits required input '{k}'")
+
+            # --- D7: an image nothing runs ---------------------------------
+            if "job-image-docker" in uses or "job-docker-image" in uses:
+                waived = re.search(r"^      assert_starts:\s*false\s*$",
+                                   props.get("__with_raw__", ""), re.M)
+                if waived:
+                    consumers = sorted(j for j, n in graph.items()
+                                       if job in n and j != "ci-ok")
+                    if not consumers:
+                        bad("D7", f"'{job}' sets assert_starts: false but no job needs it — "
+                                  "nothing in this pipeline runs the image")
 
             for callee, needed in CALLEE_NEEDS.items():
                 if f"/{callee}.yml@" not in uses:
@@ -436,16 +453,16 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
     return out, str(ci.relative_to(repo))
 
 
-def with_keys(text: str, job: str) -> set[str]:
-    """Keys passed under a job's `with:`, read from the raw file.
+def with_block(text: str, job: str) -> str:
+    """The raw lines under a job's `with:`, read from the original file.
 
-    parse_jobs folds continuation lines into a single string (comments included),
-    so the block has to be re-read here to tell an input name from a word in a
-    comment.
+    parse_jobs folds continuation lines into a single string (comments
+    included), so anything that needs to tell an input name from a word in a
+    comment has to re-read the block here.
     """
     m = re.search(rf"^  {re.escape(job)}:\s*$", text, re.M)
     if not m:
-        return set()
+        return ""
     body = []
     for ln in text[m.end():].splitlines()[1:]:
         if ln.strip() and not ln.startswith("    "):
@@ -454,15 +471,18 @@ def with_keys(text: str, job: str) -> set[str]:
     block = "\n".join(body)
     w = re.search(r"^    with:\s*$", block, re.M)
     if not w:
-        return set()
-    keys = set()
+        return ""
+    out = []
     for ln in block[w.end():].splitlines()[1:]:
         if ln.strip() and not ln.startswith("      "):
             break
-        k = re.match(r"^      ([\w-]+):", ln)
-        if k:
-            keys.add(k.group(1))
-    return keys
+        out.append(ln)
+    return "\n".join(out)
+
+
+def with_keys(text: str, job: str) -> set[str]:
+    """Input names a job passes under `with:`."""
+    return set(re.findall(r"^      ([\w-]+):", with_block(text, job), re.M))
 
 
 def catalog_inputs(uses: str):

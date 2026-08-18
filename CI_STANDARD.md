@@ -214,40 +214,48 @@ Status: **agreed 2026-08-14** (rev 2 after Jared's review). Remaining open items
     having no opinion — and an organisation with no opinion re-litigates the
     same decision every time someone starts a service.*
 
-## Standard job DAG — an edge means data flows across it
+## Standard job DAG — build first, per artifact
 
-A `needs:` edge is a claim that the downstream job **cannot run** until the
-upstream one finishes, because it consumes something the upstream produced. That
-is the only thing that justifies one. An edge added for tidiness costs
-wall-clock on every green run and, worse, converts a downstream failure into a
-`skipped` — so the one run where you needed to see the lint result is the run
-that hides it.
+**Fail fast.** If the thing does not compile, there is nothing worth testing —
+so the first gate is always "does it build", and no lint, vet or test runs until
+it passes. A broken compile fails one job in seconds instead of ten jobs in
+minutes, and it fails with the one error that caused the other nine.
+
+The build job also produces and stores the artifact every later job uses.
+Nothing runs beside it; everything runs after it.
 
 ```
-build ────────────────────────────────┐
-lint ─────────────────────────────────┤
-typecheck ────────────────────────────┼──► image / package ──► test-integration ──► ci-ok
-unit tests ───────────────────────────┘        (needs the artifact)
+build ──┬─► lint ──────────┐
+        ├─► vet ───────────┤
+        ├─► typecheck ─────┼─► integration / e2e ─► image ─► image starts ─► ci-ok
+        └─► unit tests ────┘   (uses the build artifacts)      (fire it up)
 ```
 
-**Which edges are real, by stack:**
+Read as a sequence, because that is what it is:
 
-| job | needs build? | why |
-|---|---|---|
-| `eslint`, `vitest`, `tsc --noEmit` | **no** | they read source; vitest transpiles it itself |
-| `go vet`, `go test` | **yes** | they consume the compiled artifact the build job uploads |
-| image / package | **yes** | it copies the build output in |
-| integration / e2e | **yes** | the thing under test does not exist until then |
+1. **build** — compile, and upload the artifact. For TS that is `vite build` for
+   the client and `esbuild` for the server; for Go, `go build`; for firmware,
+   `pio run`. One build per artifact, and it happens once (see BUILD ONCE).
+2. **codebase gates** — lint, vet, unit tests, typecheck. These run in parallel
+   with each other and only after the build has passed. A repo whose code does
+   not compile has nothing worth linting.
+3. **integration / e2e** — against the artifacts from step 1, never a rebuild.
+   This is the first point at which the thing under test exists.
+4. **image / package** — the shippable artifact, assembled from step 1's output.
+5. **the image starts** — run the container and prove it comes up. A build that
+   links and an image that boots are different claims, and only the second one
+   is what ships.
+6. **`ci-ok`** — the rollup, and the only required check.
 
-- **Do not copy an edge across languages.** The Go gates need the build because
-  Go's do; the JS gates were given the same shape by analogy and it meant
-  nothing. Check whether the job downloads an artifact. If it doesn't, the edge
-  is decoration. *Learned the hard way: the first TS repo through this catalog
-  had `lint needs: build` on jobs whose steps were checkout, install, eslint.*
-- What the build-first shape used to buy was noise reduction — a broken compile
-  showing one red job instead of five. That argument only holds when the jobs
-  would fail **for the same reason**, i.e. when each one compiles. Where they
-  don't share a compile step, the extra red jobs are information, not noise.
+**Each artifact gets its own DAG.** A repo with a React client and an Express
+server has two of these running side by side — `client-ts-react-build` gating
+the client's lint and tests, `server-ts-express-build` gating the server's — and
+they converge only where a real artifact contains both. A failing `go vet` must
+not hold up the React lint, and a broken `tsc` must not stop the Go tests from
+telling you what else is wrong.
+
+- **Quality gates run in parallel with each other, never serialized among
+  themselves**, and never beside the build.
 - **Hard rule — BUILD ONCE.** The build step produces *every* required artifact
   type (all build-arg variants included) and later steps — packaging, docker,
   release — pull those artifacts from cache/artifact storage. Nothing downstream
@@ -255,9 +263,10 @@ unit tests ───────────────────────
 - Stack note: for TS, `tsc --noEmit` is the compile assertion and stays a gate;
   "build" means the real bundle/transpile (vite/esbuild) — this is where the
   production artifact is produced.
-- **Every job must be reachable from `ci-ok`.** This is the invariant that
-  replaced "every job has a `needs:`". A job nobody lists can fail without
-  blocking anything, and that is true whether or not it has upstream edges.
+- **Every job must also be reachable from `ci-ok`.** Having a `needs:` and
+  blocking something are two different properties: a job can sit correctly
+  downstream of the build and still be absent from the rollup, in which case its
+  failure stops nothing. Both are checked (D1 and D6).
 - `ci-ok` (`if: always()`, fails on any failure/cancel in needs) is the single
   required check, so adding/removing gates never touches branch protection.
   The check reports under the job id `ci-ok` (no display-name override) —
@@ -726,7 +735,8 @@ will.
 | 16 | A version exists only where consumed | — | **review only** |
 | 17 | Release is promotion, not production | `check-ci-conformance` D4, D5 | gated |
 | 18 | One workflow per repo | `check-ci-conformance` P18 | gated |
-| — | Standard job DAG | `check-ci-conformance` D1–D3 | gated |
+| — | Standard job DAG (build first) | `check-ci-conformance` D1–D3 | gated |
+| — | Every job blocks something | `check-ci-conformance` D6 | gated |
 | — | Per-stack DAG in multi-codebase repos | — | **review only** |
 | — | SHA pinning | `check-ci-conformance` PIN | gated |
 | — | `ci-ok` is the only required check | branch protection | gated |

@@ -23,6 +23,21 @@ on:
         description: Image name under ghcr.io/<owner>/. Defaults to the repo.
         type: string
         default: ""
+      port:
+        description: >-
+          Port the container listens on. The start check waits for this to
+          accept a connection — a build that links and an image that boots are
+          different claims (CI_STANDARD "Standard job DAG", step 5).
+        type: number
+        default: 5000
+      start_env:
+        description: >-
+          Newline-separated KEY=VALUE pairs the container needs to reach the
+          point of listening — a DATABASE_URL pointing at the service below, a
+          dummy API key. Not secrets: this proves the image boots, not that it
+          works against production.
+        type: string
+        default: ""
 
 jobs:
   image:
@@ -77,8 +92,66 @@ jobs:
       - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: ${{ inputs.workdir }}
-          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          push: false
+          load: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Step 5 of the standard DAG. Everything above proves the image *builds*;
+      # this proves it *runs*, and those are different claims. Three repos in
+      # this fleet shipped images that could not start for months — the server
+      # bundle imported vite, which is not installed in the runtime image — and
+      # every gate was green throughout, because nothing ever started the thing.
+      #
+      # Deliberately not a health check: no endpoint, no readiness contract,
+      # nothing an application has to opt into. It boots, it listens, it is
+      # still alive. That is the floor, and it is the floor every image can
+      # meet.
+      - name: The image starts
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          PORT: ${{ inputs.port }}
+          START_ENV: ${{ inputs.start_env }}
+        run: |
+          set -euo pipefail
+          image=$(printf '%s\n' "$TAGS" | head -n1)
+          echo "Starting $image"
+
+          args=()
+          while IFS= read -r line; do
+            [ -n "$line" ] && args+=(-e "$line")
+          done <<< "$START_ENV"
+
+          cid=$(docker run -d --rm -p "127.0.0.1:$PORT:$PORT" \
+                  -e "PORT=$PORT" "${args[@]}" "$image")
+          trap 'docker logs "$cid" 2>&1 | tail -40 || true; docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
+
+          for i in $(seq 1 30); do
+            # Died is a verdict, not something to wait out.
+            if [ "$(docker inspect -f '{{.State.Running}}' "$cid" 2>/dev/null)" != "true" ]; then
+              echo "::error::Container exited before it listened on $PORT."
+              exit 1
+            fi
+            if timeout 1 bash -c "</dev/tcp/127.0.0.1/$PORT" 2>/dev/null; then
+              echo "Listening on $PORT after ${i}s."
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::Container stayed up but never listened on $PORT within 30s."
+          exit 1
+
+      # Pushed only from main. The build and the start check above run on every
+      # pull request with just the final push suppressed, so the publish path is
+      # exercised before it matters (Principle 17).
+      - name: Push to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$TAGS" | while read -r t; do
+            [ -n "$t" ] && docker push "$t"
+          done

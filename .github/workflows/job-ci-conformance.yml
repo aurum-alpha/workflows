@@ -88,20 +88,24 @@ jobs:
       # rather than by pattern — it has to resolve job-level blocks against
       # workflow-level ones, and a regex that got that wrong would report the
       # opposite of the truth about a token grant. PyYAML is therefore a real
-      # dependency, and the runner image does not carry it: the first CI run of
-      # this job died on ModuleNotFoundError after passing on a workstation
-      # that happened to have it.
+      # dependency, and the runner image does not carry it.
       #
-      # Verified after installing, not assumed. An install step that half-works
-      # and a checker that cannot see are the same failure with different logs.
+      # It has no pip either: the first attempt at this installed PyYAML with
+      # `python3 -m pip` and got "No module named pip" from the system
+      # interpreter. setup-python brings its own Python with pip, which
+      # lid-firmware already relies on for exactly this, on these runners.
+      - name: A Python with pip
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+
+      # Verified after installing, not assumed. An install that half-works and
+      # a checker that cannot see produce the same silence, and this job exists
+      # because checks that could not see had been reporting nothing for months.
       - name: Install the checkers' one dependency
         run: |
-          if ! python3 -c 'import yaml' 2>/dev/null; then
-            python3 -m pip install --quiet --disable-pip-version-check pyyaml \
-              || python3 -m pip install --quiet --disable-pip-version-check \
-                   --break-system-packages pyyaml
-          fi
-          python3 -c 'import yaml; print("PyYAML", yaml.__version__)'
+          python -m pip install --quiet --disable-pip-version-check pyyaml
+          python -c 'import yaml; print("PyYAML", yaml.__version__)'
 
       - name: ci.yml conforms to CI_STANDARD
         env:

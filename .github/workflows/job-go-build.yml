@@ -1,0 +1,246 @@
+# Fleet capability: build for a Go deployable unit (CI_STANDARD Principle 12 —
+# one way per capability). The catalog had job-go-mod, fmt, vet, lint,
+# test-unit and govulncheck but no build, so the one job the standard insists
+# comes FIRST was the one every Go repo hand-rolled: gofast behind
+# scripts/build.sh, gha-runner-controller behind `make build-linux`,
+# client-manager behind tools/checks/build. Three wrappers around the same two
+# commands, which is the same shape job-go-vet already retired.
+#
+# It stamps provenance itself rather than calling a repo script or Makefile
+# (Principle 13). That is the point of hoisting it: two of the three repos got
+# no commit or timestamp into their binaries at all, and the third could only
+# get one by keeping its CI coupled to its Makefile.
+#
+# WHERE it stamps is not configurable. Every Go repo in the fleet exposes
+# `<module>/internal/version` with Version, Build, Commit and BuiltAt, and the
+# module path comes from go.mod, so there is nothing for a caller to pass and
+# nothing for two repos to disagree about. Which package a Go program keeps its
+# build identity in has no operational consequence whatsoever, and a fleet
+# standard that lets it vary is decorating a preference as a decision.
+name: job-go-build
+
+on:
+  workflow_call:
+    inputs:
+      workdir:
+        description: Directory containing go.mod
+        type: string
+        default: "."
+      binaries:
+        description: >-
+          JSON array of command names to link, each built from ./cmd/<name>,
+          e.g. '["fastgen","fastproxy"]'. JSON and not a newline list on
+          purpose: a newline input means a shell loop over caller data, and
+          that is the bug class that broke job-image-starts for every caller.
+          Empty array compiles the packages and links nothing, which is the
+          right answer for a repo whose binary is built into an image.
+        type: string
+        default: "[]"
+      version_file:
+        description: >-
+          File holding the SemVer to stamp (Principle 14 — a version is a
+          commit, not a tag). A repo with no consumer deciding from the string
+          has no version file and none is required: the stamp then says `dev`,
+          and commit and builtAt still answer "what is this" exactly.
+        type: string
+        default: .version
+      goos:
+        description: Target OS. Empty builds for the runner's own platform.
+        type: string
+        default: ""
+      goarch:
+        description: >-
+          Target architecture. Empty builds for the runner's own. When either
+          this or goos is set, binaries are named <name>-<goos>-<goarch>, which
+          is the convention the cross-compiling repo already follows.
+        type: string
+        default: ""
+      artifact_name:
+        description: Artifact to upload the linked binaries as. Empty skips the upload.
+        type: string
+        default: ""
+      needs_artifact:
+        description: >-
+          Artifact to download before building, for repos that embed generated
+          assets the packages will not compile without. Empty to skip.
+        type: string
+        default: ""
+      artifact_path:
+        description: Destination path for needs_artifact.
+        type: string
+        default: ""
+      runner:
+        description: >-
+          Override runs-on. Leave empty for the fleet default. Set to a
+          GitHub-hosted label where a repo must not build on the fleet
+          (CI_STANDARD Principle 4 — e.g. the runner controller itself).
+        type: string
+        default: ""
+    outputs:
+      version:
+        description: >-
+          What was stamped. The image jobs tag with it and a release job cuts a
+          tag from it, so it is read once here rather than parsed again by
+          everything downstream.
+        value: ${{ jobs.build.outputs.version }}
+
+jobs:
+  build:
+    runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-26.04' }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.stamp.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: ${{ inputs.workdir }}/go.mod
+          cache: false
+      - name: Isolate Go caches to runner.temp
+        shell: bash
+        run: |
+          set -euo pipefail
+          mod="${RUNNER_TEMP}/go-mod"
+          build="${RUNNER_TEMP}/go-build"
+          mkdir -p "${mod}" "${build}"
+          {
+            echo "GOMODCACHE=${mod}"
+            echo "GOCACHE=${build}"
+          } >> "$GITHUB_ENV"
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GOMODCACHE }}
+          key: go-mod-${{ runner.os }}-${{ hashFiles(format('{0}/go.sum', inputs.workdir)) }}
+          restore-keys: |
+            go-mod-${{ runner.os }}-
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GOCACHE }}
+          key: go-build-${{ runner.os }}-${{ hashFiles(format('{0}/go.sum', inputs.workdir)) }}
+          restore-keys: |
+            go-build-${{ runner.os }}-
+      - name: Download embedded assets
+        if: inputs.needs_artifact != ''
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.needs_artifact }}
+          path: ${{ inputs.artifact_path }}
+
+      # Compile everything before linking anything. `go build ./...` is the
+      # cheapest possible statement of "does this repo compile", and it fails
+      # on a package no binary imports — which is exactly the breakage a
+      # per-binary link would miss.
+      - name: Compile all packages
+        working-directory: ${{ inputs.workdir }}
+        run: go build ./...
+
+      # python3, not bash: the binaries list is JSON and the ldflags are
+      # assembled from four inputs. A shell loop over caller-supplied data is
+      # the bug class check-catalog-loops exists to catch, so there isn't one.
+      - name: Link binaries and stamp provenance
+        id: stamp
+        shell: python3 {0}
+        working-directory: ${{ inputs.workdir }}
+        env:
+          BINARIES: ${{ inputs.binaries }}
+          VERSION_FILE: ${{ inputs.version_file }}
+          GOOS_IN: ${{ inputs.goos }}
+          GOARCH_IN: ${{ inputs.goarch }}
+        run: |
+          import json, os, pathlib, re, subprocess, sys
+          from datetime import datetime, timezone
+
+          names = json.loads(os.environ["BINARIES"] or "[]")
+          goos, goarch = os.environ["GOOS_IN"].strip(), os.environ["GOARCH_IN"].strip()
+
+          # The stamp target is derived, never passed: go.mod names the module,
+          # and the fleet standard puts build identity in internal/version.
+          module = None
+          for line in pathlib.Path("go.mod").read_text().splitlines():
+              m = re.match(r"\s*module\s+(\S+)", line)
+              if m:
+                  module = m.group(1)
+                  break
+          if not module:
+              sys.exit("go.mod has no module line")
+          pkg = f"{module}/internal/version"
+
+          # `go build -X` on a symbol that does not exist is SILENTLY IGNORED —
+          # no error, no warning, and a binary that reports nothing. A stamp
+          # that cannot fail is a stamp nobody can trust, so the package has to
+          # be there and this says so plainly when it is not.
+          STAMPED = ("Version", "Build", "Commit", "BuiltAt")
+          pkgdir = pathlib.Path("internal/version")
+          if names:
+              if not pkgdir.is_dir():
+                  sys.exit(
+                      "internal/version/ not found. Every Go repo in the fleet "
+                      "stamps build identity there (CI_STANDARD Principle 13); "
+                      "the linker ignores -X for a package that does not exist, "
+                      "so this fails loudly rather than shipping an unstamped "
+                      "binary.")
+              # Same silent failure one level down: -X names a SYMBOL, and a
+              # missing var is ignored exactly as quietly as a missing package.
+              # gofast had Build, Commit and BuiltAt but no Version, so three
+              # stamps would have landed and the fourth would have vanished.
+              src = "\n".join(f.read_text() for f in pkgdir.glob("*.go"))
+              missing = [v for v in STAMPED
+                         if not re.search(rf"^\s*{v}\s*(=|\bstring\b)", src, re.M)]
+              if missing:
+                  sys.exit(
+                      f"internal/version declares no {', '.join(missing)} — "
+                      "-X would be silently ignored for each. The fleet stamps "
+                      f"{', '.join(STAMPED)}; add the missing var(s) as a "
+                      "package-level string.")
+
+          vf = pathlib.Path(os.environ["VERSION_FILE"])
+          # No version file is a valid answer, not an error: Principle 16 says a
+          # repo with nothing deciding from the string has no version at all.
+          # Build, Commit and BuiltAt still say what this binary is.
+          version = vf.read_text().strip() if vf.is_file() else "dev"
+          build = os.environ.get("GITHUB_RUN_NUMBER", "local")
+          commit = subprocess.run(["git", "rev-parse", "--short=7", "HEAD"],
+                                  capture_output=True, text=True).stdout.strip() or "unknown"
+          built = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+              fh.write(f"version={version}\n")
+          print(f"version={version} build={build} commit={commit} builtAt={built}")
+
+          ldflags = ["-s", "-w"] + [
+              f"-X {pkg}.{var}={val}"
+              for var, val in (("Version", version), ("Build", build),
+                               ("Commit", commit), ("BuiltAt", built))
+          ]
+
+          if not names:
+              print("No binaries requested; compile-only.")
+              sys.exit(0)
+
+          env = dict(os.environ, CGO_ENABLED="0")
+          if goos:
+              env["GOOS"] = goos
+          if goarch:
+              env["GOARCH"] = goarch
+          suffix = f"-{goos or 'native'}-{goarch}" if (goos or goarch) else ""
+
+          os.makedirs("bin", exist_ok=True)
+          for name in names:
+              out = f"bin/{name}{suffix}"
+              print(f"linking {out} from ./cmd/{name}")
+              subprocess.run(
+                  ["go", "build", "-trimpath", "-ldflags", " ".join(ldflags),
+                   "-o", out, f"./cmd/{name}"],
+                  check=True, env=env)
+              os.chmod(out, 0o755)
+
+      - name: Upload binaries
+        if: inputs.artifact_name != '' && inputs.binaries != '[]'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: ${{ inputs.workdir }}/bin/
+          if-no-files-found: error
+          retention-days: 1

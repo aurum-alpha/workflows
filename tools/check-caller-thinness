@@ -46,10 +46,13 @@ LOCAL_ALLOWLIST = {
     # one compiled artifact rather than rebuilding it, which is the property
     # that matters; there is no shared job that models either.
     "gha-runner-controller": {
-        "build",
-        "test-integration",
+        # server-go-build and server-go-test-integration carried their pre-#82
+        # names here long after the rename, so the two genuinely-explained
+        # local jobs reported as unexplained drift. An allow-list is a debt
+        # with a name; it cannot be that while its names are wrong.
+        "server-go-build",
+        "server-go-test-integration",
         "package-deb",
-        "package-image",
         "release",
         # Splits the repo's two unrelated products so a Dockerfile edit does
         # not compile Go, and a Go change does not rebuild an image that
@@ -65,6 +68,21 @@ LOCAL_ALLOWLIST = {
 # ci-ok: putting a job that only posts a comment into the rollup would let a
 # commenting failure block a merge, which inverts the point of it.
 REPORTING_JOBS = {"job-release-risk.yml"}
+
+# Shared jobs that sit OUTSIDE the rollup by design, downstream of it rather
+# than inside it. Distinct from REPORTING_JOBS: those are excluded because
+# their failure must not block a merge; these are excluded because they run
+# after ci-ok has already reported and cannot be in its needs: without making
+# the rollup wait on its own successor.
+#
+# check-ci-conformance has carried this exemption since the prune landed —
+# "D4 (be in ci-ok) is wrong for it by design; it sits downstream of the
+# rollup" — and this tool did not, so the two disagreed about the same job on
+# five repos for a whole phase. Nothing runs this tool in CI, which is why
+# nobody saw it. An exemption stated in one checker and not the other is not
+# an exemption, it is a discrepancy waiting to be resolved in whichever
+# direction is more convenient.
+OUTSIDE_ROLLUP = {"job-image-prune.yml"}
 
 # `permissions` is a stub key, not drift: a called workflow can never hold more
 # than the job calling it, so a stub whose shared job needs a stronger scope
@@ -144,7 +162,8 @@ def check_repo(repo: str, text: str) -> list[str]:
         if "uses" not in props:
             problems.append(f"job '{job_id}' has a local body (not a stub, not allow-listed)")
             continue
-        if not any(f"/{name}@" in props["uses"] for name in REPORTING_JOBS):
+        if not any(f"/{name}@" in props["uses"]
+                   for name in REPORTING_JOBS | OUTSIDE_ROLLUP):
             stub_ids.append(job_id)
         extra = set(props) - STUB_KEYS
         if extra:

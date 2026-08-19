@@ -382,6 +382,27 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
             bad("RU", "ci-ok passes toJSON(needs.*.result); the flattened form cannot name the failing job")
         elif "toJSON(needs)" not in rollup_blob:
             bad("RU", "ci-ok does not pass needs_json: ${{ toJSON(needs) }}")
+        # Only for the REMOTE form. The action reads inputs.needs_json and no
+        # repository file, and the runner fetches an `owner/repo/path@ref`
+        # action itself, so a checkout provides nothing. What it does provide
+        # is a dependency on a token: the correct grant for this job is
+        # `permissions: {}`, which leaves none, and the checkout then fails
+        # outright against a private repository. gha-runner-controller failed
+        # exactly that way with "Repository not found", while the identical
+        # line passed on gofast because gofast is public — a step that works
+        # only while a repo stays public is what this checker exists to name.
+        #
+        # The local path form `./.github/actions/ci-ok` is the exception and
+        # needs its checkout: a local action has to be in the workspace. Only
+        # this repository uses it, so that the action is gated by the same run
+        # that ships it. Written as a carve-out rather than a looser regex,
+        # because the first version of this rule flagged that legitimate case
+        # and would have had the catalog fail its own gate.
+        uses_remote = re.search(r"uses:\s*[\w.-]+/[\w.-]+/\.github/actions/ci-ok@", rollup_blob)
+        if shared and uses_remote and "actions/checkout@" in rollup_blob:
+            bad("RU", "ci-ok checks out the repo — the shared action reads no "
+                      "file, and with permissions: {} the checkout has no token, "
+                      "so it fails on a private repo")
 
     # --- P3 / P4 / D*: per job -------------------------------------------
     for job, props in sorted(jobs.items()):

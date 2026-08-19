@@ -49,8 +49,10 @@ jobs:
     if: always()
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
     steps:
-      - name: Verify no failures
-        run: |
-          results='${{ toJSON(needs.*.result) }}'
-          echo "$results"
-          echo "$results" | grep -qE 'failure|cancelled' && exit 1 || exit 0
+      # The catalog eats its own cooking: the local path form, so a change to
+      # the action is gated by the same run that ships it. Every other repo
+      # pins it at a sha like any other action.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/ci-ok
+        with:
+          needs_json: ${{ toJSON(needs) }}

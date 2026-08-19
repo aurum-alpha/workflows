@@ -828,6 +828,60 @@ Same ids where meaningful: `builder-image` (tier 2, reusable) → `install`
 | `test-unit` | build | `pio test` native suite (when adopted) |
 | `ci-ok` | all | rollup |
 
+### The rollup is shared; the `needs:` list is not
+
+`ci-ok` is the one job every repo has, and it was the one job nobody shared.
+Eleven copies of fifteen lines, and by the time anyone looked they had drifted
+three ways: nine repos on `toJSON(needs.*.result)` piped to `grep -qE`, one on a
+`!contains(...)` expression, and one — gofast, edited in place the night before
+this was written — on a longer form that printed the object and split
+`cancelled` from `failure`. Three answers to "what does a red rollup mean",
+none of them wrong, all of them different.
+
+Split it where the seam actually is. The **`needs:` list is the repo's own
+DAG** and cannot be shared — that is the whole content of the job. The
+**verdict logic** is fleet-wide and had no business differing.
+
+So the body moves to `aurum-alpha/workflows/.github/actions/ci-ok`, and the
+caller keeps what is genuinely its own:
+
+```yaml
+  ci-ok:
+    needs: [server-go-build, server-go-vet, client-ts-react-build, image]
+    if: always()
+    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+    steps:
+      - uses: actions/checkout@<sha> # v7.0.1
+      - uses: aurum-alpha/workflows/.github/actions/ci-ok@<sha> # v1.13.0
+        with:
+          needs_json: ${{ toJSON(needs) }}
+```
+
+**A composite action, not a reusable workflow — and the reason is the check
+name.** A called workflow reports as `<caller job> / <callee job>`, which is
+why credit-watch's image check reads `image / image` in the checks list. Make
+`ci-ok` a called workflow and it becomes `ci-ok / ok`: the required status
+check configured in eleven repos' branch protection stops reporting, all at
+once, and this repo cannot fix branch protection. A composite action runs
+inside the caller's job, so the check keeps its name and only the body is
+shared. Where a rename is free, prefer the reusable workflow; where the name is
+load-bearing outside the repo, it is not free.
+
+**Pass `toJSON(needs)`, never `toJSON(needs.*.result)`.** The flattened form is
+a bare list of verdicts — `["success","failure","success"]` — so a red rollup
+can say that something failed and never which thing. The full object is keyed
+by job id. That is the only information a reader of a red `ci-ok` is there for,
+and nine repos were throwing it away.
+
+**`cancelled` is reported separately from `failure`,** because they mean
+opposite things. A failure is a verdict about the code. A cancellation is
+almost always the concurrency group superseding an older run, or a runner going
+away — nothing was learned about the commit at all. Collapsed into one
+`exit 1`, they sent people looking for test output that was never produced.
+
+Rule **RU** enforces all three: the shared action, the unflattened context, and
+no local copy of the body.
+
 ### Job ids name the deployable unit
 
 **`<purpose>-<language>[-<framework>]-<capability>`.**
@@ -1064,6 +1118,7 @@ will.
 | — | `ci-ok` is the only required check | branch protection | gated |
 | — | Fleet pnpm version | `check-fleet-versions` (sweep) | audit only |
 | — | Caller `with:` matches the shared job's inputs | `check-ci-conformance` IN | gated |
+| — | One shared `ci-ok` rollup, not eleven copies | `check-ci-conformance` RU | gated |
 | — | Caller permissions cover shared jobs | `check-caller-permissions` (sweep) | audit only |
 
 Three tiers, and the difference between them matters:

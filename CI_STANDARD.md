@@ -432,8 +432,24 @@ queue.
 
 The commit that removed hiring-tracker's skip-ci mechanism explained the bug by
 quoting the token in its body, and was skipped by it. Seventeen minutes were
-spent reading the absence as runner starvation before the shape gave it away:
-a queued job still appears as a check run, so *zero* check runs never means slow.
+spent reading the absence as runner starvation before the cause was found.
+
+**Zero check runs does not tell you which of the two it is.** An earlier version
+of this section claimed a queued job always appears as a check run, so an empty
+list had to mean the run never existed. That is wrong, and flight-watch
+disproved it within the hour: run 57 sat in `pending` and run 56 in `queued` for
+27 minutes, both with zero check runs on the pull request, because a run
+publishes no check runs until its jobs are assigned to a runner.
+
+The only way to tell is to ask for the runs rather than the checks:
+
+```
+actions_list list_workflow_runs --branch <branch>
+```
+
+A `pending` or `queued` run with no jobs is starvation. **No run at all** is the
+skip token, a trigger that does not match, or a startup failure — and those three
+are distinguished by whether a run exists with conclusion `startup_failure`.
 
 Write it as `skip-ci` in prose. Spelling it out in a file is fine — only the
 commit message is scanned.

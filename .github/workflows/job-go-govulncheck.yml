@@ -29,6 +29,15 @@ on:
           scanner tracks the Go version the code actually builds with.
         type: string
         default: "v1.6.0"
+      allow:
+        description: >-
+          Newline-separated GO-YYYY-NNNN advisory ids to accept, each with a
+          reason in a comment at the call site. Deliberately an id list and not
+          a warn_only flag: warn_only silences the next finding too, and the
+          next one might be exploitable here. An allowed id stops blocking;
+          anything not on the list still fails the job.
+        type: string
+        default: ""
 
 jobs:
   govulncheck:
@@ -68,6 +77,61 @@ jobs:
       # `go run` rather than a preinstalled binary: the scanner has to analyse
       # against the same toolchain the code builds with, and this repo's go.mod
       # is what setup-go just resolved.
+      # -format json so the allow-list can key on advisory ids. The text
+      # output cannot be filtered without parsing prose, and a scan whose
+      # exemptions are a grep over English is not an exemption anyone can audit.
+      #
+      # Only symbol-level findings count: govulncheck emits a finding per trace,
+      # and the ones with a function in trace[0] are the calls it actually
+      # reached. Module-level findings mean "you require this, you do not call
+      # it", which is not a reason to fail a build.
       - name: govulncheck
         working-directory: ${{ inputs.workdir }}
-        run: go run golang.org/x/vuln/cmd/govulncheck@${{ inputs.version }} ./...
+        env:
+          ALLOW: ${{ inputs.allow }}
+        run: |
+          set -euo pipefail
+          go run golang.org/x/vuln/cmd/govulncheck@${{ inputs.version }} \
+            -format json ./... > govulncheck.json || true
+
+          python3 - <<'PY'
+          import json, os, sys
+
+          allow = {l.strip() for l in os.environ.get("ALLOW", "").splitlines() if l.strip()}
+          called, summaries = {}, {}
+
+          # A stream of concatenated JSON objects, not a JSON array.
+          dec = json.JSONDecoder()
+          raw = open("govulncheck.json").read()
+          i = 0
+          while i < len(raw):
+              while i < len(raw) and raw[i].isspace():
+                  i += 1
+              if i >= len(raw):
+                  break
+              obj, i = dec.raw_decode(raw, i)
+              if "osv" in obj and isinstance(obj["osv"], dict):
+                  o = obj["osv"]
+                  summaries[o["id"]] = o.get("summary", "").strip()
+              elif "finding" in obj:
+                  f = obj["finding"]
+                  trace = f.get("trace") or [{}]
+                  if trace[0].get("function"):
+                      called.setdefault(f["osv"], trace[0])
+
+          blocking = sorted(set(called) - allow)
+          for vid in sorted(called):
+              where = called[vid]
+              at = f"{where.get('module','')}.{where.get('function','')}"
+              mark = "allowed" if vid in allow else "BLOCKING"
+              print(f"{mark}: {vid} {summaries.get(vid,'')} (reached at {at})")
+
+          for vid in sorted(allow - set(called)):
+              print(f"stale: {vid} is allowed but no longer reported — drop it from allow:")
+
+          if blocking:
+              print(f"::error::{len(blocking)} vulnerability(ies) reachable and not allowed: "
+                    + ", ".join(blocking))
+              sys.exit(1)
+          print("ok - no reachable vulnerabilities outside the allow list")
+          PY

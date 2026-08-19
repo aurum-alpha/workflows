@@ -443,6 +443,43 @@ any check that would catch it lives in a run that the token has already
 prevented from existing. It goes here because a written rule is the only
 mechanism available, not because a written rule is the good one.
 
+### Accepting a vulnerability: an id list, never a warn_only
+
+`job-go-govulncheck` takes an `allow:` input — newline-separated `GO-YYYY-NNNN`
+ids — and **not** a `warn_only` flag. The difference is the whole point. A
+`warn_only` silences the finding in front of you and every finding after it,
+including the one that is exploitable. An allowed id stops blocking; anything
+not on the list still fails the job.
+
+The job scans with `-format json` so exemptions key on ids rather than on a grep
+over English, and it counts only **symbol-level** findings — those govulncheck
+reports with a function in `trace[0]`, meaning code it actually reached. A
+module-level finding says "you require this, you do not call it", which is not a
+reason to fail a build. It also prints `stale:` for any allowed id no longer
+reported, so the list shrinks when the ecosystem catches up instead of
+accumulating dead exemptions nobody dares delete.
+
+Every entry needs a reason at the call site. The first two:
+
+```
+GO-2026-4887  Moby AuthZ plugin bypass on oversized request bodies
+GO-2026-4883  Moby off-by-one in plugin privilege validation
+```
+
+Both are daemon-side defects in Moby's request handling. gha-runner-controller
+is an API *client* — it talks to a daemon over a socket and runs neither a
+daemon nor an AuthZ plugin, so the vulnerable code is never in its process.
+Neither has a fixed version in `github.com/docker/docker` at all ("all versions,
+no known fixed"; only `moby/moby/v2` ≥ v2.0.0-beta.8 carries the fix), so there
+is nothing to upgrade to, and both reports are `unreviewed` — auto-imported from
+a third party and unverified by the Go team.
+
+That combination is worth naming, because it is the case an allow-list is for:
+a real advisory, correctly reported, against a module we genuinely import, whose
+defect is unreachable from how we use it, with no upgrade available. The
+alternatives were to block every unrelated change indefinitely, or to stop
+scanning. Both are worse than writing down which two we accept and why.
+
 ## Coverage
 
 **A CLI `--coverage.exclude` replaces the config's list; it does not extend it.**

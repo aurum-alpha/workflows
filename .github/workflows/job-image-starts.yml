@@ -125,7 +125,7 @@ jobs:
           echo "This image was built but not started. Nothing here proves it boots."
           echo "Remove start_blocked_by from the caller once that is resolved."
 
-      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         if: ${{ inputs.start_blocked_by == '' }}
         with:
           registry: ghcr.io

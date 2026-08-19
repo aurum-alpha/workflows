@@ -161,7 +161,7 @@ jobs:
 
       # Unconditional, unlike the old job's main-gated login: staging happens on
       # every run, so the credential is needed on every run.
-      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}

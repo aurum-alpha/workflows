@@ -1,0 +1,130 @@
+# Fleet capability: promote the staged image to its published tags
+# (CI_STANDARD Principle 17). Third of three — build, starts, publish.
+#
+# Release is promotion, not production. This job builds nothing. It takes the
+# digest job-image-build staged, the one job-image-starts just proved boots,
+# and points tags at it. `imagetools create` is a registry-side manifest
+# operation: no layers move, and there is no second build that could differ
+# from the one that was tested.
+#
+# It runs on pull requests with only the final promotion suppressed, so the
+# publish path is exercised on every change and not first attempted on main
+# (Principle 17, rule D5). The main check goes on the step, never on the job:
+# a job-level `if` makes the check disappear from pull requests entirely, and a
+# check nobody sees is not a gate.
+name: job-image-publish
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: Canonical image name, from job-image-build's `image` output.
+        type: string
+        required: true
+      digest:
+        description: >-
+          Manifest digest, from job-image-build's `digest` output — the same
+          value job-image-starts pulled. Promoting by digest rather than
+          rebuilding is the whole point: what ships is the artifact that was
+          gated, not another one built from the same source.
+        type: string
+        required: true
+      extra_tags:
+        description: >-
+          Newline-separated additional docker/metadata-action tag rules, on top
+          of the fleet defaults (`latest` on the default branch, `sha-<short>`,
+          and the branch name). For a repo that publishes a version from a file
+          or a build number.
+
+          It may not produce `latest`. The default rule already does, gated on
+          the default branch, and this input is the one way a caller could route
+          around that gate. Rejected by name below, and the computed tag list is
+          checked again afterwards in case a rule produces it by some other
+          spelling.
+        type: string
+        default: ""
+
+jobs:
+  publish:
+    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      # The only job in the three that needs write for its actual purpose. The
+      # build job holds it to stage a digest; this one holds it to promote.
+      packages: write
+    steps:
+      # `latest` means "what is on main". A pull request that could claim it
+      # would silently redirect every deployment that pulls by that tag to
+      # unreviewed code, and the tag carries no evidence of where it came from.
+      - name: extra_tags may not claim latest
+        if: ${{ inputs.extra_tags != '' }}
+        env:
+          EXTRA: ${{ inputs.extra_tags }}
+        run: |
+          set -euo pipefail
+          if printf '%s' "$EXTRA" | grep -qiE '(value|suffix|prefix)=latest\b|^\s*latest\s*$'; then
+            echo "::error::extra_tags may not produce 'latest'." \
+                 "The default rule already emits it, gated on the default branch;" \
+                 "this input is the only way to route around that gate."
+            exit 1
+          fi
+
+      - id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        with:
+          images: ${{ inputs.image }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-,format=short
+            type=ref,event=branch
+            ${{ inputs.extra_tags }}
+
+      - name: What would be promoted
+        env:
+          REF: ${{ inputs.image }}@${{ inputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          echo "Source:  $REF"
+          echo "Tags:"
+          printf '%s\n' "$TAGS" | sed 's/^/  /'
+
+          # Belt and braces, evaluated on every run including pull requests.
+          # The Promote step below is main-gated, so a stray `latest` on a
+          # branch could not actually ship — but being quietly saved by a second
+          # gate is not the same as being correct, and this is the run where
+          # someone can still see it. `latest` is main's tag, and only main's.
+          if printf '%s\n' "$TAGS" | grep -qE ':latest$'; then
+            if [ "$GITHUB_EVENT_NAME" != "push" ] || [ "$GITHUB_REF" != "refs/heads/main" ]; then
+              echo "::error::The computed tags include ':latest' on ${GITHUB_REF}" \
+                   "(event ${GITHUB_EVENT_NAME}). Only a push to main may claim latest."
+              exit 1
+            fi
+          fi
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Promote
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          REF: ${{ inputs.image }}@${{ inputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          args=()
+          while IFS= read -r t; do
+            [ -n "$t" ] && args+=(-t "$t")
+          done <<< "$TAGS"
+          if [ ${#args[@]} -eq 0 ]; then
+            echo "::error::metadata-action produced no tags, so there is nothing to promote."
+            exit 1
+          fi
+          docker buildx imagetools create "${args[@]}" "$REF"
+          docker buildx imagetools inspect "${args[0]#-t }" >/dev/null 2>&1 || true
+          echo "Promoted $REF"

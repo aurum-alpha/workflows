@@ -41,11 +41,15 @@ principle needed enforcing:
                           that updates job ids and needs: lists still leaves
                           these dangling, and the expression silently evaluates
                           to empty rather than failing
-  D7  something runs it    a job that builds an image either starts it
-                          (assert_starts, the default) or is depended on by a
-                          job that runs it — an e2e suite against the container
-                          proves more than a start check and makes it
-                          redundant, but nothing may satisfy this by assertion
+  D7  something runs it    a job that builds an image is depended on by a job
+                          that runs it. Under the build/starts/publish split the
+                          build job never starts anything, so the question is
+                          whether anything is downstream of it at all: a staged
+                          digest nothing pulls is an image nobody ran. On the
+                          starts job, start_blocked_by waives the check and must
+                          name the blocker — an empty reason is a boolean
+                          wearing a string's clothes. Nothing satisfies this by
+                          assertion
   RN  no renamed commands    a job id token (server-go-*, client-ts-*, …) never
                           appears immediately after a tool name in a run: body.
                           Renaming job ids with a whole-word regex also rewrites
@@ -65,6 +69,13 @@ principle needed enforcing:
                           existed — and the commit is invariably [skip ci], so
                           the version it carries is never built at all. Generate
                           it into the build output instead
+  RU  one rollup             ci-ok's body is the shared composite action, not a
+                          copy of it. The needs: list is the repo's own DAG and
+                          stays in the repo; the fifteen lines that decide what
+                          `failure` and `cancelled` mean had drifted three ways
+                          across eleven repos before this rule existed. Passes
+                          toJSON(needs), not toJSON(needs.*.result) — the
+                          flattened form cannot name which job failed
   N1  the language token is true  a stub calling job-go-* has 'go' in position 2
   IN  caller inputs exist      every key under `with:` is an input the shared
                           job declares, and every required input is passed.
@@ -190,6 +201,14 @@ CALLEE_NEEDS = {
     "job-image-docker": {"packages": "write"},
     "job-docker-image": {"packages": "write"},
     "job-image-cached": {"packages": "write"},
+    # The split: build stages a digest on every run, publish promotes on main,
+    # prune deletes. Only starts is read-only, which is the point of splitting —
+    # the combined job took write on every pull request in the fleet so that one
+    # main-only step inside it could push.
+    "job-image-build": {"packages": "write"},
+    "job-image-starts": {"packages": "read"},
+    "job-image-publish": {"packages": "write"},
+    "job-image-prune": {"packages": "write"},
     "job-release-risk": {"pull-requests": "write"},
 }
 PERM_RANK = {"none": 0, "read": 1, "write": 2}
@@ -344,6 +363,26 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
         elif not comment or not re.match(r"#\s*v", comment.strip()):
             bad("PIN", f"{action}@{ref[:8]} has no trailing '# vX.Y.Z' comment")
 
+    # --- RU: the rollup is shared, not copied ----------------------------
+    # ci-ok is the one job every repo has and the one job none of them called
+    # from the catalog, because a reusable workflow would rename the check to
+    # `ci-ok / ok` and break branch protection in eleven places at once. A
+    # composite action runs inside the caller's job, so the name survives and
+    # only the body is shared.
+    if "ci-ok" in jobs:
+        rollup_blob = job_block(text, "ci-ok")
+        shared = re.search(
+            r"uses:\s*(?:\./\.github/actions/ci-ok\b"
+            r"|aurum-alpha/workflows/\.github/actions/ci-ok@)",
+            rollup_blob,
+        )
+        if not shared:
+            bad("RU", "ci-ok does not use the shared ci-ok action — its rollup is a local copy")
+        elif "toJSON(needs.*.result)" in rollup_blob:
+            bad("RU", "ci-ok passes toJSON(needs.*.result); the flattened form cannot name the failing job")
+        elif "toJSON(needs)" not in rollup_blob:
+            bad("RU", "ci-ok does not pass needs_json: ${{ toJSON(needs) }}")
+
     # --- P3 / P4 / D*: per job -------------------------------------------
     for job, props in sorted(jobs.items()):
         blob = job_block(text, job)
@@ -358,8 +397,17 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
             # Separate property: having a needs: puts a job in the right place
             # in the DAG; being in ci-ok's closure is what makes its failure
             # block anything. A job can satisfy D1 and still stop nothing.
-            if "ci-ok" in jobs and job not in reachable_from_rollup:
+            # The prune is the one job deliberately outside the rollup:
+            # housekeeping that fails says nothing about the commit, and a merge
+            # blocked on a registry API hiccup is worse than a week of extra
+            # blobs. Exempt by name, not by inference — and it must sit
+            # downstream of ci-ok, so it cannot run before the gates pass.
+            is_prune = "job-image-prune" in props.get("uses", "")
+            if "ci-ok" in jobs and job not in reachable_from_rollup and not is_prune:
                 bad("D6", f"'{job}' is not reachable from ci-ok — its failure blocks nothing")
+            if is_prune and "ci-ok" not in graph[job]:
+                bad("D6", f"'{job}' prunes the registry but does not need ci-ok — "
+                          "housekeeping must not run ahead of the gates")
 
             if BUILD_RE.search(job):
                 inv = sorted(n for n in graph[job] if GATE_RE.search(n) and not BUILD_RE.search(n))
@@ -444,7 +492,17 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
                           "the build output instead")
 
             # --- D7: an image nothing runs ---------------------------------
-            if "job-image-docker" in uses or "job-docker-image" in uses:
+            # Under the three-way split the build job never starts anything, so
+            # the question is not "did it assert" but "is anything downstream of
+            # it". A staged digest nothing pulls is an image nobody ran.
+            if "job-image-build" in uses:
+                consumers = sorted(j for j, n in graph.items()
+                                   if job in n and j != "ci-ok")
+                if not consumers:
+                    bad("D7", f"'{job}' stages an image but no job needs it — "
+                              "nothing in this pipeline runs or publishes it")
+
+            if "job-image-docker" in uses or "job-docker-image" in uses or "job-image-starts" in uses:
                 raw = props.get("__with_raw__", "")
                 waived = re.search(r"^      assert_starts:\s*false\s*$", raw, re.M)
                 # start_blocked_by is the other way to satisfy D7, and it earns it
@@ -464,7 +522,7 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
                     bad("D7", f"'{job}' sets start_blocked_by with no reason — the input "
                               "exists to name the blocker, and an empty one waives "
                               "the check while explaining nothing")
-                elif waived and not blocked:
+                elif waived and not blocked and "job-image-starts" not in uses:
                     consumers = sorted(j for j, n in graph.items()
                                        if job in n and j != "ci-ok")
                     if not consumers:

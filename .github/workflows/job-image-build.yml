@@ -1,0 +1,214 @@
+# Fleet capability: build the container and stage it in the registry
+# (CI_STANDARD Principle 12). First of three — build, starts, publish.
+#
+# job-image-docker did all three in one job: downloaded artifacts, built,
+# logged in, started the container, and pushed. That is four claims in one
+# check, and when it went red the checks list said "image" and nothing else.
+# Worse, the three have different permission needs and different triggers, so
+# the single job took the union: packages: write for a step that only runs on
+# main, on every pull request in the fleet.
+#
+# What this job claims, and only this: the Dockerfile in the repo assembles,
+# from artifacts earlier jobs already built. Nothing here runs the image and
+# nothing here publishes it.
+name: job-image-build
+
+on:
+  workflow_call:
+    inputs:
+      image_name:
+        description: >-
+          Image name under ghcr.io/<owner>/. Empty means the repository itself.
+          A name UNDER the owner: interpolating it bare used to replace the
+          whole path, so `image_name: wardley-mapper` built ghcr.io/wardley-
+          mapper with no owner and GHCR answered 400 on the blob HEAD.
+        type: string
+        default: ""
+      dockerfile:
+        description: >-
+          Path to the Dockerfile, relative to the repo root. The image is the
+          Dockerfile in the repo, run as-is — every deployable in this fleet
+          copies artifacts that earlier jobs already built, so there is nothing
+          for this job to decide beyond which file and which stage.
+        type: string
+        default: Dockerfile
+      context:
+        description: Build context, relative to the repo root.
+        type: string
+        default: "."
+      target:
+        description: >-
+          Dockerfile stage to build. Empty builds the last stage. Repos with a
+          multi-stage file that also carries a builder stage must name the
+          runtime stage here, or the build silently ships the builder.
+        type: string
+        default: ""
+      platforms:
+        description: Comma-separated build platforms.
+        type: string
+        default: linux/amd64
+      artifacts:
+        description: >-
+          Newline-separated `artifact-name=destination` pairs, placed before the
+          build. Same idiom as start_services' `hostname=image`.
+
+          This is the whole reason the image job exists downstream of the build
+          jobs rather than building anything itself: `client-dist=dist/public`
+          says the vite bundle this run already produced goes where the
+          Dockerfile expects it. BUILD ONCE (Principle 7) — an image that
+          rebuilds its own inputs is testing a build that never ships.
+
+          Everything the run produced is downloaded into a staging directory and
+          only the names listed here are placed, so buildx's .dockerbuild record
+          and any other incidental artifact are ignored rather than landing in
+          the context. Naming an artifact the run did not produce is an error,
+          not an empty directory.
+        type: string
+        default: ""
+      executables:
+        description: >-
+          Newline-separated paths to chmod 755 after placement. Artifact
+          upload does not preserve the execute bit, so a Go binary arrives
+          unrunnable and the image builds fine and dies on exec. Three repos
+          carry this line already; it is not optional knowledge.
+        type: string
+        default: ""
+      build_args:
+        description: Newline-separated KEY=value build arguments.
+        type: string
+        default: ""
+    outputs:
+      image:
+        description: Canonical image name, without tag or digest.
+        value: ${{ jobs.build.outputs.image }}
+      digest:
+        description: >-
+          Digest of the staged manifest. The handoff to job-image-starts and
+          job-image-publish: both address the image by this, so what is started
+          and what is promoted are provably the same bytes.
+        value: ${{ jobs.build.outputs.digest }}
+
+jobs:
+  build:
+    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # Held on pull requests too, and deliberately. The image is staged in the
+      # registry by digest on every run so the next job pulls exactly what was
+      # built rather than a second local copy of it. Dependabot's token is
+      # read-only by default but an explicit permissions block raises it, which
+      # is this block.
+      packages: write
+    outputs:
+      image: ${{ steps.name.outputs.image }}
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - id: name
+        env:
+          IMAGE_NAME: ${{ inputs.image_name }}
+        run: |
+          set -euo pipefail
+          if [ -n "$IMAGE_NAME" ]; then
+            image="ghcr.io/${GITHUB_REPOSITORY_OWNER}/${IMAGE_NAME}"
+          else
+            image="ghcr.io/${GITHUB_REPOSITORY}"
+          fi
+          echo "image=${image,,}" >> "$GITHUB_OUTPUT"
+          echo "Staging ${image,,}"
+
+      # Everything the run produced, into a staging directory. Named downloads
+      # would need one action invocation per artifact and the mapping is an
+      # input, so the placement is done in shell below and only mapped names
+      # are used.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: ${{ inputs.artifacts != '' }}
+        with:
+          path: .ci-artifacts
+
+      - name: Place artifacts
+        if: ${{ inputs.artifacts != '' }}
+        env:
+          ARTIFACTS: ${{ inputs.artifacts }}
+          EXECUTABLES: ${{ inputs.executables }}
+        run: |
+          set -euo pipefail
+          while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            name="${line%%=*}"; dest="${line#*=}"
+            if [ ! -d ".ci-artifacts/$name" ]; then
+              echo "::error::No artifact named '$name' in this run." \
+                   "Available: $(find .ci-artifacts -mindepth 1 -maxdepth 1 -printf '%f ' 2>/dev/null)"
+              exit 1
+            fi
+            mkdir -p "$dest"
+            cp -a ".ci-artifacts/$name/." "$dest/"
+            echo "Placed $name -> $dest"
+          done <<< "$ARTIFACTS"
+
+          while IFS= read -r path; do
+            [ -n "$path" ] || continue
+            # Artifact upload drops the execute bit. The image then builds
+            # cleanly and the container dies on exec, which reads as a broken
+            # image rather than a broken artifact.
+            chmod 755 "$path"
+            echo "Restored execute bit on $path"
+          done <<< "$EXECUTABLES"
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      # Unconditional, unlike the old job's main-gated login: staging happens on
+      # every run, so the credential is needed on every run.
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Labels only. Tags are job-image-publish's business, and push-by-digest
+      # below refuses a tagged reference outright.
+      - id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        with:
+          images: ${{ steps.name.outputs.image }}
+
+      # Pushed by digest, with no tag. The staged manifest is addressable and
+      # unlisted: the next two jobs pull it by digest, and nothing appears in
+      # the package's tag list until publish promotes it on main.
+      #
+      # The alternative considered was a `ci-<sha>` staging tag, which works and
+      # leaves one dead tag per commit per image, forever, with no TTL in GHCR
+      # and no way to tell a stale staging tag from a real one by name alone.
+      - id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          target: ${{ inputs.target }}
+          platforms: ${{ inputs.platforms }}
+          build-args: ${{ inputs.build_args }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ steps.name.outputs.image }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Report the staged digest
+        env:
+          IMAGE: ${{ steps.name.outputs.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          if [ -z "$DIGEST" ]; then
+            echo "::error::The build produced no digest, so nothing was staged" \
+                 "and the jobs downstream have nothing to pull."
+            exit 1
+          fi
+          echo "Staged ${IMAGE}@${DIGEST}"
+          {
+            echo "### Image staged"
+            echo '```'
+            echo "${IMAGE}@${DIGEST}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

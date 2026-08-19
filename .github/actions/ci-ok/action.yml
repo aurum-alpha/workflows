@@ -1,0 +1,72 @@
+# Fleet capability: the DAG rollup (CI_STANDARD Principle 12 — one way per
+# capability). Every repo ends its DAG with a `ci-ok` job that fails if any
+# dependency did; this is that job's body, defined once.
+#
+# A composite action rather than a reusable workflow, on purpose. A called
+# workflow reports as `<caller job> / <callee job>`, so `ci-ok` would become
+# `ci-ok / ok` in the checks list and every repo's branch-protection required
+# check would stop reporting — a rename this repo cannot fix, in eleven places
+# at once. A composite action runs inside the caller's job, so the check keeps
+# its name and only the body is shared.
+#
+# What it does not take over: the `needs:` list and `if: always()`. Those are
+# the repo's own DAG and belong in the repo. This is the fifteen lines that had
+# no business differing, and by the time it was written they differed three
+# ways across eleven repos.
+name: ci-ok
+description: Fail the run if any dependency failed or was cancelled.
+
+inputs:
+  needs_json:
+    description: >-
+      The caller's `needs` context, passed as toJSON(needs) in an expression.
+      Written without the double-brace delimiters on purpose. GitHub evaluates
+      expressions throughout an action manifest, an input description included,
+      and `needs` does not exist in a composite action's context — so writing
+      the example out in full here fails the manifest at load time with
+      "Unrecognized named-value: 'needs'", before a single step runs. It did:
+      that was this file's first CI run.
+
+      Not toJSON(needs.*.result): that flattens to a bare list of verdicts, so a
+      failing run could say only that something failed and never which job. The
+      full object is keyed by job id, which is the one thing a reader of a red
+      ci-ok actually needs.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Fail on failed or cancelled dependencies
+      shell: bash
+      env:
+        NEEDS: ${{ inputs.needs_json }}
+      run: |
+        set -euo pipefail
+
+        # Printed unconditionally. On a green run it is the record of what
+        # actually gated the merge; on a red one it is the diagnosis.
+        printf '%s\n' "$NEEDS"
+
+        # Cancelled is reported separately from failure because they mean
+        # opposite things. A failure is a verdict about the code. A cancellation
+        # is almost always the concurrency group superseding an older run, or a
+        # runner going away — nothing was learned about the commit. Collapsing
+        # them into one `exit 1` sent people reading test logs that did not
+        # exist.
+        # Whitespace-tolerant: toJSON's exact spacing is not a contract, and a
+        # rollup that silently matches nothing is the worst possible failure
+        # mode for the job whose entire purpose is to catch failures.
+        failed=$(printf '%s' "$NEEDS" | grep -c '"result":[[:space:]]*"failure"' || true)
+        cancelled=$(printf '%s' "$NEEDS" | grep -c '"result":[[:space:]]*"cancelled"' || true)
+
+        if [ "$failed" -gt 0 ]; then
+          echo "::error::${failed} dependency job(s) failed. See the object above for which."
+          exit 1
+        fi
+        if [ "$cancelled" -gt 0 ]; then
+          echo "::error::${cancelled} dependency job(s) were cancelled." \
+               "Nothing was proved about this commit; re-run if the cancellation was not deliberate."
+          exit 1
+        fi
+
+        echo "All dependencies succeeded."

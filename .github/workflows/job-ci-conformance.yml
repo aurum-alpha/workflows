@@ -47,9 +47,18 @@ on:
           can never name the commit that sets it. It points at the previous
           main, so a caller gets every rule up to the change that shipped it.
           What must not happen again is twenty.
+
+          The lag is harmless for a rule change and fatal for a NEW CATALOG
+          FILE, because rule CAT and the permissions checker read the catalog
+          listing out of this same clone. job-go-build.yml landed in #97 with
+          this default one commit behind it, so gofast — the first repo to
+          call it — was told the job "does not exist in the catalog", by a
+          checker looking at a tree from before it did. The job was there; the
+          instrument could not see it and reported that as absence. Move this
+          default in the same wave that adds a catalog file, not the one after.
         type: string
         required: false
-        default: 754a56b72cfc5ddf0ce0878d17fcbe29128b147e
+        default: 2c008c822cbe7cf1f566e12d15690696d87c95c3
 
 jobs:
   ci-conformance:

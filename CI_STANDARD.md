@@ -285,6 +285,11 @@ telling you what else is wrong.
 - Stack note: for TS, `tsc --noEmit` is the compile assertion and stays a gate;
   "build" means the real bundle/transpile (vite/esbuild) — this is where the
   production artifact is produced.
+- **The conformance job is the one gate that does not wait on the build.** It
+  reads `ci.yml` and `package.json` and never a build output, so a broken build
+  makes its verdict no less true — and gating it would mean the repo least
+  likely to be conformant is the one that never finds out. D1 exempts it by the
+  shared job it calls, not by name.
 - **Every job must also be reachable from `ci-ok`.** Having a `needs:` and
   blocking something are two different properties: a job can sit correctly
   downstream of the build and still be absent from the rollup, in which case its

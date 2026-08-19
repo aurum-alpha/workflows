@@ -31,6 +31,7 @@ CONVERTED = [
     "jewelry-factory",
     "wardley-mapper",
     "gha-runner-controller",
+    "lid-firmware",
 ]
 
 # Repo-local jobs that keep a body in the caller.
@@ -41,6 +42,19 @@ CONVERTED = [
 # state for every repo is an empty list.
 LOCAL_ALLOWLIST = {
     "hiring-tracker": {"update-version-info"},
+    # The PlatformIO build and test-unit jobs moved to the catalog
+    # (job-build-cpp-pio, job-test-unit-cpp-pio), so what is left is the one
+    # job that is genuinely about this product rather than about PlatformIO:
+    # it parses LID_FIRMWARE_VERSION out of include/version.h and runs this
+    # repo's tools/package_firmware_artifact.py to lay out the field and dev
+    # packages. Nothing in either step generalises to a second firmware
+    # product, and inventing inputs to pretend otherwise would put this repo's
+    # header format and packaging script into the fleet's catalog.
+    #
+    # The gap this names: the catalog models building and testing firmware,
+    # not releasing it. When a second C/C++ product needs packaging, the shape
+    # they share is what should be extracted — not this one generalised early.
+    "lid-firmware": {"firmware-publish"},
     # The compile and the two packaging jobs are genuinely repo-specific: a
     # version-stamped .deb via nfpm and a controller image. Both consume the
     # one compiled artifact rather than rebuilding it, which is the property

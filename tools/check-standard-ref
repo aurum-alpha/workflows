@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+"""Verify job-ci-conformance's standard_ref moved with the checkers it selects.
+
+job-ci-conformance takes the checkers from a pinned commit of this repo, named
+by the standard_ref input's default. GitHub gives a called workflow no handle
+on its own SHA, so that default cannot be derived — it has to be written down,
+and the writing down is what gets forgotten.
+
+It has now been forgotten three times, and the third was the expensive one:
+#93 added two shared jobs and #94 added an allow-list entry, neither bumped
+this default, and lid-firmware's first conformance run reported its two brand
+new stub jobs as "unknown shared workflow" and its allow-listed job as
+unexplained drift. Three findings, all of them false, all from one stale line.
+
+The rule: a pull request that changes a checker in tools/ or a shared job in
+.github/workflows/job-*.yml must also set standard_ref to the pull request's
+BASE commit — the previous main. Base and not HEAD, because the default can
+never name the commit that sets it; one commit of lag is structural. What this
+gate prevents is the lag being five commits, or twenty.
+
+A pull request touching neither is not asked to bump anything.
+
+Usage: check-standard-ref --base <sha>   (empty base: not a pull request, pass)
+"""
+
+import argparse
+import pathlib
+import re
+import subprocess
+import sys
+
+WATCHED = re.compile(r"^(tools/|\.github/workflows/job-[\w.-]+\.yml$)")
+DEFAULT_RE = re.compile(
+    r"standard_ref:.*?default:\s*([0-9a-f]{40})", re.DOTALL)
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--base", default="", help="pull request base SHA")
+    ap.add_argument("--repo-root", default=".", type=pathlib.Path)
+    args = ap.parse_args()
+
+    if not args.base:
+        print("not a pull request — nothing to compare against")
+        return 0
+
+    root = args.repo_root
+    wf = root / ".github/workflows/job-ci-conformance.yml"
+    m = DEFAULT_RE.search(wf.read_text())
+    if not m:
+        print("could not find standard_ref's default in job-ci-conformance.yml",
+              file=sys.stderr)
+        return 2
+    declared = m.group(1)
+
+    diff = subprocess.run(
+        ["git", "diff", "--name-only", f"{args.base}...HEAD"],
+        cwd=root, capture_output=True, text=True, check=True).stdout
+    touched = sorted(f for f in diff.splitlines() if WATCHED.match(f))
+
+    if not touched:
+        print("no checker or shared job changed — standard_ref not required to move")
+        return 0
+
+    print("changed, and visible to a caller's conformance run:")
+    for f in touched:
+        print(f"  {f}")
+
+    if declared == args.base:
+        print(f"\nPASS: standard_ref is {declared[:7]}, the base of this "
+              f"pull request")
+        return 0
+
+    print(f"\nFAIL: standard_ref is {declared[:7]} but the base of this pull "
+          f"request is {args.base[:7]}.\n"
+          f"A caller pinning this change would run checkers from {declared[:7]} "
+          f"— without the change.\n"
+          f"Set the default in job-ci-conformance.yml to {args.base}.")
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -71,8 +71,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # `shell: python3 {0}`, not `shell: python`. The built-in `python` shell
+      # invokes an executable of that name, and the fleet's self-hosted runners
+      # have python3 without the `python` alias that GitHub-hosted images
+      # provide. The first main-branch run of this job died on
+      # `python: command not found` before reading a single package version.
       - name: Sweep unreferenced staged manifests
-        shell: python
+        shell: python3 {0}
         env:
           OLDER_THAN_DAYS: ${{ inputs.older_than_days }}
           DRY_RUN: ${{ inputs.dry_run }}

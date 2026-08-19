@@ -1,0 +1,235 @@
+# Fleet capability: build and publish the container (CI_STANDARD Principle 12).
+# System tier — docker is neither a language nor a framework.
+#
+# Replaces job-docker-image, which downloaded a single artifact named `dist`.
+# That assumed one build job per repo; Phase F1 splits the build per deployable
+# unit, so there are now two artifacts and they must land where the Dockerfile
+# expects them. The layout is fixed by F0 rather than passed in: dist/public
+# from vite, dist/index.js from esbuild.
+name: job-image-docker
+
+on:
+  workflow_call:
+    inputs:
+      workdir:
+        description: >-
+          Directory holding package.json and .node-version. Empty (the repo
+          root) for a repo whose JS project *is* the repo; `client` for a repo
+          where the React app is its own pnpm project inside a Go or PHP tree.
+          Those are two real shapes and this input distinguishes them — it is
+          not a per-repo path setting, and no caller should pass anything else.
+        type: string
+        default: "."
+      image_name:
+        description: Image name under ghcr.io/<owner>/. Defaults to the repo.
+        type: string
+        default: ""
+      assert_starts:
+        description: >-
+          Run the image and wait for it to listen. On by default, because
+          something in CI has to prove the image runs and for most repos this is
+          the only thing that does.
+
+          Set false ONLY when an e2e or integration job runs against this image
+          — that is a stronger assertion and this step would just repeat it. A
+          caller that sets false must have a job depending on this one, which is
+          what rule D7 checks; it is not a way to opt out of the requirement,
+          only a way to say something else already meets it.
+        type: boolean
+        default: true
+      port:
+        description: >-
+          Port the container listens on. The start check waits for this to
+          accept a connection — a build that links and an image that boots are
+          different claims (CI_STANDARD "Standard job DAG", step 5).
+        type: number
+        default: 5000
+      start_env:
+        description: >-
+          Newline-separated KEY=VALUE pairs the container needs to reach the
+          point of listening — a DATABASE_URL pointing at a service below, a
+          dummy API key. Not secrets: this proves the image boots, not that it
+          works against production.
+        type: string
+        default: ""
+      start_services:
+        description: >-
+          Newline-separated `hostname=image` backing services to start first, on
+          a shared network, e.g. `db=postgres:17`. An app that runs migrations
+          at boot needs a database to start at all, so "it runs" means "it runs
+          with what it needs" — exempting those repos would leave the check
+          covering only the ones that were never going to break. Reference them
+          from start_env by hostname.
+        type: string
+        default: ""
+
+jobs:
+  image:
+    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      # Two repo shapes, and this input distinguishes them: `.` where the JS
+      # project is the repo, `client` where it is its own pnpm project inside a
+      # Go or PHP tree. Anything else is a repo putting its UI somewhere of its
+      # own choosing, which is the variance the catalog exists to remove
+      # (CI_STANDARD "Standard repository layout").
+      - name: Validate workdir
+        env:
+          WD: ${{ inputs.workdir }}
+        run: |
+          set -euo pipefail
+          case "$WD" in
+            .|client) ;;
+            *) echo "::error::workdir must be '.' or 'client'; got '$WD'." \
+                    "See CI_STANDARD 'Standard repository layout'."; exit 1 ;;
+          esac
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Two artifacts, two destinations. Named downloads rather than "everything
+      # in the run": an unnamed download also pulls buildx's .dockerbuild build
+      # record, whose failure took out a release once already.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: client-dist
+          path: ${{ inputs.workdir }}/dist/public
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: server-dist
+          path: ${{ inputs.workdir }}/dist
+
+      - name: Verify the image inputs
+        working-directory: ${{ inputs.workdir }}
+        run: |
+          set -euo pipefail
+          test -f dist/index.js
+          test -d dist/public
+          ls -la dist dist/public
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Log in to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        with:
+          images: ghcr.io/${{ inputs.image_name || github.repository }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-,format=short
+            type=ref,event=branch
+
+      # Built on every pull request, pushed only from main: the publish path is
+      # exercised on each PR with just the final push suppressed (Principle 17).
+      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: ${{ inputs.workdir }}
+          push: false
+          load: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Step 5 of the standard DAG: something must run the image. Everything
+      # above proves it *builds*, and those are different claims — three repos
+      # in this fleet shipped images that could not start for months, green
+      # throughout, because nothing ever started them.
+      #
+      # This is the weaker of the two ways to satisfy that. A repo whose e2e
+      # suite runs against the container has already proved it and sets
+      # assert_starts: false. Everything else lands here.
+      #
+      # Deliberately not a health check: no endpoint, no readiness contract,
+      # nothing an application has to opt into. It boots, it listens, it is
+      # still alive. That is the floor, and every image in the fleet can meet
+      # it.
+      - name: The image starts
+        if: ${{ inputs.assert_starts }}
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          PORT: ${{ inputs.port }}
+          START_ENV: ${{ inputs.start_env }}
+          START_SERVICES: ${{ inputs.start_services }}
+        run: |
+          set -euo pipefail
+          image=$(printf '%s\n' "$TAGS" | head -n1)
+          net="imgcheck-$GITHUB_RUN_ID"
+          docker network create "$net" >/dev/null
+
+          # Backing services first, addressable by hostname on the shared net.
+          svc=()
+          while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            name="${line%%=*}"; img="${line#*=}"
+            echo "Starting service $name ($img)"
+            svc+=("$(docker run -d --network "$net" --network-alias "$name" \
+                      -e POSTGRES_PASSWORD=postgres -e POSTGRES_USER=postgres \
+                      -e POSTGRES_DB=postgres "$img")")
+          done <<< "$START_SERVICES"
+
+          args=()
+          while IFS= read -r line; do
+            [ -n "$line" ] && args+=(-e "$line")
+          done <<< "$START_ENV"
+
+          # No --rm, here or on the services above. Under --rm a container that
+          # exits is removed at once, so by the time cleanup runs `docker logs`
+          # answers "No such container" — and the only failure this check is
+          # built to catch is a container that exits. It reported the exit and
+          # none of the reason, three times across two repos before this was
+          # fixed. Everything is removed explicitly in cleanup instead.
+          echo "Starting $image"
+          cid=$(docker run -d --network "$net" -p "127.0.0.1:$PORT:$PORT" \
+                  -e "PORT=$PORT" "${args[@]}" "$image")
+          # shellcheck disable=SC2317  # every command below reads as unreachable
+          # because shellcheck does not treat `trap cleanup EXIT` as a call site.
+          cleanup() {
+            docker logs "$cid" 2>&1 | tail -40 || true
+            # A service that died takes the app down with it and the app's own
+            # logs rarely say which one, so dump theirs too.
+            for s in "${svc[@]}"; do
+              echo "--- service $s ---"
+              docker logs "$s" 2>&1 | tail -20 || true
+            done
+            docker rm -f "$cid" "${svc[@]}" >/dev/null 2>&1 || true
+            docker network rm "$net" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          for i in $(seq 1 30); do
+            # Died is a verdict, not something to wait out.
+            if [ "$(docker inspect -f '{{.State.Running}}' "$cid" 2>/dev/null)" != "true" ]; then
+              echo "::error::Container exited before it listened on $PORT."
+              exit 1
+            fi
+            if timeout 1 bash -c "</dev/tcp/127.0.0.1/$PORT" 2>/dev/null; then
+              echo "Listening on $PORT after ${i}s."
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::Container stayed up but never listened on $PORT within 30s."
+          exit 1
+
+      # Pushed only from main. The build and the start check above run on every
+      # pull request with just the final push suppressed, so the publish path is
+      # exercised before it matters (Principle 17).
+      - name: Push to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$TAGS" | while read -r t; do
+            [ -n "$t" ] && docker push "$t"
+          done

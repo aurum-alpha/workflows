@@ -1,0 +1,87 @@
+# Fleet capability: build for a Vite-built client (CI_STANDARD Principle 12).
+# FRAMEWORK tier — React owns its build tool, so the shared job owns the command
+# rather than a contract. That is the test for admitting a framework job: name
+# the single command it would run. Here it is `vite build`.
+name: job-build-js-vite
+
+on:
+  workflow_call:
+    inputs:
+      workdir:
+        description: >-
+          Directory holding package.json and .node-version. Empty (the repo
+          root) for a repo whose JS project *is* the repo; `client` for a repo
+          where the React app is its own pnpm project inside a Go or PHP tree.
+          Those are two real shapes and this input distinguishes them — it is
+          not a per-repo path setting, and no caller should pass anything else.
+        type: string
+        default: "."
+      outdir:
+        description: Built client, relative to workdir. Vite's configured target.
+        type: string
+        default: dist/public
+
+jobs:
+  build:
+    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      # Two repo shapes, and this input distinguishes them: `.` where the JS
+      # project is the repo, `client` where it is its own pnpm project inside a
+      # Go or PHP tree. Anything else is a repo putting its UI somewhere of its
+      # own choosing, which is the variance the catalog exists to remove
+      # (CI_STANDARD "Standard repository layout").
+      - name: Validate workdir
+        env:
+          WD: ${{ inputs.workdir }}
+        run: |
+          set -euo pipefail
+          case "$WD" in
+            .|client) ;;
+            *) echo "::error::workdir must be '.' or 'client'; got '$WD'." \
+                    "See CI_STANDARD 'Standard repository layout'."; exit 1 ;;
+          esac
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ${{ inputs.workdir }}/.node-version
+          # Org registry for private @aurum-alpha packages; harmless no-op for
+          # repos that don't consume the scope (pnpm 10+ only reads auth from
+          # the user-level npmrc this writes).
+          registry-url: https://npm.pkg.github.com
+          scope: "@aurum-alpha"
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          package_json_file: ${{ inputs.workdir }}/package.json
+      - name: Get pnpm store directory
+        shell: bash
+        working-directory: ${{ inputs.workdir }}
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+      - working-directory: ${{ inputs.workdir }}
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+        run: pnpm install --frozen-lockfile
+      # vite reads vite.config.ts for root and outDir; nothing here to
+      # parameterise, which is what makes this a framework job.
+      - working-directory: ${{ inputs.workdir }}
+        run: pnpm exec vite build
+
+      # Named client-dist, not dist: the server bundle is a separate artifact
+      # from a separate job, and the image job downloads both. One artifact
+      # called dist would have them overwrite each other.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: client-dist
+          path: ${{ inputs.workdir }}/${{ inputs.outdir }}
+          retention-days: 1
+          if-no-files-found: error

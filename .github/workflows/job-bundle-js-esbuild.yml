@@ -1,0 +1,147 @@
+# Fleet capability: bundle a Node server to a single file (CI_STANDARD
+# Principle 12). LANGUAGE tier, not framework: Express routes requests and owns
+# no bundler, so there is no `job-build-js-express` — ask what command it would
+# run and there is no single answer. esbuild is the tool, so esbuild names it.
+#
+# The invocation is fixed, not parameterised (Phase F0/F2). Three repos carried
+# a bespoke script/build.ts hand-curating 28 dependencies to bundle; three used
+# these flags already. The majority form is the standard, and repos conform to
+# the job rather than the job flexing per repo.
+name: job-bundle-js-esbuild
+
+on:
+  workflow_call:
+    inputs:
+      workdir:
+        description: >-
+          Directory holding package.json and .node-version. Empty (the repo
+          root) for a repo whose JS project *is* the repo; `client` for a repo
+          where the React app is its own pnpm project inside a Go or PHP tree.
+          Those are two real shapes and this input distinguishes them — it is
+          not a per-repo path setting, and no caller should pass anything else.
+        type: string
+        default: "."
+
+jobs:
+  bundle:
+    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      # Two repo shapes, and this input distinguishes them: `.` where the JS
+      # project is the repo, `client` where it is its own pnpm project inside a
+      # Go or PHP tree. Anything else is a repo putting its UI somewhere of its
+      # own choosing, which is the variance the catalog exists to remove
+      # (CI_STANDARD "Standard repository layout").
+      - name: Validate workdir
+        env:
+          WD: ${{ inputs.workdir }}
+        run: |
+          set -euo pipefail
+          case "$WD" in
+            .|client) ;;
+            *) echo "::error::workdir must be '.' or 'client'; got '$WD'." \
+                    "See CI_STANDARD 'Standard repository layout'."; exit 1 ;;
+          esac
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ${{ inputs.workdir }}/.node-version
+          # Org registry for private @aurum-alpha packages; harmless no-op for
+          # repos that don't consume the scope (pnpm 10+ only reads auth from
+          # the user-level npmrc this writes).
+          registry-url: https://npm.pkg.github.com
+          scope: "@aurum-alpha"
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          package_json_file: ${{ inputs.workdir }}/package.json
+      - name: Get pnpm store directory
+        shell: bash
+        working-directory: ${{ inputs.workdir }}
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+      - working-directory: ${{ inputs.workdir }}
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+        run: pnpm install --frozen-lockfile
+      # server/index.ts -> dist/index.js, esm, dependencies left external.
+      # Entry and output are conventions every repo meets, not inputs: an input
+      # is how six repos ended up with six answers to one function.
+      #
+      # --define is not decoration. These repos guard the dev server with
+      # `if (process.env.NODE_ENV === "production") serveStatic() else await
+      # import("./vite")`. Without the define that branch survives bundling, so
+      # the output top-level-imports vite — a devDependency the runtime image
+      # never installs, because it runs `pnpm install --prod`. The image builds,
+      # CI goes green, and the container dies at load with ERR_MODULE_NOT_FOUND
+      # before a line of application code runs. Verified against all six repos.
+      - working-directory: ${{ inputs.workdir }}
+        run: >
+          pnpm exec esbuild server/index.ts
+          --platform=node --bundle --packages=external --format=esm
+          --define:process.env.NODE_ENV='"production"'
+          --outfile=dist/index.js
+
+      # The define above fixes the repos that guard the import. It cannot fix a
+      # server entry that imports the dev server STATICALLY — no flag can, the
+      # reference is unconditional. So this asserts the property we actually
+      # want rather than trusting the flag: every bare specifier the bundle
+      # imports must be a production dependency.
+      #
+      # A build that succeeds says nothing about a process that starts, and
+      # nothing else in this pipeline ever starts the artifact. That gap is why
+      # six repos shipped an unstartable image with a green tick.
+      - name: Every external import must be a production dependency
+        working-directory: ${{ inputs.workdir }}
+        run: |
+          set -euo pipefail
+          # Quoted heredoc: the shell expands nothing, so the JS below is exactly
+          # the JS that runs. An inline `node -e` needs a quote-escaping dance for
+          # every apostrophe in a character class, which is how a check meant to
+          # prevent breakage becomes the breakage.
+          cat > prod-import-check.cjs <<'JS'
+          const fs = require("fs");
+          const src = fs.readFileSync("dist/index.js", "utf8");
+          const builtins = new Set(require("module").builtinModules);
+          const prod = new Set(Object.keys(
+            JSON.parse(fs.readFileSync("package.json", "utf8")).dependencies || {}
+          ));
+          const IMPORT = /(?:^|[;\s])import\s*(?:[^;]*?\sfrom\s*)?"([^"]+)"/g;
+          const specs = new Set();
+          for (const m of src.matchAll(IMPORT)) {
+            let s = m[1];
+            if (s.startsWith(".") || s.startsWith("node:")) continue;
+            s = s.startsWith("@") ? s.split("/").slice(0, 2).join("/") : s.split("/")[0];
+            if (!builtins.has(s)) specs.add(s);
+          }
+          const missing = [...specs].filter((s) => !prod.has(s)).sort();
+          if (missing.length) {
+            console.error(
+              "dist/index.js imports these at runtime, but they are not in " +
+              "dependencies:\n  " + missing.join("\n  ") +
+              "\n\nThe runtime image installs --prod, so the container fails to start " +
+              "with ERR_MODULE_NOT_FOUND before any application code runs. Either move " +
+              "them to dependencies, or stop importing them from the server entry - a " +
+              "dev-only module belongs behind await import(), not a top-level import."
+            );
+            process.exit(1);
+          }
+          console.log("ok - " + specs.size + " external import(s), all production dependencies");
+          JS
+          node prod-import-check.cjs
+          rm -f prod-import-check.cjs
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: server-dist
+          path: ${{ inputs.workdir }}/dist/index.js
+          retention-days: 1
+          if-no-files-found: error

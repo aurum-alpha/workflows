@@ -35,6 +35,7 @@ jobs:
     # Only pull requests have somewhere to post.
     if: github.event_name == 'pull_request'
     runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-26.04' }}
+    timeout-minutes: 15
     permissions:
       contents: read
       # Escalated above the read-only fleet floor: this job's whole purpose is

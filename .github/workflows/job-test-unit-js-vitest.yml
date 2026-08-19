@@ -1,0 +1,208 @@
+# Fleet capability: test-unit for one deployable unit's TypeScript source
+# (CI_STANDARD Principle 12 — one way per capability). Language tier: vitest is
+# TypeScript tooling, not a framework's, so this one job serves a React client
+# and an Express server alike — the caller says which by passing `dir`.
+#
+# The caller owns the job id and needs: wiring (Phase F1); this file owns the
+# body. It invokes vitest directly rather than a per-repo `test:unit` script,
+# because a script that only forwards a path is repo-specific machinery the
+# fleet should not be carrying (Phase F2).
+name: job-test-unit-js-vitest
+
+on:
+  workflow_call:
+    inputs:
+      workdir:
+        description: >-
+          Directory holding package.json and .node-version. Empty (the repo
+          root) for a repo whose JS project *is* the repo; `client` for a repo
+          where the React app is its own pnpm project inside a Go or PHP tree.
+          Those are two real shapes and this input distinguishes them — it is
+          not a per-repo path setting, and no caller should pass anything else.
+        type: string
+        default: "."
+      dir:
+        description: >-
+          Which standard unit to act on: `client`, `server` or `shared`. Not a
+          path — the layout is fixed fleet-wide, and any other value fails.
+        type: string
+        required: true
+      flag:
+        description: Codecov flag. Defaults to the unit directory name.
+        type: string
+        default: ""
+
+jobs:
+  test-unit:
+    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      # The job-level permissions block REPLACES the caller's token grant,
+      # so packages: read must be explicit or private @aurum-alpha
+      # installs 403 (C2 first run).
+      packages: read
+    steps:
+      # Two repo shapes, and this input distinguishes them: `.` where the JS
+      # project is the repo, `client` where it is its own pnpm project inside a
+      # Go or PHP tree. Anything else is a repo putting its UI somewhere of its
+      # own choosing, which is the variance the catalog exists to remove
+      # (CI_STANDARD "Standard repository layout").
+      - name: Validate workdir
+        env:
+          WD: ${{ inputs.workdir }}
+        run: |
+          set -euo pipefail
+          case "$WD" in
+            .|client) ;;
+            *) echo "::error::workdir must be '.' or 'client'; got '$WD'." \
+                    "See CI_STANDARD 'Standard repository layout'."; exit 1 ;;
+          esac
+
+      # The unit is one of three names, fleet-wide (CI_STANDARD "Standard
+      # repository layout"). This input says *which* standard unit, never
+      # *where a repo happens to keep it* — a free-form path here would make the
+      # catalog accommodate variance instead of removing it.
+      - name: Validate unit
+        env:
+          UNIT: ${{ inputs.dir }}
+        run: |
+          set -euo pipefail
+          case "$UNIT" in
+            client|server|shared) ;;
+            # `.` is the second repo shape: the JS project lives inside a Go or
+            # PHP tree, workdir already points at it, and the project *is* the
+            # unit — there is no client/server split within it to scope to.
+            .) ;;
+            *) echo "::error::dir must be client, server, shared, or '.' when the" \
+                    "workdir is itself the unit; got '$UNIT'." \
+                    "See CI_STANDARD 'Standard repository layout'."; exit 1 ;;
+          esac
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ${{ inputs.workdir }}/.node-version
+          registry-url: https://npm.pkg.github.com
+          scope: "@aurum-alpha"
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          package_json_file: ${{ inputs.workdir }}/package.json
+      - name: Get pnpm store directory
+        shell: bash
+        working-directory: ${{ inputs.workdir }}
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+      - working-directory: ${{ inputs.workdir }}
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+        run: pnpm install --frozen-lockfile
+
+      # Phase F3. Splitting the test job per unit made a pre-existing gap
+      # visible for the first time: four of six repos have no server tests at
+      # all, and hiring-tracker has no client tests. That debt predates the
+      # standard, so it warns rather than blocks until F3 closes it.
+      #
+      # Deliberately NOT continue-on-error, which would swallow real breakage
+      # too. This annotates only the specific condition "there is nothing here
+      # to run"; a test that exists and fails still fails the job below.
+      - name: Warn when the unit has no tests
+        id: census
+        working-directory: ${{ inputs.workdir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          count=$(find "${{ inputs.dir }}" \
+            \( -name '*.test.ts'  -o -name '*.test.tsx' \
+            -o -name '*.spec.ts'  -o -name '*.spec.tsx' \) \
+            -not -path '*/node_modules/*' 2>/dev/null | wc -l | tr -d ' ')
+          echo "count=${count}" >> "$GITHUB_OUTPUT"
+          if [ "${count}" -eq 0 ]; then
+            echo "::warning title=No tests for ${{ inputs.dir }}::This unit has \
+          no test files. CI cannot tell you whether it works. Tracked as \
+          CI_STANDARD Phase F3."
+          else
+            echo "${count} test file(s) under ${{ inputs.dir }}/"
+          fi
+
+      # --passWithNoTests is what makes the warning above the *only* signal for
+      # an empty unit; without it vitest exits non-zero and the job blocks,
+      # which is the F3 decision reversed.
+      #
+      # Coverage is configured separately from --dir, so the one-box repo's server job
+      # printed a table of client/src/lib and shared files. Under the `server`
+      # flag that attributes client code to the server and makes every per-unit
+      # number a lie.
+      #
+      # The fix SUBTRACTS the other units rather than redefining the set.
+      # Overriding --coverage.include='<dir>/**' also removed the leak, but
+      # replaced the repo's curated include (client/src/lib) with every .tsx in
+      # client/src — coverage fell from 49% to 4% and turned codecov red. That
+      # is not a truer number, just a different question. Excluding siblings
+      # keeps the repo's intent and removes only what does not belong.
+      - name: Unit tests
+        working-directory: ${{ inputs.workdir }}
+        env:
+          UNIT: ${{ inputs.dir }}
+        # No `--` before the flags: pnpm 10 swallows a literal `--`, so vitest
+        # would never see them (verified the hard way).
+        run: |
+          set -euo pipefail
+          # The standard unit directories (F0). Everything that is not this unit
+          # is excluded from coverage, so a repo conforms to the job rather than
+          # the job taking a per-caller input.
+          # Subtract the sibling units from coverage rather than redefining the
+          # set: --coverage.include replaces the repo's curated list and tanks
+          # the baseline (it took wardley-mapper from 49% to 4%). With UNIT="."
+          # there are no siblings — the workdir is the whole project.
+          #
+          # --coverage.exclude REPLACES the config's exclude array rather than
+          # extending it, so passing siblings alone silently re-admits
+          # node_modules, dist, .d.ts and every *.config.* file to the
+          # denominator. hiring-tracker measured vite.config.ts at 0% over 11
+          # lines because of exactly that. The defaults are restated here so the
+          # flag adds to them instead of standing in for them.
+          excludes=(
+            --coverage.exclude='**/node_modules/**'
+            --coverage.exclude='**/dist/**'
+            --coverage.exclude='**/coverage/**'
+            --coverage.exclude='**/*.d.ts'
+            --coverage.exclude='**/*.config.*'
+            --coverage.exclude='**/.{idea,git,cache,output,temp}/**'
+          )
+          if [ "$UNIT" != "." ]; then
+            for u in client server shared; do
+              [ "$u" = "$UNIT" ] || excludes+=(--coverage.exclude="$u/**")
+            done
+          fi
+          pnpm exec vitest run \
+            --dir "$UNIT" \
+            --passWithNoTests \
+            --coverage "${excludes[@]}" \
+            --reporter=default --reporter=junit \
+            --outputFile.junit="test-report-${UNIT//./root}.junit.xml"
+
+      - name: Upload coverage to Codecov
+        # Nothing ran, so there is no coverage to upload and Codecov would fail
+        # the job on an empty report — which would defeat the warn-not-block
+        # decision by another route.
+        if: steps.census.outputs.count != '0'
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          directory: ${{ inputs.workdir }}/coverage
+          flags: ${{ inputs.flag || inputs.dir }}
+          fail_ci_if_error: true
+
+      - name: Upload test results to Codecov
+        # Runs on test failure too — failed runs are the analytics signal.
+        if: ${{ !cancelled() && steps.census.outputs.count != '0' }}
+        uses: codecov/test-results-action@0fa95f0e1eeaafde2c782583b36b28ad0d8c77d3 # v1.2.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ${{ inputs.workdir }}/test-report-${{ inputs.dir }}.junit.xml

@@ -21,8 +21,30 @@ Status: **agreed 2026-08-14** (rev 2 after Jared's review). Remaining open items
    The pin also lives beside what it pins: the node app directory owns its
    `.node-version`, because that is where the shared jobs look
    (`<workdir>/.node-version`).
-2. **Local = CI.** Every gate is a runnable script in the repo (`tools/checks/*` pattern);
-   the workflow job is a thin wrapper with the same name. No logic that exists only in YAML.
+2. **Local = CI.** A developer must be able to run any gate locally with one
+   command, and get what CI gets. **The shared job is that command's single
+   definition** — not a per-repo script it wraps.
+
+   *Amended 2026-08-17.* This originally read "every gate is a runnable script
+   in the repo (`tools/checks/*`); the workflow job is a thin wrapper with the
+   same name." That is backwards under Principle 19: it makes each repo the
+   author of its own gate and the catalog a wrapper around eleven opinions.
+   Best practice is defined once, in the catalog, per language and framework;
+   repos adopt it. Reproducibility was the goal and a per-repo script was only
+   ever the mechanism — and a poor one, since B5 existed solely to police
+   byte-identity between copies that kept diverging, which is the tell that
+   there should have been one copy.
+
+   What the original rule was right about, and still binds: **no logic that
+   exists only in YAML.** A shared job runs a tool with flags — `pnpm exec
+   eslint client --max-warnings 0` — which a developer can read off the job and
+   run verbatim. It must not grow branching, conditionals or computation that
+   cannot be reproduced by typing the command. The moment a job needs logic, the
+   logic belongs in a committed script that both CI and the developer invoke.
+
+   Repo-specific *policy* still goes in the repo — but as configuration the tool
+   reads (`vite.config.ts`, `eslint.config.mjs`), never as a wrapper script whose
+   job is to pass a path.
 3. **Fail closed.** Nothing publishes unless every gate passes. `continue-on-error` is
    allowed only as a documented stabilization window with a ticket reference and an
    expiry expectation.
@@ -167,20 +189,92 @@ Status: **agreed 2026-08-14** (rev 2 after Jared's review). Remaining open items
     concurrency, use a job-level `concurrency:` group rather than a second
     file.
 
-## Standard job DAG — build first
+19. **The catalog is where best practice lives; a repo-local job is a gap in
+    it.** `aurum-alpha/workflows` is not a convenience library of things several
+    repos happened to need. It is the definition of how this organisation builds,
+    lints, tests and ships each language and framework it uses — and repos are
+    standardized *onto* those definitions rather than each arriving at its own
+    answer.
 
-The cheapest, most fundamental gate is "does it build." A broken compile fails one
-job instead of ten, and the build job primes caches and emits artifacts downstream
-jobs reuse (e.g. binaries handed to docker packaging).
+    The target state is a repo with **no repo-local jobs at all**. Its `ci.yml`
+    names its deployable units, wires the DAG, and calls the catalog.
+
+    A repo-local job is therefore not a style violation, it is a **claim about
+    the catalog**: *"nothing here covers this case."* That claim is sometimes
+    true — gha-runner-controller packages a `.deb` with nfpm and builds a runner
+    image from the actions-runner base, and no other repo does either. It is
+    often false, and then the fix is a catalog job, not a local one.
+
+    So every local job carries the gap it represents, and closing that gap is
+    backlog rather than decoration. `tools/check-caller-thinness` holds the
+    allow-list; an entry there is a debt with a name, not a permission.
+
+    *This is what makes the difference between a standard and a suggestion. Two
+    repos solving the same problem two ways is not diversity, it is the fleet
+    having no opinion — and an organisation with no opinion re-litigates the
+    same decision every time someone starts a service.*
+
+## Standard job DAG — build first, per artifact
+
+**Fail fast.** If the thing does not compile, there is nothing worth testing —
+so the first gate is always "does it build", and no lint, vet or test runs until
+it passes. A broken compile fails one job in seconds instead of ten jobs in
+minutes, and it fails with the one error that caused the other nine.
+
+The build job also produces and stores the artifact every later job uses.
+Nothing runs beside it; everything runs after it.
 
 ```
-install ──► build ──► lint ─────────┐
-                  ──► typecheck ────┤──► integration / e2e ──► package / publish
-                  ──► unit tests ───┘         (main + tags only)
-                              └──► "ci-ok" rollup job (the only required check)
+build ──┬─► lint ──────────┐
+        ├─► vet ───────────┤
+        ├─► typecheck ─────┼─► integration / e2e ─► image ─► image starts ─► ci-ok
+        └─► unit tests ────┘   (uses the build artifacts)      (fire it up)
 ```
 
-- Quality gates run in parallel *after* build, never serialized among themselves.
+Read as a sequence, because that is what it is:
+
+1. **build** — compile, and upload the artifact. For TS that is `vite build` for
+   the client and `esbuild` for the server; for Go, `go build`; for firmware,
+   `pio run`. One build per artifact, and it happens once (see BUILD ONCE).
+2. **codebase gates** — lint, vet, unit tests, typecheck. These run in parallel
+   with each other and only after the build has passed. A repo whose code does
+   not compile has nothing worth linting.
+3. **integration / e2e** — against the artifacts from step 1, never a rebuild.
+   This is the first point at which the thing under test exists.
+4. **image / package** — the shippable artifact, assembled from step 1's output.
+5. **something runs the image.** A build that links and an image that boots are
+   different claims, and only the second one is what ships. Two ways to satisfy
+   this, and the requirement is the rule rather than either mechanism:
+
+   - **e2e or integration tests against the container.** Strictly stronger — it
+     proves the image runs *and* that it does its job — and where this exists
+     nothing else is needed. The image is then built before step 3 rather than
+     after it, because the tests need it.
+   - **start it.** For a service with no e2e suite, run the container and wait
+     for it to listen. `job-image-docker` does this by default.
+
+   A repo taking the first route sets `assert_starts: false` on the image job,
+   which is only legitimate when a job actually depends on that image — checked
+   by D7, not taken on trust. If the container needs a database to reach the
+   point of listening, give it one (`start_services`); an image that cannot
+   start without postgres is not exempt from having to start.
+6. **`ci-ok`** — the rollup, and the only required check.
+
+**Each artifact gets its own DAG.** A repo with a React client and an Express
+server has two of these running side by side — `client-ts-react-build` gating
+the client's lint and tests, `server-ts-express-build` gating the server's — and
+they converge only where a real artifact contains both. A failing `go vet` must
+not hold up the React lint, and a broken `tsc` must not stop the Go tests from
+telling you what else is wrong.
+
+- **Quality gates run in parallel with each other, never serialized among
+  themselves**, and never beside the build.
+- **Every job sets `timeout-minutes`.** A runner that hangs reports the same
+  failure a real break does, and takes the default six hours to say so — during
+  Phase F one job sat in "Set up job" for ten minutes on a self-hosted runner
+  while every other job in the run passed. Ceilings are generous enough never to
+  clip honest work (15m for gates, 20m for Go lint and tests, 30m for image
+  jobs) and exist only to bound a hang.
 - **Hard rule — BUILD ONCE.** The build step produces *every* required artifact
   type (all build-arg variants included) and later steps — packaging, docker,
   release — pull those artifacts from cache/artifact storage. Nothing downstream
@@ -188,10 +282,25 @@ install ──► build ──► lint ─────────┐
 - Stack note: for TS, `tsc --noEmit` is the compile assertion and stays a gate;
   "build" means the real bundle/transpile (vite/esbuild) — this is where the
   production artifact is produced.
+- **Every job must also be reachable from `ci-ok`.** Having a `needs:` and
+  blocking something are two different properties: a job can sit correctly
+  downstream of the build and still be absent from the rollup, in which case its
+  failure stops nothing. Both are checked (D1 and D6).
 - `ci-ok` (`if: always()`, fails on any failure/cancel in needs) is the single
   required check, so adding/removing gates never touches branch protection.
   The check reports under the job id `ci-ok` (no display-name override) —
   that exact string is what branch protection requires, fleet-wide.
+- **`always()` and not `!cancelled()`, deliberately.** A push that supersedes an
+  in-flight run cancels its jobs, and `ci-ok` then runs, sees `cancelled`, and
+  goes red — so every quick follow-up push leaves a red check behind on a run
+  nobody cares about. The tempting fix is `if: !cancelled()`, which skips the
+  rollup when the *run* was cancelled while still catching an individual job
+  that was cancelled by its own timeout.
+
+  Do not. A skipped required check can satisfy branch protection, so a
+  cancelled run would leave a PR mergeable with no gate having reported. The
+  noise is the cheaper failure: a stale red is confusing, a silent green is
+  dangerous. Read the newest run, not the superseded one.
 
 ### Multi-codebase repos — one DAG per stack, converging at packaging
 
@@ -256,7 +365,140 @@ api-build ───► api-lint ──────────┤          (conv
 - **Per-branch images: deferred** until per-branch staging spin-up/teardown infra
   exists. Revisit then.
 
+### CI does not commit to the repository it is testing
+
+**Nothing generated by a build gets committed back.** Rule `CM` fails any job
+whose steps run `git push`.
+
+hiring-tracker had a job that stamped `version-info.json` after the build, then
+committed and pushed it to `main`. Three things follow from that ordering:
+
+- the image built in that run carries the **previous** commit's stamp, because
+  the new one is written after the build has already happened;
+- the pushed commit is marked `[skip ci]`, so the stamp it contains is never
+  built into anything;
+- the job needs `contents: write` on the default branch to do it.
+
+It had also stopped running four merges earlier and said nothing. The stamp on
+`main` read `8e1ff83` while `main` was at `31752c5`, so the version panel in
+production reported a build from four commits ago. A stamp that lies is worse
+than no stamp, and this one had no way to report that it had stopped.
+
+The generated file is a build output, so it is produced **during** the build and
+emitted into the build output — for hiring-tracker, a vite plugin emitting
+`version-info.json` into `dist`, which is the `/version-info.json` the client
+already fetches. It describes the commit it was built from because it is built
+from it, and there is nothing to commit.
+
+This is the same shape as the five before it: a mechanism keyed on something
+adjacent to the thing it is supposed to guarantee. "The stamp is correct" was
+implemented as "a job commits a file", and once the job stopped, the file stayed
+— still present, still parseable, still wrong.
+
+`contents: write` for `gh release create` is unaffected: publishing a release
+adds no commit to a branch. The rule is about commits, not about the permission.
+
+### A start check must not destroy its own evidence
+
+`docker run --rm` removes a container the moment it exits — and a container that
+exits is the one failure a start check exists to catch. So the cleanup's
+`docker logs` runs against a container that is already gone:
+
+```
+##[error]fastgen exited before becoming healthy (state: removing).
+Error response from daemon: No such container: a0745cb9ccd6…
+```
+
+That is the whole diagnostic. Three checks across two repos reported the exit
+and none of the reason, and one of them took two rounds to yield a one-line
+nginx error that `docker logs` would have printed immediately.
+
+**Start checks do not use `--rm`.** They remove the container explicitly in the
+cleanup trap, after dumping its logs — and the logs of any service container
+too, since a service that dies takes the app with it and the app's own logs
+rarely name which one.
+
+The same reasoning covers the checks themselves: a check whose failure output
+does not distinguish "it exited" from "it exited *because*" costs a round of CI
+per failure, which on a starved runner pool is the expensive resource.
+
+### Never write the skip token in a commit message, even to describe it
+
+GitHub reads `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]` and
+`***NO_CI***` from **anywhere in the head commit's message, body included**, and
+on a match creates no workflow run at all. Not a startup failure, not a skipped
+run — nothing. The PR shows zero checks, which reads exactly like a long runner
+queue.
+
+The commit that removed hiring-tracker's skip-ci mechanism explained the bug by
+quoting the token in its body, and was skipped by it. Seventeen minutes were
+spent reading the absence as runner starvation before the shape gave it away:
+a queued job still appears as a check run, so *zero* check runs never means slow.
+
+Write it as `skip-ci` in prose. Spelling it out in a file is fine — only the
+commit message is scanned.
+
+This one cannot be enforced from CI, and the reason is worth stating plainly:
+any check that would catch it lives in a run that the token has already
+prevented from existing. It goes here because a written rule is the only
+mechanism available, not because a written rule is the good one.
+
+### Accepting a vulnerability: an id list, never a warn_only
+
+`job-go-govulncheck` takes an `allow:` input — newline-separated `GO-YYYY-NNNN`
+ids — and **not** a `warn_only` flag. The difference is the whole point. A
+`warn_only` silences the finding in front of you and every finding after it,
+including the one that is exploitable. An allowed id stops blocking; anything
+not on the list still fails the job.
+
+The job scans with `-format json` so exemptions key on ids rather than on a grep
+over English, and it counts only **symbol-level** findings — those govulncheck
+reports with a function in `trace[0]`, meaning code it actually reached. A
+module-level finding says "you require this, you do not call it", which is not a
+reason to fail a build. It also prints `stale:` for any allowed id no longer
+reported, so the list shrinks when the ecosystem catches up instead of
+accumulating dead exemptions nobody dares delete.
+
+Every entry needs a reason at the call site. The first two:
+
+```
+GO-2026-4887  Moby AuthZ plugin bypass on oversized request bodies
+GO-2026-4883  Moby off-by-one in plugin privilege validation
+```
+
+Both are daemon-side defects in Moby's request handling. gha-runner-controller
+is an API *client* — it talks to a daemon over a socket and runs neither a
+daemon nor an AuthZ plugin, so the vulnerable code is never in its process.
+Neither has a fixed version in `github.com/docker/docker` at all ("all versions,
+no known fixed"; only `moby/moby/v2` ≥ v2.0.0-beta.8 carries the fix), so there
+is nothing to upgrade to, and both reports are `unreviewed` — auto-imported from
+a third party and unverified by the Go team.
+
+That combination is worth naming, because it is the case an allow-list is for:
+a real advisory, correctly reported, against a module we genuinely import, whose
+defect is unreachable from how we use it, with no upgrade available. The
+alternatives were to block every unrelated change indefinitely, or to stop
+scanning. Both are worse than writing down which two we accept and why.
+
 ## Coverage
+
+**A CLI `--coverage.exclude` replaces the config's list; it does not extend it.**
+That is true of vitest's array options generally, and it has now caused two
+regressions in this project from opposite directions:
+
+- `--coverage.include='<unit>/**'` replaced wardley-mapper's curated include and
+  took the baseline from 49.46% to 4.24%, turning `codecov/project` red on a
+  change that added no code.
+- `--coverage.exclude='<sibling>/**'`, the fix for the first, replaced every
+  repo's exclude list — so `node_modules`, `dist`, `*.d.ts` and every
+  `*.config.*` file re-entered the denominator. hiring-tracker was measuring
+  `vite.config.ts` at 0% across 11 lines and counting it against patch coverage.
+
+So the shared job restates the standard exclusions alongside the sibling units,
+and the flag adds to a known baseline rather than standing in for the repo's.
+A repo needing more than that baseline cannot express it through
+`coverage.exclude` in its config and expect it to survive — narrow
+`coverage.include` instead.
 
 - **Codecov everywhere it can be supported**: `codecov/codecov-action` **v7**
   (v7.0.0 current as of 2026-06; client-manager already on it), SHA-pinned,
@@ -291,6 +533,104 @@ next change).
   `uses: aurum-alpha/workflows/setup/node@<sha>`.
 - Callers reference by SHA (same pinning policy).
 - Access: resolved — the repo is public.
+
+### One-box before the wave — and why it is not a canary
+
+A change to a shared job reaches every consumer at once. So one repo re-pins
+first, its CI is watched end to end, and only then does the fleet follow. This
+is the **one-box stage**: deploy to a single instance, watch it, proceed.
+
+**It is not a canary.** A canary is ongoing synthetic automation running against
+a live production system, whose job is to find issues before customers report
+them. Nothing described in this document does that — there is no live system in
+the loop and nothing runs continuously. Calling a one-box run a canary inflates
+what it proves: a one-box stage retires *integration* risk in the changed
+artifact, on one instance, once.
+
+Two consequences that follow from stating it correctly:
+
+- **A one-box repo must be drawn for representativeness, not for ease.** It
+  generalises to the fleet only on the axes it shares with the fleet. Pick the
+  repo carrying the work the others carry; where no single repo covers every
+  axis, the one-box stage is a *set*, not a repo. C2 is the precedent: two
+  shared-job bugs surfaced only on the one repo exercising private packages,
+  because it was the only repo that could surface them.
+- **The fleet has no canary at all.** No repo here runs synthetic checks against
+  a deployed system. That is a real gap, and it is outside this document's
+  scope — CI proves an artifact is sound, not that a running system is.
+
+## Standard repository layout
+
+The catalog is opinionated about where code lives. A shared job that takes a
+path input so each repo can keep its own arrangement is not a standard — it is a
+switch statement with the branches spread across eleven repositories.
+
+**Three directory names, and they mean the same thing everywhere:**
+
+| dir | holds | present when |
+|---|---|---|
+| `client/` | the React app. `vite.config.ts` sets `root: client`, `outDir: ../dist/public` | the repo ships a browser UI |
+| `server/` | the backend. Entry is always `server/index.ts` (or the language's equivalent) | the repo ships a service |
+| `shared/` | code both sides import | **only when both sides are the same language** |
+
+`shared/` is not a junk drawer and not automatic. A React + Go repo has no
+`shared/` — the two halves cannot import each other's source, so a directory
+claiming they can is a lie. Where a repo builds two servers in the *same*
+language, `shared/` is exactly right, and the rule is unchanged: shared source
+requires a shared toolchain.
+
+Build outputs are equally fixed: `dist/public` for the client bundle,
+`dist/index.js` for the server bundle. The image copies those two paths and
+knows nothing else about the repo.
+
+**A repo that differs is a repo to fix.** `web/` is not an alias for `client/`;
+it names a medium rather than a deployable unit.
+
+But the rename alone does not retire the `workdir` input, and an earlier version
+of this section claimed it would. There are **two real repo shapes**, and the
+directory's name was never the difference:
+
+| shape | package.json | `client/` is | repos |
+|---|---|---|---|
+| JS repo | at the root | a source directory | the six TS repos |
+| JS inside another tree | at `client/` | its own pnpm project | gofast, client-manager |
+
+A Go repo with a React UI has a second `package.json`, a second lockfile and a
+second `.node-version` under `client/`, and no rename changes that. `workdir`
+distinguishes the two shapes and is legitimate; what is not legitimate is
+treating it as a free-form path so each repo can put its UI wherever. It takes
+`.` or `client`, and nothing else.
+
+### Dev mode: the server never imports vite
+
+Vite is a dev server and a frontend build tool. Nothing in `server/` may
+reference it — not behind `NODE_ENV`, not behind a dynamic import, not at all.
+
+The standard is **`vite dev` on its own port, proxying `/api` to the backend**;
+one `dev` script starts both, under `concurrently -k` so Ctrl-C stops the pair.
+
+Ports come from the app-wide plan, not from vite's default. Each repo owns a
+20-port block; the docker side clusters at the low end and is not uniform (+0 is
+always the ingress, but +2, +3 and +8 are variously postgres, pgadmin and
+https), so **native dev takes the top of the block: +10 client, +11 server**.
+That way the rule reads the same in every repo instead of being arithmetic
+around whatever each one already exposes.
+
+Set **`strictPort: true`**. Vite's default is to increment silently when its
+port is taken — during Phase F testing that put it on +11 and left the proxy
+pointing at itself, which looks like a backend bug and is not one. The middleware-mode arrangement — Express hosting
+vite in-process, branching on `NODE_ENV` — is retired fleet-wide.
+
+That arrangement looked convenient (one process, one port, no CORS) and it cost
+six broken production images: `server/index.ts` imported `./vite`, the bundler
+followed the import, and `vite` is not installed in the runtime image. Three of
+the six had been unable to start for months without anyone noticing, because
+nothing in CI ever started the container.
+
+Guarding the import is not the fix — it is the same defect with a condition on
+it. Removing the reference is the fix, and it has the side effect of making
+`client/` a genuinely independent unit, which is what lets it become its own
+package later without touching the server at all.
 
 ## Standard job catalog
 
@@ -347,6 +687,42 @@ install (store-cached) → its one script. All SHA-pinned, least-privilege.
 | `image` | the gates | packages **prebuilt binaries** (gofast pattern) |
 | `ci-ok` | all | rollup |
 
+### The Go baseline: every Go codebase runs the same seven
+
+Three repos hold Go codebases and each had picked a different subset. Measured
+before Phase F:
+
+| capability | gofast | gha-runner-controller | client-manager |
+|---|---|---|---|
+| `mod` | yes | yes | yes |
+| `build` | yes | yes | yes |
+| `fmt` | yes | yes | yes |
+| `vet` | yes | yes | yes |
+| `test-unit` | yes | yes | yes |
+| **`lint`** | — | — | — |
+| **`govulncheck`** | — | — | yes |
+| `test-integration` | — | yes | yes |
+
+Two things that table makes obvious and nothing else did:
+
+- **`job-go-lint.yml` has existed in the catalog since Phase A and no repo has
+  ever called it.** A shared job with zero adopters is not a standard, it is a
+  file. Either every Go repo lints or the job should not exist; the first.
+- **One repo scans for vulnerabilities.** client-manager did it behind
+  `tools/checks/govulncheck`, so it read as a client-manager concern rather than
+  a gap in the other two. It is now `job-go-govulncheck` in the catalog.
+
+`test-integration` is the honest exception: it belongs wherever integration
+tests exist, and gofast has none. Absence there is a fact about the repo, not a
+missing job.
+
+**Anything beyond those seven is repo-specific and needs a reason.**
+client-manager carries six — `forbidigo-pgxpool`, `conformance-suite`,
+`telemetry-canary`, `migration-expand-only`, `header-definition`,
+`header-staleness`. Those are policy about *that* codebase, which is the
+legitimate case under Principle 19: a debt with a name. Reviewing whether any of
+them generalise is worth doing, and is not the same job as this one.
+
 ### PHP job catalog (event-manager)
 
 Same ids where meaningful: `builder-image` (tier 2, reusable) → `install`
@@ -362,49 +738,136 @@ Same ids where meaningful: `builder-image` (tier 2, reusable) → `install`
 | `test-unit` | build | `pio test` native suite (when adopted) |
 | `ci-ok` | all | rollup |
 
-### Job ids name the codebase they act on
+### Job ids name the deployable unit
 
-**`<codebase>-<capability>`, always.** The prefix says which body of source the
-job touches; the capability says what it does to it. A reader landing on any
-repo in the fleet knows both from the id alone, and the same capability carries
-the same name everywhere.
-
-| codebase | prefix | ids |
-|---|---|---|
-| Go | `go-` | `go-mod`, `go-fmt`, `go-vet`, `go-lint`, `go-build`, `go-test-unit`, `go-test-integration` |
-| React | `react-` | `react-install`, `react-build`, `react-lint`, `react-typecheck`, `react-fmt`, `react-test-unit` |
-| PHP | `php-` | `php-install`, `php-install-prod`, `php-test-unit`, `php-static-analysis`, `php-test-integration` |
-| firmware | `firmware-` | `firmware-build`, `firmware-test-unit`, `firmware-publish` |
-
-**A job that acts on no single codebase takes no prefix.** These are the
-convergence and repo-level jobs — `changes`, `image`, `package`, `release`,
-`test-e2e`, `ci-ok`, `runner-image`, `contract`, `image-tag-parity`,
-`osv-scanner`. The absence of a prefix is information: it says *this one spans
-the repo*, which is exactly what the packaging and rollup jobs do.
-
-**Shared jobs are named for the toolchain; callers are named for the codebase.**
-`job-node-build.yml` runs pnpm and would serve a Vue app equally, so it stays
-`node`; the caller invoking it on a React app is `react-build`. The shared job's
-own internal id is the bare capability, so the check renders as the pair:
+**`<purpose>-<language>[-<framework>]-<capability>`.**
 
 ```
-react-build / build      go-fmt / fmt      php-test-unit / test-unit
-   ↑ codebase   ↑ capability
+client-ts-react-build          server-go-build            ← no framework slot
+server-ts-express-lint         server-php-ci4-test-unit
+firmware-cpp-arduino-build     billing-py-django-test-unit
 ```
 
-*This replaces the B4 rule, which said prefixes "appear only where a collision
-forces them." That keyed the name on a **collision** rather than on the
-**codebase**, so the prefix vanished in any repo with one stack: `credit-watch`
-called it `build` while `gofast` called the identical act `web-build`, and
-`gha-runner-controller` managed `go-mod` alongside a bare `gofmt` and `vet` in
-the same file. Four names for one capability. It is the same mistake as
-`.pnpm-version` and Principle 6 in a new costume — a rule that names anything
-other than the thing itself stops applying the moment the thing moves.*
+**purpose** — what the unit *is*, and the first thing a reader wants. Use the
+role when there is one of a kind (`client`, `server`, `service`, `worker`,
+`cli`, `firmware`, `lib`); use the unit's **name** the moment there are several
+(`billing`, `auth`), because with three Django services the language stops
+discriminating and only the name does.
 
-*`web-` is retired in favour of `react-`: "web" names a medium, not a codebase,
-and every repo using it was building a React app. `gofmt` becomes `go-fmt`
-because `gofmt` is a tool name wearing a capability's clothes — the fleet names
-capabilities, not tools (Principle 9).*
+`lib` is the one purpose that is not deployable: shared source compiled into
+other units. It earns a place because its tests are otherwise homeless —
+wardley-mapper's `shared/stripe-config.test.ts` belongs to neither client nor
+server, and pointing per-unit jobs at `client` and `server` alone would silently
+stop running it.
+
+**language** — always present, always second. `ts`, `go`, `php`, `cpp`, `py`.
+
+**framework** — optional, and *always beneath a language*, never beside it.
+There is no CodeIgniter for Go and no Nest for Python; a framework never floats
+free of the language it is written in, so it can never occupy the language slot.
+`react`/`express`/`nest` are ts; `ci4`/`laravel` are php; `django`/`fastapi` are
+py; `arduino` is cpp. Where a unit has no framework — Go here — the slot is
+simply absent, and that absence is accurate rather than missing.
+
+The two middle tokens are not redundant: **they select two different tiers of
+tooling.** `client-ts-react` says both the language tier (`tsc`, `eslint`) and
+the framework tier (`vite build`) apply to it. `server-go` says only the
+language tier does.
+
+**Name the framework whenever there is one, even when it owns no build tool.**
+Naming and the job catalog are independent decisions:
+
+- the framework token is *identity* — present whenever a framework is in use
+- a framework-tier *job* exists only where the framework owns a tool
+
+So `server-ts-express-build` names Express and calls a language-tier build job;
+Express is a request-routing library and owns no bundler. That is not a
+contradiction — the name says what the unit **is**, the job says what **runs**
+it. Two reasons this matters: replacing Express with Nest is an expensive,
+consequential change and the id should show it the day it happens; and an
+`express` token tells a reader the build is framework-shaped rather than
+bespoke. Which makes the empty slot informative in its own right — `server-ts`
+with no framework token means exactly that: no framework, a custom build.
+
+**A job spanning more than one unit takes no purpose prefix** — `image`,
+`package`, `release`, `test-e2e`, `changes`, `ci-ok`, and a repo-wide
+`typecheck` where a single `tsconfig.json` genuinely covers every unit. The
+absence marks the convergence and rollup jobs.
+
+*This supersedes two earlier attempts, and the way each failed is the lesson.
+B4 asked for a stack prefix "only where a collision forces them" — keyed on a
+**collision** rather than on the code, so the prefix vanished in any repo with
+one stack and the fleet grew four names for one capability. The replacement
+keyed on the **shared job being called**, which proves only which toolchain
+runs, not which source it touches: six repos whose single `build` compiles a
+React client and an Express server were renamed `react-build`, and
+hiring-tracker's `react-test-unit` ran fourteen server tests and zero client
+tests. Naming a thing after the tool that happens to process it is the same
+error as naming it after a collision. Name the unit.*
+
+### Capability names: category first, specialisation second
+
+`test-unit`, `test-integration`, `test-e2e` — not `unit-test`. English says
+"unit test"; we invert it deliberately, for the same reason purpose comes first
+in a job id: **the general category leads, so families group.**
+
+```
+test-e2e            e2e-test
+test-integration    integration-test      ← scattered
+test-unit           unit-test
+```
+
+Sorted, listed in a checks UI, or grepped, the inverted form keeps every kind of
+test together and makes a missing one visible. The uninverted form scatters them
+across the alphabet.
+
+The rule generalises: any capability with variants takes the family name first
+and the variant second. Capabilities with no variants stay single words —
+`lint`, `build`, `typecheck`, `fmt`, `vet` — and `lint` is not a member of the
+test family however much it feels adjacent.
+
+### Two linters, on purpose, for now
+
+`job-lint-js-eslint` and `job-lint-js-oxlint` both exist. That is a deliberate
+exception to "one way per capability" and it is written down rather than
+allowed to look accidental.
+
+They are not interchangeable. oxlint is Rust, runs 50-100x faster, and
+implements a **subset** of the rules: no eslint plugins, and no type-aware
+linting at all — every `@typescript-eslint` rule that needs the type checker is
+simply absent. A repo on oxlint is getting *less* checking than one on eslint,
+not different checking.
+
+gofast is the only oxlint caller. Two jobs exist so that repo is not blocked on
+a linter migration nobody asked for, and so the fleet is not blocked on gofast.
+The target is one linter; this is the honest way to hold the position until
+that is decided, instead of pretending the fleet already agrees.
+
+### Shared job names: `<function>-<language>-<runner|framework>`
+
+A caller names the **unit**; a shared job names the **tool it runs**. Same
+three-part discipline, different subject.
+
+```
+job-test-unit-js-vitest      job-lint-js-eslint        job-typecheck-ts-tsc
+job-build-js-vite            job-bundle-js-esbuild
+job-test-unit-go             job-fmt-go                job-vet-go
+job-test-unit-php-phpunit    job-build-cpp-pio
+```
+
+The third token is the runner or framework that actually executes the function,
+and it is **absent where the language is the tool**: `go test`, `go vet` and
+`gofmt` are Go itself, so `job-test-unit-go` has nothing to add. Swapping vitest
+for jest is then a visible rename — `job-test-unit-js-jest` — rather than a
+silent change of behaviour inside a file whose name never moved.
+
+Language here is the **tool's ecosystem**, not the source's: vitest is a
+JavaScript runner that happens to read TypeScript, so it is `js`, while
+`typecheck-ts-tsc` is `ts` because `tsc` exists only for TypeScript. A caller
+written in TypeScript therefore calls a `js` job, and that is correct — the
+caller names its source, the job names its tool. This is the same distinction
+that broke once already: a shared job proves the language of the tooling, never
+which unit the source belongs to.
 
 **Display names = job ids** (tightened 2026-08-16, superseding B4's
 free-form allowance): no job-level `name:` overrides anywhere — the
@@ -501,11 +964,16 @@ will.
 | 16 | A version exists only where consumed | — | **review only** |
 | 17 | Release is promotion, not production | `check-ci-conformance` D4, D5 | gated |
 | 18 | One workflow per repo | `check-ci-conformance` P18 | gated |
-| — | Standard job DAG | `check-ci-conformance` D1–D3 | gated |
+| — | Standard job DAG (build first) | `check-ci-conformance` D1–D3 | gated |
+| — | Every job blocks something | `check-ci-conformance` D6 | gated |
+| — | Something runs the image | `check-ci-conformance` D7 | gated |
+| — | `needs.<id>` expressions resolve | `check-ci-conformance` D8 | gated |
+| — | `workdir` names a shape, not a path | `check-ci-conformance` WD | gated |
 | — | Per-stack DAG in multi-codebase repos | — | **review only** |
 | — | SHA pinning | `check-ci-conformance` PIN | gated |
 | — | `ci-ok` is the only required check | branch protection | gated |
 | — | Fleet pnpm version | `check-fleet-versions` (sweep) | audit only |
+| — | Caller `with:` matches the shared job's inputs | `check-ci-conformance` IN | gated |
 | — | Caller permissions cover shared jobs | `check-caller-permissions` (sweep) | audit only |
 
 Three tiers, and the difference between them matters:
@@ -753,7 +1221,7 @@ irrelevant to branch protection.
       Go jobs are not yet block-identical — a mini-B5 for the Go
       cohort precedes extraction there). *Landed 2026-08-16
       (client-manager#27). Two shared-job fixes were required and are
-      the C5 canary lesson in miniature: (1) pnpm 10+ only honors
+      the C5 one-box lesson in miniature: (1) pnpm 10+ only honors
       registry auth from the user-level npmrc, so the shared install
       became registry-aware for @aurum-alpha (workflows#12); (2) an
       explicit job-level permissions block REPLACES the caller's token
@@ -802,20 +1270,20 @@ irrelevant to branch protection.
       run caught SC2086 (unquoted `$GITHUB_ENV`) in all four node jobs —
       fixed same commit.*
 - [x] **C5** Propagation proof: Dependabot (github-actions ecosystem)
-      on every consumer tracks the shared-workflow SHA; land one canary
+      on every consumer tracks the shared-workflow SHA; land one one-box
       change in node-ci.yml and verify it arrives everywhere as
       reviewable SHA-bump PRs. Tag releases in this repo so bump PRs
       are readable (SHA pin + tag comment, fleet pinning policy).
-      *Proven 2026-08-16. The canary process ran end to end: merged
+      *Proven 2026-08-16. The one-box process ran end to end: merged
       workflows#6 (checkout 4.4.0→7.0.1) alone → re-pinned
       expense-splitter (#21) to that SHA → full run green through all
       five capabilities → then batched #7–#10 (upload-artifact v7,
       buildx v4, download-artifact v8, setup-node v7; artifact
       cross-major compat pre-proven by lid-firmware run 31920424032)
       → fleet re-pin wave to the final SHA. The C2 rollout separately
-      demonstrated why single-caller canaries matter: two shared-job
+      demonstrated why single-caller one-box stages matter: two shared-job
       bugs (registry auth, packages: read) only surfaced on the one
-      repo exercising private packages. Canary sets should include
+      repo exercising private packages. One-box repos should include
       client-manager's web stubs for that reason. Tags remain
       admin-side (git proxy scopes writes to refs/heads/*): one pass
       at the end per Jared.*
@@ -1025,6 +1493,219 @@ D3–D6 are independent of C. Same execution loop as A/B.
       unsaturated fleet — controller-log correlation at these
       timestamps is the highest-value D6 next step.
 
+### Phase F task board — one DAG per deployable unit *(scoped 2026-08-17)*
+
+Phases A–D standardized how code is gated and built; Phase E, how it is
+versioned and released. Phase F is about what the pipeline **says it is doing**,
+because in six repos it was saying something untrue.
+
+**How it surfaced.** A job-id rename claimed six repos' `build` acted on React.
+It does not: each of those repos holds a React client *and* an Express server
+under one `package.json`, and one `build` compiles both. hiring-tracker was the
+proof — its `test-unit` runs **fourteen server tests and zero client tests**, so
+the React label was not merely vague, it was inverted. The DAG showed one
+undifferentiated blob where two deployable units live, and nobody could see
+whether the server was built, linted or tested at all. It was not.
+
+**F0 — The standard shape of a TS client+server repo.** The variations below
+are not constraints to design around; they are the drift Phase F removes. Every
+one of the six converges on this, and the shared jobs then need no per-repo
+inputs beyond which unit they are pointed at.
+
+| | standard | seen today |
+|---|---|---|
+| unit source | `client/`, `server/` | already uniform |
+| test files | `*.test.ts(x)` colocated under the unit dir | uniform where they exist |
+| vitest `include` | **absent** — the job passes `--dir client\|server` | `client/src/lib/**`, `client/src/**`, `**/*.{test,spec}.{js,ts}` — each pins tests to one unit and makes a per-unit split impossible |
+| client bundle | `dist/public` (vite default target) | uniform |
+| server bundle | `dist/index.js`, esm, `--packages=external` | 3 repos match; 3 emit `dist/index.cjs` via a bespoke script |
+| `start` | `node dist/index.js` | follows the bundle |
+| build scripts | **none** | `script/build.ts` in 3 repos |
+
+The vitest `include` line is the one that matters most: while it pins every test
+to `client/`, pointing a job at `server/` finds nothing no matter how the DAG is
+drawn, and the split would be cosmetic.
+
+**F1 — Split the DAG per deployable unit.** Each unit runs its own build and
+its own gates, converging at packaging (the multi-codebase rule). For the six
+Express repos:
+
+```
+client-ts-react-build ──► client-ts-react-lint, client-ts-react-test-unit ────┐
+server-ts-express-build ──► server-ts-express-lint, ...-test-unit ────────────┤──► image
+typecheck  (one tsconfig.json — genuinely repo-wide, so it stays bare) ───────┘
+```
+
+**F2 — Delete the repo-specific build scripts.** `credit-watch`,
+`expense-splitter` and `flight-watch` each carry a `script/build.ts` that hand-
+curates 28 dependencies to bundle. The other three already use plain
+`esbuild --platform=node --bundle --packages=external --format=esm`, which is
+the standard and the majority. The shared job owns that invocation; repos keep
+only `server/index.ts` as the entry point and no build script at all.
+
+*Known trades, recorded rather than discovered later.* The allowlist exists "to
+reduce openat(2) syscalls which helps cold start times"; whether that was
+measured is unknown, and standardizing gives it up. The scripts also `minify`,
+which the shared job does not — flight-watch's bundle goes 856kb to 66kb because
+dependencies stop being inlined, so the minification argument largely dissolves
+with them. And the allowlists have rotted: 11 of flight-watch's 25 entries name
+packages the repo no longer depends on at all, which is what an unenforced
+hand-curated list does over time.
+
+**F3 — Tests exist for every unit.** Splitting the test job makes absence
+visible for the first time:
+
+| repo | server tests | client tests |
+|---|---|---|
+| credit-watch | 0 | 3 |
+| flight-watch | 0 | 1 |
+| jewelry-factory | 0 | 2 |
+| wardley-mapper | 0 | 3 |
+| expense-splitter | 1 | 2 |
+| hiring-tracker | 14 | 0 |
+
+**A unit with no tests warns, it does not block — for now.** The gap is
+pre-existing and predates the standard; failing five of six repos on the day the
+split lands would punish repos for a condition this project exists to fix. F3
+closes it, and the warning is what makes the debt visible until it does.
+
+The mechanism matters: the job runs with `--passWithNoTests` and a step that
+counts test files and emits a warning annotation when the count is zero. **A
+real test failure still fails the job.** Blanket `continue-on-error` would
+suppress genuine breakage too, which is the trap this avoids.
+
+**F4 — Rename every job id** to `<purpose>-<language>[-<framework>]-<capability>`
+once F1 lands, since the split creates the jobs the names describe.
+
+**F5 — Framework-tier shared jobs.** A framework earns a shared job only when
+it owns a tool: React does (`vite build`), CodeIgniter 4 does (`spark test`),
+Arduino does (`pio run`). Express does not — it routes requests and owns no
+bundler, so its build is a language-tier job. The test for admitting a new
+framework job is "what command would it run?"; if there is no single answer,
+there is no job.
+
+**F6 — Enforce what F1–F5 establish.** Rules with no gate drift; this document
+has proved that five times. N1 already checks the language token. Purpose and
+framework cannot be proved from the file and stay review-only, and the checker
+says so rather than implying coverage it lacks.
+
+**F8 — The artifact must start, and CI must say so.** Adopting the shared
+bundle job exposed a defect that every gate in this document was blind to,
+because every gate stops at "it built".
+
+The six Express repos guard their dev server one of two ways:
+
+```ts
+// three repos — guarded, so a define can eliminate it
+if (process.env.NODE_ENV === "production") serveStatic(app);
+else { const { setupVite } = await import("./vite"); await setupVite(...); }
+
+// three repos — unconditional, so nothing can eliminate it
+import { setupVite, serveStatic, log } from "./vite";   // -> imports "vite"
+```
+
+`vite` is a devDependency. The runtime image runs `pnpm install --prod`. So the
+bundle top-level-imports a package the image does not contain, and
+`node dist/index.js` dies at module resolution with `ERR_MODULE_NOT_FOUND`
+before a line of application code runs.
+
+Verified by bundling all six and starting each one against a dependency tree
+containing only its declared `dependencies`:
+
+| repo | as bundled today | with `--define` | why |
+|---|---|---|---|
+| credit-watch | fails to load | starts | guarded import |
+| expense-splitter | fails to load | starts | guarded import |
+| flight-watch | fails to load | starts | guarded import |
+| hiring-tracker | fails to load | **fails to load** | `server/index.ts:14` static |
+| jewelry-factory | fails to load | **fails to load** | `server/index.ts:5` static |
+| wardley-mapper | fails to load | **fails to load** | `server/index.ts:3` static |
+
+**This is not something Phase F introduced.** The three static-import repos
+already build with `--packages=external` on `main` and already ship an image
+that cannot start; Phase F inherited it. What Phase F would have introduced is
+the other three: their `script/build.ts` inlines dependencies and eliminates
+the dev branch, so deleting it without the define regresses a working image.
+
+Three changes follow:
+
+1. `job-bundle-js-esbuild` passes
+   `--define:process.env.NODE_ENV='"production"'`. A production bundle built
+   without a production NODE_ENV is a contradiction, and it fixes the guarded
+   three.
+2. The same job then **asserts the property instead of trusting the flag**:
+   every bare specifier the bundle imports must appear in `dependencies`. No
+   flag can fix a static import, so the check does not depend on one. It agreed
+   with the twelve start-up simulations in all twelve cases and needs no
+   install.
+3. The static-import three move `serveStatic`/`log` into a production-safe
+   module and leave `setupVite` behind the dynamic import — one line each.
+
+**The general lesson, because it outlives Phase F.** A green pipeline here meant
+the artifact compiled, was linted, was typechecked, was tested, and was packaged
+into an image. Not one of those steps ever started the thing. Six repos held a
+full row of green ticks over an image that could not boot, and the standard had
+no rule that was even capable of noticing — which is the failure mode Principle
+17 describes, arriving somewhere new. `ci-ok` is a rollup of gates, and a rollup
+is only as honest as the weakest claim underneath it.
+
+**F9 — The two `.cjs` repos change module format, and that is not cosmetic.**
+`credit-watch` and `expense-splitter` both declare `"type": "module"` in
+package.json while their `script/build.ts` emits `format: "cjs"` to
+`dist/index.cjs`. The `.cjs` extension is what makes Node read it as CommonJS
+despite the type field, so it works today by extension alone.
+
+The catalog emits `--format=esm` to `dist/index.js`. Under `"type": "module"`
+that is ESM — correct, and it breaks both repos, because `server/static.ts` in
+each resolves the client bundle with a bare `__dirname`:
+
+```ts
+const distPath = path.resolve(__dirname, "public");   // undefined under ESM
+```
+
+`__dirname` exists in those repos only as a side effect of the CJS bundle. The
+server throws on startup the moment the format changes — the same class of
+break as the vite import, arriving by a different route, and invisible to every
+gate we have because nothing starts the container (see F8).
+
+So the wave for these two is not a re-wire. It carries, per repo:
+
+- `server/static.ts` → `import.meta.dirname` (or `fileURLToPath(import.meta.url)`,
+  which is what the two pilot repos use)
+- `start` script → `dist/index.js`
+- a local boot of the built artifact before the PR opens, not after
+
+`jewelry-factory` is not affected — it already builds `dist/index.js` — but it
+does carry the unguarded static `vite` import that hiring-tracker had.
+
+*Found by reading the three remaining repos before touching them rather than by
+a red pipeline, which is the only reason it is written here and not in a
+post-mortem.*
+
+**F7 — Rollout order.** wardley-mapper went first (#15, twelve checks green on
+workflows `684617a9`). What that run proved, stated precisely: **the catalog
+works.** All three defects it caught live in `workflows`, not in the repo —
+a job-level `permissions:` block that replaced the caller grant and produced a
+`startup_failure` with no jobs and no logs; coverage scoped repo-wide while
+`--dir` scoped the tests; and the `--coverage.include` fix that replaced the
+curated set and dropped the project number 49.46% → 4.24%. Zero of the three
+were migration defects.
+
+It therefore does **not** generalise to the wave, because it is unrepresentative
+on the two axes the wave turns on: it has no `script/build.ts` (F2 ran zero
+times) and no server tests (its server job took the warn path, so per-unit
+coverage never had to produce a number on the server side).
+
+So the one-box stage is a *pair*, chosen for coverage of those axes:
+
+| repo | why it is in the set | axis it proves |
+|---|---|---|
+| flight-watch | `script/build.ts`, 0 server tests, smallest surface | F2 deletion, warn path |
+| hiring-tracker | 14 server tests, 0 client tests, no build script | F1 split, per-unit coverage on a real suite |
+
+Between them every axis credit-watch, expense-splitter and jewelry-factory vary
+on is covered, so those three follow as interpolation rather than new risk.
+
 ### Phase E task board — versioning and releases *(scoped 2026-08-16)*
 
 Phases A–D standardized how code is *gated* and *built*. Nothing had ever
@@ -1108,7 +1789,7 @@ claim becomes a diff someone can challenge (Principle 14).
       plus the two web halves, which share one build job and so land as a
       single re-pin wave; PHP last, since event-manager is the only consumer
       and has no second repo to prove the shape against. Each stack is a
-      canary-then-wave, the C5 process: one repo green end to end before the
+      one-box-then-wave, the C5 process: one repo green end to end before the
       rest re-pin.
 - [ ] **E7** Retire what the new rules obsolete: gha-runner-controller's
       `git describe` version derivation (reads tags as authority, contrary to

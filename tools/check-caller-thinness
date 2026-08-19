@@ -33,7 +33,12 @@ CONVERTED = [
     "gha-runner-controller",
 ]
 
-# Repo-local jobs that are allowed to keep a body in the caller.
+# Repo-local jobs that keep a body in the caller.
+#
+# Principle 19: a local job is a CLAIM that the catalog does not cover this
+# case. Every entry therefore states the gap it represents, and closing that gap
+# is backlog — an entry here is a debt with a name, not a permission. The target
+# state for every repo is an empty list.
 LOCAL_ALLOWLIST = {
     "hiring-tracker": {"update-version-info"},
     # The compile and the two packaging jobs are genuinely repo-specific: a

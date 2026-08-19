@@ -21,18 +21,63 @@ principle needed enforcing:
   P6  concurrency          cancel superseded PR runs, never main
   P18 one workflow         ci.yml is the pipeline; dependabot is the exception
   PIN sha pinning          every action at a 40-hex sha with a # vX.Y.Z comment
-  D1  no orphan jobs       every job has needs:, except declared roots
+  D1  no orphan jobs       every job has needs:, except declared roots. Build
+                          first, fail fast: if it does not compile there is
+                          nothing worth linting or testing, so no gate runs
+                          beside the build
   D2  no inverted DAG      a build never needs a gate
   D3  publish is gated     a publish job reaches a gate transitively
   D4  publish is in ci-ok  a publish job outside the rollup fails invisibly
   D5  publish runs on PRs  the main-check goes on the step, never the job
-  N1  job ids name the codebase  a stub calling job-go-* is named go-*, etc.
+  D6  every job blocks     every job is reachable from ci-ok's transitive
+                          needs. Distinct from D1: a job can sit correctly
+                          downstream of the build and still be absent from the
+                          rollup, and then its failure stops nothing
+  WD  workdir is a shape       a JS shared job's workdir input is `.` or
+                          `client` and nothing else. It distinguishes two real
+                          repo shapes; it is not a per-repo path setting
+  D8  needs.<id> resolves    every ${{ needs.X.* }} expression names a job that
+                          exists and that this job declares in needs:. A rename
+                          that updates job ids and needs: lists still leaves
+                          these dangling, and the expression silently evaluates
+                          to empty rather than failing
+  D7  something runs it    a job that builds an image either starts it
+                          (assert_starts, the default) or is depended on by a
+                          job that runs it — an e2e suite against the container
+                          proves more than a start check and makes it
+                          redundant, but nothing may satisfy this by assertion
+  RN  no renamed commands    a job id token (server-go-*, client-ts-*, …) never
+                          appears immediately after a tool name in a run: body.
+                          Renaming job ids with a whole-word regex also rewrites
+                          the shell commands that share the old name — `go build`
+                          became `go server-go-build`, which is not a subcommand
+                          and fails in zero seconds
+  CM  CI does not commit      no step pushes to the repository under test.
+                          A generated file committed back by CI is always one
+                          build behind — the artifact was built before the file
+                          existed — and the commit is invariably [skip ci], so
+                          the version it carries is never built at all. Generate
+                          it into the build output instead
+  N1  the language token is true  a stub calling job-go-* has 'go' in position 2
+  IN  caller inputs exist      every key under `with:` is an input the shared
+                          job declares, and every required input is passed.
+                          GitHub rejects the whole FILE at startup for a
+                          misspelled or missing input — zero jobs, no logs,
+                          and actionlint cannot see it because the callee
+                          lives in another repository
+  PERM caller grant covers callee  a called workflow can never hold more than
+       the job calling it — exceed it and GitHub rejects the whole FILE at
+       startup: zero jobs, no logs, and actionlint sees nothing wrong. A caller
+       that declares nothing is reported too, but as what it is: reliance on the
+       repository default, which the file cannot show and an org setting can
+       revoke from every caller at once
 
-N1 can only judge jobs that CALL a shared job, because the `uses:` line is the
-only thing in the file that proves which codebase a job acts on. A repo-local
-job named `web-build` or `static-analysis` is invisible to it — nothing there
-says what those touch. Those stay review-only, and saying so beats implying
-coverage that does not exist.
+N1 checks the LANGUAGE token and nothing else, because the language is all a
+`uses:` line can prove. Purpose and framework are review-only: no line in the
+file says whether a job serves the client or the server, and assuming otherwise
+is precisely what renamed six repos' `build` to `react-build` when it compiles
+both a React client and an Express server. Repo-local jobs are invisible to N1
+for the same reason.
 
 Exit: 0 conformant, 1 violations, 2 no ci workflow found.
 """
@@ -77,9 +122,13 @@ def is_library(path: pathlib.Path) -> bool:
 # version hardcoded `build`, `web-build`, `go-mod` and friends, so the moment a
 # repo renamed `build` to `react-build` — obeying N1 — the checker called its
 # own standard a violation. Enumerating names is how a checker acquires the
-# drift it exists to prevent.
+# drift it exists to prevent. The prefix repeats — `([a-z0-9]+-)*` — because a
+# job id carries purpose, language and framework before the capability, and an
+# earlier version allowed exactly one segment, so `client-ts-react-build` read
+# as an orphan the first time a real three-token id appeared.
 ROOT_RE = re.compile(
-    r"^(changes|create-docker-[\w-]+-image|([a-z]+-)?(mod|build|install(-prod)?))$"
+    r"^(changes|create-docker-[\w-]+-image"
+    r"|([a-z0-9]+-)*(mod|build|install(-prod)?))$"
 )
 BUILD_RE = re.compile(r"(^|-)(build|install)$")
 GATE_RE = re.compile(r"(lint|typecheck|test|vet|gofmt|prettier|analysis|scanner|check|audit)")
@@ -95,18 +144,22 @@ REPORTING_RE = re.compile(r"risk$")
 #                   repo's code — there is nothing here to gate it on
 NOT_A_PRODUCT_RE = re.compile(r"parity$|^create-docker-[\w-]+-image$|^runner-image$")
 
-# Which caller prefix a shared job's toolchain implies. The shared job is named
-# for the toolchain it runs (job-node-build runs pnpm, and would serve a Vue app
-# just as well); the caller is named for the codebase it runs that toolchain on.
-# So "react-build / build", not "web-build / build" or "build / build".
+# A shared job proves the LANGUAGE of the source it runs against, and nothing
+# more. job-go-vet can only be pointed at Go; job-node-lint can only be pointed
+# at TypeScript/JavaScript.
 #
-# B4 let the prefix appear "only where a collision forces them", which keyed the
-# name on a collision rather than on the codebase — so it disappeared in
-# single-stack repos and the fleet ended up with four names for one capability.
-# This keys on the shared job actually being called, which cannot move.
-STACK_OF_SHARED_JOB = {
+# It does NOT prove the purpose or the framework. The first version of this rule
+# assumed it did — "calls job-node-* therefore it is React" — and renamed six
+# repos' `build` to `react-build` when that job compiles a React client AND an
+# Express server from one command. hiring-tracker's `react-test-unit` ran
+# fourteen server tests and zero client tests. The toolchain is not the codebase.
+#
+# So this checks the language token only: position two of the caller's id.
+LANGUAGE_OF_SHARED_JOB = {
     "job-go-": "go",
-    "job-node-": "react",
+    "job-node-": "ts",
+    "job-ts-": "ts",
+    "job-php-": "php",
 }
 # Jobs that act on no single codebase take no prefix: their bare name is the
 # information, saying "this one spans the repo".
@@ -119,6 +172,37 @@ SPANS_REPO = {
 MAIN_GATE_RE = re.compile(
     r"refs/heads/main|is_default_branch|event_name\s*==\s*'push'"
 )
+
+# What each shared job asks for, so a caller's grant can be checked against it.
+# This lived in a separate tool that had to be REMEMBERED, and the Phase F one-box
+# run failed its first attempt because it was not. A checker you must remember to run is
+# the same failure mode as a rule nobody enforces — so it moves in here, where
+# every repo's own CI runs it.
+CALLEE_NEEDS = {
+    "job-image-docker": {"packages": "write"},
+    "job-docker-image": {"packages": "write"},
+    "job-image-cached": {"packages": "write"},
+    "job-release-risk": {"pull-requests": "write"},
+}
+PERM_RANK = {"none": 0, "read": 1, "write": 2}
+
+
+def workflow_permissions(text: str) -> dict[str, str]:
+    """The workflow-level permissions block, which is the default every job gets."""
+    lines = text.splitlines()
+    try:
+        start = next(i for i, ln in enumerate(lines) if re.match(r"^permissions:\s*$", ln))
+    except StopIteration:
+        return {}
+    out = {}
+    for ln in lines[start + 1 :]:
+        if ln.strip() and not ln.startswith(" "):
+            break
+        m = re.match(r"^  ([\w-]+):\s*(\S+)", ln)
+        if m:
+            out[m.group(1)] = m.group(2)
+    return out
+
 
 CONCURRENCY_EXPECTED = "cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}"
 
@@ -183,9 +267,21 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
     jobs = parse_jobs(text)
     graph = {j: needs_of(p) for j, p in jobs.items()}
     rollup = graph.get("ci-ok", set())
+
+    # Transitive closure of ci-ok's needs: every job the rollup actually waits
+    # for, directly or through another job.
+    reachable_from_rollup = set()
+    frontier = list(rollup)
+    while frontier:
+        n = frontier.pop()
+        if n in reachable_from_rollup:
+            continue
+        reachable_from_rollup.add(n)
+        frontier.extend(graph.get(n, set()))
     # "Gates hang off the build" presumes a build. A repo that compiles nothing
     # — this one checks yaml — has no such node, and its gates are the roots.
     has_build = any(BUILD_RE.search(j) for j in jobs)
+    wf_perms = workflow_permissions(text)
     out: list[str] = []
 
     def bad(rule, msg):
@@ -226,11 +322,20 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
 
     # --- P3 / P4 / D*: per job -------------------------------------------
     for job, props in sorted(jobs.items()):
-        blob = props.get("__raw__", "")
+        blob = job_block(text, job)
 
         if job != "ci-ok":
+            # Build first, fail fast. A gate running beside the build burns a
+            # runner on code that does not compile, and reports its own failure
+            # instead of the one that caused it.
             if has_build and not graph[job] and not ROOT_RE.match(job):
                 bad("D1", f"'{job}' has no needs: — it runs beside the build it should gate")
+
+            # Separate property: having a needs: puts a job in the right place
+            # in the DAG; being in ci-ok's closure is what makes its failure
+            # block anything. A job can satisfy D1 and still stop nothing.
+            if "ci-ok" in jobs and job not in reachable_from_rollup:
+                bad("D6", f"'{job}' is not reachable from ci-ok — its failure blocks nothing")
 
             if BUILD_RE.search(job):
                 inv = sorted(n for n in graph[job] if GATE_RE.search(n) and not BUILD_RE.search(n))
@@ -238,13 +343,124 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
                     bad("D2", f"'{job}' is a build but needs gate(s): {', '.join(inv)}")
 
             uses = props.get("uses", "")
-            for marker, stack in STACK_OF_SHARED_JOB.items():
-                if marker in uses and not job.startswith(f"{stack}-"):
+            props["__with_raw__"] = with_block(text, job)
+
+            # --- IN: the caller's `with:` matches the callee's schema -------
+            # Only checkable when the catalog is on disk next to the repos,
+            # which is the case for a fleet run and for anyone with the
+            # workflows clone. Silent when it is not — an unenforceable rule
+            # should be visibly absent, not faked.
+            schema = catalog_inputs(uses)
+            if schema is not None:
+                declared, required = schema
+                passed = with_keys(text, job)
+                for k in sorted(passed - declared):
+                    bad("IN", f"'{job}' passes '{k}', which {uses.split('/')[-1].split('@')[0]} does not declare — the whole file fails at startup")
+                for k in sorted(required - passed):
+                    bad("IN", f"'{job}' omits required input '{k}'")
+
+            # --- WD: workdir names a shape, not a path ---------------------
+            if re.search(r"/job-(build|bundle|lint|test-unit|typecheck)-", uses) or "job-image-docker" in uses:
+                m = re.search(r"^      workdir:\s*(\S+)\s*$", props.get("__with_raw__", ""), re.M)
+                if m and m.group(1).strip("\"'") not in (".", "client"):
+                    bad("WD", f"'{job}' passes workdir: {m.group(1)} — it must be '.' or "
+                              "'client'; the input names a repo shape, not a path")
+
+            # --- D8: needs.<id> expressions resolve ------------------------
+            # A rename moves job ids and needs: lists; ${{ needs.X.outputs.Y }}
+            # is easy to miss, and GitHub does not fail on it — the expression
+            # just evaluates to empty, so a version tag becomes "v" and nobody
+            # notices until the artifact is wrong.
+            for ref in sorted(set(re.findall(r"needs\.([\w-]+)\.", blob))):
+                if ref not in jobs:
+                    bad("D8", f"'{job}' reads needs.{ref}.* but no job '{ref}' exists")
+                elif ref not in graph[job]:
+                    bad("D8", f"'{job}' reads needs.{ref}.* but does not list '{ref}' in needs:")
+
+            # --- RN: a rename that rewrote a command ------------------------
+            # Renaming job ids go-build -> server-go-build with a whole-word
+            # regex also rewrites `go build` to `go server-go-build`. It is not
+            # a subcommand, so the step dies instantly. This already happened
+            # twice: ./tools/checks/go-mod -> ./tools/checks/server-go-mod in
+            # three files, and this one, which sat red for three hours.
+            for m in re.finditer(
+                r"\b(go|pnpm|npm|npx|composer|make|docker|cargo|dotnet)\s+"
+                r"((?:server|client|lib|shared|firmware)-(?:go|ts|js|php|cpp|py)-[\w-]+)",
+                blob):
+                bad("RN", f"'{job}' runs `{m.group(1)} {m.group(2)}` — a job id was "
+                          f"substituted into a command by a rename")
+
+            # --- CM: CI does not commit to the repo it is testing ----------
+            # hiring-tracker stamped version-info.json after the build, then
+            # committed and pushed it to main with [skip ci]. Every image
+            # therefore carried the previous commit's stamp, and the stamped
+            # commit was never built. It had also silently stopped running four
+            # merges earlier, so production was told it was four commits older
+            # than it was.
+            if re.search(r"^\s*git push\b", blob, re.M):
+                bad("CM", f"'{job}' runs `git push` — CI must not commit to the "
+                          "repository it is testing; emit generated files into "
+                          "the build output instead")
+
+            # --- D7: an image nothing runs ---------------------------------
+            if "job-image-docker" in uses or "job-docker-image" in uses:
+                waived = re.search(r"^      assert_starts:\s*false\s*$",
+                                   props.get("__with_raw__", ""), re.M)
+                if waived:
+                    consumers = sorted(j for j, n in graph.items()
+                                       if job in n and j != "ci-ok")
+                    if not consumers:
+                        bad("D7", f"'{job}' sets assert_starts: false but no job needs it — "
+                                  "nothing in this pipeline runs the image")
+
+            for callee, needed in CALLEE_NEEDS.items():
+                if f"/{callee}.yml@" not in uses:
+                    continue
+                # A job-level block REPLACES the workflow default rather than
+                # adding to it, so naming any scope zeroes every unnamed one.
+                job_perms = re.findall(r"([\w-]+):\s*(read|write|none)", props.get("permissions", ""))
+                # Three cases, and only two of them are provable from the file.
+                # With no block at either level the grant is the REPOSITORY
+                # default, which this file cannot show — so do not claim a
+                # startup failure that may not happen. Reported, but for what it
+                # actually is: an implicit grant that an org-wide flip to
+                # read-only would revoke from every caller at once, as a
+                # startup_failure with no logs.
+                declared = bool(job_perms) or bool(wf_perms)
+                effective = dict(job_perms) if job_perms else wf_perms
+                for scope, level in needed.items():
+                    if not declared:
+                        bad(
+                            "PERM",
+                            f"'{job}' calls {callee} which requests {scope}: {level}, "
+                            f"but grants nothing at job or workflow level — it runs "
+                            f"on the repository default token permissions. Declare "
+                            f"{scope}: {level} on the job so the grant survives a "
+                            f"change to that default",
+                        )
+                        continue
+                    have = effective.get(scope, "none")
+                    if PERM_RANK.get(have, 0) < PERM_RANK[level]:
+                        bad(
+                            "PERM",
+                            f"'{job}' calls {callee} which requests {scope}: {level}, "
+                            f"but its effective grant is {scope}: {have} — GitHub "
+                            "rejects the whole file at startup, with zero jobs and "
+                            "no logs",
+                        )
+
+            for marker, lang in LANGUAGE_OF_SHARED_JOB.items():
+                if marker not in uses:
+                    continue
+                parts = job.split("-")
+                if len(parts) < 2 or parts[1] != lang:
                     bad(
                         "N1",
-                        f"'{job}' calls a {marker}* shared job, so it acts on the "
-                        f"{stack} codebase and must be named '{stack}-<capability>' "
-                        "— a job id names the codebase it acts on",
+                        f"'{job}' calls a {marker}* shared job, so its source is "
+                        f"{lang}, but its language token is "
+                        f"'{parts[1] if len(parts) > 1 else '(absent)'}' — ids are "
+                        f"<purpose>-<language>[-<framework>]-<capability>, so this "
+                        f"should read <purpose>-{lang}-...",
                     )
 
             if (
@@ -298,6 +514,96 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
             bad("P3", f"continue-on-error: {v} — nothing publishes unless every gate passes")
 
     return out, str(ci.relative_to(repo))
+
+
+def job_block(text: str, job: str) -> str:
+    """The raw lines of one job, from the original file.
+
+    parse_jobs folds continuation lines into per-key strings, which is enough
+    for `needs:` and `uses:` but loses step bodies — where ${{ needs.X.* }}
+    expressions actually live.
+    """
+    m = re.search(rf"^  {re.escape(job)}:\s*$", text, re.M)
+    if not m:
+        return ""
+    out = []
+    for ln in text[m.end():].splitlines()[1:]:
+        if ln.strip() and not ln.startswith("    "):
+            break
+        out.append(ln)
+    return "\n".join(out)
+
+
+def with_block(text: str, job: str) -> str:
+    """The raw lines under a job's `with:`, read from the original file.
+
+    parse_jobs folds continuation lines into a single string (comments
+    included), so anything that needs to tell an input name from a word in a
+    comment has to re-read the block here.
+    """
+    m = re.search(rf"^  {re.escape(job)}:\s*$", text, re.M)
+    if not m:
+        return ""
+    body = []
+    for ln in text[m.end():].splitlines()[1:]:
+        if ln.strip() and not ln.startswith("    "):
+            break
+        body.append(ln)
+    block = "\n".join(body)
+    w = re.search(r"^    with:\s*$", block, re.M)
+    if not w:
+        return ""
+    out = []
+    for ln in block[w.end():].splitlines()[1:]:
+        if ln.strip() and not ln.startswith("      "):
+            break
+        out.append(ln)
+    return "\n".join(out)
+
+
+def with_keys(text: str, job: str) -> set[str]:
+    """Input names a job passes under `with:`."""
+    return set(re.findall(r"^      ([\w-]+):", with_block(text, job), re.M))
+
+
+def catalog_inputs(uses: str):
+    """(declared, required) input names for a shared job, or None if unresolvable.
+
+    Resolves `aurum-alpha/workflows/.github/workflows/X.yml@sha` against a local
+    clone of the catalog, searched next to this checker and beside the repo
+    being checked. The pin is a sha, so a local clone may not hold that exact
+    commit — this compares against whatever the working tree has, which catches
+    the misspelling and the missing-required case without pretending to verify
+    the pinned revision. Parsed with regex like the rest of this file, so the
+    checker keeps running on a bare Python with no yaml installed.
+    """
+    m = re.match(r"([\w.-]+)/([\w.-]+)/\.github/workflows/([\w.-]+\.ya?ml)@", uses.strip())
+    if not m:
+        return None
+    _, repo_name, fname = m.groups()
+    here = pathlib.Path(__file__).resolve().parent.parent
+    for root in (here, *[q / repo_name for q in (here.parent, pathlib.Path.cwd().parent)]):
+        f = root / ".github/workflows" / fname
+        if not f.is_file():
+            continue
+        text = f.read_text()
+        block = re.search(
+            r"^  workflow_call:\n(?:.*\n)*?^    inputs:\n((?:^      \S.*\n|^        .*\n|^\s*\n)*)",
+            text, re.M)
+        if not block:
+            return set(), set()
+        body = block.group(1)
+        declared, required = set(), set()
+        current = None
+        for line in body.splitlines():
+            k = re.match(r"^      ([\w-]+):\s*$", line)
+            if k:
+                current = k.group(1)
+                declared.add(current)
+            elif current and re.match(r"^        required:\s*true\s*$", line):
+                required.add(current)
+        return declared, required
+    return None
 
 
 def main() -> int:

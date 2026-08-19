@@ -35,13 +35,13 @@ jobs:
       contents: read
     steps:
       - name: Checkout the repo under test
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # aurum-alpha/workflows is public, so this needs no token — which is the
       # whole reason the check can live inside each repo instead of in a
       # fleet-wide sweep that only ever ran when someone remembered to run it.
       - name: Checkout the standard
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: aurum-alpha/workflows
           ref: ${{ inputs.standard_ref }}

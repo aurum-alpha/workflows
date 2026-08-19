@@ -43,10 +43,19 @@ on:
           spelling.
         type: string
         default: ""
+      runner:
+        description: >-
+          Override runs-on. Leave empty for the fleet default. Set to a
+          GitHub-hosted label where a repo must not build on the fleet
+          (CI_STANDARD Principle 4 — e.g. the runner controller itself, whose
+          image jobs would otherwise build the runner image on runners created
+          from the previous runner image).
+        type: string
+        default: ""
 
 jobs:
   publish:
-    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+    runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-26.04' }}
     timeout-minutes: 15
     permissions:
       contents: read

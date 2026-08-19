@@ -84,6 +84,25 @@ jobs:
           path: .aurum-standard
           persist-credentials: false
 
+      # check-caller-permissions is the one checker that parses YAML properly
+      # rather than by pattern — it has to resolve job-level blocks against
+      # workflow-level ones, and a regex that got that wrong would report the
+      # opposite of the truth about a token grant. PyYAML is therefore a real
+      # dependency, and the runner image does not carry it: the first CI run of
+      # this job died on ModuleNotFoundError after passing on a workstation
+      # that happened to have it.
+      #
+      # Verified after installing, not assumed. An install step that half-works
+      # and a checker that cannot see are the same failure with different logs.
+      - name: Install the checkers' one dependency
+        run: |
+          if ! python3 -c 'import yaml' 2>/dev/null; then
+            python3 -m pip install --quiet --disable-pip-version-check pyyaml \
+              || python3 -m pip install --quiet --disable-pip-version-check \
+                   --break-system-packages pyyaml
+          fi
+          python3 -c 'import yaml; print("PyYAML", yaml.__version__)'
+
       - name: ci.yml conforms to CI_STANDARD
         env:
           REPO: ${{ steps.repo.outputs.name }}

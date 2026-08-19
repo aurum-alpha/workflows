@@ -422,6 +422,27 @@ The same reasoning covers the checks themselves: a check whose failure output
 does not distinguish "it exited" from "it exited *because*" costs a round of CI
 per failure, which on a starved runner pool is the expensive resource.
 
+### Never write the skip token in a commit message, even to describe it
+
+GitHub reads `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]` and
+`***NO_CI***` from **anywhere in the head commit's message, body included**, and
+on a match creates no workflow run at all. Not a startup failure, not a skipped
+run — nothing. The PR shows zero checks, which reads exactly like a long runner
+queue.
+
+The commit that removed hiring-tracker's skip-ci mechanism explained the bug by
+quoting the token in its body, and was skipped by it. Seventeen minutes were
+spent reading the absence as runner starvation before the shape gave it away:
+a queued job still appears as a check run, so *zero* check runs never means slow.
+
+Write it as `skip-ci` in prose. Spelling it out in a file is fine — only the
+commit message is scanned.
+
+This one cannot be enforced from CI, and the reason is worth stating plainly:
+any check that would catch it lives in a run that the token has already
+prevented from existing. It goes here because a written rule is the only
+mechanism available, not because a written rule is the good one.
+
 ## Coverage
 
 **A CLI `--coverage.exclude` replaces the config's list; it does not extend it.**

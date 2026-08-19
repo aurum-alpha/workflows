@@ -28,12 +28,23 @@ on:
         default: "."
       binaries:
         description: >-
-          JSON array of command names to link, each built from ./cmd/<name>,
-          e.g. '["fastgen","fastproxy"]'. JSON and not a newline list on
-          purpose: a newline input means a shell loop over caller data, and
-          that is the bug class that broke job-image-starts for every caller.
-          Empty array compiles the packages and links nothing, which is the
-          right answer for a repo whose binary is built into an image.
+          JSON array of commands to link. An entry is either a NAME, built from
+          ./cmd/<name> — e.g. '["fastgen","fastproxy"]' — or an OBJECT naming
+          its own path, '[{"name":"gen-headers","path":"./tools/gen-headers"}]'.
+
+          ./cmd/<name> is the fleet convention and every deployable follows it
+          today, but that is a fact about today and it was hardcoded as though
+          it were a property. client-manager already keeps real commands in
+          ./tools, so the first repo that needs one built would have had to go
+          back to a wrapper script — which is the thing hoisting this job
+          exists to end. A convention is worth defaulting to and not worth
+          being unable to express an exception to.
+
+          JSON and not a newline list on purpose: a newline input means a shell
+          loop over caller data, and that is the bug class that broke
+          job-image-starts for every caller. Empty array compiles the packages
+          and links nothing, which is the right answer for a repo whose binary
+          is built into an image.
         type: string
         default: "[]"
       version_file:
@@ -152,7 +163,27 @@ jobs:
           import json, os, pathlib, re, subprocess, sys
           from datetime import datetime, timezone
 
-          names = json.loads(os.environ["BINARIES"] or "[]")
+          # An entry is a bare name or an object carrying its own path. Both
+          # normalise to (name, path) here so nothing downstream has to care,
+          # and anything else is rejected by name rather than failing later as
+          # a confusing `go build` error about a directory nobody typed.
+          def normalise(entry):
+              if isinstance(entry, str):
+                  return entry, f"./cmd/{entry}"
+              if isinstance(entry, dict):
+                  extra = set(entry) - {"name", "path"}
+                  if extra:
+                      sys.exit(f"binaries entry {entry!r} has unknown "
+                               f"key(s): {', '.join(sorted(extra))}")
+                  name = entry.get("name")
+                  if not name:
+                      sys.exit(f"binaries entry {entry!r} has no name")
+                  return name, entry.get("path") or f"./cmd/{name}"
+              sys.exit(f"binaries entry {entry!r} is neither a name nor an "
+                       "object with name and path")
+
+          entries = [normalise(e) for e in json.loads(os.environ["BINARIES"] or "[]")]
+          names = [n for n, _ in entries]
           goos, goarch = os.environ["GOOS_IN"].strip(), os.environ["GOARCH_IN"].strip()
 
           # The stamp target is derived, never passed: go.mod names the module,
@@ -227,12 +258,12 @@ jobs:
           suffix = f"-{goos or 'native'}-{goarch}" if (goos or goarch) else ""
 
           os.makedirs("bin", exist_ok=True)
-          for name in names:
+          for name, path in entries:
               out = f"bin/{name}{suffix}"
-              print(f"linking {out} from ./cmd/{name}")
+              print(f"linking {out} from {path}")
               subprocess.run(
                   ["go", "build", "-trimpath", "-ldflags", " ".join(ldflags),
-                   "-o", out, f"./cmd/{name}"],
+                   "-o", out, path],
                   check=True, env=env)
               os.chmod(out, 0o755)
 

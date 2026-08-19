@@ -422,6 +422,80 @@ The same reasoning covers the checks themselves: a check whose failure output
 does not distinguish "it exited" from "it exited *because*" costs a round of CI
 per failure, which on a starved runner pool is the expensive resource.
 
+### Concurrency is per ref, and a pull request is not its branch
+
+```yaml
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+```
+
+The group keys on `github.ref`, and what that holds depends on the event:
+
+| event | `github.ref` |
+|---|---|
+| `push` | `refs/heads/<branch>` |
+| `pull_request` | `refs/pull/<n>/merge` |
+
+Three consequences follow, and all three matter:
+
+**A newer commit on a pull request cancels the older run.** Same PR, same ref,
+same group. This is what makes `ci-ok` go red on superseded runs — see
+`always()` above.
+
+**Different branches and different pull requests never cancel each other.**
+Different refs, different groups. Any number of PRs run at once; the only limit
+is runners.
+
+**A push run and a pull request run for the same commit are in *different*
+groups.** They cannot cancel each other, so if `push:` fires on feature
+branches the entire DAG runs twice per commit, for the same answer.
+hiring-tracker did exactly that, and its history shows the pairs plainly:
+
+```
+1e69b584   #143 push        #144 pull_request
+6298dddc   #139 pull_request #140 push
+```
+
+Hence rule `TRG`: **`push:` lists the default branch only.** The pull request
+run already gates the branch. On a four-runner pool, one repo quietly taking
+double capacity is most of a starvation problem.
+
+`main` keeps `cancel-in-progress: false` because a main run can publish, and
+cancelling it drops the publish silently.
+
+### Waiving the start check costs a sentence
+
+Some images genuinely cannot boot in CI. wardley-mapper and expense-splitter
+need Replit's IdP — `REPLIT_DOMAINS` and OIDC discovery against `replit.com` —
+and there is no version of those containers that starts without it.
+
+The tempting answer is to let the check fail and agree to ignore it. That was
+tried, and it is how wardley-mapper's `main` came to sit red on a failure
+everyone had already accepted. A permanently red default branch is worse than no
+check at all: it teaches people that red means nothing, and it hides the next
+real failure behind an expected one.
+
+So `job-image-docker` takes `start_blocked_by`, and it is **a string, not a
+boolean**, on purpose:
+
+```yaml
+    with:
+      start_blocked_by: >-
+        Replit IdP — needs REPLIT_DOMAINS and OIDC discovery against replit.com
+```
+
+The job prints the reason as a warning, skips the start check, and stays green.
+Rule `D7` accepts it **only because it is non-empty** — an empty string is
+reported as a violation, because a flag would say "this image is exempt" without
+ever saying why or until when. A sentence names the blocker, which makes the
+waiver visibly stale the moment the blocker is gone, and makes it greppable
+across the fleet when someone asks which images nothing starts.
+
+This is the same choice as the govulncheck `allow:` list and the eslint severity
+tiers: the honest middle is not "disable the rule" and not "block everything",
+it is to record precisely what is accepted, and why, in a form that expires.
+
 ### Never write the skip token in a commit message, even to describe it
 
 GitHub reads `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]` and
@@ -432,8 +506,24 @@ queue.
 
 The commit that removed hiring-tracker's skip-ci mechanism explained the bug by
 quoting the token in its body, and was skipped by it. Seventeen minutes were
-spent reading the absence as runner starvation before the shape gave it away:
-a queued job still appears as a check run, so *zero* check runs never means slow.
+spent reading the absence as runner starvation before the cause was found.
+
+**Zero check runs does not tell you which of the two it is.** An earlier version
+of this section claimed a queued job always appears as a check run, so an empty
+list had to mean the run never existed. That is wrong, and flight-watch
+disproved it within the hour: run 57 sat in `pending` and run 56 in `queued` for
+27 minutes, both with zero check runs on the pull request, because a run
+publishes no check runs until its jobs are assigned to a runner.
+
+The only way to tell is to ask for the runs rather than the checks:
+
+```
+actions_list list_workflow_runs --branch <branch>
+```
+
+A `pending` or `queued` run with no jobs is starvation. **No run at all** is the
+skip token, a trigger that does not match, or a startup failure — and those three
+are distinguished by whether a run exists with conclusion `startup_failure`.
 
 Write it as `skip-ci` in prose. Spelling it out in a file is fine — only the
 commit message is scanned.

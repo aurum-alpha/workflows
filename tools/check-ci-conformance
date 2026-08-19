@@ -52,6 +52,13 @@ principle needed enforcing:
                           the shell commands that share the old name — `go build`
                           became `go server-go-build`, which is not a subcommand
                           and fails in zero seconds
+  TRG push is default-only   ci.yml's push: trigger lists only the default
+                          branch. A feature-branch push and its pull request are
+                          different refs — refs/heads/<b> and refs/pull/<n>/merge
+                          — so they fall in different concurrency groups and
+                          neither cancels the other. push: ["**"] therefore runs
+                          the entire DAG twice per commit for the same answer,
+                          which on a starved runner pool is the whole cost
   CM  CI does not commit      no step pushes to the repository under test.
                           A generated file committed back by CI is always one
                           build behind — the artifact was built before the file
@@ -83,6 +90,7 @@ Exit: 0 conformant, 1 violations, 2 no ci workflow found.
 """
 
 import argparse
+import difflib
 import pathlib
 import re
 import sys
@@ -312,6 +320,22 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
             "main runs publish, and a cancelled run is not a failed one",
         )
 
+    # --- TRG: push fires on the default branch only -----------------------
+    # hiring-tracker carried push: ["**"] and so ran two full pipelines for
+    # every feature-branch commit: one for refs/heads/<branch>, one for
+    # refs/pull/<n>/merge. Different refs mean different concurrency groups, so
+    # they did not cancel each other and both ran to completion.
+    m_on = re.search(r"^on:\s*$(.*?)^\S", text, re.M | re.S)
+    if m_on:
+        m_push = re.search(r"^  push:\s*$\n((?:^    .*$\n)*)", m_on.group(1), re.M)
+        if m_push:
+            br = re.search(r"^    branches:\s*(.+?)\s*$", m_push.group(1), re.M)
+            listed = br.group(1) if br else ""
+            if "**" in listed or "*" == listed.strip("[]\"' "):
+                bad("TRG", f"push: branches: {listed} runs the whole DAG a second time on "
+                           "every feature-branch commit — the pull_request run already "
+                           "covers it, and the two never cancel each other")
+
     # --- PIN: sha-pinned actions with a version comment -------------------
     for m in re.finditer(r"uses:\s*([\w.-]+/[^@\s]+)@([^\s#]+)[ \t]*(#.*)?$", text, re.M):
         action, ref, comment = m.group(1), m.group(2), m.group(3)
@@ -344,6 +368,23 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
 
             uses = props.get("uses", "")
             props["__with_raw__"] = with_block(text, job)
+
+            # --- CAT: the shared workflow file actually exists --------------
+            # A pin naming a file that is not there is a startup failure: GitHub
+            # rejects the WHOLE workflow, so there are no jobs, no logs, and
+            # nothing else in this file runs. Cheap to check, and the fleet
+            # re-pin proved it is not hypothetical — bumping every sha without
+            # checking the filenames still resolved left one caller pointing at
+            # job-go-gofmt.yml, which had been renamed to job-go-fmt.yml.
+            m_uses = re.match(r"[\w.-]+/([\w.-]+)/\.github/workflows/([\w.-]+\.ya?ml)@", uses.strip())
+            if m_uses:
+                cat = catalog_dir(m_uses.group(1))
+                if cat is not None and not (cat / m_uses.group(2)).is_file():
+                    have = sorted(f.name for f in cat.glob("job-*.yml"))
+                    near = difflib.get_close_matches(m_uses.group(2), have, n=1)
+                    hint = f" — did you mean {near[0]}?" if near else ""
+                    bad("CAT", f"'{job}' calls {m_uses.group(2)}, which does not exist in the "
+                               f"catalog{hint} The whole file fails at startup: no jobs, no logs")
 
             # --- IN: the caller's `with:` matches the callee's schema -------
             # Only checkable when the catalog is on disk next to the repos,
@@ -404,9 +445,26 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
 
             # --- D7: an image nothing runs ---------------------------------
             if "job-image-docker" in uses or "job-docker-image" in uses:
-                waived = re.search(r"^      assert_starts:\s*false\s*$",
-                                   props.get("__with_raw__", ""), re.M)
-                if waived:
+                raw = props.get("__with_raw__", "")
+                waived = re.search(r"^      assert_starts:\s*false\s*$", raw, re.M)
+                # start_blocked_by is the other way to satisfy D7, and it earns it
+                # by naming the blocker rather than asserting an exemption. An
+                # empty or whitespace-only reason is not a waiver — that would be
+                # a boolean wearing a string's clothes.
+                blocked = re.search(r"^      start_blocked_by:\s*(.+?)\s*$", raw, re.M)
+                reason = ""
+                if blocked:
+                    reason = blocked.group(1).strip().strip("\"'")
+                    if reason in ("|", ">", "|-", ">-"):
+                        # block scalar: the reason is on the following lines
+                        tail = raw[blocked.end():]
+                        reason = " ".join(l.strip() for l in tail.split("\n")
+                                          if l.startswith("        ") and l.strip())
+                if blocked and not reason:
+                    bad("D7", f"'{job}' sets start_blocked_by with no reason — the input "
+                              "exists to name the blocker, and an empty one waives "
+                              "the check while explaining nothing")
+                elif waived and not blocked:
                     consumers = sorted(j for j, n in graph.items()
                                        if job in n and j != "ci-ok")
                     if not consumers:
@@ -564,6 +622,23 @@ def with_block(text: str, job: str) -> str:
 def with_keys(text: str, job: str) -> set[str]:
     """Input names a job passes under `with:`."""
     return set(re.findall(r"^      ([\w-]+):", with_block(text, job), re.M))
+
+
+def catalog_dir(repo_name: str):
+    """The local catalog clone's workflows dir, or None if there is no clone.
+
+    Split out from catalog_inputs so a MISSING FILE can be told apart from a
+    MISSING CATALOG. Conflating them is what let job-go-gofmt.yml through: the
+    file had been renamed to job-go-fmt.yml, catalog_inputs returned None, and
+    rule IN went quiet exactly as it does when the catalog is simply not on
+    disk. A silent rule and a satisfied rule looked identical.
+    """
+    here = pathlib.Path(__file__).resolve().parent.parent
+    for root in (here, *[q / repo_name for q in (here.parent, pathlib.Path.cwd().parent)]):
+        d = root / ".github/workflows"
+        if d.is_dir() and any(d.glob("job-*.yml")):
+            return d
+    return None
 
 
 def catalog_inputs(uses: str):

@@ -46,6 +46,12 @@ principle needed enforcing:
                           job that runs it — an e2e suite against the container
                           proves more than a start check and makes it
                           redundant, but nothing may satisfy this by assertion
+  CM  CI does not commit      no step pushes to the repository under test.
+                          A generated file committed back by CI is always one
+                          build behind — the artifact was built before the file
+                          existed — and the commit is invariably [skip ci], so
+                          the version it carries is never built at all. Generate
+                          it into the build output instead
   N1  the language token is true  a stub calling job-go-* has 'go' in position 2
   IN  caller inputs exist      every key under `with:` is an input the shared
                           job declares, and every required input is passed.
@@ -364,6 +370,18 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
                     bad("D8", f"'{job}' reads needs.{ref}.* but no job '{ref}' exists")
                 elif ref not in graph[job]:
                     bad("D8", f"'{job}' reads needs.{ref}.* but does not list '{ref}' in needs:")
+
+            # --- CM: CI does not commit to the repo it is testing ----------
+            # hiring-tracker stamped version-info.json after the build, then
+            # committed and pushed it to main with [skip ci]. Every image
+            # therefore carried the previous commit's stamp, and the stamped
+            # commit was never built. It had also silently stopped running four
+            # merges earlier, so production was told it was four commits older
+            # than it was.
+            if re.search(r"^\s*git push\b", blob, re.M):
+                bad("CM", f"'{job}' runs `git push` — CI must not commit to the "
+                          "repository it is testing; emit generated files into "
+                          "the build output instead")
 
             # --- D7: an image nothing runs ---------------------------------
             if "job-image-docker" in uses or "job-docker-image" in uses:

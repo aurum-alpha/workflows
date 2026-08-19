@@ -409,7 +409,14 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
                 bad("D6", f"'{job}' prunes the registry but does not need ci-ok — "
                           "housekeeping must not run ahead of the gates")
 
-            if BUILD_RE.search(job):
+            # `image-build` ends in -build and is not one. D2 says a build never
+            # needs a gate — build first, fail fast — and that is about SOURCE
+            # builds, which compile something and must come before anything is
+            # spent testing it. An image build compiles nothing: it packages
+            # artifacts the source builds already produced, which is why it is
+            # the convergence point every gate hangs off. PUBLISH_RE is exactly
+            # the set of jobs that package rather than compile.
+            if BUILD_RE.search(job) and not PUBLISH_RE.search(job):
                 inv = sorted(n for n in graph[job] if GATE_RE.search(n) and not BUILD_RE.search(n))
                 if inv:
                     bad("D2", f"'{job}' is a build but needs gate(s): {', '.join(inv)}")
@@ -579,10 +586,18 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
                         f"should read <purpose>-{lang}-...",
                     )
 
+            # The prune matches PUBLISH_RE on the word "image" and publishes
+            # nothing — it deletes. D4 (be in ci-ok) is wrong for it by design;
+            # it sits downstream of the rollup. D5 (never gate the job to main)
+            # is wrong for it too: D5 exists so a publish path is rehearsed on
+            # pull requests instead of first attempted on main, and a prune has
+            # no path worth rehearsing — running it on a pull request would
+            # delete things while that pull request is still open.
             if (
                 PUBLISH_RE.search(job)
                 and not REPORTING_RE.search(job)
                 and not NOT_A_PRODUCT_RE.search(job)
+                and "job-image-prune" not in uses
             ):
                 reach = ancestors(job, graph)
                 if not any(

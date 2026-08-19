@@ -1304,10 +1304,10 @@ will.
 | 6 | Concurrency everywhere | `check-ci-conformance` P6 | gated |
 | 7 | BUILD ONCE | — | **review only** |
 | 8 | No multi-stage prod Dockerfiles | — | **review only** |
-| 9 | Canonical script names | `check-caller-thinness` (sweep) | audit only |
+| 9 | Canonical script names | `check-caller-thinness` | gated¹ |
 | 10 | Lint output through standard channels | — | **review only** |
 | 11 | Registry auth in user-level npmrc | — | **review only** |
-| 12 | One way per capability | `check-caller-thinness` (sweep) | audit only |
+| 12 | One way per capability | `check-caller-thinness` | gated¹ |
 | 13 | Provenance in every artifact | — | **review only** |
 | 14 | A version is a commit, not a tag | — | **review only** |
 | 15 | The repo is versioned, not the artifact | — | **review only** |
@@ -1322,17 +1322,29 @@ will.
 | — | Per-stack DAG in multi-codebase repos | — | **review only** |
 | — | SHA pinning | `check-ci-conformance` PIN | gated |
 | — | `ci-ok` is the only required check | branch protection | gated |
-| — | Fleet pnpm version | `check-fleet-versions` (sweep) | audit only |
+| — | Fleet pnpm version | `check-fleet-versions` | gated¹ |
 | — | Caller `with:` matches the shared job's inputs | `check-ci-conformance` IN | gated |
 | — | One shared `ci-ok` rollup, not eleven copies | `check-ci-conformance` RU | gated |
-| — | Caller permissions cover shared jobs | `check-caller-permissions` (sweep) | audit only |
+| — | Caller permissions cover shared jobs | `check-caller-permissions` | gated¹ |
+
+¹ Gated in every repo whose `ci.yml` calls `job-ci-conformance`, which runs
+these three checkers alongside `check-ci-conformance`. Issue #79 tracks the
+per-repo rollout; until a repo adopts the job, these rules are unenforced
+**in that repo** and nothing there will say so. The row claims what the
+mechanism can do, not what every repo has taken up — check the rollout, not
+this table, before believing a given repo is covered.
 
 Three tiers, and the difference between them matters:
 
 - **gated** — a violation turns that repo's `ci-ok` red. This is enforcement.
 - **audit only** — a checker exists but runs from a workstation when someone
   remembers. This is a habit, and habits are what drifted in the first place.
-  Every one of these is a candidate for folding into the gate.
+  Every one of these is a candidate for folding into the gate. The four rows
+  now marked gated¹ spent months here, and the cost was exact: nobody ran
+  `check-fleet-versions` after two repos moved their Node app out of `web/`,
+  so it reported "package.json not found" for both and no one saw it. A
+  checker nothing runs does not degrade to weaker enforcement — it degrades
+  to a checker that is itself wrong, silently.
 - **review only** — nothing mechanical. Some of these resist automation
   honestly (BUILD ONCE needs to know what an artifact is; the per-stack DAG
   needs to know which stack a job belongs to). Saying so is the point: an

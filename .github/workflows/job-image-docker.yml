@@ -37,6 +37,24 @@ on:
           only a way to say something else already meets it.
         type: boolean
         default: true
+      start_blocked_by:
+        description: >-
+          The one sanctioned way to ship an image nothing starts, and it costs a
+          sentence. Name what makes the container unstartable here; the job
+          prints it, skips the start check, and stays green.
+
+          This exists because the alternative was worse. wardley-mapper and
+          expense-splitter cannot boot without Replit's IdP, so their main
+          branches sat red on a failure everyone had already agreed to accept —
+          which teaches people to ignore a red main and hides the next real
+          failure behind an expected one.
+
+          Not a boolean, on purpose. A flag would say "this image is exempt" and
+          never say why or until when. A sentence names the blocker, so the
+          waiver is obviously stale the moment the blocker goes, and rule D7
+          accepts it only because it is non-empty.
+        type: string
+        default: ""
       port:
         description: >-
           Port the container listens on. The start check waits for this to
@@ -153,8 +171,17 @@ jobs:
       # nothing an application has to opt into. It boots, it listens, it is
       # still alive. That is the floor, and every image in the fleet can meet
       # it.
+      - name: Start check waived
+        if: ${{ inputs.start_blocked_by != '' }}
+        env:
+          REASON: ${{ inputs.start_blocked_by }}
+        run: |
+          echo "::warning::Image start check waived: ${REASON}"
+          echo "This image was built but not started. Nothing here proves it boots."
+          echo "Remove start_blocked_by from the caller once that is resolved."
+
       - name: The image starts
-        if: ${{ inputs.assert_starts }}
+        if: ${{ inputs.assert_starts && inputs.start_blocked_by == '' }}
         env:
           TAGS: ${{ steps.meta.outputs.tags }}
           PORT: ${{ inputs.port }}

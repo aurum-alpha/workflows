@@ -404,9 +404,26 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
 
             # --- D7: an image nothing runs ---------------------------------
             if "job-image-docker" in uses or "job-docker-image" in uses:
-                waived = re.search(r"^      assert_starts:\s*false\s*$",
-                                   props.get("__with_raw__", ""), re.M)
-                if waived:
+                raw = props.get("__with_raw__", "")
+                waived = re.search(r"^      assert_starts:\s*false\s*$", raw, re.M)
+                # start_blocked_by is the other way to satisfy D7, and it earns it
+                # by naming the blocker rather than asserting an exemption. An
+                # empty or whitespace-only reason is not a waiver — that would be
+                # a boolean wearing a string's clothes.
+                blocked = re.search(r"^      start_blocked_by:\s*(.+?)\s*$", raw, re.M)
+                reason = ""
+                if blocked:
+                    reason = blocked.group(1).strip().strip("\"'")
+                    if reason in ("|", ">", "|-", ">-"):
+                        # block scalar: the reason is on the following lines
+                        tail = raw[blocked.end():]
+                        reason = " ".join(l.strip() for l in tail.split("\n")
+                                          if l.startswith("        ") and l.strip())
+                if blocked and not reason:
+                    bad("D7", f"'{job}' sets start_blocked_by with no reason — the input "
+                              "exists to name the blocker, and an empty one waives "
+                              "the check while explaining nothing")
+                elif waived and not blocked:
                     consumers = sorted(j for j, n in graph.items()
                                        if job in n and j != "ci-ok")
                     if not consumers:

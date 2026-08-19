@@ -422,6 +422,38 @@ The same reasoning covers the checks themselves: a check whose failure output
 does not distinguish "it exited" from "it exited *because*" costs a round of CI
 per failure, which on a starved runner pool is the expensive resource.
 
+### Waiving the start check costs a sentence
+
+Some images genuinely cannot boot in CI. wardley-mapper and expense-splitter
+need Replit's IdP — `REPLIT_DOMAINS` and OIDC discovery against `replit.com` —
+and there is no version of those containers that starts without it.
+
+The tempting answer is to let the check fail and agree to ignore it. That was
+tried, and it is how wardley-mapper's `main` came to sit red on a failure
+everyone had already accepted. A permanently red default branch is worse than no
+check at all: it teaches people that red means nothing, and it hides the next
+real failure behind an expected one.
+
+So `job-image-docker` takes `start_blocked_by`, and it is **a string, not a
+boolean**, on purpose:
+
+```yaml
+    with:
+      start_blocked_by: >-
+        Replit IdP — needs REPLIT_DOMAINS and OIDC discovery against replit.com
+```
+
+The job prints the reason as a warning, skips the start check, and stays green.
+Rule `D7` accepts it **only because it is non-empty** — an empty string is
+reported as a violation, because a flag would say "this image is exempt" without
+ever saying why or until when. A sentence names the blocker, which makes the
+waiver visibly stale the moment the blocker is gone, and makes it greppable
+across the fleet when someone asks which images nothing starts.
+
+This is the same choice as the govulncheck `allow:` list and the eslint severity
+tiers: the honest middle is not "disable the rule" and not "block everything",
+it is to record precisely what is accepted, and why, in a form that expires.
+
 ### Never write the skip token in a commit message, even to describe it
 
 GitHub reads `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]` and

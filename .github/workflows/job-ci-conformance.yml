@@ -29,10 +29,15 @@ on:
           tools/check-ci-conformance changed twenty times, so a caller would
           have run a checker with none of the rules added since — including the
           one that would have caught the drift that made this obvious. Nothing
-          reported it because no repo calls this workflow at all (issue #79).
+          reported it because no repo called this workflow at all (issue #79).
+
+          One commit of lag is inherent and not a bug to chase: this default
+          can never name the commit that sets it. It points at the previous
+          main, so a caller gets every rule up to the change that shipped it.
+          What must not happen again is twenty.
         type: string
         required: false
-        default: 08e5c1a80cb4fcc97863e90eadd680c98acb0a9c
+        default: b63480e7fa1092a2690b9796ebf270650a2257ff
 
 jobs:
   ci-conformance:

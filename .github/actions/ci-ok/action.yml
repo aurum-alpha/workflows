@@ -19,8 +19,15 @@ description: Fail the run if any dependency failed or was cancelled.
 inputs:
   needs_json:
     description: >-
-      The caller's `needs` context, passed as `${{ toJSON(needs) }}`. Not
-      `toJSON(needs.*.result)`: that flattens to a bare list of verdicts, so a
+      The caller's `needs` context, passed as toJSON(needs) in an expression.
+      Written without the double-brace delimiters on purpose. GitHub evaluates
+      expressions throughout an action manifest, an input description included,
+      and `needs` does not exist in a composite action's context — so writing
+      the example out in full here fails the manifest at load time with
+      "Unrecognized named-value: 'needs'", before a single step runs. It did:
+      that was this file's first CI run.
+
+      Not toJSON(needs.*.result): that flattens to a bare list of verdicts, so a
       failing run could say only that something failed and never which job. The
       full object is keyed by job id, which is the one thing a reader of a red
       ci-ok actually needs.

@@ -882,6 +882,17 @@ away — nothing was learned about the commit at all. Collapsed into one
 Rule **RU** enforces all three: the shared action, the unflattened context, and
 no local copy of the body.
 
+**An `action.yml` is not free text.** GitHub evaluates expressions throughout an
+action manifest — an input's `description` included. This action's first CI run
+failed at manifest load with `Unrecognized named-value: 'needs'`, because the
+description explained what to pass by writing the expression out in full, and
+`needs` does not exist in a composite action's context. Nothing caught it
+earlier: actionlint lints `.github/workflows/`, not `.github/actions/`, and the
+conformance checker reads workflows too. What caught it was this repo using its
+own action in its own `ci.yml` — the catalog eating its own cooking, which is
+worth more here than another rule, because it catches the class rather than the
+instance. Prose about an expression names it without its delimiters.
+
 ### Job ids name the deployable unit
 
 **`<purpose>-<language>[-<framework>]-<capability>`.**

@@ -860,6 +860,17 @@ round-tripped through a registry. The split starts the exact manifest publish
 promotes, so "the thing that was tested" and "the thing that ships" are the same
 sentence rather than two builds from the same source.
 
+**`latest` is main's tag, and only main's.** A pull request that could claim it
+would silently redirect every deployment pulling by that tag to unreviewed code,
+and the tag itself carries no evidence of where it came from. Three things hold
+the line, and the third exists because the first two are not the same as being
+right: the default rule emits `latest` only under `enable={{is_default_branch}}`;
+the promotion step runs only on a push to `main`; and `extra_tags` — the one
+input through which a caller could route around the first — is rejected if it
+produces `latest`, with the computed tag list checked again afterwards in case
+some other spelling gets there. Being quietly saved by a second gate is not the
+same as being correct, and the run where someone can still see it is this one.
+
 **`imagetools create` moves no layers.** Publish is a registry-side manifest
 operation. There is no second build that could differ from the gated one, which
 is Principle 17 stated in bytes instead of intent.

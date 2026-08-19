@@ -35,6 +35,12 @@ on:
           of the fleet defaults (`latest` on the default branch, `sha-<short>`,
           and the branch name). For a repo that publishes a version from a file
           or a build number.
+
+          It may not produce `latest`. The default rule already does, gated on
+          the default branch, and this input is the one way a caller could route
+          around that gate. Rejected by name below, and the computed tag list is
+          checked again afterwards in case a rule produces it by some other
+          spelling.
         type: string
         default: ""
 
@@ -48,6 +54,22 @@ jobs:
       # build job holds it to stage a digest; this one holds it to promote.
       packages: write
     steps:
+      # `latest` means "what is on main". A pull request that could claim it
+      # would silently redirect every deployment that pulls by that tag to
+      # unreviewed code, and the tag carries no evidence of where it came from.
+      - name: extra_tags may not claim latest
+        if: ${{ inputs.extra_tags != '' }}
+        env:
+          EXTRA: ${{ inputs.extra_tags }}
+        run: |
+          set -euo pipefail
+          if printf '%s' "$EXTRA" | grep -qiE '(value|suffix|prefix)=latest\b|^\s*latest\s*$'; then
+            echo "::error::extra_tags may not produce 'latest'." \
+                 "The default rule already emits it, gated on the default branch;" \
+                 "this input is the only way to route around that gate."
+            exit 1
+          fi
+
       - id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
@@ -67,6 +89,19 @@ jobs:
           echo "Source:  $REF"
           echo "Tags:"
           printf '%s\n' "$TAGS" | sed 's/^/  /'
+
+          # Belt and braces, evaluated on every run including pull requests.
+          # The Promote step below is main-gated, so a stray `latest` on a
+          # branch could not actually ship — but being quietly saved by a second
+          # gate is not the same as being correct, and this is the run where
+          # someone can still see it. `latest` is main's tag, and only main's.
+          if printf '%s\n' "$TAGS" | grep -qE ':latest$'; then
+            if [ "$GITHUB_EVENT_NAME" != "push" ] || [ "$GITHUB_REF" != "refs/heads/main" ]; then
+              echo "::error::The computed tags include ':latest' on ${GITHUB_REF}" \
+                   "(event ${GITHUB_EVENT_NAME}). Only a push to main may claim latest."
+              exit 1
+            fi
+          fi
 
       - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

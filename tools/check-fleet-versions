@@ -9,6 +9,13 @@ one repo drifting to a different pnpm. This check closes that gap by comparing
 every repo against fleet-versions.json.
 
 Run against local clones:  tools/check-fleet-versions --root /workspace
+Run against one repo:      tools/check-fleet-versions --root DIR --repo NAME
+
+The --repo form is what job-ci-conformance uses: a repo's own CI has only its
+own clone, so a checker that can only run over all eleven at once is a checker
+that only runs when someone remembers to run it from a workstation. Naming a
+repo with no Node app is a pass, not an error, so every caller can wire this up
+unconditionally without first knowing whether it is a Node repo.
 """
 
 import argparse
@@ -25,8 +32,16 @@ NODE_APPS = {
     "hiring-tracker": ".",
     "jewelry-factory": ".",
     "wardley-mapper": ".",
-    "client-manager": "web",
-    "gofast": "web",
+    # client-manager and gofast moved web/ to client/ (F#3, F#23) and this map
+    # was not updated with them, so the check reported "package.json not found"
+    # for both — a FAIL that says the repo is missing a file rather than that
+    # this list is stale. It went unnoticed because nothing ran the checker;
+    # that is the gap issue #79 exists to close.
+    "client-manager": "client",
+    "gofast": "client",
+    # event-manager declares packageManager and was simply never listed, so its
+    # pnpm could have drifted from the fleet without anything saying so.
+    "event-manager": ".",
 }
 
 
@@ -38,14 +53,29 @@ def load_expected(repo_root: pathlib.Path) -> str:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", default="/workspace", type=pathlib.Path)
+    ap.add_argument("--repo", action="append", help="limit to specific repo(s)")
     args = ap.parse_args()
 
     here = pathlib.Path(__file__).resolve().parent.parent
     expected = load_expected(here)
     want = f"pnpm@{expected}"
 
+    if args.repo:
+        # A named repo with no Node app has nothing to disagree about. Say so
+        # and pass: the alternative is every non-Node caller needing an `if:`
+        # around the check, which is how checks stop being run at all.
+        selected = {r: NODE_APPS[r] for r in args.repo if r in NODE_APPS}
+        for r in args.repo:
+            if r not in NODE_APPS:
+                print(f"{r}: no Node app in fleet-versions scope — nothing to check")
+        if not selected:
+            print("\nPASS: no Node app to check")
+            return 0
+    else:
+        selected = NODE_APPS
+
     failures = 0
-    for repo, subdir in sorted(NODE_APPS.items()):
+    for repo, subdir in sorted(selected.items()):
         pkg = args.root / repo / subdir / "package.json"
         if not pkg.exists():
             print(f"{repo}: package.json not found at {pkg}", file=sys.stderr)
@@ -70,7 +100,7 @@ def main() -> int:
         )
         return 1
 
-    print(f"\nPASS: all {len(NODE_APPS)} Node apps pin {want}")
+    print(f"\nPASS: all {len(selected)} Node app(s) pin {want}")
     return 0
 
 

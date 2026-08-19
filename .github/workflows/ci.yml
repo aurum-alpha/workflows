@@ -41,6 +41,11 @@ jobs:
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # check-standard-ref diffs this pull request against its base, so the
+          # base commit has to be in the clone. A shallow checkout has only the
+          # merge commit and the diff fails with "bad object".
+          fetch-depth: 0
       - name: Check our own ci.yml against CI_STANDARD
         run: tools/check-ci-conformance --repo-root .
 
@@ -50,6 +55,17 @@ jobs:
       # statically: a newline-separated input read without both guards.
       - name: Check the catalog's input loops
         run: tools/check-catalog-loops
+
+      # job-ci-conformance selects its checkers by SHA, and that SHA cannot be
+      # derived — GitHub gives a called workflow no handle on its own commit,
+      # so it is written down, and the writing down is what gets forgotten. It
+      # was forgotten three times; the third cost lid-firmware's first
+      # conformance run three findings that were all false, because the ref
+      # predated both the jobs it called and the allow-list entry it relied on.
+      #
+      # fetch-depth 0 above so the base commit is present to diff against.
+      - name: Check standard_ref moved with the checkers
+        run: tools/check-standard-ref --base "${{ github.event.pull_request.base.sha }}"
 
   ci-ok:
     needs: [lint, conformance]

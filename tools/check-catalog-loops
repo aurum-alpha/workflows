@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Assert every newline-separated input loop in the catalog guards both cases.
+r"""Assert every newline-separated input loop in the catalog guards both cases.
 
 The shared image jobs take several `|` block-scalar inputs — `artifacts`,
 `executables`, `start_services`, `start_env`, `start_mounts`, `start_hosts` —

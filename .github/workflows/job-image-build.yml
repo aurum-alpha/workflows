@@ -140,7 +140,7 @@ jobs:
             name="${line%%=*}"; dest="${line#*=}"
             if [ ! -d ".ci-artifacts/$name" ]; then
               echo "::error::No artifact named '$name' in this run." \
-                   "Available: $(ls .ci-artifacts 2>/dev/null | tr '\n' ' ')"
+                   "Available: $(find .ci-artifacts -mindepth 1 -maxdepth 1 -printf '%f ' 2>/dev/null)"
               exit 1
             fi
             mkdir -p "$dest"
@@ -206,7 +206,9 @@ jobs:
             exit 1
           fi
           echo "Staged ${IMAGE}@${DIGEST}"
-          echo "### Image staged" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          echo "${IMAGE}@${DIGEST}" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### Image staged"
+            echo '```'
+            echo "${IMAGE}@${DIGEST}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

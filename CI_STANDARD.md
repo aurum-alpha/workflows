@@ -422,6 +422,48 @@ The same reasoning covers the checks themselves: a check whose failure output
 does not distinguish "it exited" from "it exited *because*" costs a round of CI
 per failure, which on a starved runner pool is the expensive resource.
 
+### Concurrency is per ref, and a pull request is not its branch
+
+```yaml
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+```
+
+The group keys on `github.ref`, and what that holds depends on the event:
+
+| event | `github.ref` |
+|---|---|
+| `push` | `refs/heads/<branch>` |
+| `pull_request` | `refs/pull/<n>/merge` |
+
+Three consequences follow, and all three matter:
+
+**A newer commit on a pull request cancels the older run.** Same PR, same ref,
+same group. This is what makes `ci-ok` go red on superseded runs — see
+`always()` above.
+
+**Different branches and different pull requests never cancel each other.**
+Different refs, different groups. Any number of PRs run at once; the only limit
+is runners.
+
+**A push run and a pull request run for the same commit are in *different*
+groups.** They cannot cancel each other, so if `push:` fires on feature
+branches the entire DAG runs twice per commit, for the same answer.
+hiring-tracker did exactly that, and its history shows the pairs plainly:
+
+```
+1e69b584   #143 push        #144 pull_request
+6298dddc   #139 pull_request #140 push
+```
+
+Hence rule `TRG`: **`push:` lists the default branch only.** The pull request
+run already gates the branch. On a four-runner pool, one repo quietly taking
+double capacity is most of a starvation problem.
+
+`main` keeps `cancel-in-progress: false` because a main run can publish, and
+cancelling it drops the publish silently.
+
 ### Waiving the start check costs a sentence
 
 Some images genuinely cannot boot in CI. wardley-mapper and expense-splitter

@@ -52,6 +52,13 @@ principle needed enforcing:
                           the shell commands that share the old name — `go build`
                           became `go server-go-build`, which is not a subcommand
                           and fails in zero seconds
+  TRG push is default-only   ci.yml's push: trigger lists only the default
+                          branch. A feature-branch push and its pull request are
+                          different refs — refs/heads/<b> and refs/pull/<n>/merge
+                          — so they fall in different concurrency groups and
+                          neither cancels the other. push: ["**"] therefore runs
+                          the entire DAG twice per commit for the same answer,
+                          which on a starved runner pool is the whole cost
   CM  CI does not commit      no step pushes to the repository under test.
                           A generated file committed back by CI is always one
                           build behind — the artifact was built before the file
@@ -312,6 +319,22 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
             f"cancel-in-progress is {found.group(1).strip() if found else 'unset'}; "
             "main runs publish, and a cancelled run is not a failed one",
         )
+
+    # --- TRG: push fires on the default branch only -----------------------
+    # hiring-tracker carried push: ["**"] and so ran two full pipelines for
+    # every feature-branch commit: one for refs/heads/<branch>, one for
+    # refs/pull/<n>/merge. Different refs mean different concurrency groups, so
+    # they did not cancel each other and both ran to completion.
+    m_on = re.search(r"^on:\s*$(.*?)^\S", text, re.M | re.S)
+    if m_on:
+        m_push = re.search(r"^  push:\s*$\n((?:^    .*$\n)*)", m_on.group(1), re.M)
+        if m_push:
+            br = re.search(r"^    branches:\s*(.+?)\s*$", m_push.group(1), re.M)
+            listed = br.group(1) if br else ""
+            if "**" in listed or "*" == listed.strip("[]\"' "):
+                bad("TRG", f"push: branches: {listed} runs the whole DAG a second time on "
+                           "every feature-branch commit — the pull_request run already "
+                           "covers it, and the two never cancel each other")
 
     # --- PIN: sha-pinned actions with a version comment -------------------
     for m in re.finditer(r"uses:\s*([\w.-]+/[^@\s]+)@([^\s#]+)[ \t]*(#.*)?$", text, re.M):

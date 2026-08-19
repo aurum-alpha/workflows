@@ -191,6 +191,8 @@ jobs:
           echo "Starting $image"
           cid=$(docker run -d --network "$net" -p "127.0.0.1:$PORT:$PORT" \
                   -e "PORT=$PORT" "${args[@]}" "$image")
+          # shellcheck disable=SC2317  # every command below reads as unreachable
+          # because shellcheck does not treat `trap cleanup EXIT` as a call site.
           cleanup() {
             docker logs "$cid" 2>&1 | tail -40 || true
             # A service that died takes the app down with it and the app's own

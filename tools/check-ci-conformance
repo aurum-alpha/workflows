@@ -83,6 +83,7 @@ Exit: 0 conformant, 1 violations, 2 no ci workflow found.
 """
 
 import argparse
+import difflib
 import pathlib
 import re
 import sys
@@ -345,6 +346,23 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
             uses = props.get("uses", "")
             props["__with_raw__"] = with_block(text, job)
 
+            # --- CAT: the shared workflow file actually exists --------------
+            # A pin naming a file that is not there is a startup failure: GitHub
+            # rejects the WHOLE workflow, so there are no jobs, no logs, and
+            # nothing else in this file runs. Cheap to check, and the fleet
+            # re-pin proved it is not hypothetical — bumping every sha without
+            # checking the filenames still resolved left one caller pointing at
+            # job-go-gofmt.yml, which had been renamed to job-go-fmt.yml.
+            m_uses = re.match(r"[\w.-]+/([\w.-]+)/\.github/workflows/([\w.-]+\.ya?ml)@", uses.strip())
+            if m_uses:
+                cat = catalog_dir(m_uses.group(1))
+                if cat is not None and not (cat / m_uses.group(2)).is_file():
+                    have = sorted(f.name for f in cat.glob("job-*.yml"))
+                    near = difflib.get_close_matches(m_uses.group(2), have, n=1)
+                    hint = f" — did you mean {near[0]}?" if near else ""
+                    bad("CAT", f"'{job}' calls {m_uses.group(2)}, which does not exist in the "
+                               f"catalog{hint} The whole file fails at startup: no jobs, no logs")
+
             # --- IN: the caller's `with:` matches the callee's schema -------
             # Only checkable when the catalog is on disk next to the repos,
             # which is the case for a fleet run and for anyone with the
@@ -581,6 +599,23 @@ def with_block(text: str, job: str) -> str:
 def with_keys(text: str, job: str) -> set[str]:
     """Input names a job passes under `with:`."""
     return set(re.findall(r"^      ([\w-]+):", with_block(text, job), re.M))
+
+
+def catalog_dir(repo_name: str):
+    """The local catalog clone's workflows dir, or None if there is no clone.
+
+    Split out from catalog_inputs so a MISSING FILE can be told apart from a
+    MISSING CATALOG. Conflating them is what let job-go-gofmt.yml through: the
+    file had been renamed to job-go-fmt.yml, catalog_inputs returned None, and
+    rule IN went quiet exactly as it does when the catalog is simply not on
+    disk. A silent rule and a satisfied rule looked identical.
+    """
+    here = pathlib.Path(__file__).resolve().parent.parent
+    for root in (here, *[q / repo_name for q in (here.parent, pathlib.Path.cwd().parent)]):
+        d = root / ".github/workflows"
+        if d.is_dir() and any(d.glob("job-*.yml")):
+            return d
+    return None
 
 
 def catalog_inputs(uses: str):

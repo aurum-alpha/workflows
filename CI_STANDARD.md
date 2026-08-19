@@ -828,6 +828,66 @@ Same ids where meaningful: `builder-image` (tier 2, reusable) → `install`
 | `test-unit` | build | `pio test` native suite (when adopted) |
 | `ci-ok` | all | rollup |
 
+### An image job does one thing, three times
+
+`job-image-docker` did four: placed artifacts, built, started the container, and
+pushed. When it went red the checks list said `image` and nothing else, and a
+reader had to open the log to learn which of four claims had failed. Worse, the
+four have different permission needs and different triggers, so the single job
+took the union — `packages: write`, on every pull request in the fleet, because
+one main-only step inside it needed to push.
+
+Split along the claims:
+
+| job | claims | permission | runs |
+|---|---|---|---|
+| `job-image-build` | the Dockerfile assembles from artifacts this run already built | `packages: write` | every run |
+| `job-image-starts` | the image boots | `packages: read` | every run |
+| `job-image-publish` | these tags now point at that image | `packages: write` | tags on main only |
+| `job-image-prune` | old staged manifests are gone | `packages: write` | after `ci-ok`, main only |
+
+**The handoff is a digest, not a tag.** `job-image-build` pushes with
+`push-by-digest=true` and no tag at all. The manifest is addressable and
+unlisted: `starts` pulls it, `publish` promotes it, and nothing appears in the
+package's tag list until main. The alternative was a `ci-<sha>` staging tag,
+which works and leaves one dead tag per commit per image, forever — GHCR has no
+TTL, and nothing in such a name distinguishes a stale staging tag from a real
+one.
+
+Addressing by digest also buys a claim the combined job could not make. It
+started an image `--load`ed into the runner's daemon — a copy that had never
+round-tripped through a registry. The split starts the exact manifest publish
+promotes, so "the thing that was tested" and "the thing that ships" are the same
+sentence rather than two builds from the same source.
+
+**`imagetools create` moves no layers.** Publish is a registry-side manifest
+operation. There is no second build that could differ from the gated one, which
+is Principle 17 stated in bytes instead of intent.
+
+**The Dockerfile in the repo, run as-is.** Every deployable in this fleet copies
+artifacts earlier jobs already built, so `job-image-build` decides nothing
+beyond which file, which stage, and where the artifacts go — that last one the
+`artifacts:` input, `client-dist=dist/public`, same `name=value` idiom as
+`start_services`. An image job that rebuilds its own inputs is testing a build
+that never ships (Principle 7, BUILD ONCE), and two repos were doing exactly
+that.
+
+**The prune keys on three things, and the middle one is the trap.** Untagged,
+*unreferenced*, and older than the threshold. `imagetools create -t latest
+<img>@<digest>` builds an index that points at the staged digest and tags the
+index — the staged manifest stays untagged. So after every successful publish,
+the manifest a naive prune would most like to delete is precisely the one
+`:latest` resolves to, and age is no protection because `:latest` on a quiet
+repo outlives any threshold worth setting. The job reads every tag, collects the
+tag's own digest and every child digest inside it, and sweeps only what is
+outside that set. If it cannot inspect a tag it deletes nothing and says so.
+
+**The prune is the one job deliberately outside `ci-ok`.** It runs downstream of
+the rollup, main only. Housekeeping that fails says nothing about the commit,
+and a merge blocked on a registry API hiccup is a worse outcome than a week of
+extra blobs. Rule D6 exempts it by name rather than by inference, and requires
+it to need `ci-ok` so it cannot run ahead of the gates.
+
 ### The rollup is shared; the `needs:` list is not
 
 `ci-ok` is the one job every repo has, and it was the one job nobody shared.

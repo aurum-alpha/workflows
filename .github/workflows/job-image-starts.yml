@@ -1,0 +1,242 @@
+# Fleet capability: prove the staged image boots (CI_STANDARD Principle 12,
+# "Standard job DAG" step 5). Second of three — build, starts, publish.
+#
+# Building an image proves it assembles. Starting it proves it runs, and those
+# are different claims: three repos in this fleet shipped images that could not
+# start for months, green throughout, because nothing ever started them.
+#
+# It pulls from the registry rather than loading a local tarball, which is a
+# stronger assertion than the old combined job made. That one started an image
+# `--load`ed into the runner's daemon — a copy that had never round-tripped
+# through a registry. This starts the exact manifest publish will promote.
+#
+# Deliberately not a health check by default: no endpoint, no readiness
+# contract, nothing an application has to opt into. It boots, it listens, it is
+# still alive. That is the floor every image in the fleet can meet. A repo whose
+# Dockerfile declares its own HEALTHCHECK says so with `probe: health` and gets
+# the stronger claim it already wrote down.
+name: job-image-starts
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: Canonical image name, from job-image-build's `image` output.
+        type: string
+        required: true
+      digest:
+        description: >-
+          Manifest digest, from job-image-build's `digest` output. Addressing by
+          digest rather than a tag is what makes "the thing that started" and
+          "the thing that gets promoted" the same sentence.
+        type: string
+        required: true
+      start_blocked_by:
+        description: >-
+          The one sanctioned way to ship an image nothing starts, and it costs a
+          sentence. Name what makes the container unstartable here; the job
+          prints it, skips the check, and stays green.
+
+          This exists because the alternative was worse. A repo that cannot boot
+          without an external identity provider sat red on main over a failure
+          everyone had already agreed to accept, which teaches people to ignore
+          a red main and hides the next real failure behind an expected one.
+
+          Not a boolean, on purpose. A flag would say "this image is exempt" and
+          never say why or until when. A sentence names the blocker, so the
+          waiver is obviously stale the moment the blocker goes.
+        type: string
+        default: ""
+      probe:
+        description: >-
+          How to decide the container came up. `tcp` waits for the port to
+          accept a connection — the floor, and the right default. `health` waits
+          for Docker's own verdict on a HEALTHCHECK the Dockerfile declares, so
+          the image states its readiness contract instead of this job inventing
+          a second one. `http` waits for probe_path to answer 200, for an image
+          whose whole job is serving a document root.
+        type: string
+        default: tcp
+      port:
+        description: Port the container listens on. Unused when probe is `health`.
+        type: number
+        default: 5000
+      probe_path:
+        description: Path requested when probe is `http`.
+        type: string
+        default: /
+      timeout_seconds:
+        description: How long to wait before calling it dead.
+        type: number
+        default: 40
+      start_env:
+        description: >-
+          Newline-separated KEY=VALUE pairs the container needs to reach the
+          point of listening — a DATABASE_URL pointing at a service below, a
+          dummy upstream URL. Not secrets: this proves the image boots, not that
+          it works against production.
+        type: string
+        default: ""
+      start_services:
+        description: >-
+          Newline-separated `hostname=image` backing services, started first on
+          a shared network. An app that migrates at boot needs a database to
+          start at all, so "it runs" means "it runs with what it needs" —
+          exempting those repos would leave the check covering only the ones
+          that were never going to break.
+        type: string
+        default: ""
+      start_mounts:
+        description: >-
+          Newline-separated `destination=mode` tmpfs mounts. For an image whose
+          process opens files under a path a volume normally supplies and exits
+          when it cannot: a tmpfs is the same dependency without the cleanup.
+          Mode matters when the image runs as a non-root user — `/data=1777`.
+        type: string
+        default: ""
+      start_hosts:
+        description: >-
+          Newline-separated `hostname=ip` entries added to /etc/hosts. An nginx
+          image resolves its `upstream` host names at startup, not per request,
+          so without a resolvable name it exits immediately and serves nothing.
+          Deployment supplies that name by DNS; this supplies it here. Nothing
+          needs to answer on it — whether the upstream is reachable is an
+          integration question, not this job's.
+        type: string
+        default: ""
+
+jobs:
+  starts:
+    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      # Read, not write. The old combined job took packages: write on every
+      # pull request in the fleet because one main-only step inside it needed
+      # write; splitting the job is what makes least privilege expressible.
+      packages: read
+    steps:
+      - name: Start check waived
+        if: ${{ inputs.start_blocked_by != '' }}
+        env:
+          REASON: ${{ inputs.start_blocked_by }}
+        run: |
+          echo "::warning::Image start check waived: ${REASON}"
+          echo "This image was built but not started. Nothing here proves it boots."
+          echo "Remove start_blocked_by from the caller once that is resolved."
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        if: ${{ inputs.start_blocked_by == '' }}
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: The image starts
+        if: ${{ inputs.start_blocked_by == '' }}
+        env:
+          REF: ${{ inputs.image }}@${{ inputs.digest }}
+          PROBE: ${{ inputs.probe }}
+          PORT: ${{ inputs.port }}
+          PROBE_PATH: ${{ inputs.probe_path }}
+          DEADLINE: ${{ inputs.timeout_seconds }}
+          START_ENV: ${{ inputs.start_env }}
+          START_SERVICES: ${{ inputs.start_services }}
+          START_MOUNTS: ${{ inputs.start_mounts }}
+          START_HOSTS: ${{ inputs.start_hosts }}
+        run: |
+          set -euo pipefail
+
+          case "$PROBE" in
+            tcp|health|http) ;;
+            *) echo "::error::probe must be tcp, health or http; got '$PROBE'."; exit 1 ;;
+          esac
+
+          echo "Pulling $REF"
+          docker pull -q "$REF"
+
+          net="imgcheck-$GITHUB_RUN_ID-$GITHUB_JOB"
+          docker network create "$net" >/dev/null
+
+          # Backing services first, addressable by hostname on the shared net.
+          svc=()
+          while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            name="${line%%=*}"; img="${line#*=}"
+            echo "Starting service $name ($img)"
+            svc+=("$(docker run -d --network "$net" --network-alias "$name" \
+                      -e POSTGRES_PASSWORD=postgres -e POSTGRES_USER=postgres \
+                      -e POSTGRES_DB=postgres "$img")")
+          done <<< "$START_SERVICES"
+
+          args=()
+          while IFS= read -r line; do
+            [ -n "$line" ] && args+=(-e "$line")
+          done <<< "$START_ENV"
+          while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            dest="${line%%=*}"; mode="${line#*=}"
+            args+=(--mount "type=tmpfs,destination=${dest},tmpfs-mode=${mode}")
+          done <<< "$START_MOUNTS"
+          while IFS= read -r line; do
+            [ -n "$line" ] && args+=(--add-host "${line/=/:}")
+          done <<< "$START_HOSTS"
+          if [ "$PROBE" != "health" ]; then
+            args+=(-p "127.0.0.1:${PORT}:${PORT}" -e "PORT=${PORT}")
+          fi
+
+          # No --rm, here or on the services above. Under --rm a container that
+          # exits is removed at once, so by the time cleanup runs `docker logs`
+          # answers "No such container" — and a container that exits is the only
+          # failure this check is built to catch. It reported the exit and none
+          # of the reason, three times across two repos before this was fixed.
+          cid=$(docker run -d --network "$net" "${args[@]}" "$REF")
+          # shellcheck disable=SC2317  # every command below reads as unreachable
+          # because shellcheck does not treat `trap cleanup EXIT` as a call site.
+          cleanup() {
+            echo "--- app ---"
+            docker logs "$cid" 2>&1 | tail -40 || true
+            # A service that died takes the app down with it and the app's own
+            # logs rarely say which one, so dump theirs too.
+            for s in "${svc[@]}"; do
+              echo "--- service $s ---"
+              docker logs "$s" 2>&1 | tail -20 || true
+            done
+            docker rm -f "$cid" "${svc[@]}" >/dev/null 2>&1 || true
+            docker network rm "$net" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          for i in $(seq 1 "$DEADLINE"); do
+            # Died is a verdict, not something to wait out.
+            state=$(docker inspect -f '{{.State.Status}}' "$cid" 2>/dev/null || echo gone)
+            if [ "$state" != "running" ]; then
+              echo "::error::Container exited before it came up (state: $state)."
+              exit 1
+            fi
+            case "$PROBE" in
+              tcp)
+                if timeout 1 bash -c "</dev/tcp/127.0.0.1/$PORT" 2>/dev/null; then
+                  echo "Listening on $PORT after ${i}s."; exit 0
+                fi ;;
+              health)
+                health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$cid" 2>/dev/null || true)
+                if [ -z "$health" ]; then
+                  echo "::error::probe is 'health' but the image declares no HEALTHCHECK." \
+                       "Either add one to the Dockerfile or use probe: tcp."
+                  exit 1
+                fi
+                case "$health" in
+                  healthy)   echo "Healthy after ${i}s."; exit 0 ;;
+                  unhealthy) echo "::error::Container reported unhealthy."; exit 1 ;;
+                esac ;;
+              http)
+                code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${PORT}${PROBE_PATH}" || true)
+                if [ "$code" = "200" ]; then
+                  echo "Served ${PROBE_PATH} with 200 after ${i}s."; exit 0
+                fi ;;
+            esac
+            sleep 1
+          done
+          echo "::error::Container stayed up but never came up on probe '$PROBE' within ${DEADLINE}s."
+          exit 1

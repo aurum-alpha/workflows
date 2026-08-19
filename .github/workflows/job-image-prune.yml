@@ -1,0 +1,172 @@
+# Fleet capability: sweep staged manifests the registry no longer needs.
+# Fourth of the image jobs, and the only one that is not part of the pipeline.
+#
+# job-image-build stages every build in the registry by digest with no tag, so
+# the next two jobs can pull exactly what was built. On main those digests get
+# promoted and live on under a tag; on a pull request they are never promoted
+# and nothing ever refers to them again. GHCR has no TTL, so without this they
+# accumulate for the life of the repository.
+#
+# NOT A GATE, on purpose. It runs downstream of ci-ok rather than inside it:
+# housekeeping that fails says nothing about the commit, and a merge blocked on
+# a registry API hiccup is a worse outcome than a week of extra blobs. It is the
+# one job in the fleet deliberately outside the rollup, and the conformance
+# checker names it explicitly rather than inferring the exemption.
+name: job-image-prune
+
+on:
+  workflow_call:
+    inputs:
+      image_name:
+        description: >-
+          Same value the caller passes to job-image-build. Empty means the
+          repository itself. This is the package to sweep.
+        type: string
+        default: ""
+      older_than_days:
+        description: How old an unreferenced manifest must be before deletion.
+        type: number
+        default: 30
+      dry_run:
+        description: >-
+          List what would be deleted and delete nothing. Worth one run in a new
+          repo before trusting the reference analysis below against its actual
+          package layout.
+        type: boolean
+        default: false
+
+jobs:
+  prune:
+    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      # Deleting a package version needs admin on the package, which GitHub
+      # grants automatically to the repository whose workflow published it.
+      # These packages are published by job-image-publish in the same repo, so
+      # the grant is already there; a package that predates these workflows may
+      # need the repository added manually.
+      packages: write
+    steps:
+      # Two steps, because a `run: |` block cannot hold an unindented heredoc
+      # terminator and Python cannot read a uniformly indented script. `shell:
+      # python` lets YAML own the dedent, which is what it is for.
+      - name: Resolve the package
+        env:
+          IMAGE_NAME: ${{ inputs.image_name }}
+        run: |
+          set -euo pipefail
+          package="${IMAGE_NAME:-${GITHUB_REPOSITORY#*/}}"
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER}/${package}"
+          {
+            echo "PRUNE_PACKAGE=${package}"
+            echo "PRUNE_IMAGE=${image,,}"
+          } >> "$GITHUB_ENV"
+          echo "Package: ${package}"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sweep unreferenced staged manifests
+        shell: python
+        env:
+          OLDER_THAN_DAYS: ${{ inputs.older_than_days }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          import json, os, subprocess, sys, urllib.error, urllib.request
+          from datetime import datetime, timedelta, timezone
+
+          package = os.environ["PRUNE_PACKAGE"]
+          image = os.environ["PRUNE_IMAGE"]
+          token, owner = os.environ["GH_TOKEN"], os.environ["GITHUB_REPOSITORY_OWNER"]
+          days = int(os.environ["OLDER_THAN_DAYS"])
+          dry = os.environ["DRY_RUN"] == "true"
+          api = "https://api.github.com"
+          enc = package.replace("/", "%2F")
+
+          def req(url, method="GET"):
+              r = urllib.request.Request(url, method=method)
+              r.add_header("Authorization", f"Bearer {token}")
+              r.add_header("Accept", "application/vnd.github+json")
+              r.add_header("X-GitHub-Api-Version", "2022-11-28")
+              return urllib.request.urlopen(r)
+
+          # Organisation first, personal account as the fallback. Which one a
+          # repository lives under is not something a shared job should be told.
+          base = None
+          for scope in (f"{api}/orgs/{owner}", f"{api}/users/{owner}"):
+              try:
+                  req(f"{scope}/packages/container/{enc}").read()
+                  base = f"{scope}/packages/container/{enc}"
+                  break
+              except urllib.error.HTTPError as e:
+                  if e.code not in (403, 404):
+                      raise
+          if base is None:
+              print(f"::warning::No container package '{package}' under {owner}; nothing to sweep.")
+              sys.exit(0)
+
+          versions, page = [], 1
+          while True:
+              batch = json.load(req(f"{base}/versions?per_page=100&page={page}"))
+              if not batch:
+                  break
+              versions += batch
+              page += 1
+          print(f"{len(versions)} version(s) in the package.")
+
+          def tags_of(v):
+              return v.get("metadata", {}).get("container", {}).get("tags", [])
+
+          # An untagged manifest is not the same thing as an unreferenced one,
+          # and conflating them is how a prune deletes a live image.
+          #
+          # `imagetools create` builds an index that POINTS AT the staged digest
+          # and tags the index. The staged manifest stays untagged — so after a
+          # successful publish, the manifest this job would most like to delete
+          # is precisely the one `:latest` resolves to. Age is no protection:
+          # `:latest` on a quiet repo is routinely older than any threshold
+          # worth setting.
+          live = set()
+          for v in versions:
+              if not tags_of(v):
+                  continue
+              live.add(v["name"])                      # the tagged manifest itself
+              for tag in tags_of(v):
+                  try:
+                      raw = subprocess.run(
+                          ["docker", "buildx", "imagetools", "inspect", "--raw", f"{image}:{tag}"],
+                          check=True, capture_output=True, text=True).stdout
+                  except subprocess.CalledProcessError as e:
+                      # Cannot read it, so cannot prove anything it points at is
+                      # dead. Deleting nothing is the only safe answer, and this
+                      # job is not a gate, so it says so and stops.
+                      print(f"::warning::Could not inspect {image}:{tag}; swept nothing this run.")
+                      print(e.stderr.strip()[:400])
+                      sys.exit(0)
+                  for m in json.loads(raw).get("manifests", []):
+                      live.add(m["digest"])            # children of a multi-arch index
+          print(f"{len(live)} digest(s) referenced by a tag, directly or as an index child.")
+
+          cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+          doomed = [
+              v for v in versions
+              if not tags_of(v)
+              and v["name"] not in live
+              and datetime.fromisoformat(v["updated_at"].replace("Z", "+00:00")) < cutoff
+          ]
+
+          if not doomed:
+              print(f"Nothing untagged, unreferenced and older than {days} days.")
+              sys.exit(0)
+
+          for v in doomed:
+              print(f"{'Would delete' if dry else 'Deleting'} {v['name'][:19]}... ({v['updated_at']})")
+              if not dry:
+                  req(f"{base}/versions/{v['id']}", method="DELETE").read()
+          print(f"{'Would sweep' if dry else 'Swept'} {len(doomed)} unreferenced manifest(s).")

@@ -1933,6 +1933,79 @@ So the one-box stage is a *pair*, chosen for coverage of those axes:
 Between them every axis credit-watch, expense-splitter and jewelry-factory vary
 on is covered, so those three follow as interpolation rather than new risk.
 
+### Phase G task board — one job, one claim *(scoped 2026-08-19)*
+
+Phase F asked what the pipeline says it is doing. Phase G asks how many things
+one check is allowed to say at once.
+
+**How it surfaced.** Jared, on the image job: *"I like the CI job to do very
+clear, singular things..... the image build does too much... build it, test that
+it fires up, then pushes to the repository (which should only happen on the
+main/default branch build)."* One job placed artifacts, built, started the
+container, and pushed. Four claims, one check named `image`, and a reader of a
+red run learned only that something about the image was wrong. The permissions
+followed the same collapse: `packages: write` on every pull request in the
+fleet, because one main-only step inside it needed to push.
+
+The same shape turned up in `ci-ok`. Eleven repos, fifteen copied lines, three
+different answers to what a red rollup means — and one of the three was written
+by this session the night before, in place, in one repo.
+
+- [x] **G1** [workflows] Split `job-image-docker` into `job-image-build`,
+      `job-image-starts`, `job-image-publish`. Handoff is a digest
+      (`push-by-digest=true`, no tag), so `starts` runs the manifest `publish`
+      promotes rather than a locally loaded second copy, and `imagetools
+      create` moves no layers. *Rejected: a `ci-<sha>` staging tag — one dead
+      tag per commit per image, forever, with no TTL in GHCR.*
+- [x] **G3** [workflows] Least privilege becomes expressible: `build` write,
+      `starts` **read**, `publish` write. Folded into G1 rather than chased
+      separately — splitting the job is what made it sayable.
+- [x] **G4** [workflows] `ci-ok` as a **composite action**, not a reusable
+      workflow. A called workflow reports as `<caller job> / <callee job>`, so
+      `ci-ok` would become `ci-ok / ok` and the required status check would
+      stop reporting in eleven repos at once. A composite action runs inside
+      the caller's job; the name survives, only the body is shared. Passes
+      `toJSON(needs)`, never the flattened `needs.*.result`, and reports
+      `cancelled` separately from `failure`. Rule **RU**.
+- [x] **G5** [workflows] `job-image-prune`. Keys on untagged **and**
+      unreferenced **and** older than the threshold — the middle one because
+      `imagetools create` builds an index pointing at the staged digest, so
+      after a successful publish the manifest a naive prune would most like to
+      delete is the one `:latest` resolves to. Fails safe: a tag it cannot
+      inspect means it sweeps nothing. Deliberately outside `ci-ok`,
+      downstream of it, main only.
+- [ ] **G2** [fleet] Roll the split. One-box on flight-watch first
+      (smallest caller), then the five other TS repos, then retire the
+      hand-rolled jobs: gofast ×2 (`probe: health` — both images declare a
+      HEALTHCHECK), client-manager `client-ts-react-image` (`probe: http`,
+      `start_hosts: api=127.0.0.1`) and `server-go-image` (no start check at
+      all today), gha `package-image`, event-manager. Folds in the PERM debt,
+      since the new callers declare their grants.
+- [ ] **G6** [client-manager] Delete the staged-context step. It exists because
+      the root `.dockerignore` excludes the client bundle, which a
+      `client/Dockerfile.dockerignore` solves at the source — BuildKit prefers
+      the per-Dockerfile file. Two copies of that hack exist today and the
+      split should not inherit either.
+
+**Three rules were right about the old job and wrong about the new one**, and
+the one-box is what found them. D2 fired on `image-build`, which ends in
+`-build` and is not one — D2 is about *source* builds, which compile something;
+an image build packages what they produced, which is why it is the convergence
+point every gate hangs off. D4 and D5 fired on `image-prune`, which matches
+`PUBLISH_RE` on the word "image" and publishes nothing. D5 in particular exists
+so a publish path is rehearsed on pull requests instead of first attempted on
+main; a prune has no path worth rehearsing, because running it on a pull request
+would delete staged manifests while that pull request is still open.
+
+**F#11 was diagnosed wrong and the log said so.** The agreed reading was that
+wardley-mapper and expense-splitter could not boot without Replit's identity
+provider, and the plan was to waive their start checks. The preserved log says
+`Listening on 5000 after 1s.` The images start. What failed was pushing
+`ghcr.io/wardley-mapper` — no owner — which GHCR answers with `400 Bad Request`
+on the blob HEAD, and only on main, because the push step is main-gated: every
+pull request went green and the failure waited for a merge. A waiver was one
+edit away from being written for a cause nobody had read.
+
 ### Phase E task board — versioning and releases *(scoped 2026-08-16)*
 
 Phases A–D standardized how code is *gated* and *built*. Nothing had ever

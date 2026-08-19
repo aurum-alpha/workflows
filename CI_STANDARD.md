@@ -398,6 +398,30 @@ implemented as "a job commits a file", and once the job stopped, the file stayed
 `contents: write` for `gh release create` is unaffected: publishing a release
 adds no commit to a branch. The rule is about commits, not about the permission.
 
+### A start check must not destroy its own evidence
+
+`docker run --rm` removes a container the moment it exits — and a container that
+exits is the one failure a start check exists to catch. So the cleanup's
+`docker logs` runs against a container that is already gone:
+
+```
+##[error]fastgen exited before becoming healthy (state: removing).
+Error response from daemon: No such container: a0745cb9ccd6…
+```
+
+That is the whole diagnostic. Three checks across two repos reported the exit
+and none of the reason, and one of them took two rounds to yield a one-line
+nginx error that `docker logs` would have printed immediately.
+
+**Start checks do not use `--rm`.** They remove the container explicitly in the
+cleanup trap, after dumping its logs — and the logs of any service container
+too, since a service that dies takes the app with it and the app's own logs
+rarely name which one.
+
+The same reasoning covers the checks themselves: a check whose failure output
+does not distinguish "it exited" from "it exited *because*" costs a round of CI
+per failure, which on a starved runner pool is the expensive resource.
+
 ## Coverage
 
 **A CLI `--coverage.exclude` replaces the config's list; it does not extend it.**

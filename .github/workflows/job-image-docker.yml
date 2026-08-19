@@ -172,7 +172,7 @@ jobs:
             [ -n "$line" ] || continue
             name="${line%%=*}"; img="${line#*=}"
             echo "Starting service $name ($img)"
-            svc+=("$(docker run -d --rm --network "$net" --network-alias "$name" \
+            svc+=("$(docker run -d --network "$net" --network-alias "$name" \
                       -e POSTGRES_PASSWORD=postgres -e POSTGRES_USER=postgres \
                       -e POSTGRES_DB=postgres "$img")")
           done <<< "$START_SERVICES"
@@ -182,11 +182,23 @@ jobs:
             [ -n "$line" ] && args+=(-e "$line")
           done <<< "$START_ENV"
 
+          # No --rm, here or on the services above. Under --rm a container that
+          # exits is removed at once, so by the time cleanup runs `docker logs`
+          # answers "No such container" — and the only failure this check is
+          # built to catch is a container that exits. It reported the exit and
+          # none of the reason, three times across two repos before this was
+          # fixed. Everything is removed explicitly in cleanup instead.
           echo "Starting $image"
-          cid=$(docker run -d --rm --network "$net" -p "127.0.0.1:$PORT:$PORT" \
+          cid=$(docker run -d --network "$net" -p "127.0.0.1:$PORT:$PORT" \
                   -e "PORT=$PORT" "${args[@]}" "$image")
           cleanup() {
             docker logs "$cid" 2>&1 | tail -40 || true
+            # A service that died takes the app down with it and the app's own
+            # logs rarely say which one, so dump theirs too.
+            for s in "${svc[@]}"; do
+              echo "--- service $s ---"
+              docker logs "$s" 2>&1 | tail -20 || true
+            done
             docker rm -f "$cid" "${svc[@]}" >/dev/null 2>&1 || true
             docker network rm "$net" >/dev/null 2>&1 || true
           }

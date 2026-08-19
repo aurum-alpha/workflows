@@ -207,6 +207,7 @@ jobs:
           svc=()
           while IFS= read -r line; do
             [ -n "$line" ] || continue
+            [ "${line#\#}" = "$line" ] || continue
             name="${line%%=*}"; img="${line#*=}"
             echo "Starting service $name ($img)"
             svc+=("$(docker run -d --network "$net" --network-alias "$name" \
@@ -216,6 +217,7 @@ jobs:
 
           args=()
           while IFS= read -r line; do
+            [ "${line#\#}" = "$line" ] || continue
             [ -n "$line" ] && args+=(-e "$line")
           done <<< "$START_ENV"
 

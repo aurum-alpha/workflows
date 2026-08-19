@@ -44,6 +44,13 @@ jobs:
       - name: Check our own ci.yml against CI_STANDARD
         run: tools/check-ci-conformance --repo-root .
 
+      # The catalog's own CI never RUNS the image jobs — they only execute in
+      # caller repos — so a bug in one of their shell loops reaches the fleet
+      # unexamined. This is the one class of that bug cheap enough to check
+      # statically: a newline-separated input read without both guards.
+      - name: Check the catalog's input loops
+        run: tools/check-catalog-loops
+
   ci-ok:
     needs: [lint, conformance]
     if: always()

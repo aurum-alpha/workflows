@@ -1,0 +1,131 @@
+#!/usr/bin/env python3
+"""Assert every newline-separated input loop in the catalog guards both cases.
+
+The shared image jobs take several `|` block-scalar inputs — `artifacts`,
+`executables`, `start_services`, `start_env`, `start_mounts`, `start_hosts` —
+and read them with `while IFS= read -r line; do ... done <<< "$VAR"`.
+
+Two guards belong on every one of those loops:
+
+    [ -n "$line" ] || continue          skip blank lines
+    [ "${line#\#}" = "$line" ] || continue   skip comment lines
+
+Both are needed, and for unrelated reasons, which is exactly why one can go
+missing without the other being noticed:
+
+  * A `|` block scalar keeps its trailing newline and `<<<` appends another, so
+    a one-entry input yields a trailing EMPTY line. Without the first guard the
+    loop runs an extra iteration on "", and what that does depends on the body
+    — for start_services it became `docker run ... ""`, which is
+    `invalid reference format`, exit 125.
+
+  * A `|` block scalar is literal text, so a leading `#` is data, not a
+    comment. Annotating a multi-line input is the obvious thing to try, and
+    without the second guard the annotation is parsed as an entry.
+
+This check exists because workflows#77 added the comment guard to all six
+loops and on `start_services` REPLACED the empty guard rather than joining it.
+Nothing caught it: the catalog's own CI does not run the image jobs, and every
+repo using `start_services` was pinned to a version predating the change. It
+surfaced only when jewelry-factory became the first caller to reach v1.14 with
+a service, and it would have hit every other such repo on re-pin.
+
+A guard removed by an edit that was adding a different guard is not a thing
+review reliably catches. This is cheap, and it runs in the catalog's own CI.
+
+Usage: tools/check-catalog-loops [--dir .github/workflows]
+Exit:  0 if every loop carries both guards, 1 otherwise.
+"""
+
+import argparse
+import pathlib
+import re
+import sys
+
+# Either form counts: `[ -n "$x" ] || continue` at the top, or the inline
+# `[ -n "$x" ] && ...` that some loops use when the body is a single append.
+EMPTY = re.compile(r'\[\s*-n\s*"\$\w+"\s*\]\s*(\|\|\s*continue|&&)')
+COMMENT = re.compile(r'\[\s*"\$\{\w+#\\#\}"\s*=\s*"\$\w+"\s*\]\s*\|\|\s*continue')
+LOOP = re.compile(r'while IFS= read -r (\w+); do')
+SOURCE = re.compile(r'done <<< "\$(\w+)"')
+
+# How far past the `while` to look for the guards. They belong at the top of
+# the body; anything further down is not a guard, it is a conditional.
+WINDOW = 12
+
+
+def declared_inputs(text: str) -> set[str]:
+    """The workflow_call input names, upper-cased as they appear in `env:`.
+
+    Scope matters. A loop reading a CALLER-SUPPLIED block scalar needs both
+    guards. A loop reading something this job generated — metadata-action's
+    tag list, say — needs neither: it cannot contain a `#` annotation and its
+    shape is not the caller's to get wrong.
+    """
+    block = re.search(r"^    inputs:\n((?:^      \S.*\n|^        .*\n|^\s*\n)*)",
+                      text, re.M)
+    if not block:
+        return set()
+    return {m.upper() for m in re.findall(r"^      ([\w-]+):\s*$", block.group(1), re.M)}
+
+
+def check(path: pathlib.Path) -> list[str]:
+    text = path.read_text()
+    lines = text.split("\n")
+    inputs = declared_inputs(text)
+    problems = []
+    for i, line in enumerate(lines):
+        m = LOOP.search(line)
+        if not m:
+            continue
+        var = m.group(1)
+        body = "\n".join(lines[i + 1:i + 1 + WINDOW])
+        # Name the input it reads, for a message someone can act on.
+        src = ""
+        for j in range(i, min(i + 40, len(lines))):
+            s = SOURCE.search(lines[j])
+            if s:
+                src = s.group(1)
+                break
+        # Only caller-supplied inputs are in scope.
+        if src not in inputs:
+            continue
+        label = f"{path.name}:{i + 1} (reads ${src})"
+        if not EMPTY.search(body):
+            problems.append(
+                f"{label} has no `[ -n \"${var}\" ] || continue` — a trailing "
+                f"blank line from the block scalar will run the body on \"\"")
+        if not COMMENT.search(body):
+            problems.append(
+                f"{label} has no `[ \"${{{var}#\\#}}\" = \"${var}\" ] || continue` "
+                f"— a `#` annotation in the input will be parsed as an entry")
+    return problems
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--dir", type=pathlib.Path,
+                    default=pathlib.Path(".github/workflows"))
+    args = ap.parse_args()
+
+    if not args.dir.is_dir():
+        print(f"no such directory: {args.dir}", file=sys.stderr)
+        return 2
+
+    failures, loops = 0, 0
+    for f in sorted(args.dir.glob("*.yml")):
+        text = f.read_text()
+        loops += sum(1 for _ in LOOP.finditer(text))
+        for p in check(f):
+            print(f"  {p}")
+            failures += 1
+
+    if failures:
+        print(f"\nFAIL: {failures} unguarded loop(s) across {loops} checked")
+        return 1
+    print(f"catalog loops: {loops} checked, all guarded\n\nPASS")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

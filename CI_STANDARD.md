@@ -1051,12 +1051,35 @@ caller keeps what is genuinely its own:
     needs: [server-go-build, server-go-vet, client-ts-react-build, image]
     if: always()
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+    permissions: {}
     steps:
-      - uses: actions/checkout@<sha> # v7.0.1
-      - uses: aurum-alpha/workflows/.github/actions/ci-ok@<sha> # v1.13.0
+      - uses: aurum-alpha/workflows/.github/actions/ci-ok@<sha> # vX.Y.Z
         with:
           needs_json: ${{ toJSON(needs) }}
 ```
+
+**No checkout, and no permissions.** The action reads the needs object passed
+to it and no repository file, and the runner fetches an `owner/repo/path@ref`
+action by itself — so a checkout in this job provides nothing while costing it
+a dependency on a token. `permissions: {}` leaves none, so the checkout then
+fails outright against a **private** repository:
+
+```
+remote: Repository not found.
+fatal: repository 'https://github.com/aurum-alpha/gha-runner-controller/' not found
+```
+
+Six repos carried that line and were green the whole time, because those six
+are public. This is the recurring shape: a check that passes for a reason
+nobody wrote down, and says nothing on the day the reason stops holding. The
+rollup is the one job in a repo that can honestly declare an empty grant, so it
+declares one — inheriting the repository default would let a change elsewhere
+widen it silently.
+
+The exception is the catalog repo itself, which uses the local path form
+`./.github/actions/ci-ok` so that a change to the action is gated by the run
+that ships it. A local action must be in the workspace, so that form does need
+its checkout, and rule RU carves it out by name rather than by a looser match.
 
 **A composite action, not a reusable workflow — and the reason is the check
 name.** A called workflow reports as `<caller job> / <callee job>`, which is
@@ -1080,8 +1103,8 @@ almost always the concurrency group superseding an older run, or a runner going
 away — nothing was learned about the commit at all. Collapsed into one
 `exit 1`, they sent people looking for test output that was never produced.
 
-Rule **RU** enforces all three: the shared action, the unflattened context, and
-no local copy of the body.
+Rule **RU** enforces all four: the shared action, the unflattened context, no
+local copy of the body, and no checkout in a caller using the remote form.
 
 **An `action.yml` is not free text.** GitHub evaluates expressions throughout an
 action manifest — an input's `description` included. This action's first CI run

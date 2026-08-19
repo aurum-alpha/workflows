@@ -140,7 +140,17 @@ jobs:
       - id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
-          images: ghcr.io/${{ inputs.image_name || github.repository }}
+          # image_name is a name UNDER the owner, which is what its description
+          # has always claimed and what the template did not do: interpolating it
+          # bare replaced the whole path, so `image_name: wardley-mapper` built
+          # ghcr.io/wardley-mapper with no owner at all. GHCR rejects that with
+          # 400 Bad Request on the blob HEAD, and only on main, because the push
+          # step is main-gated — so every pull request went green and the failure
+          # waited for a merge. Six repos pass a bare name.
+          images: >-
+            ghcr.io/${{ inputs.image_name
+              && format('{0}/{1}', github.repository_owner, inputs.image_name)
+              || github.repository }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,prefix=sha-,format=short

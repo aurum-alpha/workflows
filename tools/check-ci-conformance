@@ -46,6 +46,12 @@ principle needed enforcing:
                           job that runs it — an e2e suite against the container
                           proves more than a start check and makes it
                           redundant, but nothing may satisfy this by assertion
+  RN  no renamed commands    a job id token (server-go-*, client-ts-*, …) never
+                          appears immediately after a tool name in a run: body.
+                          Renaming job ids with a whole-word regex also rewrites
+                          the shell commands that share the old name — `go build`
+                          became `go server-go-build`, which is not a subcommand
+                          and fails in zero seconds
   CM  CI does not commit      no step pushes to the repository under test.
                           A generated file committed back by CI is always one
                           build behind — the artifact was built before the file
@@ -370,6 +376,19 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
                     bad("D8", f"'{job}' reads needs.{ref}.* but no job '{ref}' exists")
                 elif ref not in graph[job]:
                     bad("D8", f"'{job}' reads needs.{ref}.* but does not list '{ref}' in needs:")
+
+            # --- RN: a rename that rewrote a command ------------------------
+            # Renaming job ids go-build -> server-go-build with a whole-word
+            # regex also rewrites `go build` to `go server-go-build`. It is not
+            # a subcommand, so the step dies instantly. This already happened
+            # twice: ./tools/checks/go-mod -> ./tools/checks/server-go-mod in
+            # three files, and this one, which sat red for three hours.
+            for m in re.finditer(
+                r"\b(go|pnpm|npm|npx|composer|make|docker|cargo|dotnet)\s+"
+                r"((?:server|client|lib|shared|firmware)-(?:go|ts|js|php|cpp|py)-[\w-]+)",
+                blob):
+                bad("RN", f"'{job}' runs `{m.group(1)} {m.group(2)}` — a job id was "
+                          f"substituted into a command by a rename")
 
             # --- CM: CI does not commit to the repo it is testing ----------
             # hiring-tracker stamped version-info.json after the build, then

@@ -1,0 +1,120 @@
+# Fleet capability: build for a PlatformIO C/C++ firmware unit (CI_STANDARD
+# Principle 12 — one way per capability). Tool tier: `pio` is PlatformIO's CLI,
+# not one board's or one framework's, so this job serves any PlatformIO project
+# — the caller says which environments to build.
+#
+# Variants are environments. A firmware project expresses DEBUG / STAGING /
+# PRODUCTION as PlatformIO environments in platformio.ini, so the matrix is
+# over `envs` and nothing here knows what any particular environment means.
+#
+# The caller owns the job id and needs: wiring; this file owns the body.
+name: job-build-cpp-pio
+
+on:
+  workflow_call:
+    inputs:
+      envs:
+        description: >-
+          JSON array of PlatformIO environment names to build, e.g.
+          '["lid-dev","lid-staging","lid-prod"]'. JSON and not a newline list
+          deliberately: it goes straight into the matrix via fromJSON, so there
+          is no shell loop to read it and no empty-line guard to get wrong.
+        type: string
+        required: true
+      platform_slug:
+        description: >-
+          Identifies the pinned PlatformIO platform in the cache key, e.g.
+          `tasmota-2023.06.02`. Change it in the same commit as the pin.
+        type: string
+        required: true
+      artifact_glob:
+        description: >-
+          Glob for the built binaries to hand downstream, relative to the repo
+          root. Missing files fail the job: an empty artifact is how a
+          downstream packaging step comes to publish nothing and report success.
+        type: string
+        required: true
+      artifact_prefix:
+        description: >-
+          Artifact name prefix; the environment name is appended, so
+          `firmware-` yields `firmware-lid-prod`. Downstream jobs collect them
+          with `pattern: <prefix>*`.
+        type: string
+        required: false
+        default: firmware-
+      python_version:
+        description: Python for the pio CLI itself, not for the firmware.
+        type: string
+        required: false
+        default: "3.11"
+      retention_days:
+        description: >-
+          Retention for the per-environment binaries. These are a hand-off to
+          the next job in the same run, not a deliverable — the durable upload
+          is the packaging job's business.
+        type: number
+        required: false
+        default: 1
+      runner:
+        description: Override the runner (Principle 4 escape hatch).
+        type: string
+        required: false
+        default: ""
+
+jobs:
+  build:
+    runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-26.04' }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      # One environment failing to compile should not hide whether the others
+      # do. A firmware project's environments differ in flags, and a flag that
+      # breaks only PRODUCTION is exactly what this matrix exists to catch.
+      fail-fast: false
+      matrix:
+        env: ${{ fromJSON(inputs.envs) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ inputs.python_version }}
+
+      # Deliberately no restore-keys. A partial hit from a cache written before
+      # the platform pin breaks the pinned platform's package postinstall, and
+      # the failure surfaces as a compile error in the firmware rather than as
+      # a bad cache — the worst place for it to surface. Exact key or cold.
+      #
+      # This block is repeated in job-test-unit-cpp-pio.yml. That is the
+      # catalog's existing shape, not an oversight: ten job-*.yml files inline
+      # the pnpm setup the same way. Hoisting it into a composite action would
+      # need either a `./` path whose resolution inside a called workflow is
+      # not something to guess at, or a pin of this repo to itself. If shared
+      # setup is ever worth it, it is worth it for all twelve at once.
+      - name: Cache PlatformIO
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+          key: ${{ runner.os }}-pio-${{ inputs.platform_slug }}-${{ hashFiles('**/platformio.ini') }}
+
+      - name: Install PlatformIO
+        run: |
+          python -m pip install --upgrade pip
+          pip install platformio
+          pio --version
+
+      - name: Build ${{ matrix.env }}
+        run: pio run -e ${{ matrix.env }}
+
+      - name: Retain built binary
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.artifact_prefix }}${{ matrix.env }}
+          path: ${{ inputs.artifact_glob }}
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention_days }}

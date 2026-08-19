@@ -161,7 +161,7 @@ jobs:
           # Backing services first, addressable by hostname on the shared net.
           svc=()
           while IFS= read -r line; do
-            [ -n "$line" ] || continue
+            [ "${line#\#}" = "$line" ] || continue
             name="${line%%=*}"; img="${line#*=}"
             echo "Starting service $name ($img)"
             svc+=("$(docker run -d --network "$net" --network-alias "$name" \
@@ -171,15 +171,20 @@ jobs:
 
           args=()
           while IFS= read -r line; do
-            [ -n "$line" ] && args+=(-e "$line")
+            [ -n "$line" ] || continue
+            [ "${line#\#}" = "$line" ] || continue
+            args+=(-e "$line")
           done <<< "$START_ENV"
           while IFS= read -r line; do
             [ -n "$line" ] || continue
+            [ "${line#\#}" = "$line" ] || continue
             dest="${line%%=*}"; mode="${line#*=}"
             args+=(--mount "type=tmpfs,destination=${dest},tmpfs-mode=${mode}")
           done <<< "$START_MOUNTS"
           while IFS= read -r line; do
-            [ -n "$line" ] && args+=(--add-host "${line/=/:}")
+            [ -n "$line" ] || continue
+            [ "${line#\#}" = "$line" ] || continue
+            args+=(--add-host "${line/=/:}")
           done <<< "$START_HOSTS"
           if [ "$PROBE" != "health" ]; then
             args+=(-p "127.0.0.1:${PORT}:${PORT}" -e "PORT=${PORT}")

@@ -135,8 +135,13 @@ jobs:
           EXECUTABLES: ${{ inputs.executables }}
         run: |
           set -euo pipefail
+          # `[ "${line#\#}" = "$line" ]` skips comment lines. A `|` block
+          # scalar is literal text, so a leading # is a value, not a comment —
+          # and annotating a multi-line input is the obvious thing to try. It
+          # cost two failed builds before this was here.
           while IFS= read -r line; do
             [ -n "$line" ] || continue
+            [ "${line#\#}" = "$line" ] || continue
             name="${line%%=*}"; dest="${line#*=}"
             if [ ! -d ".ci-artifacts/$name" ]; then
               echo "::error::No artifact named '$name' in this run." \
@@ -150,6 +155,7 @@ jobs:
 
           while IFS= read -r path; do
             [ -n "$path" ] || continue
+            [ "${path#\#}" = "$path" ] || continue
             # Artifact upload drops the execute bit. The image then builds
             # cleanly and the container dies on exec, which reads as a broken
             # image rather than a broken artifact.

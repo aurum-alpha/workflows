@@ -1,0 +1,82 @@
+# Fleet capability: test-unit for a PlatformIO C/C++ firmware unit
+# (CI_STANDARD Principle 12 — one way per capability).
+#
+# What this asserts, and what it does not. A hosted runner has no board
+# attached, so `--without-uploading --without-testing` compiles the test
+# firmware and stops. That catches drift between the tests and the code they
+# exercise, which is the failure that actually happens when a header changes.
+# It does NOT execute a single assertion, and calling it a unit-test gate
+# without saying so would be exactly the kind of check that passes for a
+# reason nobody wrote down. Real execution needs `pio test -e <env>` against
+# connected hardware.
+name: job-test-unit-cpp-pio
+
+on:
+  workflow_call:
+    inputs:
+      env:
+        description: >-
+          The single PlatformIO environment to compile the tests against.
+          One, not the matrix: the tests exercise the code, not the flag
+          permutations, and compiling them three times asserts nothing extra.
+        type: string
+        required: true
+      platform_slug:
+        description: >-
+          Identifies the pinned PlatformIO platform in the cache key, e.g.
+          `tasmota-2023.06.02`. Change it in the same commit as the pin.
+        type: string
+        required: true
+      python_version:
+        description: Python for the pio CLI itself, not for the firmware.
+        type: string
+        required: false
+        default: "3.11"
+      runner:
+        description: Override the runner (Principle 4 escape hatch).
+        type: string
+        required: false
+        default: ""
+
+jobs:
+  test-unit:
+    runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-26.04' }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ inputs.python_version }}
+
+      # Deliberately no restore-keys. A partial hit from a cache written before
+      # the platform pin breaks the pinned platform's package postinstall, and
+      # the failure surfaces as a compile error in the firmware rather than as
+      # a bad cache — the worst place for it to surface. Exact key or cold.
+      #
+      # This block is repeated in job-test-unit-cpp-pio.yml. That is the
+      # catalog's existing shape, not an oversight: ten job-*.yml files inline
+      # the pnpm setup the same way. Hoisting it into a composite action would
+      # need either a `./` path whose resolution inside a called workflow is
+      # not something to guess at, or a pin of this repo to itself. If shared
+      # setup is ever worth it, it is worth it for all twelve at once.
+      - name: Cache PlatformIO
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+          key: ${{ runner.os }}-pio-${{ inputs.platform_slug }}-${{ hashFiles('**/platformio.ini') }}
+
+      - name: Install PlatformIO
+        run: |
+          python -m pip install --upgrade pip
+          pip install platformio
+          pio --version
+
+      - name: Compile-check tests (${{ inputs.env }})
+        run: pio test -e ${{ inputs.env }} --without-uploading --without-testing

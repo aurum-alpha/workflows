@@ -49,7 +49,7 @@ on:
           What must not happen again is twenty.
         type: string
         required: false
-        default: 61669d59a44a7bdb8b5cb318ebcabb399aa23c8e
+        default: fa311b9feb374549d20e2cfaf49c194aa8caab71
 
 jobs:
   ci-conformance:

@@ -13,11 +13,12 @@ Two guards belong on every one of those loops:
 Both are needed, and for unrelated reasons, which is exactly why one can go
 missing without the other being noticed:
 
-  * A `|` block scalar keeps its trailing newline and `<<<` appends another, so
-    a one-entry input yields a trailing EMPTY line. Without the first guard the
-    loop runs an extra iteration on "", and what that does depends on the body
-    — for start_services it became `docker run ... ""`, which is
-    `invalid reference format`, exit 125.
+  * `<<< "$VAR"` feeds one line even when VAR is EMPTY. Without the first
+    guard the loop runs its body on "" for every caller, including the ones
+    that configured nothing — this is the default path, not an edge case. A
+    `|` block scalar also keeps its trailing newline, so a populated input
+    yields the same blank entry at the end. For start_services the body became
+    `docker run ... ""`: `invalid reference format`, exit 125.
 
   * A `|` block scalar is literal text, so a leading `#` is data, not a
     comment. Annotating a multi-line input is the obvious thing to try, and
@@ -49,9 +50,15 @@ COMMENT = re.compile(r'\[\s*"\$\{\w+#\\#\}"\s*=\s*"\$\w+"\s*\]\s*\|\|\s*continue
 LOOP = re.compile(r'while IFS= read -r (\w+); do')
 SOURCE = re.compile(r'done <<< "\$(\w+)"')
 
-# How far past the `while` to look for the guards. They belong at the top of
-# the body; anything further down is not a guard, it is a conditional.
-WINDOW = 12
+# How many CODE lines past the `while` to look for the guards. They belong at
+# the top of the body; anything further down is not a guard, it is a
+# conditional.
+#
+# Counted after stripping comments, deliberately. A guard that carries a long
+# explanation of why it is there is still a guard at the top of the body, and
+# a checker that punishes the explanation would push people to delete it —
+# which is how the guard this tool exists to protect went missing.
+WINDOW = 8
 
 
 def declared_inputs(text: str) -> set[str]:
@@ -79,7 +86,9 @@ def check(path: pathlib.Path) -> list[str]:
         if not m:
             continue
         var = m.group(1)
-        body = "\n".join(lines[i + 1:i + 1 + WINDOW])
+        code = [l for l in lines[i + 1:i + 1 + WINDOW * 6]
+                if l.strip() and not l.strip().startswith("#")]
+        body = "\n".join(code[:WINDOW])
         # Name the input it reads, for a message someone can act on.
         src = ""
         for j in range(i, min(i + 40, len(lines))):

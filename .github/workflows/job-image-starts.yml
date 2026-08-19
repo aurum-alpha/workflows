@@ -172,13 +172,19 @@ jobs:
           while IFS= read -r line; do
             # Both guards, and the empty one first. #77 added the comment skip
             # to the six newline-separated inputs and on this one loop it
-            # REPLACED the empty check instead of joining it. A `|` block
-            # scalar keeps its trailing newline, `<<<` adds another, so
-            # `start_services: |` with one entry yields a second, empty line —
-            # and `docker run ... ""` is `invalid reference format`, exit 125.
-            # Caught by jewelry-factory, the first caller to reach v1.14 with a
-            # service; every other repo with start_services is still on v1.13
-            # and would have hit it on re-pin.
+            # REPLACED the empty check instead of joining it.
+            #
+            # `<<< "$VAR"` feeds one line even when VAR is empty, so without
+            # `[ -n "$line" ]` this loop runs its body once on "" for EVERY
+            # caller — including the majority that configure no services at
+            # all. `docker run ... ""` is `invalid reference format`, exit 125.
+            # It is not an edge case in the input, it is the default path.
+            #
+            # Nothing merged was broken by it, and that is luck rather than
+            # design: the only caller on v1.14 was gha-runner-controller, whose
+            # start check is waived by start_blocked_by and exits above this.
+            # jewelry-factory and event-manager both failed here on first
+            # contact, and every repo would have on re-pin.
             [ -n "$line" ] || continue
             [ "${line#\#}" = "$line" ] || continue
             name="${line%%=*}"; img="${line#*=}"

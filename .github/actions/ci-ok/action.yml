@@ -13,6 +13,24 @@
 # the repo's own DAG and belong in the repo. This is the fifteen lines that had
 # no business differing, and by the time it was written they differed three
 # ways across eleven repos.
+#
+# CALLERS NEED NO CHECKOUT, and should not have one. This action reads
+# inputs.needs_json and touches no repository file, and the runner fetches an
+# `owner/repo/path@ref` action by itself. A caller that checks out anyway is
+# doing nothing useful and acquiring a dependency on a token: with the correct
+# `permissions: {}` the job holds none, so the checkout fails outright against a
+# private repository. It did, on gha-runner-controller, with "Repository not
+# found" — while the identical line passed on gofast, which is public. The
+# grant a caller needs for this job is nothing:
+#
+#   ci-ok:
+#     needs: [...]
+#     if: always()
+#     permissions: {}
+#     steps:
+#       - uses: aurum-alpha/workflows/.github/actions/ci-ok@<sha>  # vX.Y.Z
+#         with:
+#           needs_json: the caller's toJSON(needs), in an expression
 name: ci-ok
 description: Fail the run if any dependency failed or was cancelled.
 

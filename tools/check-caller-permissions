@@ -30,6 +30,34 @@ SHARED_RE = re.compile(
     r"^aurum-alpha/workflows/\.github/workflows/(?P<file>job-[a-z0-9-]+\.ya?ml)@"
 )
 
+# Any reusable workflow that is not ours.
+REUSABLE_RE = re.compile(
+    r"^(?P<path>[\w.-]+/[\w.-]+/\.github/workflows/[\w.-]+\.ya?ml)@"
+)
+
+# What each approved third-party reusable workflow requests, transcribed from
+# its `permissions:` block at the pinned tag.
+#
+# Transcribed, not resolved: shared_job_permissions() reads the catalog off
+# disk, and there is no clone of an upstream repo to read. That makes this a
+# copy that can go stale — so it is checked against the upstream file when the
+# pin moves, which is the same moment the callers are swept anyway.
+#
+# The alternative was to leave a third-party call unexamined, and that is the
+# worse failure: getting a caller's permissions wrong is a `startup_failure`
+# with zero jobs and no log, and the checker written to catch exactly that
+# would have skipped straight past it for want of a pattern match.
+EXTERNAL_PERMISSIONS = {
+    # google/osv-scanner-action v2.5.1 — actions: read and security-events:
+    # write are for the SARIF upload to Code Scanning; the job requests them
+    # whether or not upload-sarif is set, so a caller must hold them either way.
+    "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml": {
+        "actions": "read",
+        "contents": "read",
+        "security-events": "write",
+    },
+}
+
 
 def shared_job_permissions(repo_root: pathlib.Path) -> dict[str, dict[str, str]]:
     """What each shared job asks for, keyed by workflow filename."""
@@ -62,17 +90,31 @@ def check_repo(repo: str, text: str, wanted: dict[str, dict[str, str]]) -> list[
         if not isinstance(uses, str):
             continue
         m = SHARED_RE.match(uses)
-        if not m:
-            continue
-        needs = wanted.get(m.group("file"))
-        if needs is None:
-            problems.append(f"job '{job_id}' calls unknown shared workflow {m.group('file')}")
-            continue
+        if m:
+            name = m.group("file")
+            needs = wanted.get(name)
+            if needs is None:
+                problems.append(f"job '{job_id}' calls unknown shared workflow {name}")
+                continue
+        else:
+            ext = REUSABLE_RE.match(uses)
+            if not ext:
+                continue
+            name = ext.group("path")
+            needs = EXTERNAL_PERMISSIONS.get(name)
+            if needs is None:
+                problems.append(
+                    f"job '{job_id}' calls third-party workflow {name}, whose "
+                    "permissions are not recorded in EXTERNAL_PERMISSIONS — "
+                    "unrecorded means unchecked, and an unchecked grant is a "
+                    "startup_failure waiting for the day the default narrows"
+                )
+                continue
 
         held, source = effective_permissions(doc, job)
         if held is None:
             problems.append(
-                f"job '{job_id}' calls {m.group('file')} (needs "
+                f"job '{job_id}' calls {name} (needs "
                 f"{', '.join(f'{k}: {v}' for k, v in sorted(needs.items()))}) with no "
                 "permissions block anywhere — it passes only while the default token "
                 "grant stays permissive"
@@ -83,7 +125,7 @@ def check_repo(repo: str, text: str, wanted: dict[str, dict[str, str]]) -> list[
             have = held.get(scope, "none")
             if RANK.get(have, 0) < RANK.get(level, 0):
                 problems.append(
-                    f"job '{job_id}' calls {m.group('file')} which requests "
+                    f"job '{job_id}' calls {name} which requests "
                     f"{scope}: {level}, but the {source}-level block grants "
                     f"{scope}: {have} — GitHub will reject this file at startup"
                 )

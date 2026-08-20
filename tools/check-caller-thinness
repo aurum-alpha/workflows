@@ -9,6 +9,8 @@ repo's ci.yml is a thin stub: every job either
   * calls a shared job workflow in aurum-alpha/workflows, pinned to a
     40-hex commit SHA with a version comment, carrying nothing but
     uses/needs/with/secrets/if (secrets must be `inherit`), or
+  * calls one of the approved third-party reusable workflows, on the same
+    pinning terms and passing no secrets, or
   * is the local ci-ok rollup, whose needs: must cover every stub job, or
   * is an explicitly allow-listed repo-local job.
 
@@ -109,6 +111,28 @@ USES_RE = re.compile(
     r"@[0-9a-f]{40}\s+# v\S+$"
 )
 
+# Approved third-party reusable workflows, by path without the pin.
+#
+# Principle 12 says one way per capability. It does not say the one way has to
+# be ours. Where the upstream project ships and maintains the job itself, the
+# catalog's contribution is the DECISION and the PIN, not a wrapper that
+# forwards inputs into it — job-osv-scanner was eighty lines of Python, a JSON
+# input and a Go toolchain installed in six repos that have no Go, and every
+# one of those existed to reach a scan the upstream workflow already performs.
+#
+# What an entry here costs is that the fleet can no longer re-pin in one place:
+# bumping osv-scanner is now a sweep over the callers rather than an edit here.
+# That is the trade, and it is only worth taking where the upstream is a better
+# maintainer of the job than we are. Hence a named table and not a pattern —
+# every entry is a judgement about one project, made once, in the open.
+EXTERNAL_JOBS = {
+    "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml",
+}
+EXTERNAL_RE = re.compile(
+    r"^(?P<path>[\w.-]+/[\w.-]+/\.github/workflows/[\w.-]+\.ya?ml)"
+    r"@[0-9a-f]{40}\s+# v\S+$"
+)
+
 CI_PATHS = [".github/workflows/ci.yml", ".github/workflows/ci.yaml"]
 
 
@@ -182,12 +206,30 @@ def check_repo(repo: str, text: str) -> list[str]:
         extra = set(props) - STUB_KEYS
         if extra:
             problems.append(f"job '{job_id}' carries non-stub keys: {', '.join(sorted(extra))}")
+        external = False
         if not USES_RE.match(props["uses"]):
-            problems.append(
-                f"job '{job_id}' uses '{props['uses']}' — must reference a shared "
-                "job workflow pinned to a 40-hex SHA with a version comment"
-            )
-        if props.get("secrets", "inherit") != "inherit":
+            m = EXTERNAL_RE.match(props["uses"])
+            external = bool(m) and m.group("path") in EXTERNAL_JOBS
+            if not external:
+                problems.append(
+                    f"job '{job_id}' uses '{props['uses']}' — must reference a shared "
+                    "job workflow, or an approved third-party workflow, pinned to a "
+                    "40-hex SHA with a version comment"
+                )
+        # `secrets: inherit` hands the caller's whole secret set to the called
+        # workflow. Into the catalog that is fine and required — it is this
+        # organisation's own code. Into a third party it is a standing grant of
+        # every token the repo holds to whoever can land a commit upstream, for
+        # a job that needs none of them, so it is refused rather than left to
+        # each caller to get right.
+        if external:
+            if "secrets" in props:
+                problems.append(
+                    f"job '{job_id}' passes secrets to a third-party workflow — "
+                    "an approved external job runs on the repo's contents, not "
+                    "its credentials"
+                )
+        elif props.get("secrets", "inherit") != "inherit":
             problems.append(f"job '{job_id}' must use secrets: inherit")
 
     if "ci-ok" in jobs and stub_ids:

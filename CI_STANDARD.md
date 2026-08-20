@@ -634,7 +634,7 @@ any check that would catch it lives in a run that the token has already
 prevented from existing. It goes here because a written rule is the only
 mechanism available, not because a written rule is the good one.
 
-### Accepting a vulnerability: an id list, or a warn_only you can defend
+### Accepting a vulnerability: an id list, or a stage you can defend
 
 `job-go-govulncheck` takes an `allow:` input — newline-separated `GO-YYYY-NNNN`
 ids — and no `warn_only`. The difference is the point. A `warn_only` silences
@@ -643,18 +643,19 @@ is exploitable. An allowed id stops blocking; anything not on the list still
 fails the job. **Where the accepted set is small and stable, the id list is
 the right instrument and remains the default.**
 
-`job-osv-scanner` takes both, and the reason is a number. Its first scan of a
-single TS repo returned **thirty-six** advisories, across six repos that share
-a dependency shape — and unlike the Go findings, most of them have fixes. An
-id list of that size is not a record of what was accepted, it is a wall of
+osv-scanner takes a different one, and the reason is a number. Its first scan
+of a single TS repo returned **thirty-six** advisories, across six repos that
+share a dependency shape — and unlike the Go findings, most of them have fixes.
+An id list of that size is not a record of what was accepted, it is a wall of
 text that is stale within a week and that nobody re-reads. Insisting on the
 sharper instrument there produces a worse outcome than the blunt one: either
 the gate never goes in, or it goes in attached to a list that is exemption by
 exhaustion.
 
-So `warn_only` exists, and what it costs is stated rather than hidden: **it
-does not distinguish the advisory you accepted from the one that landed this
-morning.** Nothing blocks, so somebody has to be reading.
+So the osv-scanner callers pass **`fail-on-vuln: false`**, and what it costs is
+stated rather than hidden: **it does not distinguish the advisory you accepted
+from the one that landed this morning.** Nothing blocks, so somebody has to be
+reading.
 
 **It is a phase, not a setting.** Standardising a fleet has an order to it, and
 trying to do the parts at once is how none of them land:
@@ -663,21 +664,43 @@ trying to do the parts at once is how none of them land:
    has never been scanned learns what is in its tree.
 2. **Get the findings to zero**, repo by repo, against a tracked list —
    aurum-alpha/workflows#107 for the TS repos.
-3. **Turn it blocking**, which is where every gate in this document is
-   supposed to end up.
+3. **Turn it blocking** — `fail-on-vuln: true`, which is where every gate in
+   this document is supposed to end up.
 
-`warn_only: true` is how a job sits in stage 1 without either lying about the
-tree or stopping six repos from merging. The honest test for whether a repo is
-still entitled to it is whether its findings are going down. A `warn_only` that
-has not moved in a quarter is not a phase, it is a decision nobody made out
-loud.
+`fail-on-vuln: false` is how a gate sits in stage 1 without either lying about
+the tree or stopping six repos from merging. The honest test for whether a repo
+is still entitled to it is whether its findings are going down. A repo that has
+not moved in a quarter is not in a phase, it is a decision nobody made out loud.
 
-**`warn_only` applies to findings only.** A missing lockfile, an empty
-`lockfiles` list, or a scanner that exited abnormally still fail the job.
-None of those is a clean result — they are the scan not happening, and the one
-thing no mode may do is let "could not look" read as "nothing to find". That
-property is not negotiable and is what separates this from switching the check
-off.
+**Once a repo reaches stage 2, individual advisories are accepted in
+`osv-scanner.toml`, not in CI.** The scanner reads it beside the lockfile
+without being told to, filters by id, and prints the reason it was given:
+
+```toml
+[[IgnoredVulns]]
+id = "GHSA-xxxx-xxxx-xxxx"
+reason = "daemon-side defect; this repo is an API client and runs no daemon"
+```
+
+That is strictly better than the `allow:` input the deleted wrapper carried:
+the exemption lives beside the dependency it exempts, in the repo that owns the
+decision, rather than in a workflow argument in a different tree. The one thing
+lost with the wrapper is its `stale:` line for an allowed id that stopped being
+reported, so a `reason` should say what would make the entry removable.
+
+**A blocking mode is not the only thing that can go wrong.** A missing lockfile
+or a scanner that crashed fails the job in either mode, because neither is a
+clean result — they are the scan not happening, and the one thing no mode may
+do is let "could not look" read as "nothing to find". `fail-on-vuln: false`
+suppresses findings; it does not suppress a scan that did not run.
+
+**Stage 3 has a second option worth knowing about.** Upstream also ships
+`osv-scanner-reusable-pr.yml`, which scans the base branch and the head branch
+and fails only on advisories the pull request *introduced*. That is the one
+instrument that could turn a repo blocking before its backlog reaches zero. It
+is not adopted now because it only works in a pull-request context and would be
+skipped on pushes to `main`, leaving the default branch unscanned — a repo that
+takes it needs both workflows wired, not one.
 
 The job scans with `-format json` so exemptions key on ids rather than on a grep
 over English, and it counts only **symbol-level** findings — those govulncheck
@@ -1064,14 +1087,14 @@ client-manager carries six — `forbidigo-pgxpool`, `conformance-suite`,
 legitimate case under Principle 19: a debt with a name. Reviewing whether any of
 them generalise is worth doing, and is not the same job as this one.
 
-### Lockfile scanning is not a Go job
+### Lockfile scanning is not a Go job, and the job is not ours
 
-`job-osv-scanner` scans dependency lockfiles for known vulnerabilities, and it
-runs in **every repo**, not only the Go ones. It arrived looking Go-shaped —
-client-manager ran it behind `tools/checks/osv-scanner`, sitting among that
-repo's Go jobs — but the command it ran was already scanning `go.mod` **and**
+Every repo scans its dependency lockfiles for known vulnerabilities — **all
+eleven**, not only the Go ones. It arrived looking Go-shaped, because
+client-manager ran it behind `tools/checks/osv-scanner` among that repo's Go
+jobs, but the command it ran was already scanning `go.mod` **and**
 `client/pnpm-lock.yaml`. osv-scanner reads lockfiles per ecosystem, so its
-scope is every repo that has one, which is all eleven.
+scope is every repo that has one.
 
 **It does not duplicate `job-go-govulncheck`, and neither replaces the other.**
 govulncheck is Go-only and call-graph aware: it reports an advisory only when
@@ -1079,18 +1102,86 @@ the code actually reaches the vulnerable symbol, so it is precise and narrow.
 osv-scanner is lockfile-based and cross-ecosystem: broader, with no
 reachability filter, so noisier. Drop govulncheck and the "is it reachable"
 answer goes; drop osv-scanner and every pnpm lockfile in the fleet is
-unscanned, which was the state until this job existed.
+unscanned, which was the state until this gate existed.
 
-`lockfiles:` is a JSON array and is **named, never discovered**. A scan that
-finds its own inputs by walking the tree silently stops covering a file the day
-it moves, and reports the same clean result either way. A named lockfile that
-is missing fails the job on the path rather than quietly narrowing the scan.
+#### The catalog does not wrap it
 
-An exit code that is neither 0 (clean) nor 1 (found something) fails the job
-too: a tool that crashed has found nothing, and that must never read as nothing
-to find. `allow:` is an id list on the same terms as govulncheck's — never a
-`warn_only` — and an allowed id that stops being reported is printed as stale
-so the list cannot grow forever.
+There is no `job-osv-scanner.yml`. Callers call Google's own reusable workflow
+directly:
+
+```yaml
+  osv-scanner:
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@6e4298ebc4db23e847df9b2e2de2939d6f066c67 # v2.5.1
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    with:
+      runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+      upload-sarif: false
+      fail-on-vuln: false          # stage 1 — see the three stages below
+      scan-args: |-
+        --lockfile=./pnpm-lock.yaml
+```
+
+We wrote a wrapper first and then deleted it, and the reason is worth keeping.
+The wrapper resolved a JSON `lockfiles:` array into `-L` flags, installed a Go
+toolchain in six repos that have no Go so `go run` could fetch the scanner,
+parsed the JSON report, applied an `allow:` list and implemented `warn_only`.
+Every one of those has an upstream equivalent: `scan-args` takes `--lockfile=`
+directly, the action runs a published container so no toolchain is fetched,
+`osv-scanner.toml` accepts advisories with a reason attached, and
+`fail-on-vuln:` is `warn_only` under its own name. Eighty lines of ours stood
+between the caller and a scan the upstream workflow already performs, and the
+only thing they added was somewhere else for a bug to live.
+
+**This is Principle 12 held, not waived.** One way per capability does not
+require that the one way be ours. What the catalog contributes here is the
+decision and the pin — recorded in `check-caller-thinness`'s `EXTERNAL_JOBS`
+and `check-caller-permissions`'s `EXTERNAL_PERMISSIONS`, so a caller reaching
+for some other scanner, or for an unrecorded third-party workflow, still fails
+conformance. A repo-local body would still be drift; this is not one.
+
+**What it costs, stated:** the fleet can no longer re-pin in one place. Bumping
+osv-scanner is a sweep over eleven callers instead of an edit to one file, and
+`EXTERNAL_PERMISSIONS` is a transcription of an upstream `permissions:` block
+that nothing resolves for us, so it must be re-read against upstream when the
+pin moves. That is the price of not maintaining a wrapper, and it is the
+cheaper of the two.
+
+#### Wiring
+
+* **Named, never discovered.** `scan-args` lists each lockfile explicitly with
+  `--lockfile=`. The action's default is `-r ./`, and recursive discovery is
+  the one behaviour we do not take: a scan that finds its own inputs silently
+  stops covering a file the day it moves, and reports the same clean result
+  either way. A named lockfile that is missing exits 127 and writes no report,
+  which fails the job downstream — "could not look" never reads as "nothing to
+  find", the property the wrapper was built to guarantee and that survives
+  without it.
+* **`upload-sarif: false`.** The default is `true`, and it is the one default
+  we override. Nine of the eleven repos are private, where
+  `codeql-action/upload-sarif` needs GitHub Advanced Security; without that
+  entitlement the step fails and takes the job with it. This is a platform
+  entitlement, not a preference — turn it on per repo the day GHAS is on, and
+  the two public repos (`workflows`, `gofast`) could carry it today.
+  `security-events: write` is granted regardless, because the upstream job
+  requests it whether or not the upload runs.
+* **No `secrets:`.** `secrets: inherit` into the catalog is right and required;
+  into a third party it is a standing grant of every token the repo holds, for
+  a job that needs none. `check-caller-thinness` refuses it.
+* **DAG position: a standard gate.** It belongs to the standard-gate tier with
+  `fmt`, `vet`, `test-unit` and the linters: it takes the same `needs:` on the
+  repo's build jobs that the rest of that tier takes, it is named in `ci-ok`
+  like every other gate, and repo-local gates name it in their `needs:` along
+  with the rest of the tier (see "Standard gates run before repo-local ones").
+  It reads lockfiles rather than build output, so the `needs:` buys ordering
+  and not data — which is the point: the tier is a tier because it is uniform,
+  not because every member of it consumes the same thing.
+* **`runs-on`.** Passed from the caller as `${{ vars.RUNNER || 'ubuntu-26.04' }}`,
+  the same expression every other job uses, so Principle 4 holds without a
+  wrapper. Note the job is a Docker container action: a self-hosted runner
+  label must have Docker available.
 
 ### PHP job catalog (event-manager)
 

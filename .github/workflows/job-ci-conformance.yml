@@ -5,14 +5,19 @@ name: ci-conformance
 # every principle it checks was written down first and violated afterwards, in
 # a repo whose CI was green the whole time.
 #
-# It runs the four caller-side checkers in tools/. They were all written to be
-# run from a workstation with eleven clones side by side, which is why none of
-# them had ever run in CI and why check-fleet-versions' repo map could go stale
-# for two renames without anything noticing. A check that only runs when
-# someone remembers to run it is not a gate.
+# It runs every caller-side checker in tools/. They were all written to be run
+# from a workstation with eleven clones side by side, which is why none of them
+# had ever run in CI and why check-fleet-versions' repo map could go stale for
+# two renames without anything noticing. A check that only runs when someone
+# remembers to run it is not a gate.
 #
-# The fifth checker, check-catalog-loops, is deliberately absent: it inspects
-# this repo's own shared jobs, so it belongs in this repo's CI and nowhere else.
+# check-catalog-loops is deliberately absent: it inspects this repo's own shared
+# jobs, so it belongs in this repo's CI and nowhere else. check-standard-ref is
+# absent for the same reason.
+#
+# The list is described rather than counted on purpose. It used to say "the four
+# caller-side checkers" and "the fifth checker", which meant adding one made two
+# sentences wrong — a small instance of exactly what this job exists to catch.
 #
 # Each checker gets its own step, and every step after the first runs even if an
 # earlier one failed. A repo adopting this wants all its findings in one run,
@@ -58,7 +63,7 @@ on:
           default in the same wave that adds a catalog file, not the one after.
         type: string
         required: false
-        default: 821c43c7f740b1225510441cea870ae8af85d75a
+        default: a0f438763ca9b024b78f5fd7b43d38247d36618a
 
 jobs:
   ci-conformance:
@@ -165,3 +170,13 @@ jobs:
           REPO: ${{ steps.repo.outputs.name }}
           AURUM_CATALOG_ROOT: .aurum-catalog
         run: .aurum-standard/tools/check-fleet-versions --root .ci-root --repo "$REPO"
+
+      # The shared eslint config says, in its own header, that a byte-identity
+      # checker fails the build if one repo edits it. No such checker existed;
+      # six repos matched by luck and the sentence was decoration. This is it.
+      - name: The shared eslint config is unedited
+        if: ${{ !cancelled() }}
+        env:
+          REPO: ${{ steps.repo.outputs.name }}
+          AURUM_CATALOG_ROOT: .aurum-catalog
+        run: .aurum-standard/tools/check-eslint-config --root .ci-root --repo "$REPO"

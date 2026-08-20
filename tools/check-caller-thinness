@@ -9,6 +9,8 @@ repo's ci.yml is a thin stub: every job either
   * calls a shared job workflow in aurum-alpha/workflows, pinned to a
     40-hex commit SHA with a version comment, carrying nothing but
     uses/needs/with/secrets/if (secrets must be `inherit`), or
+  * calls one of the approved third-party reusable workflows, on the same
+    pinning terms and passing no secrets, or
   * is the local ci-ok rollup, whose needs: must cover every stub job, or
   * is an explicitly allow-listed repo-local job.
 
@@ -76,6 +78,48 @@ LOCAL_ALLOWLIST = {
         # source, so no shared job models it.
         "runner-image",
     },
+    # The only PHP repo in the fleet, and the catalog has no PHP job at all:
+    # there is no job-php-*.yml to call, so these five cannot be stubs of
+    # anything. CI_STANDARD's "PHP job catalog (event-manager)" section says
+    # so directly — the ids are standard, the bodies "stay repo-local until a
+    # second PHP repo exists" — and that is the whole justification. Composer
+    # dev and prod installs, phpunit, phpstan, and the CI4 integration suite
+    # with its service containers are ordinary work every PHP repo would do
+    # the same way; they are local because there is nobody to share them with,
+    # not because they are special.
+    #
+    # `package` and `test-e2e` are a different claim and should not be read as
+    # covered by the PHP one. `package` is this product's build: it lays a
+    # composer vendor tree and the downloaded React bundle into dist-php via
+    # `make all`, which runs `pnpm exec grunt vendor`. Grunt, that Makefile and
+    # that directory layout are one repo's, and generalising them would put
+    # them in the fleet's catalog. `test-e2e` brings up the docker-compose
+    # stack and drives it with Playwright; it is also currently `if: false`,
+    # so what is allow-listed here is a body that does not run.
+    #
+    # The gap the first five name: the catalog models Node, Go and C/C++ and
+    # not PHP, and one repo is not enough evidence to design the interface
+    # from. A second PHP repo is the event that should close it, and the shape
+    # the two share is what gets extracted — not this one generalised early.
+    #
+    # The gap `package` and `test-e2e` name is different and larger: the
+    # catalog has no job for assembling a deployable tree out of two stacks'
+    # outputs, and none for compose-based end-to-end. Neither is PHP-specific;
+    # both are simply unbuilt.
+    #
+    # Not allow-listed, deliberately: client-ts-react-install,
+    # client-ts-react-build and client-ts-react-test-unit. Those are TypeScript
+    # jobs, the catalog covers TypeScript, and they are drift rather than a
+    # gap. They should keep reporting until they are stubs.
+    "event-manager": {
+        "server-php-ci4-install",
+        "server-php-ci4-install-prod",
+        "server-php-ci4-test-unit",
+        "server-php-ci4-static-analysis",
+        "server-php-ci4-test-integration",
+        "package",
+        "test-e2e",
+    },
 }
 
 # Shared jobs that report rather than gate. A caller may leave these out of
@@ -106,6 +150,28 @@ OUTSIDE_ROLLUP = {"job-image-prune.yml"}
 STUB_KEYS = {"uses", "needs", "with", "secrets", "if", "permissions"}
 USES_RE = re.compile(
     r"^aurum-alpha/workflows/\.github/workflows/job-[a-z0-9-]+\.ya?ml"
+    r"@[0-9a-f]{40}\s+# v\S+$"
+)
+
+# Approved third-party reusable workflows, by path without the pin.
+#
+# Principle 12 says one way per capability. It does not say the one way has to
+# be ours. Where the upstream project ships and maintains the job itself, the
+# catalog's contribution is the DECISION and the PIN, not a wrapper that
+# forwards inputs into it — job-osv-scanner was eighty lines of Python, a JSON
+# input and a Go toolchain installed in six repos that have no Go, and every
+# one of those existed to reach a scan the upstream workflow already performs.
+#
+# What an entry here costs is that the fleet can no longer re-pin in one place:
+# bumping osv-scanner is now a sweep over the callers rather than an edit here.
+# That is the trade, and it is only worth taking where the upstream is a better
+# maintainer of the job than we are. Hence a named table and not a pattern —
+# every entry is a judgement about one project, made once, in the open.
+EXTERNAL_JOBS = {
+    "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml",
+}
+EXTERNAL_RE = re.compile(
+    r"^(?P<path>[\w.-]+/[\w.-]+/\.github/workflows/[\w.-]+\.ya?ml)"
     r"@[0-9a-f]{40}\s+# v\S+$"
 )
 
@@ -153,6 +219,31 @@ def parse_jobs(text: str) -> dict[str, dict[str, str]]:
         if m and current is not None and last_key is not None:
             existing = jobs[current][last_key]
             jobs[current][last_key] = f"{existing} {m.group(1).strip()}".strip()
+            continue
+        # A key written as a MULTI-LINE FLOW sequence puts a bare bracket on
+        # its own line and the items, comma-separated, under it:
+        #   needs:
+        #     [
+        #       build,
+        #       lint,
+        #     ]
+        # Neither branch above matches any of those lines, so `needs` parsed as
+        # the empty string and every stub read as uncovered. event-manager's
+        # ci-ok is written this way and names sixteen jobs; this tool reported
+        # six of them missing, all sixteen present in the file
+        # (aurum-alpha/workflows#112).
+        #
+        # The failure was loud, which is the survivable direction. The same
+        # blindness decides stub_ids, where it is silent: a job whose `uses:`
+        # the parser could not see would simply not be required in ci-ok, and
+        # nothing would say so.
+        m = re.match(r"^ {6}\[?\s*(.*?)\s*\]?,?\s*$", ln)
+        if m and current is not None and last_key is not None and ln.strip():
+            item = m.group(1).strip().rstrip(",").strip()
+            if item:
+                existing = jobs[current][last_key]
+                jobs[current][last_key] = f"{existing} {item}".strip()
+            continue
     return jobs
 
 
@@ -182,12 +273,30 @@ def check_repo(repo: str, text: str) -> list[str]:
         extra = set(props) - STUB_KEYS
         if extra:
             problems.append(f"job '{job_id}' carries non-stub keys: {', '.join(sorted(extra))}")
+        external = False
         if not USES_RE.match(props["uses"]):
-            problems.append(
-                f"job '{job_id}' uses '{props['uses']}' — must reference a shared "
-                "job workflow pinned to a 40-hex SHA with a version comment"
-            )
-        if props.get("secrets", "inherit") != "inherit":
+            m = EXTERNAL_RE.match(props["uses"])
+            external = bool(m) and m.group("path") in EXTERNAL_JOBS
+            if not external:
+                problems.append(
+                    f"job '{job_id}' uses '{props['uses']}' — must reference a shared "
+                    "job workflow, or an approved third-party workflow, pinned to a "
+                    "40-hex SHA with a version comment"
+                )
+        # `secrets: inherit` hands the caller's whole secret set to the called
+        # workflow. Into the catalog that is fine and required — it is this
+        # organisation's own code. Into a third party it is a standing grant of
+        # every token the repo holds to whoever can land a commit upstream, for
+        # a job that needs none of them, so it is refused rather than left to
+        # each caller to get right.
+        if external:
+            if "secrets" in props:
+                problems.append(
+                    f"job '{job_id}' passes secrets to a third-party workflow — "
+                    "an approved external job runs on the repo's contents, not "
+                    "its credentials"
+                )
+        elif props.get("secrets", "inherit") != "inherit":
             problems.append(f"job '{job_id}' must use secrets: inherit")
 
     if "ci-ok" in jobs and stub_ids:

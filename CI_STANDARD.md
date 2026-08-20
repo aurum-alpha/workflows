@@ -634,7 +634,7 @@ any check that would catch it lives in a run that the token has already
 prevented from existing. It goes here because a written rule is the only
 mechanism available, not because a written rule is the good one.
 
-### Accepting a vulnerability: an id list, or a warn_only you can defend
+### Accepting a vulnerability: an id list, or a stage you can defend
 
 `job-go-govulncheck` takes an `allow:` input — newline-separated `GO-YYYY-NNNN`
 ids — and no `warn_only`. The difference is the point. A `warn_only` silences
@@ -643,18 +643,37 @@ is exploitable. An allowed id stops blocking; anything not on the list still
 fails the job. **Where the accepted set is small and stable, the id list is
 the right instrument and remains the default.**
 
-`job-osv-scanner` takes both, and the reason is a number. Its first scan of a
-single TS repo returned **thirty-six** advisories, across six repos that share
-a dependency shape — and unlike the Go findings, most of them have fixes. An
-id list of that size is not a record of what was accepted, it is a wall of
+osv-scanner takes a different one, and the reason is a number. Its first scan
+of a single TS repo returned **thirty-six** advisories, across six repos that
+share a dependency shape — and unlike the Go findings, most of them have fixes.
+An id list of that size is not a record of what was accepted, it is a wall of
 text that is stale within a week and that nobody re-reads. Insisting on the
 sharper instrument there produces a worse outcome than the blunt one: either
 the gate never goes in, or it goes in attached to a list that is exemption by
 exhaustion.
 
-So `warn_only` exists, and what it costs is stated rather than hidden: **it
-does not distinguish the advisory you accepted from the one that landed this
-morning.** Nothing blocks, so somebody has to be reading.
+So the osv-scanner callers pass **`fail-on-vuln: false`**, and what it costs is
+stated rather than hidden: **it does not distinguish the advisory you accepted
+from the one that landed this morning.** Nothing blocks, so somebody has to be
+reading.
+
+**And "reading" now means opening the job log**, which is worse than it was and
+is worth writing down rather than discovering. The deleted wrapper printed a
+`::warning::` with the blocking ids, so a warn-stage repo showed a yellow
+annotation on the run. `osv-scanner-reusable.yml` passes `--gh-annotations=false`
+to its reporter — only the PR-diff variant sets it true — so a warn-stage repo
+is now a **plain green check** with an advisory table inside the log and a SARIF
+artifact retained for five days. wardley-mapper's first run under this scheme
+reported protobufjs, qs, uuid, ws and yaml, and the check went green with no
+mark on it anywhere.
+
+That is a real loss and it was not traded for nothing: it is the cost of not
+maintaining a wrapper, and it is bounded by stage 3, where `fail-on-vuln: true`
+makes the finding impossible to miss by construction. Until then the honest
+statement is that **nothing surfaces a new advisory on its own** — the count is
+in the log, and the review has to be someone's job rather than the run's. A repo
+that cannot commit to that review is a repo that should be in stage 3 already,
+carrying an `osv-scanner.toml` instead.
 
 **It is a phase, not a setting.** Standardising a fleet has an order to it, and
 trying to do the parts at once is how none of them land:
@@ -663,21 +682,43 @@ trying to do the parts at once is how none of them land:
    has never been scanned learns what is in its tree.
 2. **Get the findings to zero**, repo by repo, against a tracked list —
    aurum-alpha/workflows#107 for the TS repos.
-3. **Turn it blocking**, which is where every gate in this document is
-   supposed to end up.
+3. **Turn it blocking** — `fail-on-vuln: true`, which is where every gate in
+   this document is supposed to end up.
 
-`warn_only: true` is how a job sits in stage 1 without either lying about the
-tree or stopping six repos from merging. The honest test for whether a repo is
-still entitled to it is whether its findings are going down. A `warn_only` that
-has not moved in a quarter is not a phase, it is a decision nobody made out
-loud.
+`fail-on-vuln: false` is how a gate sits in stage 1 without either lying about
+the tree or stopping six repos from merging. The honest test for whether a repo
+is still entitled to it is whether its findings are going down. A repo that has
+not moved in a quarter is not in a phase, it is a decision nobody made out loud.
 
-**`warn_only` applies to findings only.** A missing lockfile, an empty
-`lockfiles` list, or a scanner that exited abnormally still fail the job.
-None of those is a clean result — they are the scan not happening, and the one
-thing no mode may do is let "could not look" read as "nothing to find". That
-property is not negotiable and is what separates this from switching the check
-off.
+**Once a repo reaches stage 2, individual advisories are accepted in
+`osv-scanner.toml`, not in CI.** The scanner reads it beside the lockfile
+without being told to, filters by id, and prints the reason it was given:
+
+```toml
+[[IgnoredVulns]]
+id = "GHSA-xxxx-xxxx-xxxx"
+reason = "daemon-side defect; this repo is an API client and runs no daemon"
+```
+
+That is strictly better than the `allow:` input the deleted wrapper carried:
+the exemption lives beside the dependency it exempts, in the repo that owns the
+decision, rather than in a workflow argument in a different tree. The one thing
+lost with the wrapper is its `stale:` line for an allowed id that stopped being
+reported, so a `reason` should say what would make the entry removable.
+
+**A blocking mode is not the only thing that can go wrong.** A missing lockfile
+or a scanner that crashed fails the job in either mode, because neither is a
+clean result — they are the scan not happening, and the one thing no mode may
+do is let "could not look" read as "nothing to find". `fail-on-vuln: false`
+suppresses findings; it does not suppress a scan that did not run.
+
+**Stage 3 has a second option worth knowing about.** Upstream also ships
+`osv-scanner-reusable-pr.yml`, which scans the base branch and the head branch
+and fails only on advisories the pull request *introduced*. That is the one
+instrument that could turn a repo blocking before its backlog reaches zero. It
+is not adopted now because it only works in a pull-request context and would be
+skipped on pushes to `main`, leaving the default branch unscanned — a repo that
+takes it needs both workflows wired, not one.
 
 The job scans with `-format json` so exemptions key on ids rather than on a grep
 over English, and it counts only **symbol-level** findings — those govulncheck
@@ -996,13 +1037,40 @@ of check is in the name.
 | Script | TS | Go (tools/checks or make) | PHP (composer) |
 |---|---|---|---|
 | `build` | bundle ALL production artifacts into `dist/` | `go build ./...` → `bin/` | asset/app build |
-| `lint` | `eslint .` | golangci-lint / vet wrapper | phpcs/pint (when adopted) |
-| `typecheck` | `tsc --noEmit` | `go vet ./...` | `phpstan analyse` |
-| `test:unit` | `vitest run --coverage` — non-watch | `go test ./... -cover` | phpunit unit suite |
+| `lint` | *(no script — CI runs `eslint`/`oxlint` directly)* | golangci-lint / vet wrapper | phpcs/pint (when adopted) |
+| `typecheck` | *(no script — CI runs `tsc -b --noEmit`)* | `go vet ./...` | `phpstan analyse` |
+| `test:unit` | *(no script — CI runs `vitest run --coverage`)* | `go test ./... -cover` | phpunit unit suite |
 | `test:integration` / `test:e2e` | where they exist | `-tags=integration` | phpunit integration / playwright |
 
-Tooling convergence: eslint + vitest are the TS standard; coverage always
-through the canonical test scripts.
+Tooling convergence: eslint + vitest are the TS standard.
+
+**The TS column is deliberately empty, and this table used to lie about it.**
+It read `lint` → `eslint .`, `typecheck` → `tsc --noEmit`, `test:unit` →
+`vitest run --coverage`, as though CI ran those scripts. It does not, and
+**no TS repo in the fleet defines any of them** — checked across
+wardley-mapper, credit-watch and flight-watch, whose entire `scripts` block is
+`dev`, `dev:client`, `dev:server`, `start`, `db:push`, `test:watch`.
+
+The shared jobs invoke the tool directly: `pnpm exec eslint <dir>
+--max-warnings 0`, `pnpm exec oxlint <dir> --deny-warnings`, `pnpm exec tsc -b
+--noEmit`, `pnpm exec vitest run`. `job-lint-js-oxlint` says why, and it is the
+rule for all of them: *"invoked directly, not via a `lint` script whose only
+content is a path"*. A script that wraps one command adds a name to maintain
+and a place for eleven repos to disagree, which is what Principle 2 exists to
+prevent.
+
+So the scripts that survive in a TS `package.json` are the ones a **human**
+runs and CI does not: `dev`, `start`, `db:push`, `test:watch`. The Go and PHP
+columns still describe real wrappers — `composer run-script typecheck` is a
+genuine phpstan invocation — because those ecosystems have no equivalent of
+`pnpm exec`.
+
+One job still expects a script: `job-node-build` runs `pnpm run build`. No TS
+repo in the fleet defines `build` either, so that job is uncallable as written
+by any current caller — which is why the six TS repos use `job-build-js-vite`
+instead. It is listed here rather than quietly fixed because deciding what
+`job-node-build` is for is a separate question from stopping this table from
+lying.
 
 ### TS job catalog
 
@@ -1012,9 +1080,9 @@ install (store-cached) → its one script. All SHA-pinned, least-privilege.
 | Job id | needs | Does | Emits |
 |---|---|---|---|
 | `build` | — | frozen install, `run build` | `dist` artifact (1-day) |
-| `lint` | build | `run lint` | — |
-| `typecheck` | build | `run typecheck` | — |
-| `test-unit` | build | `run test` + codecov v7 (flags) | coverage |
+| `lint` | build | `eslint <dir> --max-warnings 0` | — |
+| `typecheck` | build | `tsc -b --noEmit` | — |
+| `test-unit` | build | `vitest run --coverage` + codecov v7 (flags) | coverage |
 | `image` | lint, typecheck, test-unit | docker metadata + build-push; **downloads `dist`** (Dockerfile COPYs prebuilt artifacts — no in-image rebuild) | ghcr image, push on non-PR |
 | `ci-ok` | all | `if: always()`, fails on any failure/cancel | the single required check |
 
@@ -1064,14 +1132,14 @@ client-manager carries six — `forbidigo-pgxpool`, `conformance-suite`,
 legitimate case under Principle 19: a debt with a name. Reviewing whether any of
 them generalise is worth doing, and is not the same job as this one.
 
-### Lockfile scanning is not a Go job
+### Lockfile scanning is not a Go job, and the job is not ours
 
-`job-osv-scanner` scans dependency lockfiles for known vulnerabilities, and it
-runs in **every repo**, not only the Go ones. It arrived looking Go-shaped —
-client-manager ran it behind `tools/checks/osv-scanner`, sitting among that
-repo's Go jobs — but the command it ran was already scanning `go.mod` **and**
+Every repo scans its dependency lockfiles for known vulnerabilities — **all
+eleven**, not only the Go ones. It arrived looking Go-shaped, because
+client-manager ran it behind `tools/checks/osv-scanner` among that repo's Go
+jobs, but the command it ran was already scanning `go.mod` **and**
 `client/pnpm-lock.yaml`. osv-scanner reads lockfiles per ecosystem, so its
-scope is every repo that has one, which is all eleven.
+scope is every repo that has one.
 
 **It does not duplicate `job-go-govulncheck`, and neither replaces the other.**
 govulncheck is Go-only and call-graph aware: it reports an advisory only when
@@ -1079,18 +1147,94 @@ the code actually reaches the vulnerable symbol, so it is precise and narrow.
 osv-scanner is lockfile-based and cross-ecosystem: broader, with no
 reachability filter, so noisier. Drop govulncheck and the "is it reachable"
 answer goes; drop osv-scanner and every pnpm lockfile in the fleet is
-unscanned, which was the state until this job existed.
+unscanned, which was the state until this gate existed.
 
-`lockfiles:` is a JSON array and is **named, never discovered**. A scan that
-finds its own inputs by walking the tree silently stops covering a file the day
-it moves, and reports the same clean result either way. A named lockfile that
-is missing fails the job on the path rather than quietly narrowing the scan.
+#### The catalog does not wrap it
 
-An exit code that is neither 0 (clean) nor 1 (found something) fails the job
-too: a tool that crashed has found nothing, and that must never read as nothing
-to find. `allow:` is an id list on the same terms as govulncheck's — never a
-`warn_only` — and an allowed id that stops being reported is printed as stale
-so the list cannot grow forever.
+There is no `job-osv-scanner.yml`. Callers call Google's own reusable workflow
+directly:
+
+```yaml
+  osv-scanner:
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@6e4298ebc4db23e847df9b2e2de2939d6f066c67 # v2.5.1
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    with:
+      runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+      upload-sarif: false
+      fail-on-vuln: false          # stage 1 — see the three stages below
+      scan-args: |-
+        --lockfile=./pnpm-lock.yaml
+```
+
+We wrote a wrapper first and then deleted it, and the reason is worth keeping.
+The wrapper resolved a JSON `lockfiles:` array into `-L` flags, installed a Go
+toolchain in six repos that have no Go so `go run` could fetch the scanner,
+parsed the JSON report, applied an `allow:` list and implemented `warn_only`.
+Every one of those has an upstream equivalent: `scan-args` takes `--lockfile=`
+directly, the action runs a published container so no toolchain is fetched,
+`osv-scanner.toml` accepts advisories with a reason attached, and
+`fail-on-vuln:` is `warn_only` under its own name. Eighty lines of ours stood
+between the caller and a scan the upstream workflow already performs, and the
+only thing they added was somewhere else for a bug to live.
+
+**This is Principle 12 held, not waived.** One way per capability does not
+require that the one way be ours. What the catalog contributes here is the
+decision and the pin — recorded in `check-caller-thinness`'s `EXTERNAL_JOBS`
+and `check-caller-permissions`'s `EXTERNAL_PERMISSIONS`, so a caller reaching
+for some other scanner, or for an unrecorded third-party workflow, still fails
+conformance. A repo-local body would still be drift; this is not one.
+
+**What it costs, stated:** the fleet can no longer re-pin in one place. Bumping
+osv-scanner is a sweep over eleven callers instead of an edit to one file, and
+`EXTERNAL_PERMISSIONS` is a transcription of an upstream `permissions:` block
+that nothing resolves for us, so it must be re-read against upstream when the
+pin moves. That is the price of not maintaining a wrapper, and it is the
+cheaper of the two.
+
+#### Wiring
+
+* **Named, never discovered.** `scan-args` lists each lockfile explicitly with
+  `--lockfile=`. The action's default is `-r ./`, and recursive discovery is
+  the one behaviour we do not take: a scan that finds its own inputs silently
+  stops covering a file the day it moves, and reports the same clean result
+  either way. A named lockfile that is missing exits 127 and writes no report,
+  which fails the job downstream — "could not look" never reads as "nothing to
+  find", the property the wrapper was built to guarantee and that survives
+  without it.
+* **`upload-sarif: false`.** The default is `true`, and it is the one default
+  we override. Nine of the eleven repos are private, where
+  `codeql-action/upload-sarif` needs GitHub Advanced Security; without that
+  entitlement the step fails and takes the job with it. This is a platform
+  entitlement, not a preference — turn it on per repo the day GHAS is on, and
+  the two public repos (`workflows`, `gofast`) could carry it today.
+  `security-events: write` is granted regardless, because the upstream job
+  requests it whether or not the upload runs.
+* **No `secrets:`.** `secrets: inherit` into the catalog is right and required;
+  into a third party it is a standing grant of every token the repo holds, for
+  a job that needs none. `check-caller-thinness` refuses it.
+* **DAG position: a standard gate.** It belongs to the standard-gate tier with
+  `fmt`, `vet`, `test-unit` and the linters: it takes the same `needs:` on the
+  repo's build jobs that the rest of that tier takes, it is named in `ci-ok`
+  like every other gate, and repo-local gates name it in their `needs:` along
+  with the rest of the tier (see "Standard gates run before repo-local ones").
+  It reads lockfiles rather than build output, so the `needs:` buys ordering
+  and not data — which is the point: the tier is a tier because it is uniform,
+  not because every member of it consumes the same thing.
+* **`runs-on`.** Passed from the caller as `${{ vars.RUNNER || 'ubuntu-26.04' }}`,
+  the same expression every other job uses, so Principle 4 holds without a
+  wrapper. Note the job is a Docker container action: a self-hosted runner
+  label must have Docker available.
+* **lid-firmware is the one repo without this gate**, and the reason is that it
+  has nothing to scan. PlatformIO resolves `lib_deps` from `platformio.ini` at
+  build time and writes no lockfile in any ecosystem osv-scanner reads, so a
+  job here would either fail on a path that does not exist or — with the
+  recursive default — pass having looked at nothing. The second is the worse
+  outcome and is why the exclusion is written down instead of left to whoever
+  next notices the repo is missing from the list. It stops being an exclusion
+  the day the repo commits a lockfile.
 
 ### PHP job catalog (event-manager)
 

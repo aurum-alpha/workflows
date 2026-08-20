@@ -471,14 +471,27 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
             # re-pin proved it is not hypothetical — bumping every sha without
             # checking the filenames still resolved left one caller pointing at
             # job-go-gofmt.yml, which had been renamed to job-go-fmt.yml.
-            m_uses = re.match(r"[\w.-]+/([\w.-]+)/\.github/workflows/([\w.-]+\.ya?ml)@", uses.strip())
-            if m_uses:
-                cat = catalog_dir(m_uses.group(1))
-                if cat is not None and not (cat / m_uses.group(2)).is_file():
+            #
+            # Owner-gated, and that gate is load-bearing: catalog_roots puts
+            # AURUM_CATALOG_ROOT first REGARDLESS of the repo name it was
+            # asked about, so without this every third-party reusable workflow
+            # resolves against our catalog and is reported missing from it.
+            # google/osv-scanner-action is called directly by ten repos
+            # (workflows#109) and each one was told its scanner "does not
+            # exist in the catalog", which is true and irrelevant.
+            #
+            # Whether a third-party workflow is ALLOWED is a different
+            # question, and check-caller-thinness owns it — EXTERNAL_JOBS
+            # there is the approved list. Copying that list here would make
+            # two places to update and one place to forget.
+            m_uses = re.match(r"([\w.-]+)/([\w.-]+)/\.github/workflows/([\w.-]+\.ya?ml)@", uses.strip())
+            if m_uses and m_uses.group(1) == CATALOG_OWNER:
+                cat = catalog_dir(m_uses.group(2))
+                if cat is not None and not (cat / m_uses.group(3)).is_file():
                     have = sorted(f.name for f in cat.glob("job-*.yml"))
-                    near = difflib.get_close_matches(m_uses.group(2), have, n=1)
+                    near = difflib.get_close_matches(m_uses.group(3), have, n=1)
                     hint = f" — did you mean {near[0]}?" if near else ""
-                    bad("CAT", f"'{job}' calls {m_uses.group(2)}, which does not exist in the "
+                    bad("CAT", f"'{job}' calls {m_uses.group(3)}, which does not exist in the "
                                f"catalog{hint} The whole file fails at startup: no jobs, no logs")
 
             # --- IN: the caller's `with:` matches the callee's schema -------
@@ -737,6 +750,9 @@ def with_keys(text: str, job: str) -> set[str]:
     return set(re.findall(r"^      ([\w-]+):", with_block(text, job), re.M))
 
 
+CATALOG_OWNER = "aurum-alpha"
+
+
 def catalog_roots(repo_name: str):
     """Where to look for the catalog, most authoritative first.
 
@@ -788,7 +804,11 @@ def catalog_inputs(uses: str):
     checker keeps running on a bare Python with no yaml installed.
     """
     m = re.match(r"([\w.-]+)/([\w.-]+)/\.github/workflows/([\w.-]+\.ya?ml)@", uses.strip())
-    if not m:
+    if not m or m.group(1) != CATALOG_OWNER:
+        # Not ours: there is no clone of a third party's repo to resolve the
+        # schema against, and the AURUM_CATALOG_ROOT override would otherwise
+        # answer with our catalog's files. Returning None keeps rule IN
+        # visibly absent rather than answering from the wrong tree.
         return None
     _, repo_name, fname = m.groups()
     for root in catalog_roots(repo_name):

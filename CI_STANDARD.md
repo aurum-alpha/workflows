@@ -634,13 +634,50 @@ any check that would catch it lives in a run that the token has already
 prevented from existing. It goes here because a written rule is the only
 mechanism available, not because a written rule is the good one.
 
-### Accepting a vulnerability: an id list, never a warn_only
+### Accepting a vulnerability: an id list, or a warn_only you can defend
 
 `job-go-govulncheck` takes an `allow:` input — newline-separated `GO-YYYY-NNNN`
-ids — and **not** a `warn_only` flag. The difference is the whole point. A
-`warn_only` silences the finding in front of you and every finding after it,
-including the one that is exploitable. An allowed id stops blocking; anything
-not on the list still fails the job.
+ids — and no `warn_only`. The difference is the point. A `warn_only` silences
+the finding in front of you and every finding after it, including the one that
+is exploitable. An allowed id stops blocking; anything not on the list still
+fails the job. **Where the accepted set is small and stable, the id list is
+the right instrument and remains the default.**
+
+`job-osv-scanner` takes both, and the reason is a number. Its first scan of a
+single TS repo returned **thirty-six** advisories, across six repos that share
+a dependency shape — and unlike the Go findings, most of them have fixes. An
+id list of that size is not a record of what was accepted, it is a wall of
+text that is stale within a week and that nobody re-reads. Insisting on the
+sharper instrument there produces a worse outcome than the blunt one: either
+the gate never goes in, or it goes in attached to a list that is exemption by
+exhaustion.
+
+So `warn_only` exists, and what it costs is stated rather than hidden: **it
+does not distinguish the advisory you accepted from the one that landed this
+morning.** Nothing blocks, so somebody has to be reading.
+
+**It is a phase, not a setting.** Standardising a fleet has an order to it, and
+trying to do the parts at once is how none of them land:
+
+1. **Get the job everywhere it belongs**, running and reporting. A repo that
+   has never been scanned learns what is in its tree.
+2. **Get the findings to zero**, repo by repo, against a tracked list —
+   aurum-alpha/workflows#107 for the TS repos.
+3. **Turn it blocking**, which is where every gate in this document is
+   supposed to end up.
+
+`warn_only: true` is how a job sits in stage 1 without either lying about the
+tree or stopping six repos from merging. The honest test for whether a repo is
+still entitled to it is whether its findings are going down. A `warn_only` that
+has not moved in a quarter is not a phase, it is a decision nobody made out
+loud.
+
+**`warn_only` applies to findings only.** A missing lockfile, an empty
+`lockfiles` list, or a scanner that exited abnormally still fail the job.
+None of those is a clean result — they are the scan not happening, and the one
+thing no mode may do is let "could not look" read as "nothing to find". That
+property is not negotiable and is what separates this from switching the check
+off.
 
 The job scans with `-format json` so exemptions key on ids rather than on a grep
 over English, and it counts only **symbol-level** findings — those govulncheck

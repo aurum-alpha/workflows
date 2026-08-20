@@ -25,16 +25,49 @@ import re
 import sys
 
 # Repos converted to thin stub callers (C1 wave). Extend as conversions land.
+#
+# This list used to hold eight names while /workspace held eleven. The loop
+# iterates the list, so event-manager, client-manager and gofast were never
+# examined — and the run still printed "PASS: all callers are thin", which is a
+# claim about eleven repos made after looking at eight. event-manager's three
+# React jobs sat on the PHP builder image for weeks underneath that green, and
+# the LOCAL_ALLOWLIST entry below describing them was never once read.
+#
+# Two rules now stop that recurring, both at the bottom of main():
+#   - every repo under --root must appear in CONVERTED or UNCONVERTED, and an
+#     unlisted one is a hard error rather than a silent skip;
+#   - a --root that does not exist is an error too, because "I could not look"
+#     and "I looked and it was fine" must never render as the same green.
 CONVERTED = [
     "credit-watch",
+    "event-manager",
     "expense-splitter",
     "flight-watch",
+    "gha-runner-controller",
+    "gofast",
     "hiring-tracker",
     "jewelry-factory",
-    "wardley-mapper",
-    "gha-runner-controller",
     "lid-firmware",
+    "wardley-mapper",
 ]
+
+# Repos that are NOT converted, each with the reason. Reported on every run and
+# deliberately not failing the run — an unconverted repo is a known gap, and
+# this is what distinguishes it from a repo nobody has looked at. Moving a name
+# from here to CONVERTED is the conversion.
+UNCONVERTED = {
+    "client-manager": (
+        "19 local job bodies. CI_STANDARD accounts for six of them as policy "
+        "about that codebase (forbidigo-pgxpool, conformance-suite, "
+        "telemetry-canary, migration-expand-only, header-definition, "
+        "header-staleness), which is the legitimate Principle 19 case. The "
+        "other thirteen — the server-go-* baseline, client-ts-react-install, "
+        "client-ts-react-fmt, changes, contract, image-tag-parity — have not "
+        "been triaged, and guessing which are gaps and which are drift would "
+        "be inventing a verdict. Tracked separately; see also P18, the two "
+        "release workflows still outside ci.yml."
+    ),
+}
 
 # Repo-local jobs that keep a body in the caller.
 #
@@ -111,6 +144,18 @@ LOCAL_ALLOWLIST = {
     # client-ts-react-build and client-ts-react-test-unit. Those are TypeScript
     # jobs, the catalog covers TypeScript, and they are drift rather than a
     # gap. They should keep reporting until they are stubs.
+    #
+    # event-manager#64 made two of the three stubs and deleted the install job
+    # outright — the catalog has no install job, each capability job installs
+    # from the pnpm store. What is left is client-ts-react-build, and that one
+    # IS a gap rather than drift: the catalog's build jobs are
+    # job-build-js-vite and job-bundle-js-esbuild, and this app is webpack.
+    # Moving it is not a CI change. AdminController, PortalController and
+    # RegisterController read FCPATH."static/react/{app}.html",
+    # react_admin.php hardcodes /static/react/vendors.js, and docker-compose
+    # serves the dev bundles from webpack:3001; those move together or not at
+    # all. So it is allow-listed with that reason, per Principle 19, and the
+    # entry disappears the day this app leaves webpack.
     "event-manager": {
         "server-php-ci4-install",
         "server-php-ci4-install-prod",
@@ -119,6 +164,7 @@ LOCAL_ALLOWLIST = {
         "server-php-ci4-test-integration",
         "package",
         "test-e2e",
+        "client-ts-react-build",
     },
 }
 
@@ -318,6 +364,24 @@ def main() -> int:
     ap.add_argument("--repo", action="append", help="limit to specific repo(s)")
     args = ap.parse_args()
 
+    # "I could not look" must not render as "I looked and it was fine".
+    if not args.repo:
+        if not args.root.is_dir():
+            print(f"root {args.root} does not exist — this tool reads sibling "
+                  f"checkouts and cannot report on repos it cannot see",
+                  file=sys.stderr)
+            return 2
+        present = sorted(d.name for d in args.root.iterdir() if d.is_dir()
+                         and not d.name.startswith("."))
+        known = set(CONVERTED) | set(UNCONVERTED)
+        unlisted = [r for r in present if r not in known]
+        if unlisted:
+            print(f"unlisted repo(s) under {args.root}: {', '.join(unlisted)}\n"
+                  f"Add each to CONVERTED or to UNCONVERTED with a reason. A "
+                  f"repo in neither is one this tool silently skips while "
+                  f"still printing PASS.", file=sys.stderr)
+            return 2
+
     repos = args.repo or CONVERTED
     failures = 0
     for repo in repos:
@@ -334,7 +398,18 @@ def main() -> int:
         else:
             print(f"{repo}: thin")
 
-    print(f"\n{'PASS: all callers are thin' if failures == 0 else f'FAIL: {failures} caller(s) with local drift'}")
+    if not args.repo and UNCONVERTED:
+        print()
+        for repo, why in sorted(UNCONVERTED.items()):
+            print(f"{repo}: NOT CONVERTED (known gap, not checked)")
+            print(f"  - {why}")
+
+    checked = len(repos)
+    if failures == 0:
+        print(f"\nPASS: {checked} caller(s) checked, all thin"
+              + (f"; {len(UNCONVERTED)} not yet converted" if not args.repo and UNCONVERTED else ""))
+    else:
+        print(f"\nFAIL: {failures} of {checked} caller(s) with local drift")
     return 0 if failures == 0 else 1
 
 

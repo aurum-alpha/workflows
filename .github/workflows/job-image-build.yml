@@ -201,21 +201,34 @@ jobs:
             if [ -d ".ci-artifacts/$name" ]; then
               src=".ci-artifacts/$name"
             elif [ "$requested" -eq 1 ] \
-              && [ -z "$(find .ci-artifacts -mindepth 1 -maxdepth 1 -type d 2>/dev/null)" ] \
               && [ -n "$(ls -A .ci-artifacts 2>/dev/null)" ]; then
               # download-artifact announces "An extra directory with the
               # artifact name will be created for each download" and then does
-              # not create one when the run holds exactly one artifact — it
-              # extracts the contents straight into `path`. Observed on
-              # gha-runner-controller, whose image build runs while only
-              # controller-binary exists; every repo that reached this job
-              # before had several artifacts in flight and never saw it.
+              # not create one when exactly one artifact is downloaded — it
+              # extracts the contents straight into `path`.
               #
-              # Narrow on purpose: one artifact requested, and nothing under
-              # .ci-artifacts is a directory, so there is no per-artifact
-              # layout to be confused with. If the caller named the artifact
-              # wrongly in this one case the copy succeeds and the build fails
-              # on the missing COPY source — loud, one step later.
+              # This used to also require that nothing under .ci-artifacts was
+              # a directory, on the reasoning that a flat extraction has no
+              # per-artifact layout to be confused with. That guard was written
+              # when this job downloaded EVERY artifact in the run, where the
+              # distinction mattered — and it silently assumed the one artifact
+              # contains only files. event-manager's package-artifacts contains
+              # static/, vendor/, ci4/, fusebox/ and more, so the guard failed
+              # and the job reported the artifact's own contents as the list of
+              # artifacts available:
+              #
+              #   No artifact named 'package-artifacts' in this run. Available:
+              #   static codeigniter vendor defaults.ini phinx.php ci4 ...
+              #
+              # The guard is gone because the reason for it is gone. Since the
+              # download is now filtered by a pattern built from the mapping,
+              # everything under .ci-artifacts came from the artifacts this
+              # caller asked for — there is no other artifact's layout present
+              # to mistake this for, whatever shape the contents have.
+              #
+              # Still narrow: exactly one artifact requested. With two or more,
+              # download-artifact does create the per-artifact directories and
+              # the branch above finds them.
               src=".ci-artifacts"
               echo "note: single-artifact run — '$name' was extracted flat" \
                    "into .ci-artifacts rather than .ci-artifacts/$name"

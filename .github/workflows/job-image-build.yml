@@ -252,7 +252,7 @@ jobs:
             echo "Restored execute bit on $path"
           done <<< "$EXECUTABLES"
 
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
       # Unconditional, unlike the old job's main-gated login: staging happens on
       # every run, so the credential is needed on every run.

@@ -17,8 +17,21 @@ on:
         default: "."
       dir:
         description: >-
-          Which standard unit to act on: `client`, `server` or `shared`. Not a
-          path — the layout is fixed fleet-wide, and any other value fails.
+          Path to lint, relative to `workdir`. An eslint path argument and
+          nothing more — `client`, `src/client/react`, `server/api`, whatever
+          this call should cover.
+
+          It used to accept only `client`, `server` or `shared`, to keep repos
+          from putting their UI wherever they liked. That reasoning does not
+          survive contact: a repo with more than one client has no way to name
+          the second, and `src/` is an ordinary layout rather than drift.
+          Layout is enforced by CI_STANDARD and check-ci-conformance, which is
+          where it belongs; smuggling it into a path argument only meant this
+          job could not lint code that plainly needed linting.
+
+          One path per call. A repo with several trees to lint calls this
+          several times and names each job, which is also how it gets a
+          separate check per tree instead of one verdict over all of them.
         type: string
         required: true
       warn_only:
@@ -56,21 +69,22 @@ jobs:
                     "See CI_STANDARD 'Standard repository layout'."; exit 1 ;;
           esac
 
-      # The unit is one of three names, fleet-wide (CI_STANDARD "Standard
-      # repository layout"). This input says *which* standard unit, never
-      # *where a repo happens to keep it* — a free-form path here would make the
-      # catalog accommodate variance instead of removing it.
-      - name: Validate unit
+      # `dir` is an eslint path argument, so the only things worth rejecting
+      # are the two that would misfire rather than fail: an empty value, which
+      # makes eslint lint nothing while exiting 0, and a leading dash, which
+      # eslint would read as a flag. A path that simply does not exist needs no
+      # check here — eslint exits 2 with "No files matching the pattern",
+      # which is already a loud failure rather than a silent pass.
+      - name: Validate lint path
         env:
-          UNIT: ${{ inputs.dir }}
+          LINT_DIR: ${{ inputs.dir }}
         run: |
           set -euo pipefail
-          case "$UNIT" in
-            client|server|shared) ;;
-            # The workdir is itself the unit — see job-test-unit-js-vitest.
-            .) ;;
-            *) echo "::error::dir must be client, server, shared or '.'; got '$UNIT'." \
-                    "See CI_STANDARD 'Standard repository layout'."; exit 1 ;;
+          case "$LINT_DIR" in
+            "")  echo "::error::dir is empty. eslint would lint nothing and" \
+                      "exit 0, reporting a pass over no files."; exit 1 ;;
+            -*)  echo "::error::dir must be a path, not a flag; got" \
+                      "'$LINT_DIR'."; exit 1 ;;
           esac
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -106,4 +120,12 @@ jobs:
       - name: Lint ${{ inputs.dir }}
         working-directory: ${{ inputs.workdir }}
         continue-on-error: ${{ inputs.warn_only }}
-        run: pnpm exec eslint ${{ inputs.dir }} --max-warnings 0
+        # Through the environment and quoted, never interpolated into the
+        # script body: `dir` is now caller-supplied text rather than one of
+        # four fixed words, and ${{ }} inside `run:` is substituted before bash
+        # ever sees it.
+        env:
+          LINT_DIR: ${{ inputs.dir }}
+        run: |
+          set -euo pipefail
+          pnpm exec eslint "$LINT_DIR" --max-warnings 0

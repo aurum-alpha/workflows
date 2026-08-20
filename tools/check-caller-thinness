@@ -78,6 +78,48 @@ LOCAL_ALLOWLIST = {
         # source, so no shared job models it.
         "runner-image",
     },
+    # The only PHP repo in the fleet, and the catalog has no PHP job at all:
+    # there is no job-php-*.yml to call, so these five cannot be stubs of
+    # anything. CI_STANDARD's "PHP job catalog (event-manager)" section says
+    # so directly — the ids are standard, the bodies "stay repo-local until a
+    # second PHP repo exists" — and that is the whole justification. Composer
+    # dev and prod installs, phpunit, phpstan, and the CI4 integration suite
+    # with its service containers are ordinary work every PHP repo would do
+    # the same way; they are local because there is nobody to share them with,
+    # not because they are special.
+    #
+    # `package` and `test-e2e` are a different claim and should not be read as
+    # covered by the PHP one. `package` is this product's build: it lays a
+    # composer vendor tree and the downloaded React bundle into dist-php via
+    # `make all`, which runs `pnpm exec grunt vendor`. Grunt, that Makefile and
+    # that directory layout are one repo's, and generalising them would put
+    # them in the fleet's catalog. `test-e2e` brings up the docker-compose
+    # stack and drives it with Playwright; it is also currently `if: false`,
+    # so what is allow-listed here is a body that does not run.
+    #
+    # The gap the first five name: the catalog models Node, Go and C/C++ and
+    # not PHP, and one repo is not enough evidence to design the interface
+    # from. A second PHP repo is the event that should close it, and the shape
+    # the two share is what gets extracted — not this one generalised early.
+    #
+    # The gap `package` and `test-e2e` name is different and larger: the
+    # catalog has no job for assembling a deployable tree out of two stacks'
+    # outputs, and none for compose-based end-to-end. Neither is PHP-specific;
+    # both are simply unbuilt.
+    #
+    # Not allow-listed, deliberately: client-ts-react-install,
+    # client-ts-react-build and client-ts-react-test-unit. Those are TypeScript
+    # jobs, the catalog covers TypeScript, and they are drift rather than a
+    # gap. They should keep reporting until they are stubs.
+    "event-manager": {
+        "server-php-ci4-install",
+        "server-php-ci4-install-prod",
+        "server-php-ci4-test-unit",
+        "server-php-ci4-static-analysis",
+        "server-php-ci4-test-integration",
+        "package",
+        "test-e2e",
+    },
 }
 
 # Shared jobs that report rather than gate. A caller may leave these out of

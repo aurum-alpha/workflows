@@ -219,6 +219,31 @@ def parse_jobs(text: str) -> dict[str, dict[str, str]]:
         if m and current is not None and last_key is not None:
             existing = jobs[current][last_key]
             jobs[current][last_key] = f"{existing} {m.group(1).strip()}".strip()
+            continue
+        # A key written as a MULTI-LINE FLOW sequence puts a bare bracket on
+        # its own line and the items, comma-separated, under it:
+        #   needs:
+        #     [
+        #       build,
+        #       lint,
+        #     ]
+        # Neither branch above matches any of those lines, so `needs` parsed as
+        # the empty string and every stub read as uncovered. event-manager's
+        # ci-ok is written this way and names sixteen jobs; this tool reported
+        # six of them missing, all sixteen present in the file
+        # (aurum-alpha/workflows#112).
+        #
+        # The failure was loud, which is the survivable direction. The same
+        # blindness decides stub_ids, where it is silent: a job whose `uses:`
+        # the parser could not see would simply not be required in ci-ok, and
+        # nothing would say so.
+        m = re.match(r"^ {6}\[?\s*(.*?)\s*\]?,?\s*$", ln)
+        if m and current is not None and last_key is not None and ln.strip():
+            item = m.group(1).strip().rstrip(",").strip()
+            if item:
+                existing = jobs[current][last_key]
+                jobs[current][last_key] = f"{existing} {item}".strip()
+            continue
     return jobs
 
 

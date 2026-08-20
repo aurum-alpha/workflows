@@ -1037,13 +1037,40 @@ of check is in the name.
 | Script | TS | Go (tools/checks or make) | PHP (composer) |
 |---|---|---|---|
 | `build` | bundle ALL production artifacts into `dist/` | `go build ./...` → `bin/` | asset/app build |
-| `lint` | `eslint .` | golangci-lint / vet wrapper | phpcs/pint (when adopted) |
-| `typecheck` | `tsc --noEmit` | `go vet ./...` | `phpstan analyse` |
-| `test:unit` | `vitest run --coverage` — non-watch | `go test ./... -cover` | phpunit unit suite |
+| `lint` | *(no script — CI runs `eslint`/`oxlint` directly)* | golangci-lint / vet wrapper | phpcs/pint (when adopted) |
+| `typecheck` | *(no script — CI runs `tsc -b --noEmit`)* | `go vet ./...` | `phpstan analyse` |
+| `test:unit` | *(no script — CI runs `vitest run --coverage`)* | `go test ./... -cover` | phpunit unit suite |
 | `test:integration` / `test:e2e` | where they exist | `-tags=integration` | phpunit integration / playwright |
 
-Tooling convergence: eslint + vitest are the TS standard; coverage always
-through the canonical test scripts.
+Tooling convergence: eslint + vitest are the TS standard.
+
+**The TS column is deliberately empty, and this table used to lie about it.**
+It read `lint` → `eslint .`, `typecheck` → `tsc --noEmit`, `test:unit` →
+`vitest run --coverage`, as though CI ran those scripts. It does not, and
+**no TS repo in the fleet defines any of them** — checked across
+wardley-mapper, credit-watch and flight-watch, whose entire `scripts` block is
+`dev`, `dev:client`, `dev:server`, `start`, `db:push`, `test:watch`.
+
+The shared jobs invoke the tool directly: `pnpm exec eslint <dir>
+--max-warnings 0`, `pnpm exec oxlint <dir> --deny-warnings`, `pnpm exec tsc -b
+--noEmit`, `pnpm exec vitest run`. `job-lint-js-oxlint` says why, and it is the
+rule for all of them: *"invoked directly, not via a `lint` script whose only
+content is a path"*. A script that wraps one command adds a name to maintain
+and a place for eleven repos to disagree, which is what Principle 2 exists to
+prevent.
+
+So the scripts that survive in a TS `package.json` are the ones a **human**
+runs and CI does not: `dev`, `start`, `db:push`, `test:watch`. The Go and PHP
+columns still describe real wrappers — `composer run-script typecheck` is a
+genuine phpstan invocation — because those ecosystems have no equivalent of
+`pnpm exec`.
+
+One job still expects a script: `job-node-build` runs `pnpm run build`. No TS
+repo in the fleet defines `build` either, so that job is uncallable as written
+by any current caller — which is why the six TS repos use `job-build-js-vite`
+instead. It is listed here rather than quietly fixed because deciding what
+`job-node-build` is for is a separate question from stopping this table from
+lying.
 
 ### TS job catalog
 
@@ -1053,9 +1080,9 @@ install (store-cached) → its one script. All SHA-pinned, least-privilege.
 | Job id | needs | Does | Emits |
 |---|---|---|---|
 | `build` | — | frozen install, `run build` | `dist` artifact (1-day) |
-| `lint` | build | `run lint` | — |
-| `typecheck` | build | `run typecheck` | — |
-| `test-unit` | build | `run test` + codecov v7 (flags) | coverage |
+| `lint` | build | `eslint <dir> --max-warnings 0` | — |
+| `typecheck` | build | `tsc -b --noEmit` | — |
+| `test-unit` | build | `vitest run --coverage` + codecov v7 (flags) | coverage |
 | `image` | lint, typecheck, test-unit | docker metadata + build-push; **downloads `dist`** (Dockerfile COPYs prebuilt artifacts — no in-image rebuild) | ghcr image, push on non-PR |
 | `ci-ok` | all | `if: always()`, fails on any failure/cancel | the single required check |
 

@@ -982,6 +982,34 @@ client-manager carries six — `forbidigo-pgxpool`, `conformance-suite`,
 legitimate case under Principle 19: a debt with a name. Reviewing whether any of
 them generalise is worth doing, and is not the same job as this one.
 
+### Lockfile scanning is not a Go job
+
+`job-osv-scanner` scans dependency lockfiles for known vulnerabilities, and it
+runs in **every repo**, not only the Go ones. It arrived looking Go-shaped —
+client-manager ran it behind `tools/checks/osv-scanner`, sitting among that
+repo's Go jobs — but the command it ran was already scanning `go.mod` **and**
+`client/pnpm-lock.yaml`. osv-scanner reads lockfiles per ecosystem, so its
+scope is every repo that has one, which is all eleven.
+
+**It does not duplicate `job-go-govulncheck`, and neither replaces the other.**
+govulncheck is Go-only and call-graph aware: it reports an advisory only when
+the code actually reaches the vulnerable symbol, so it is precise and narrow.
+osv-scanner is lockfile-based and cross-ecosystem: broader, with no
+reachability filter, so noisier. Drop govulncheck and the "is it reachable"
+answer goes; drop osv-scanner and every pnpm lockfile in the fleet is
+unscanned, which was the state until this job existed.
+
+`lockfiles:` is a JSON array and is **named, never discovered**. A scan that
+finds its own inputs by walking the tree silently stops covering a file the day
+it moves, and reports the same clean result either way. A named lockfile that
+is missing fails the job on the path rather than quietly narrowing the scan.
+
+An exit code that is neither 0 (clean) nor 1 (found something) fails the job
+too: a tool that crashed has found nothing, and that must never read as nothing
+to find. `allow:` is an id list on the same terms as govulncheck's — never a
+`warn_only` — and an allowed id that stops being reported is printed as stale
+so the list cannot grow forever.
+
 ### PHP job catalog (event-manager)
 
 Same ids where meaningful: `builder-image` (tier 2, reusable) → `install`

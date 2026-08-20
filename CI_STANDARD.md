@@ -310,6 +310,51 @@ telling you what else is wrong.
   noise is the cheaper failure: a stale red is confusing, a silent green is
   dangerous. Read the newest run, not the superseded one.
 
+### Standard gates run before repo-local ones
+
+This refines where gates sit; it does not change the DAG's shape. Build first
+still holds (D2), gates still hang off the build (D1), packaging is still the
+convergence point everything funnels into, and `ci-ok` still names every job.
+What it adds is an ordering *inside* the gate layer, by where a gate comes
+from:
+
+1. **Standard gates** — the catalog calls every repo of that stack runs:
+   `fmt`, `vet`, `test-unit`, the four linters, `govulncheck`, `osv-scanner`.
+2. **Repo-local gates** — the policy a repo enforces about itself.
+   client-manager's `forbidigo-pgxpool`, `telemetry-canary`,
+   `migration-expand-only`, `header-definition`, `header-staleness`,
+   `golden-corpus`, `contract`, `image-tag-parity`.
+3. **Integration and e2e** — anything that stands a database, a broker or a
+   browser up to test against.
+
+Each names the tier before it in `needs:`, entry by entry. No convergence job
+standing in for the list: the rollup already proved that a job's failure is
+only visible where it is named, and an intermediate node would put one more
+place between a failure and the thing that reports it.
+
+**Why, beyond looks.** It is `build first, fail fast` one level up. A
+repo-local rule failing is a narrower answer than `vet` failing — if the code
+does not pass the gates every repo shares, "and it also violates the pgxpool
+rule" is noise on top of a verdict you already have. Cheap and universal
+first, bespoke second, infrastructure-standing third.
+
+**It is also the only way to show the distinction.** GitHub's workflow graph
+has no grouping, no swimlanes and no labels; it lays jobs out purely by
+dependency depth. Standard and repo-local can only *look* different by being
+different depths.
+
+**The cost is real and accepted.** Serialising repo-local gates behind the
+standard ones adds the slowest of them to the critical path where they used to
+run alongside. For client-manager that is a handful of short `go test` runs.
+
+**An empty tier is not a stage.** gofast has no repo-local gates, so nothing
+sits between its standard gates and packaging. Absence is a fact about the
+repo, not a hole to fill with a placeholder.
+
+**The job ids do not change.** Check names are what branch protection and
+eleven repos depend on; a `repo-` prefix would rename every check to buy a
+label the graph already shows by position.
+
 ### Multi-codebase repos — one DAG per stack, converging at packaging
 
 Several repos hold two codebases in one tree: React/TS + Go (gofast), React +

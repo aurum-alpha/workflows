@@ -128,14 +128,51 @@ jobs:
           echo "image=${image,,}" >> "$GITHUB_OUTPUT"
           echo "Staging ${image,,}"
 
-      # Everything the run produced, into a staging directory. Named downloads
-      # would need one action invocation per artifact and the mapping is an
-      # input, so the placement is done in shell below and only mapped names
-      # are used.
+      # Exactly the artifacts the mapping names, into a staging directory.
+      #
+      # This used to fetch EVERYTHING the run produced, on the reasoning that
+      # named downloads need one action invocation per artifact. They do not:
+      # `pattern` takes a newline-separated list, so one invocation names them
+      # all, and the shell below still does the placement.
+      #
+      # What "everything" cost: docker/build-push-action uploads a buildx
+      # build record (`*.dockerbuild`) whenever it runs, so a caller whose
+      # builder image rebuilds has an artifact in the run that this job never
+      # wanted. Fetching it failed after five retries and took the step with
+      # it — AFTER every artifact this job actually needed had downloaded
+      # clean. event-manager#62 hit it three times on one commit; the reason
+      # no other repo had seen it is that the build record only appears when
+      # something in the image job's file_patterns changed, so every caller
+      # was one such change away from the same failure.
+      #
+      # Fetching only what is mapped also makes the failure legible when a
+      # caller names an artifact that does not exist: it fails at the fetch,
+      # naming the pattern, instead of at the copy several steps later.
+      - name: Artifact names the mapping asks for
+        id: wanted
+        if: ${{ inputs.artifacts != '' }}
+        env:
+          ARTIFACTS: ${{ inputs.artifacts }}
+        run: |
+          set -euo pipefail
+          # Same two guards as the placement loop below: skip blanks, and skip
+          # comment lines, because a `|` block scalar is literal text and a
+          # leading # is a value rather than a comment.
+          {
+            echo "pattern<<PATTERN_EOF"
+            while IFS= read -r line; do
+              [ -n "$line" ] || continue
+              [ "${line#\#}" = "$line" ] || continue
+              echo "${line%%=*}"
+            done <<< "$ARTIFACTS"
+            echo "PATTERN_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         if: ${{ inputs.artifacts != '' }}
         with:
           path: .ci-artifacts
+          pattern: ${{ steps.wanted.outputs.pattern }}
 
       - name: Place artifacts
         if: ${{ inputs.artifacts != '' }}

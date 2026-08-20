@@ -654,10 +654,23 @@ exhaustion.
 
 So `warn_only` exists, and what it costs is stated rather than hidden: **it
 does not distinguish the advisory you accepted from the one that landed this
-morning.** Nothing blocks, so somebody has to be reading. It is for a backlog
-being worked down against a tracked list — aurum-alpha/workflows#107 for the
-TS repos — and the honest test for whether it is still the right mode is
-whether that list is shrinking.
+morning.** Nothing blocks, so somebody has to be reading.
+
+**It is a phase, not a setting.** Standardising a fleet has an order to it, and
+trying to do the parts at once is how none of them land:
+
+1. **Get the job everywhere it belongs**, running and reporting. A repo that
+   has never been scanned learns what is in its tree.
+2. **Get the findings to zero**, repo by repo, against a tracked list —
+   aurum-alpha/workflows#107 for the TS repos.
+3. **Turn it blocking**, which is where every gate in this document is
+   supposed to end up.
+
+`warn_only: true` is how a job sits in stage 1 without either lying about the
+tree or stopping six repos from merging. The honest test for whether a repo is
+still entitled to it is whether its findings are going down. A `warn_only` that
+has not moved in a quarter is not a phase, it is a decision nobody made out
+loud.
 
 **`warn_only` applies to findings only.** A missing lockfile, an empty
 `lockfiles` list, or a scanner that exited abnormally still fail the job.

@@ -57,12 +57,29 @@ on:
       allow:
         description: >-
           Newline-separated advisory ids (GHSA-…, CVE-…, GO-…) to accept, each
-          with a reason in a comment at the call site. Deliberately an id list
-          and not a warn_only flag: warn_only silences the next finding too,
-          and the next one might matter here. An allowed id stops blocking;
-          anything not on the list still fails the job.
+          with a reason in a comment at the call site. An allowed id stops
+          blocking; anything not on the list still fails the job. Prefer this
+          to warn_only where the accepted set is small and stable — it names
+          what was accepted, so the next finding is still a failure.
         type: string
         default: ""
+      warn_only:
+        description: >-
+          Report findings without failing the job.
+
+          For a tree with a large backlog, where an id list would be dozens of
+          entries long and out of date within a week. The trade is explicit:
+          warn_only does not distinguish the advisory you accepted from the one
+          that landed this morning, so nothing blocks and somebody has to be
+          reading. An allow list is the sharper instrument; this is the one that
+          fits a mess.
+
+          It applies ONLY to findings. A missing lockfile, an empty lockfiles
+          list, or a scanner that exited abnormally still fail the job, because
+          none of those is a clean result — they are the scan not happening, and
+          that must never look like nothing to find.
+        type: boolean
+        default: false
 
 jobs:
   osv-scanner:
@@ -98,6 +115,7 @@ jobs:
         env:
           LOCKFILES: ${{ inputs.lockfiles }}
           ALLOW: ${{ inputs.allow }}
+          WARN_ONLY: ${{ inputs.warn_only }}
           PKG: github.com/google/osv-scanner/v2/cmd/osv-scanner@${{ inputs.version }}
         run: |
           import json, os, pathlib, subprocess, sys
@@ -155,7 +173,17 @@ jobs:
           for vid in sorted(allow - set(found)):
               print(f"stale: {vid} is allowed but no longer reported — drop it from allow:")
 
+          # stdout before the verdict: sys.exit writes to stderr, and the two
+          # flush independently, so without this the summary lands ABOVE the
+          # listing it refers to and the diagnosis reads inside-out.
+          sys.stdout.flush()
+
           if blocking:
+              if os.environ.get("WARN_ONLY", "").lower() == "true":
+                  print(f"::warning::{len(blocking)} vulnerability(ies) reported, "
+                        "not blocking: " + ", ".join(blocking))
+                  sys.stdout.flush()
+                  sys.exit(0)
               sys.exit(f"::error::{len(blocking)} vulnerability(ies) not allowed: "
                        + ", ".join(blocking))
           print("ok - no vulnerabilities outside the allow list")

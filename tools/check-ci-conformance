@@ -30,7 +30,7 @@ principle needed enforcing:
   D3  publish is gated     a publish job reaches a gate transitively
   D4  publish is in ci-ok  a publish job outside the rollup fails invisibly
   D5  publish runs on PRs  the main-check goes on the step, never the job
-  D6  every job blocks     every job is reachable from ci-ok's transitive
+  D6  every job blocks     every job is NAMED in ci-ok's needs, not merely
                           needs. Distinct from D1: a job can sit correctly
                           downstream of the build and still be absent from the
                           rollup, and then its failure stops nothing
@@ -296,16 +296,6 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
     graph = {j: needs_of(p) for j, p in jobs.items()}
     rollup = graph.get("ci-ok", set())
 
-    # Transitive closure of ci-ok's needs: every job the rollup actually waits
-    # for, directly or through another job.
-    reachable_from_rollup = set()
-    frontier = list(rollup)
-    while frontier:
-        n = frontier.pop()
-        if n in reachable_from_rollup:
-            continue
-        reachable_from_rollup.add(n)
-        frontier.extend(graph.get(n, set()))
     # "Gates hang off the build" presumes a build. A repo that compiles nothing
     # — this one checks yaml — has no such node, and its gates are the roots.
     has_build = any(BUILD_RE.search(j) for j in jobs)
@@ -427,16 +417,33 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
                 bad("D1", f"'{job}' has no needs: — it runs beside the build it should gate")
 
             # Separate property: having a needs: puts a job in the right place
-            # in the DAG; being in ci-ok's closure is what makes its failure
+            # in the DAG; being NAMED IN ci-ok's needs is what makes its failure
             # block anything. A job can satisfy D1 and still stop nothing.
+            #
+            # DIRECT membership, not the transitive closure, and the difference
+            # is the whole rule. ci-ok is `if: always()`, which opts it out of
+            # needs meaning "must succeed" — it runs whatever its dependencies
+            # did, and decides by counting "failure" and "cancelled" in the
+            # needs object. A job it does not name has no entry in that object.
+            # When a job fails, everything downstream of it is SKIPPED, and
+            # skipped is neither failure nor cancelled, so a rollup naming only
+            # the leaves of a chain counts zero of each and prints "All
+            # dependencies succeeded" over a build that did not.
+            #
+            # Transitive reachability would accept exactly that shape: the
+            # failing job is still reachable, and still invisible. The rollup
+            # must name every job that can report a failure, which is every job
+            # in the file — see rule D4, which is this same hole found once, for
+            # publish alone, the hard way.
             # The prune is the one job deliberately outside the rollup:
             # housekeeping that fails says nothing about the commit, and a merge
             # blocked on a registry API hiccup is worse than a week of extra
             # blobs. Exempt by name, not by inference — and it must sit
             # downstream of ci-ok, so it cannot run before the gates pass.
             is_prune = "job-image-prune" in props.get("uses", "")
-            if "ci-ok" in jobs and job not in reachable_from_rollup and not is_prune:
-                bad("D6", f"'{job}' is not reachable from ci-ok — its failure blocks nothing")
+            if "ci-ok" in jobs and job not in rollup and not is_prune:
+                bad("D6", f"'{job}' is not named in ci-ok's needs — the rollup "
+                          "cannot see it fail")
             if is_prune and "ci-ok" not in graph[job]:
                 bad("D6", f"'{job}' prunes the registry but does not need ci-ok — "
                           "housekeeping must not run ahead of the gates")

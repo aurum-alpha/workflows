@@ -1,0 +1,161 @@
+# Fleet capability: scan dependency lockfiles for known vulnerabilities
+# (CI_STANDARD Principle 12 — one way per capability).
+#
+# NOT A GO JOB, despite where it came from. client-manager ran it behind
+# tools/checks/osv-scanner, sitting among that repo's Go jobs, and it was
+# already scanning a pnpm lockfile as well as go.mod. osv-scanner reads
+# lockfiles per ecosystem, so the natural scope is every repo that has one —
+# which is all eleven.
+#
+# WHY THIS AND job-go-govulncheck, WHICH IS NOT A DUPLICATE. govulncheck is
+# Go-only and call-graph aware: it reports an advisory only when the code
+# actually reaches the vulnerable symbol, so it is precise and narrow. This is
+# lockfile-based and cross-ecosystem: broader, with no reachability filter, so
+# noisier. Keeping both is deliberate — dropping govulncheck would lose the
+# "is it reachable" answer, and dropping this would leave every pnpm lockfile
+# in the fleet unscanned, which is the state today.
+name: job-osv-scanner
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: >-
+          Override runs-on. Leave empty for the fleet default. Set to a
+          self-hosted label where the runner line differs (Principle 4).
+        type: string
+        default: ""
+      lockfiles:
+        description: >-
+          JSON array of lockfile paths to scan, e.g. '["go.mod",
+          "client/pnpm-lock.yaml"]'. JSON and not a newline list on purpose: a
+          newline input means a shell loop over caller data, and that is the
+          bug class check-catalog-loops exists to catch.
+
+          Named explicitly rather than discovered by walking the tree. A scan
+          that finds its own inputs silently stops covering a file the day it
+          moves, and reports the same clean result either way.
+        type: string
+        default: "[]"
+      go_version_file:
+        description: >-
+          go.mod to take the toolchain from. Empty for a repo with no Go — the
+          scanner is fetched with `go run`, so it needs A toolchain, not the
+          repo's own, and six repos in the fleet have none.
+        type: string
+        default: ""
+      go_version:
+        description: Toolchain to use when go_version_file is empty.
+        type: string
+        default: "1.26.6"
+      version:
+        description: >-
+          osv-scanner version, pinned. `go run` fetches it, so nothing is
+          installed into the image.
+        type: string
+        default: "v2.2.3"
+      allow:
+        description: >-
+          Newline-separated advisory ids (GHSA-…, CVE-…, GO-…) to accept, each
+          with a reason in a comment at the call site. Deliberately an id list
+          and not a warn_only flag: warn_only silences the next finding too,
+          and the next one might matter here. An allowed id stops blocking;
+          anything not on the list still fails the job.
+        type: string
+        default: ""
+
+jobs:
+  osv-scanner:
+    runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-26.04' }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: ${{ inputs.go_version_file || '' }}
+          go-version: ${{ inputs.go_version_file == '' && inputs.go_version || '' }}
+          cache: false
+      - name: Isolate Go caches to runner.temp
+        shell: bash
+        run: |
+          set -euo pipefail
+          mod="${RUNNER_TEMP}/go-mod"
+          build="${RUNNER_TEMP}/go-build"
+          mkdir -p "${mod}" "${build}"
+          {
+            echo "GOMODCACHE=${mod}"
+            echo "GOCACHE=${build}"
+          } >> "$GITHUB_ENV"
+
+      # python3, not bash: the lockfile list is JSON, the allow-list is keyed
+      # on advisory ids, and the exit code has to be told apart from a crash.
+      # A shell loop over caller data is the bug class check-catalog-loops
+      # exists to catch, so there isn't one.
+      - name: Scan lockfiles
+        shell: python3 {0}
+        env:
+          LOCKFILES: ${{ inputs.lockfiles }}
+          ALLOW: ${{ inputs.allow }}
+          PKG: github.com/google/osv-scanner/v2/cmd/osv-scanner@${{ inputs.version }}
+        run: |
+          import json, os, pathlib, subprocess, sys
+
+          files = json.loads(os.environ["LOCKFILES"] or "[]")
+          if not files:
+              sys.exit("lockfiles is empty. This job scans what it is told to "
+                       "scan; with nothing named it would pass without looking "
+                       "at anything, which is the one result it must never give.")
+
+          # A named lockfile that is not there means the caller moved it and
+          # the scan would silently narrow. Fail on the path, not on the scan.
+          missing = [f for f in files if not pathlib.Path(f).is_file()]
+          if missing:
+              sys.exit(f"lockfile(s) not found: {', '.join(missing)}")
+
+          args = []
+          for f in files:
+              args += ["-L", f]
+          out = pathlib.Path(os.environ["RUNNER_TEMP"]) / "osv.json"
+          print("scanning:", ", ".join(files))
+
+          proc = subprocess.run(
+              ["go", "run", os.environ["PKG"], "scan", "source",
+               "--format", "json", "--output", str(out), *args])
+
+          # 0 = clean, 1 = vulnerabilities found. Anything else is the tool
+          # failing, and a tool that failed has found nothing — which must not
+          # read as nothing to find.
+          if proc.returncode not in (0, 1):
+              sys.exit(f"::error::osv-scanner exited {proc.returncode} — the scan "
+                       "did not complete, so this is not a clean result")
+          if not out.is_file():
+              sys.exit("::error::osv-scanner wrote no report")
+
+          report = json.loads(out.read_text() or "{}")
+          found = {}
+          for res in report.get("results") or []:
+              src = (res.get("source") or {}).get("path", "?")
+              for pkg in res.get("packages") or []:
+                  name = (pkg.get("package") or {}).get("name", "?")
+                  for v in pkg.get("vulnerabilities") or []:
+                      vid = v.get("id")
+                      if vid:
+                          found.setdefault(vid, set()).add(f"{name} ({src})")
+
+          allow = {l.strip() for l in os.environ.get("ALLOW", "").splitlines() if l.strip()}
+          blocking = sorted(set(found) - allow)
+
+          for vid in sorted(found):
+              mark = "allowed" if vid in allow else "BLOCKING"
+              print(f"{mark:8} {vid}  {', '.join(sorted(found[vid]))}")
+          # An allow entry that no longer matches anything is a rule nobody is
+          # applying; say so rather than letting the list grow forever.
+          for vid in sorted(allow - set(found)):
+              print(f"stale: {vid} is allowed but no longer reported — drop it from allow:")
+
+          if blocking:
+              sys.exit(f"::error::{len(blocking)} vulnerability(ies) not allowed: "
+                       + ", ".join(blocking))
+          print("ok - no vulnerabilities outside the allow list")

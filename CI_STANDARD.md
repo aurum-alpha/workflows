@@ -1182,6 +1182,14 @@ cheaper of the two.
   the same expression every other job uses, so Principle 4 holds without a
   wrapper. Note the job is a Docker container action: a self-hosted runner
   label must have Docker available.
+* **lid-firmware is the one repo without this gate**, and the reason is that it
+  has nothing to scan. PlatformIO resolves `lib_deps` from `platformio.ini` at
+  build time and writes no lockfile in any ecosystem osv-scanner reads, so a
+  job here would either fail on a path that does not exist or — with the
+  recursive default — pass having looked at nothing. The second is the worse
+  outcome and is why the exclusion is written down instead of left to whoever
+  next notices the repo is missing from the list. It stops being an exclusion
+  the day the repo commits a lockfile.
 
 ### PHP job catalog (event-manager)
 

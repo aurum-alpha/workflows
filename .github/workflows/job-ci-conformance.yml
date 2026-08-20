@@ -93,6 +93,29 @@ jobs:
           path: .aurum-standard
           persist-credentials: false
 
+      # The CHECKERS come from standard_ref, pinned; the CATALOG LISTING comes
+      # from the default branch, current. They are different questions and were
+      # sharing one clone.
+      #
+      # "Which rules apply to me" should be reproducible, so pinning it is
+      # right. "Does job-go-build.yml exist in the catalog" is a question about
+      # the catalog as it is NOW — and standard_ref can never name the commit
+      # that sets it, so it is permanently at least one commit behind. Rules CAT
+      # and check-caller-permissions read the listing, so on the day a new
+      # shared job lands, the first repo to call it is told the job does not
+      # exist, by a checker looking at a tree from before it was added. gofast
+      # was that repo; the finding even suggested a wrong fix.
+      #
+      # A caller pinning this workflow still gets fixed RULES. What it stops
+      # getting is a stale answer to a question that has no business being
+      # pinned.
+      - name: Checkout the catalog listing
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: aurum-alpha/workflows
+          path: .aurum-catalog
+          persist-credentials: false
+
       # check-caller-permissions is the one checker that parses YAML properly
       # rather than by pattern — it has to resolve job-level blocks against
       # workflow-level ones, and a regex that got that wrong would report the
@@ -119,22 +142,26 @@ jobs:
       - name: ci.yml conforms to CI_STANDARD
         env:
           REPO: ${{ steps.repo.outputs.name }}
+          AURUM_CATALOG_ROOT: .aurum-catalog
         run: .aurum-standard/tools/check-ci-conformance --repo-root ".ci-root/$REPO"
 
       - name: The caller is a thin stub
         if: ${{ !cancelled() }}
         env:
           REPO: ${{ steps.repo.outputs.name }}
+          AURUM_CATALOG_ROOT: .aurum-catalog
         run: .aurum-standard/tools/check-caller-thinness --root .ci-root --repo "$REPO"
 
       - name: The caller grants what the shared jobs request
         if: ${{ !cancelled() }}
         env:
           REPO: ${{ steps.repo.outputs.name }}
+          AURUM_CATALOG_ROOT: .aurum-catalog
         run: .aurum-standard/tools/check-caller-permissions --root .ci-root --repo "$REPO"
 
       - name: Toolchain versions match the fleet
         if: ${{ !cancelled() }}
         env:
           REPO: ${{ steps.repo.outputs.name }}
+          AURUM_CATALOG_ROOT: .aurum-catalog
         run: .aurum-standard/tools/check-fleet-versions --root .ci-root --repo "$REPO"

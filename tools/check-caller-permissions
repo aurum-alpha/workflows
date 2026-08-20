@@ -16,6 +16,7 @@ Run against local clones:  tools/check-caller-permissions --root /workspace
 """
 
 import argparse
+import os
 import pathlib
 import re
 import sys
@@ -103,7 +104,11 @@ def main() -> int:
     ap.add_argument("--repo", action="append", help="limit to specific repo(s)")
     args = ap.parse_args()
 
-    here = pathlib.Path(__file__).resolve().parent.parent
+    # Same reason as check-ci-conformance's catalog_roots: the permissions map
+    # is built from the catalog's own job files, so reading it out of a pinned
+    # standard_ref clone reports a newly added shared job as "unknown".
+    here = pathlib.Path(os.environ.get("AURUM_CATALOG_ROOT")
+                        or pathlib.Path(__file__).resolve().parent.parent)
     wanted = shared_job_permissions(here)
 
     repos = args.repo or sorted(p.name for p in args.root.iterdir() if p.is_dir())

@@ -103,6 +103,7 @@ Exit: 0 conformant, 1 violations, 2 no ci workflow found.
 
 import argparse
 import difflib
+import os
 import pathlib
 import re
 import sys
@@ -736,6 +737,29 @@ def with_keys(text: str, job: str) -> set[str]:
     return set(re.findall(r"^      ([\w-]+):", with_block(text, job), re.M))
 
 
+def catalog_roots(repo_name: str):
+    """Where to look for the catalog, most authoritative first.
+
+    AURUM_CATALOG_ROOT wins when set. A caller's conformance run takes its
+    CHECKERS from a pinned standard_ref, which is right — a pinned workflow
+    should get pinned rules. It used to take the CATALOG LISTING from that same
+    clone, which is not: "does job-go-build.yml exist" is a question about the
+    catalog as it is now, and the pinned clone is by construction at least one
+    commit behind. job-go-build.yml landed in #97 and gofast — the first repo
+    to call it — was told it does not exist, by a checker reading a tree from
+    before it was added. That default can never name the commit that sets it,
+    so the lag is permanent and the listing has to come from somewhere else.
+    """
+    roots = []
+    override = os.environ.get("AURUM_CATALOG_ROOT")
+    if override:
+        roots.append(pathlib.Path(override))
+    here = pathlib.Path(__file__).resolve().parent.parent
+    roots.append(here)
+    roots.extend(q / repo_name for q in (here.parent, pathlib.Path.cwd().parent))
+    return roots
+
+
 def catalog_dir(repo_name: str):
     """The local catalog clone's workflows dir, or None if there is no clone.
 
@@ -745,8 +769,7 @@ def catalog_dir(repo_name: str):
     rule IN went quiet exactly as it does when the catalog is simply not on
     disk. A silent rule and a satisfied rule looked identical.
     """
-    here = pathlib.Path(__file__).resolve().parent.parent
-    for root in (here, *[q / repo_name for q in (here.parent, pathlib.Path.cwd().parent)]):
+    for root in catalog_roots(repo_name):
         d = root / ".github/workflows"
         if d.is_dir() and any(d.glob("job-*.yml")):
             return d
@@ -768,8 +791,7 @@ def catalog_inputs(uses: str):
     if not m:
         return None
     _, repo_name, fname = m.groups()
-    here = pathlib.Path(__file__).resolve().parent.parent
-    for root in (here, *[q / repo_name for q in (here.parent, pathlib.Path.cwd().parent)]):
+    for root in catalog_roots(repo_name):
         f = root / ".github/workflows" / fname
         if not f.is_file():
             continue

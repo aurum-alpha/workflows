@@ -657,6 +657,24 @@ stated rather than hidden: **it does not distinguish the advisory you accepted
 from the one that landed this morning.** Nothing blocks, so somebody has to be
 reading.
 
+**And "reading" now means opening the job log**, which is worse than it was and
+is worth writing down rather than discovering. The deleted wrapper printed a
+`::warning::` with the blocking ids, so a warn-stage repo showed a yellow
+annotation on the run. `osv-scanner-reusable.yml` passes `--gh-annotations=false`
+to its reporter — only the PR-diff variant sets it true — so a warn-stage repo
+is now a **plain green check** with an advisory table inside the log and a SARIF
+artifact retained for five days. wardley-mapper's first run under this scheme
+reported protobufjs, qs, uuid, ws and yaml, and the check went green with no
+mark on it anywhere.
+
+That is a real loss and it was not traded for nothing: it is the cost of not
+maintaining a wrapper, and it is bounded by stage 3, where `fail-on-vuln: true`
+makes the finding impossible to miss by construction. Until then the honest
+statement is that **nothing surfaces a new advisory on its own** — the count is
+in the log, and the review has to be someone's job rather than the run's. A repo
+that cannot commit to that review is a repo that should be in stage 3 already,
+carrying an `osv-scanner.toml` instead.
+
 **It is a phase, not a setting.** Standardising a fleet has an order to it, and
 trying to do the parts at once is how none of them land:
 

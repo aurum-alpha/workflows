@@ -155,18 +155,63 @@ jobs:
           ARTIFACTS: ${{ inputs.artifacts }}
         run: |
           set -euo pipefail
-          # Same two guards as the placement loop below: skip blanks, and skip
-          # comment lines, because a `|` block scalar is literal text and a
-          # leading # is a value rather than a comment.
-          {
-            echo "pattern<<PATTERN_EOF"
-            while IFS= read -r line; do
-              [ -n "$line" ] || continue
-              [ "${line#\#}" = "$line" ] || continue
-              echo "${line%%=*}"
-            done <<< "$ARTIFACTS"
-            echo "PATTERN_EOF"
-          } >> "$GITHUB_OUTPUT"
+          # ONE glob, not a list of names.
+          #
+          # `pattern` reads as if it took a newline-separated list, and this
+          # step used to emit one. It does not: download-artifact hands the
+          # whole input to a single minimatch, so a two-line value is one
+          # pattern containing a newline and matches no artifact name at all.
+          # Nothing fails at the fetch — a pattern that matches nothing
+          # downloads nothing and exits 0 — so the run died several steps later
+          # in the placement loop, reporting the staging directory as empty:
+          #
+          #   ##[error]No artifact named 'client-dist' in this run. Available:
+          #
+          # Single-artifact callers were unaffected, which is why every caller
+          # that had re-pinned so far passed: one name is a valid glob for
+          # itself. Seven of the ten image callers map two or more.
+          #
+          # Brace alternation is the glob that means "any of these", and
+          # minimatch expands braces. One name is emitted bare: `{a}` has no
+          # comma, so brace expansion leaves it as the literal four characters.
+          #
+          # Names are checked rather than trusted, against a whitelist. A `,`
+          # or a brace would change what the alternation means, and a glob
+          # metacharacter would let one mapping entry match an artifact the
+          # caller never named — both silent, and both worse than a mapping
+          # that refuses to run. Every artifact name in the fleet is already
+          # within this set, so the whitelist costs nothing and does not have
+          # to be right about which characters minimatch treats as special.
+          names=()
+          while IFS= read -r line; do
+            # Same two guards as the placement loop below: skip blanks, and
+            # skip comment lines, because a `|` block scalar is literal text
+            # and a leading # is a value rather than a comment.
+            [ -n "$line" ] || continue
+            [ "${line#\#}" = "$line" ] || continue
+            name="${line%%=*}"
+            case "$name" in
+              *[!A-Za-z0-9._-]*|'')
+                echo "::error::Artifact name '$name' is not matched literally" \
+                     "here — names must be [A-Za-z0-9._-]+ so the download" \
+                     "glob cannot mean something other than these names."
+                exit 1
+                ;;
+            esac
+            names+=("$name")
+          done <<< "$ARTIFACTS"
+
+          if [ "${#names[@]}" -eq 0 ]; then
+            echo "::error::artifacts input has no entries after blanks and" \
+                 "comments. Omit the input instead of passing an empty one."
+            exit 1
+          elif [ "${#names[@]}" -eq 1 ]; then
+            pattern="${names[0]}"
+          else
+            pattern="$(IFS=,; echo "{${names[*]}}")"
+          fi
+          echo "Downloading artifacts matching: $pattern"
+          echo "pattern=${pattern}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         if: ${{ inputs.artifacts != '' }}
@@ -232,6 +277,17 @@ jobs:
               src=".ci-artifacts"
               echo "note: single-artifact run — '$name' was extracted flat" \
                    "into .ci-artifacts rather than .ci-artifacts/$name"
+            elif [ -z "$(ls -A .ci-artifacts 2>/dev/null)" ]; then
+              # Nothing downloaded at all, which is a different fault from a
+              # name that does not match: the pattern matched no artifact in
+              # the run, and download-artifact reports that as success. Say
+              # which fault it is, because "Available:" followed by nothing
+              # reads as a listing that failed rather than an empty run.
+              echo "::error::No artifacts were downloaded: nothing in this" \
+                   "run matched the names this mapping asks for. Check that" \
+                   "the jobs producing them ran, and that they upload under" \
+                   "exactly the names the mapping uses ('$name' among them)."
+              exit 1
             else
               echo "::error::No artifact named '$name' in this run." \
                    "Available: $(find .ci-artifacts -mindepth 1 -maxdepth 1 -printf '%f ' 2>/dev/null)"

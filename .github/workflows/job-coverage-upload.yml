@@ -109,21 +109,41 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          list() {
-            find "$1" -type f 2>/dev/null | sort | paste -sd, -
+
+          # A DENYLIST of presentation assets, not an allowlist of coverage
+          # formats, and the direction matters. vitest's --coverage writes an
+          # istanbul HTML report next to the data: base.css, favicon.png,
+          # prettify.js, one .html per source file. The first version of this
+          # step globbed every file and handed all of it to Codecov, which
+          # reported "Found 25 coverage files" for a run that produced four,
+          # and warned that most of them were on its own exclusion list.
+          #
+          # An allowlist of known formats would have fixed that and introduced
+          # a worse failure: a producer emitting a format nobody listed would
+          # upload NOTHING, silently, and look identical to a repo with no
+          # tests. Denying assets fails the safe way instead — the worst case
+          # is one junk file uploaded, not coverage dropped on the floor.
+          assets() {
+            find "$1" -type f \
+              ! -name '*.html' ! -name '*.htm'  ! -name '*.css' \
+              ! -name '*.js'   ! -name '*.png'  ! -name '*.svg' \
+              ! -name '*.ico'  ! -name '*.gif'  ! -name '*.jpg' \
+              ! -name '*.woff' ! -name '*.woff2' ! -name '*.ttf' \
+              2>/dev/null | sort
           }
-          cov="$(list _coverage)"
-          res="$(list _testresults)"
+          cov="$(assets _coverage | paste -sd, -)"
+          res="$(assets _testresults | paste -sd, -)"
           {
             echo "coverage=${cov}"
             echo "testresults=${res}"
           } >> "$GITHUB_OUTPUT"
 
-          n_cov=$(find _coverage -type f 2>/dev/null | wc -l | tr -d ' ')
-          n_res=$(find _testresults -type f 2>/dev/null | wc -l | tr -d ' ')
-          echo "coverage files: ${n_cov}"
-          echo "test report files: ${n_res}"
-          find _coverage _testresults -type f 2>/dev/null | sed 's/^/  /' || true
+          n_cov=$(assets _coverage | wc -l | tr -d ' ')
+          n_res=$(assets _testresults | wc -l | tr -d ' ')
+          n_all=$(find _coverage _testresults -type f 2>/dev/null | wc -l | tr -d ' ')
+          echo "reports to upload: ${n_cov} coverage, ${n_res} test results"
+          echo "(${n_all} files arrived; the rest are report assets)"
+          assets _coverage; assets _testresults
 
           # Zero is a real outcome, not a bug: every unit may have failed, or
           # this repo's units may have no tests yet (Phase F3). Say so rather

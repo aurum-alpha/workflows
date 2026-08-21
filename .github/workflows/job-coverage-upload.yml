@@ -110,6 +110,29 @@ jobs:
         run: |
           set -euo pipefail
 
+          # download-artifact does NOT create its destination directory when
+          # the pattern matches nothing, and `find` on a missing directory
+          # exits 1 — 2>/dev/null hides the message, not the status, and
+          # pipefail carries it out of the pipe.
+          #
+          # Which line that kills is worth knowing, because it is not the
+          # obvious one. Measured: `cov="$(assets ...)"` does NOT trip errexit
+          # in bash, so the assignments survive a missing directory. The bare
+          # `assets _coverage; assets _testresults` at the end of this step
+          # does, and that display line was added in v1.26.1 — replacing a
+          # v1.26.0 line that ended `|| true`. So the visibility improvement
+          # introduced the crash.
+          #
+          # It cost gha-runner-controller's first run: Go-only, Go emits no
+          # junit, so `testresults-*` matched nothing. This file already SAID
+          # so — "Go emits no junit report, so there is no testresults artifact
+          # here" — and then fell over on exactly that. A repo whose every JS
+          # unit has no tests reaches it the same way.
+          #
+          # mkdir makes "nothing arrived" identical to "an empty directory
+          # arrived", which is the case the census below already reports.
+          mkdir -p _coverage _testresults
+
           # A DENYLIST of presentation assets, not an allowlist of coverage
           # formats, and the direction matters. vitest's --coverage writes an
           # istanbul HTML report next to the data: base.css, favicon.png,

@@ -67,6 +67,71 @@ jobs:
       - name: Check standard_ref moved with the checkers
         run: tools/check-standard-ref --base "${{ github.event.pull_request.base.sha }}"
 
+  # Housekeeping, downstream of the rollup — rule D6's declared exemption, the
+  # same shape as job-image-prune. Nothing gates on a tag existing; the tag is
+  # a human and machine index created after the fact, which is the direction
+  # Principle 14 requires: file -> build -> tag, never tag -> build.
+  #
+  # This exists because the fleet had no way to say "adopt the current
+  # catalog". Callers SHA-pin, correctly, but Dependabot cannot compute what is
+  # newer than a bare SHA — so nothing ever proposed a re-pin and the fleet
+  # drifted onto nine different commits without one instrument noticing. A real
+  # tag gives Dependabot something to resolve, and the re-pin PRs then arrive
+  # by themselves in every repo whose dependabot.yml already covers
+  # github-actions, which is all of them.
+  #
+  # Created once and never moved. check-standard-ref refuses a catalog change
+  # that does not carry .version forward, so a repeat value cannot arise from
+  # forgetting; if one ever does, the existing tag wins and the step says so
+  # rather than silently repointing what eleven repos may already have pinned.
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [ci-ok]
+    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+    permissions:
+      # The workflow default is contents: read; tagging needs write, and this
+      # is the only job in the repo that has it.
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Tags are what this job reads to decide whether to act.
+          fetch-tags: true
+          fetch-depth: 0
+      - name: Tag this commit with .version
+        env:
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: |
+          set -euo pipefail
+          version="$(tr -d ' \t\r\n' < .version)"
+          case "$version" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::.version reads '$version'; expected MAJOR.MINOR.PATCH"
+               exit 1 ;;
+          esac
+          tag="v${version}"
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            existing="$(git rev-list -n1 "${tag}")"
+            if [ "${existing}" = "${GITHUB_SHA}" ]; then
+              echo "${tag} already points at ${GITHUB_SHA}; nothing to do."
+              exit 0
+            fi
+            echo "::error::${tag} already exists at ${existing} and this commit is" \
+                 "${GITHUB_SHA}. Tags are immutable here — callers may already pin" \
+                 "${tag}. Bump .version instead of moving it."
+            exit 1
+          fi
+          git tag -a "${tag}" -m "workflows ${tag}" "${GITHUB_SHA}"
+          git push origin "${tag}"
+          echo "tagged ${tag} at ${GITHUB_SHA}"
+          { echo "### Released \`${tag}\`"
+            echo
+            echo "Dependabot will open re-pin pull requests across the fleet."
+          } >> "$GITHUB_STEP_SUMMARY"
+
   ci-ok:
     needs: [lint, conformance]
     if: always()

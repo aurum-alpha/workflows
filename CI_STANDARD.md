@@ -209,7 +209,7 @@ that is not yet true of the fleet is tracked as a GitHub issue in
     often false, and then the fix is a catalog job, not a local one.
 
     So every local job carries the gap it represents, and closing that gap is
-    backlog rather than decoration. `tools/check-caller-thinness` holds the
+    backlog rather than decoration. `tools/check-catalog-adoption` holds the
     allow-list; an entry there is a debt with a name, not a permission.
 
     *This is what makes the difference between a standard and a suggestion. Two
@@ -393,6 +393,59 @@ api-build ───► api-lint ──────────┤          (conv
   compile break surfaced only after every test had finished. Also from
   lid-firmware, where `publish-firmware` needed `build` alone: firmware
   published from main without unit tests ever having passed.*
+
+## Releasing the catalog, and how the fleet adopts it
+
+Callers SHA-pin the catalog. That is Principle 14 applied to ourselves: a tag
+is a mutable pointer, and trusting our own is the same bet as trusting a third
+party's with the same downside. Nothing here changes that.
+
+What pinning lacked was a way to say *adopt the current catalog*. Dependabot
+already updates every repo's actions — `github-actions` is enabled in all
+eleven `dependabot.yml` files — but it cannot compute what is newer than a bare
+SHA. So nothing ever proposed a re-pin, nobody did it by hand, and the fleet
+drifted: **eight of ten repos ended up pinning between two and four different
+catalog commits, six of them four**, which meant a repo's conformance checkers
+came from one commit and the jobs they gate from three others. Nothing broke,
+which is why nothing noticed. A catalog consumed at nine versions at once is a
+single source of truth in name only.
+
+The fix is a real release, cut by CI, so Dependabot has something to resolve:
+
+- **`.version` is a committed file**, `MAJOR.MINOR.PATCH`. Principle 14's
+  direction, unchanged: file → build → tag, never tag → build. The claim "this
+  is 1.20.0" arrives as a diff someone can challenge.
+- **`check-standard-ref` requires it to move** whenever a `job-*.yml` or a
+  checker changes — the same trigger that already forces `standard_ref`
+  forward. A catalog change nobody can name is a catalog change nobody can
+  adopt.
+- **CI tags `main` with it** after `ci-ok`, alongside the other housekeeping
+  that sits downstream of the rollup. Created once, never moved: if the tag
+  already exists on a different commit the job fails rather than repointing
+  something eleven repos may already pin.
+- **Dependabot opens the re-pin pull requests**, per repo, on its own schedule.
+  Each one is proved by that repo's own CI before it lands, so adoption keeps
+  the canary property — the thing a floating `@main` or `@latest` would throw
+  away along with reproducibility of old runs and any hope of a blast radius
+  smaller than the fleet.
+
+This is also the first time a version of this repo satisfies **Principle 16**.
+Until now nothing consumed the version string — the `# vX.Y.Z` comments in
+callers named releases that were never cut, two of them naming two different
+commits each — so by our own test there was no version, only bookkeeping that
+nothing validated and which duly drifted. Dependabot deciding that `v1.20.0`
+supersedes `v1.19.0` is a consumer, and the version now earns its keep.
+
+### One catalog version per repo
+
+Rule **LOCK** in `check-ci-conformance`: every `aurum-alpha/workflows` pin in a
+repo — across all of `.github/workflows/`, not only `ci.yml` — must name the
+same commit. Lockstep. A repo drawing jobs from several commits is running
+several standards and is only nominally standardised.
+
+The rule reaches a repo when that repo re-pins, because a caller's checkers
+come from its own `standard_ref`. So no repo goes red unexpectedly: the act of
+re-pinning is also what makes it single-version.
 
 ## Publishing
 
@@ -1182,7 +1235,7 @@ only thing they added was somewhere else for a bug to live.
 
 **This is Principle 12 held, not waived.** One way per capability does not
 require that the one way be ours. What the catalog contributes here is the
-decision and the pin — recorded in `check-caller-thinness`'s `EXTERNAL_JOBS`
+decision and the pin — recorded in `check-catalog-adoption`'s `EXTERNAL_JOBS`
 and `check-caller-permissions`'s `EXTERNAL_PERMISSIONS`, so a caller reaching
 for some other scanner, or for an unrecorded third-party workflow, still fails
 conformance. A repo-local body would still be drift; this is not one.
@@ -1214,7 +1267,7 @@ cheaper of the two.
   requests it whether or not the upload runs.
 * **No `secrets:`.** `secrets: inherit` into the catalog is right and required;
   into a third party it is a standing grant of every token the repo holds, for
-  a job that needs none. `check-caller-thinness` refuses it.
+  a job that needs none. `check-catalog-adoption` refuses it.
 * **DAG position: a standard gate.** It belongs to the standard-gate tier with
   `fmt`, `vet`, `test-unit` and the linters: it takes the same `needs:` on the
   repo's build jobs that the rest of that tier takes, it is named in `ci-ok`
@@ -1596,10 +1649,10 @@ will.
 | 6 | Concurrency everywhere | `check-ci-conformance` P6 | gated |
 | 7 | BUILD ONCE | — | **review only** |
 | 8 | No multi-stage prod Dockerfiles | — | **review only** |
-| 9 | Canonical script names | `check-caller-thinness` | gated¹ |
+| 9 | Canonical script names | `check-catalog-adoption` | gated¹ |
 | 10 | Lint output through standard channels | — | **review only** |
 | 11 | Registry auth in user-level npmrc | — | **review only** |
-| 12 | One way per capability | `check-caller-thinness` | gated¹ |
+| 12 | One way per capability | `check-catalog-adoption` | gated¹ |
 | 13 | Provenance in every artifact | — | **review only** |
 | 14 | A version is a commit, not a tag | — | **review only** |
 | 15 | The repo is versioned, not the artifact | — | **review only** |

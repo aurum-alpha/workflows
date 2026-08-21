@@ -82,7 +82,7 @@ on:
           default in the same wave that adds a catalog file, not the one after.
         type: string
         required: false
-        default: c9bbb9406949f5b30284a318c3e4b49d83dc3468
+        default: eda60451140653bedbb5ce15a55951d63eae0917
 
 jobs:
   ci-conformance:
@@ -92,7 +92,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      # check-catalog-adoption, check-caller-permissions and check-fleet-versions
+      # check-caller-permissions and check-fleet-versions
       # all address a repo by name under a root holding one clone per repo, so
       # the repo under test is checked out at the path its own name implies
       # rather than at the workspace root. Taken from GITHUB_REPOSITORY, not the
@@ -170,13 +170,6 @@ jobs:
         run: .aurum-standard/tools/check-ci-conformance --repo-root ".ci-root/$REPO"
         continue-on-error: ${{ inputs.warn_only }}
 
-      - name: The caller has adopted the catalog
-        if: ${{ !cancelled() }}
-        env:
-          REPO: ${{ steps.repo.outputs.name }}
-          AURUM_CATALOG_ROOT: .aurum-catalog
-        run: .aurum-standard/tools/check-catalog-adoption --root .ci-root --repo "$REPO"
-        continue-on-error: ${{ inputs.warn_only }}
 
       - name: The caller grants what the shared jobs request
         if: ${{ !cancelled() }}

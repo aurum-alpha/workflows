@@ -1,0 +1,168 @@
+# Fleet capability: send this run's coverage and test results to Codecov, once,
+# from one job (CI_STANDARD Principle 12 — one way per capability).
+#
+# It exists because the upload used to live inside each test-unit job, and a
+# test-unit job therefore reported one conclusion for two unrelated questions:
+# did the tests pass, and did a third-party SaaS accept an HTTP POST. Callers
+# gate image-build on test-unit, so the second question was silently blocking
+# the first one's downstream. On 2026-08-21 every private repo's Dependabot runs
+# went red at "Upload coverage to Codecov" — the Dependabot secret store had no
+# CODECOV_TOKEN, so the token rendered empty and Codecov refused the tokenless
+# upload — and image-build, image-starts and image-publish were SKIPPED in every
+# one of those runs. Nothing was wrong with the code. The images simply never
+# got built, because an upload failed.
+#
+# So the split is along the question, not along convenience: test-unit answers
+# "do the tests pass" and nothing else, and this job answers "did Codecov take
+# it". Callers put this in ci-ok's needs and nothing else downstream of it, so a
+# Codecov outage turns one job red and leaves the pipeline running.
+#
+# It DISCOVERS its inputs rather than being told what to expect. The test jobs
+# name their artifacts `coverage-*` and `testresults-*`; this globs those
+# patterns and uploads whatever is there. There is deliberately no count of
+# expected reports anywhere: a unit with no tests uploads nothing, a unit whose
+# tests failed uploads no coverage, and a repo may have one test job or five.
+# Any design that recorded the expected number would have to be right about all
+# of that in every repo, forever, and would be wrong the first time a unit
+# gained or lost tests.
+#
+# That is also what makes ONE Codecov call possible, which is the second reason
+# this job exists. Codecov computes and posts a commit status as soon as it has
+# a report (codecov.notify.after_n_builds defaults to 1). With uploads arriving
+# from separate jobs finishing minutes apart, it scored partial data and
+# re-scored on each arrival — coverage results that visibly drifted for several
+# minutes after CI went green. One upload per run means there is no partial
+# state to score, and no after_n_builds to keep in sync with the job graph.
+#
+# The cost, stated plainly: flags are per-upload, so a single merged upload
+# cannot carry a different flag per unit and the per-unit flag breakdown goes
+# away. Nothing gates on it — every repo's codecov.yml configures
+# project.default and patch.default only. Codecov components
+# (component_management), which slice by PATH rather than by upload, give the
+# same breakdown back without reintroducing a per-unit upload.
+name: job-coverage-upload
+
+on:
+  workflow_call:
+    inputs:
+      coverage_pattern:
+        description: >-
+          Artifact-name glob for coverage reports. The default is the fleet
+          convention and no caller should need to change it; it is an input
+          only so a repo introducing a new producer can be tested without
+          editing the catalog first.
+        type: string
+        default: coverage-*
+      testresults_pattern:
+        description: Artifact-name glob for junit test reports.
+        type: string
+        default: testresults-*
+      runner:
+        description: >-
+          Override runs-on. Leave empty for the fleet default (Principle 4
+          escape hatch).
+        type: string
+        default: ""
+
+jobs:
+  coverage-upload:
+    runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-26.04' }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      # Codecov resolves file paths against the repository tree, so the tree
+      # has to be here even though every report arrives by artifact.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # merge-multiple: false, deliberately. Three units each emit a file
+      # called coverage-final.json; flattened into one directory they overwrite
+      # each other and the last one wins, silently. Per-artifact subdirectories
+      # keep them distinct.
+      #
+      # A pattern matching zero artifacts is NOT an error here — download-artifact
+      # skips its download loop and reports "Total of 0 artifact(s) downloaded"
+      # with a success. That is the whole-repo-failed case and it is handled by
+      # the census below, not by this step.
+      - name: Collect coverage reports
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: ${{ inputs.coverage_pattern }}
+          merge-multiple: false
+          path: _coverage
+
+      - name: Collect test reports
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: ${{ inputs.testresults_pattern }}
+          merge-multiple: false
+          path: _testresults
+
+      # An explicit file list rather than Codecov's own search. The Go profile
+      # is called go-unit.out and the JS reports are coverage-final.json /
+      # lcov.info; whether the CLI's built-in search recognises all of those is
+      # a heuristic this job would be relying on silently. Globbing what
+      # actually landed and naming it is deterministic, and it produces the
+      # census in the same step.
+      - name: What landed
+        id: census
+        shell: bash
+        run: |
+          set -euo pipefail
+          list() {
+            find "$1" -type f 2>/dev/null | sort | paste -sd, -
+          }
+          cov="$(list _coverage)"
+          res="$(list _testresults)"
+          {
+            echo "coverage=${cov}"
+            echo "testresults=${res}"
+          } >> "$GITHUB_OUTPUT"
+
+          n_cov=$(find _coverage -type f 2>/dev/null | wc -l | tr -d ' ')
+          n_res=$(find _testresults -type f 2>/dev/null | wc -l | tr -d ' ')
+          echo "coverage files: ${n_cov}"
+          echo "test report files: ${n_res}"
+          find _coverage _testresults -type f 2>/dev/null | sed 's/^/  /' || true
+
+          # Zero is a real outcome, not a bug: every unit may have failed, or
+          # this repo's units may have no tests yet (Phase F3). Say so rather
+          # than uploading an empty report, which Codecov rejects and which
+          # would fail this job for the one reason that is not Codecov's fault.
+          if [ "${n_cov}" -eq 0 ]; then
+            echo "::warning title=No coverage to upload::No artifact matched \
+          '${{ inputs.coverage_pattern }}'. Either every unit's tests failed — \
+          coverage is only published by a unit that passed — or no unit in this \
+          repo has tests yet."
+          fi
+
+      # fail_ci_if_error, on both uploads and on purpose. A failed upload is the
+      # thing this job is for; swallowing it would leave the same silence that
+      # made the test-results upload lie for months, reporting success while
+      # every Dependabot run was being refused for want of a token.
+      - name: Upload coverage to Codecov
+        if: steps.census.outputs.coverage != ''
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          # Org upload token requires the target repo slug.
+          slug: ${{ github.repository }}
+          files: ${{ steps.census.outputs.coverage }}
+          disable_search: true
+          fail_ci_if_error: true
+          # Actions runners intermittently fail the Codecov CLI GPG key fetch.
+          skip_validation: true
+
+      # !cancelled(), so this still runs when the coverage upload above failed.
+      # They fail together far more often than separately — one outage, one
+      # missing token — and reporting both in one run is the difference between
+      # one re-run and two.
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() && steps.census.outputs.testresults != '' }}
+        uses: codecov/test-results-action@0fa95f0e1eeaafde2c782583b36b28ad0d8c77d3 # v1.2.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: ${{ github.repository }}
+          files: ${{ steps.census.outputs.testresults }}
+          disable_search: true
+          fail_ci_if_error: true

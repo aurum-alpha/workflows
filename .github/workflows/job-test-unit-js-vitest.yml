@@ -28,7 +28,17 @@ on:
         type: string
         required: true
       flag:
-        description: Codecov flag. Defaults to the unit directory name.
+        description: >-
+          DEPRECATED and inert. It named the Codecov flag for this unit's
+          upload, and there is no per-unit upload any more — job-coverage-upload
+          sends one merged report for the whole run, and a flag is a property of
+          an upload. Codecov components (component_management), which slice by
+          path, are where a per-unit breakdown comes from now.
+
+          Still declared because deleting an input a caller passes is an
+          immediate hard error at workflow startup, and event-manager passes
+          `flag: react-unit-tests` today. The caller wave drops it; the release
+          after that deletes this.
         type: string
         default: ""
 
@@ -115,6 +125,9 @@ jobs:
         id: census
         working-directory: ${{ inputs.workdir }}
         shell: bash
+        env:
+          WD: ${{ inputs.workdir }}
+          UNIT: ${{ inputs.dir }}
         run: |
           set -euo pipefail
           count=$(find "${{ inputs.dir }}" \
@@ -122,6 +135,27 @@ jobs:
             -o -name '*.spec.ts'  -o -name '*.spec.tsx' \) \
             -not -path '*/node_modules/*' 2>/dev/null | wc -l | tr -d ' ')
           echo "count=${count}" >> "$GITHUB_OUTPUT"
+
+          # The junit filename was computed in two places with two different
+          # rules: the vitest invocation substituted `.` -> `root`, and the
+          # upload step interpolated inputs.dir raw. For every unit but `.` they
+          # agreed, so the mismatch only broke the repo shape where the workdir
+          # IS the unit — the upload looked for `test-report-..junit.xml`, which
+          # never exists. Computed once here and consumed by name from now on.
+          echo "junit=test-report-${UNIT//./root}.junit.xml" >> "$GITHUB_OUTPUT"
+
+          # Artifact names are a namespace shared by every job in the caller's
+          # run, so this has to be unique per test job without knowing the
+          # caller's job id (a called workflow cannot see it — github.job here
+          # reads `test-unit`, the id inside THIS file). workdir and dir are
+          # what distinguish the callers, so they are the key. `.` is legal in
+          # an artifact name but reads as a typo next to a real directory, so it
+          # spells itself out.
+          key="${WD}-${UNIT}"
+          key="${key//\//-}"
+          key="${key//./root}"
+          echo "key=${key}" >> "$GITHUB_OUTPUT"
+
           if [ "${count}" -eq 0 ]; then
             echo "::warning title=No tests for ${{ inputs.dir }}::This unit has \
           no test files. CI cannot tell you whether it works. Tracked as \
@@ -185,24 +219,34 @@ jobs:
             --passWithNoTests \
             --coverage "${excludes[@]}" \
             --reporter=default --reporter=junit \
-            --outputFile.junit="test-report-${UNIT//./root}.junit.xml"
+            --outputFile.junit="${{ steps.census.outputs.junit }}"
 
-      - name: Upload coverage to Codecov
-        # Nothing ran, so there is no coverage to upload and Codecov would fail
-        # the job on an empty report — which would defeat the warn-not-block
-        # decision by another route.
+      # Handed to job-coverage-upload rather than sent to Codecov from here.
+      # This job now answers one question — do the tests pass — and a Codecov
+      # outage can no longer skip the caller's image-build by failing it.
+      # See job-coverage-upload.yml for why that split exists.
+      #
+      # No `if: !cancelled()` on this one, so it inherits success(): a unit
+      # whose tests failed publishes NO coverage, and the upload job simply
+      # finds one fewer artifact. That is the behaviour this replaced (the old
+      # coverage step was gated the same way) and it is also what makes the
+      # collector countless — there is no expected number to be wrong about.
+      - name: Publish coverage for the upload job
         if: steps.census.outputs.count != '0'
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          directory: ${{ inputs.workdir }}/coverage
-          flags: ${{ inputs.flag || inputs.dir }}
-          fail_ci_if_error: true
+          name: coverage-vitest-${{ steps.census.outputs.key }}
+          path: ${{ inputs.workdir }}/coverage
+          if-no-files-found: error
+          retention-days: 1
 
-      - name: Upload test results to Codecov
-        # Runs on test failure too — failed runs are the analytics signal.
+      # !cancelled(), unlike coverage above: a failed run IS the test-analytics
+      # signal, which is why the step this replaces carried the same condition.
+      - name: Publish test results for the upload job
         if: ${{ !cancelled() && steps.census.outputs.count != '0' }}
-        uses: codecov/test-results-action@0fa95f0e1eeaafde2c782583b36b28ad0d8c77d3 # v1.2.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: ${{ inputs.workdir }}/test-report-${{ inputs.dir }}.junit.xml
+          name: testresults-vitest-${{ steps.census.outputs.key }}
+          path: ${{ inputs.workdir }}/${{ steps.census.outputs.junit }}
+          if-no-files-found: error
+          retention-days: 1

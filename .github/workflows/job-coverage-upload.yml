@@ -109,21 +109,41 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          list() {
-            find "$1" -type f 2>/dev/null | sort | paste -sd, -
+
+          # A DENYLIST of presentation assets, not an allowlist of coverage
+          # formats, and the direction matters. vitest's --coverage writes an
+          # istanbul HTML report next to the data: base.css, favicon.png,
+          # prettify.js, one .html per source file. The first version of this
+          # step globbed every file and handed all of it to Codecov, which
+          # reported "Found 25 coverage files" for a run that produced four,
+          # and warned that most of them were on its own exclusion list.
+          #
+          # An allowlist of known formats would have fixed that and introduced
+          # a worse failure: a producer emitting a format nobody listed would
+          # upload NOTHING, silently, and look identical to a repo with no
+          # tests. Denying assets fails the safe way instead — the worst case
+          # is one junk file uploaded, not coverage dropped on the floor.
+          assets() {
+            find "$1" -type f \
+              ! -name '*.html' ! -name '*.htm'  ! -name '*.css' \
+              ! -name '*.js'   ! -name '*.png'  ! -name '*.svg' \
+              ! -name '*.ico'  ! -name '*.gif'  ! -name '*.jpg' \
+              ! -name '*.woff' ! -name '*.woff2' ! -name '*.ttf' \
+              2>/dev/null | sort
           }
-          cov="$(list _coverage)"
-          res="$(list _testresults)"
+          cov="$(assets _coverage | paste -sd, -)"
+          res="$(assets _testresults | paste -sd, -)"
           {
             echo "coverage=${cov}"
             echo "testresults=${res}"
           } >> "$GITHUB_OUTPUT"
 
-          n_cov=$(find _coverage -type f 2>/dev/null | wc -l | tr -d ' ')
-          n_res=$(find _testresults -type f 2>/dev/null | wc -l | tr -d ' ')
-          echo "coverage files: ${n_cov}"
-          echo "test report files: ${n_res}"
-          find _coverage _testresults -type f 2>/dev/null | sed 's/^/  /' || true
+          n_cov=$(assets _coverage | wc -l | tr -d ' ')
+          n_res=$(assets _testresults | wc -l | tr -d ' ')
+          n_all=$(find _coverage _testresults -type f 2>/dev/null | wc -l | tr -d ' ')
+          echo "reports to upload: ${n_cov} coverage, ${n_res} test results"
+          echo "(${n_all} files arrived; the rest are report assets)"
+          assets _coverage; assets _testresults
 
           # Zero is a real outcome, not a bug: every unit may have failed, or
           # this repo's units may have no tests yet (Phase F3). Say so rather
@@ -157,12 +177,25 @@ jobs:
       # They fail together far more often than separately — one outage, one
       # missing token — and reporting both in one run is the difference between
       # one re-run and two.
+      # codecov-action with report_type: test_results, NOT test-results-action.
+      # The dedicated action is deprecated and says so on every run: "This
+      # action is being deprecated in favor of 'codecov-action'. Please update
+      # CI accordingly to use 'codecov-action@v5' with 'report_type:
+      # test_results'." It also still ships a Node 20 entrypoint, which the
+      # runner now force-upgrades with a second warning.
+      #
+      # v7.0.0 is what the catalog already pins for coverage and it accepts
+      # report_type ("test_results" or "coverage", default "coverage") — so
+      # this is one action for both uploads rather than the v5 the warning
+      # names. One action, one pin, one thing to keep current.
       - name: Upload test results to Codecov
         if: ${{ !cancelled() && steps.census.outputs.testresults != '' }}
-        uses: codecov/test-results-action@0fa95f0e1eeaafde2c782583b36b28ad0d8c77d3 # v1.2.1
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: ${{ github.repository }}
+          report_type: test_results
           files: ${{ steps.census.outputs.testresults }}
           disable_search: true
           fail_ci_if_error: true
+          skip_validation: true

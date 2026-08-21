@@ -1100,11 +1100,10 @@ LOCAL_ALLOWLIST = {
     # all. So it is allow-listed with that reason, per Principle 19, and the
     # entry disappears the day this app leaves webpack.
     "event-manager": {
-        "server-php-composer",
+        "build",
         "server-php-ci4-test-unit",
         "server-php-ci4-static-analysis",
         "server-php-ci4-test-integration",
-        "package",
         "test-e2e",
         "client-ts-react-build",
     },

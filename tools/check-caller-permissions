@@ -59,15 +59,42 @@ EXTERNAL_PERMISSIONS = {
 }
 
 
+# Scopes ordered least to most privileged, so a union can keep the wider ask.
+_RANK = {"none": 0, "read": 1, "write": 2}
+
+
 def shared_job_permissions(repo_root: pathlib.Path) -> dict[str, dict[str, str]]:
-    """What each shared job asks for, keyed by workflow filename."""
-    wanted = {}
+    """What each shared job asks for, keyed by workflow filename.
+
+    The UNION across every job in the file, at the widest scope any of them
+    asks for. A caller grants permissions once for the whole `uses:`, so it
+    must hold what ANY job in the called workflow might request — GitHub
+    resolves that at startup, and a caller short of it fails with zero jobs
+    and no log.
+
+    This read one job at a time until job-osv-scan.yml, which has two: a
+    pull-request scan and a whole-tree scan, exactly one running per event.
+    Every other catalog file has a single job, so `wanted[name]` being
+    overwritten per job returned the right answer by having nothing to
+    overwrite. It would have gone on being right here too — both jobs ask for
+    the same three — which is the problem: the next multi-job file to ask for
+    different scopes would have had all but its last job silently ignored,
+    and the failure that produces is a startup_failure with nothing to read.
+    """
+    wanted: dict[str, dict[str, str]] = {}
     for path in sorted((repo_root / ".github" / "workflows").glob("job-*.yml")):
         doc = yaml.safe_load(path.read_text())
+        merged: dict[str, str] = {}
         for job in doc.get("jobs", {}).values():
             perms = job.get("permissions") or {}
-            if isinstance(perms, dict):
-                wanted[path.name] = {k: str(v) for k, v in perms.items()}
+            if not isinstance(perms, dict):
+                continue
+            for scope, level in perms.items():
+                level = str(level)
+                if _RANK.get(level, 0) >= _RANK.get(merged.get(scope, "none"), 0):
+                    merged[scope] = level
+        if doc.get("jobs"):
+            wanted[path.name] = merged
     return wanted
 
 

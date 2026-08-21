@@ -217,6 +217,49 @@ that is not yet true of the fleet is tracked as a GitHub issue in
     having no opinion — and an organisation with no opinion re-litigates the
     same decision every time someone starts a service.*
 
+20. **Production is the default; a job id marks the exception.** The point of
+    CI is to produce a production-worthy build, so a `-prod` suffix says
+    nothing — every unsuffixed job is already on that path. What needs marking
+    is the opposite: a job whose output is only good enough for tests. That one
+    takes `-dev`.
+
+    The test is whether a reviewer can tell, from the job id alone, whether
+    that job's output is allowed to ship. `install` and `install-prod` fail it
+    in the worst way, by implying the unsuffixed one is the shippable default
+    when it is the test-only tree.
+
+    Name the tool, not the framework, when the job is about dependencies:
+    `server-go-mod` is named for `go.mod` and `server-php-composer` for
+    composer, because neither dependency manager is framework-specific and
+    naming them for the framework invites a second copy the day a second
+    framework appears in the same language.
+
+21. **A dependency tree that ships is a build output. One that does not is a
+    cache.** Which one you have is decided by the language, not by preference,
+    and the two are not interchangeable.
+
+    Compiled and bundled stacks discard their dependencies: a Go binary is
+    static and `node_modules` is transpiled away, so the module cache and the
+    pnpm store are pure speed. They get no job of their own — every job
+    installs what it needs from a lockfile-keyed cache — and losing one costs
+    time, never correctness. `go-mod` is the apparent exception and is not one:
+    it exists for `go mod verify`, which is a claim, not a cache.
+
+    Interpreted stacks ship theirs. PHP has no compile step, so `vendor/` is
+    copied into the image and *is* part of the artifact. That makes it a build
+    output under Principle 7: built once, published as an artifact, downloaded
+    by whatever assembles the image. Never handed between jobs through
+    `actions/cache`.
+
+    The distinction is not pedantry, because a cache fails open. *Learned the
+    hard way 2026-08-21: event-manager's two composer jobs each installed only
+    `if` composer's download cache had missed, and wrote their `vendor/` cache
+    on the same condition. On the ordinary run — lockfile unchanged, download
+    cache warm — both jobs installed nothing, published nothing, and passed.
+    All four consumers quietly fell through to installing for themselves, so
+    the vendor tree that shipped was built by the packaging job rather than by
+    the install job named for it. Nothing was ever red.*
+
 ## Standard job DAG — build first, per artifact
 
 **Fail fast.** If the thing does not compile, there is nothing worth testing —
@@ -1291,10 +1334,22 @@ cheaper of the two.
 
 ### PHP job catalog (event-manager)
 
-Same ids where meaningful: `builder-image` (tier 2, reusable) → `install`
-(composer dev/prod) → `build` → `test-unit` / `static-analysis` in parallel →
-`test-integration` (service containers) → `test-e2e` (compose) → `image` →
+Same ids where meaningful: `builder-image` (tier 2, reusable) →
+`server-php-composer` → `package` → `test-unit` / `static-analysis` in parallel
+→ `test-integration` (service containers) → `test-e2e` (compose) → `image` →
 `ci-ok`. Stays repo-local until a second PHP repo exists.
+
+There is one composer job, not two, and it is the production one — per
+Principle 20 the unsuffixed id is the shippable path. It always installs
+`--no-dev` and uploads `vendor/` as an artifact, because in PHP that tree is
+part of the image rather than scaffolding for building it (Principle 21).
+
+There is no dev-dependency job. The dev tree does not ship, so it is a cache
+like `node_modules`: `test-unit`, `static-analysis` and `test-integration` each
+install from the composer cache themselves. That is the same shape the TS
+catalog already has, where `client-ts-react-install` was deleted for the same
+reason — a job that exists only to write a cache another job reads is a
+dependency edge bought for nothing.
 
 ### Embedded job catalog (lid-firmware — PlatformIO)
 

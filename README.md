@@ -1,11 +1,32 @@
 # aurum-alpha/workflows
 
-Shared CI infrastructure for the fleet: the agreed standard, and (phase C)
-reusable workflows, composite actions, and stack images.
+The definition of how Aurum Alpha builds software — the standards themselves,
+and the shared CI infrastructure that implements them: reusable workflows,
+composite actions, conformance checkers and shared configuration.
 
-- [CI_STANDARD.md](CI_STANDARD.md) - the fleet CI doctrine, job catalog, and
-  phased build-out plan. Decisions live under Principles; consult before any
-  CI change in any repo.
+Start with **[STANDARDS.md](STANDARDS.md)** — the charter. It says what a
+standard is here, what makes one binding, and indexes the rest.
 
-Phase A execution state is tracked in the standard's phase plan; work lands
-repo-by-repo as PRs referencing this document.
+| | |
+|---|---|
+| [STANDARDS.md](STANDARDS.md) | The charter: scope, the enforcement law, the tiers, how a standard is added |
+| [AGENTS.md](AGENTS.md) | How coding agents work in an Aurum Alpha repository |
+| [standards/ci.md](standards/ci.md) | Pipeline doctrine, the shared job catalog, build and release |
+| [standards/enforcement.md](standards/enforcement.md) | Every rule, its gate, and the tier it actually reaches |
+
+Consult the relevant standard before any change it governs, in any repository.
+
+## What is here
+
+- `.github/workflows/job-*.yml` — the shared job catalog. One reusable workflow
+  per capability, consumed by every repository that has that capability.
+- `tools/check-*` — the conformance checkers. Each runs both inside a
+  repository's own CI and as a fleet sweep, from one source.
+- `config/`, `setup/` — shared configuration and composite actions.
+- `fleet-versions.json` — toolchain versions the fleet standardizes on.
+
+## Where work is tracked
+
+Gaps in the standards or the catalog are issues **in this repository**. A
+repository that does not yet meet a standard has work in **its own** tracker —
+see the charter's "Non-compliance is tracked where the code is".

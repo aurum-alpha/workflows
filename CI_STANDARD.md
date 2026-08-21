@@ -1245,50 +1245,90 @@ reachability filter, so noisier. Drop govulncheck and the "is it reachable"
 answer goes; drop osv-scanner and every pnpm lockfile in the fleet is
 unscanned, which was the state until this gate existed.
 
-#### The catalog does not wrap it
+#### The catalog wraps it, and only because the event decides the workflow
 
-There is no `job-osv-scanner.yml`. Callers call Google's own reusable workflow
-directly:
+Upstream ships **two** reusable workflows, and which one is right depends on
+the event:
+
+| workflow | event | reports |
+|---|---|---|
+| `osv-scanner-reusable-pr.yml` | `pull_request`, `merge_group` | only what the change **introduces** |
+| `osv-scanner-reusable.yml` | `push`, `schedule` | **everything** in the tree |
+
+Every repo here called the second one on both, which judges a pull request
+against the whole backlog. The only lever that stops that blocking unrelated
+work is `fail-on-vuln: false` — and it also stops the scan blocking a
+vulnerability the pull request just added. One flag, two questions, and the
+answer to the more important one was lost silently.
+
+`job-osv-scan.yml` selects by event and gives them separate answers:
 
 ```yaml
   osv-scanner:
-    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@6e4298ebc4db23e847df9b2e2de2939d6f066c67 # v2.5.1
+    uses: aurum-alpha/workflows/.github/workflows/job-osv-scan.yml@<sha> # vX.Y.Z
     permissions:
       actions: read
       contents: read
       security-events: write
     with:
-      runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
-      upload-sarif: false
-      fail-on-vuln: false          # stage 1 — see the three stages below
       scan-args: |-
         --lockfile=./pnpm-lock.yaml
 ```
 
-We wrote a wrapper first and then deleted it, and the reason is worth keeping.
-The wrapper resolved a JSON `lockfiles:` array into `-L` flags, installed a Go
-toolchain in six repos that have no Go so `go run` could fetch the scanner,
-parsed the JSON report, applied an `allow:` list and implemented `warn_only`.
-Every one of those has an upstream equivalent: `scan-args` takes `--lockfile=`
-directly, the action runs a published container so no toolchain is fetched,
-`osv-scanner.toml` accepts advisories with a reason attached, and
-`fail-on-vuln:` is `warn_only` under its own name. Eighty lines of ours stood
-between the caller and a scan the upstream workflow already performs, and the
-only thing they added was somewhere else for a bug to live.
+`fail_on_new` defaults **true** — a pull request is blocked by what it
+introduces, from day one, in a repo with a backlog. `fail_on_existing`
+defaults **false** — the Principle 3 stabilization window, held per repo until
+its count reaches zero, then flipped. That is the window applied to the half
+that deserves it rather than to both because they shared a flag.
 
-**This is Principle 12 held, not waived.** One way per capability does not
-require that the one way be ours. What the catalog contributes here is the
-decision and the pin — recorded in `check-ci-conformance`'s `EXTERNAL_JOBS`
-and `check-caller-permissions`'s `EXTERNAL_PERMISSIONS`, so a caller reaching
-for some other scanner, or for an unrecorded third-party workflow, still fails
-conformance. A repo-local body would still be drift; this is not one.
+**This is not the wrapper we deleted.** The earlier `job-osv-scanner.yml`
+resolved a JSON `lockfiles:` array into `-L` flags, installed a Go toolchain in
+six repos that have no Go so `go run` could fetch the scanner, parsed the JSON
+report, applied an `allow:` list and implemented `warn_only`. Every one of
+those had an upstream equivalent, and eighty lines of ours stood between the
+caller and a scan upstream already performs. Deleting it was right and this
+does not undo it: **every line of `job-osv-scan.yml` forwards; nothing in it
+scans.** The test that keeps the two apart is whether the wrapper would still
+be needed if the capability had one upstream entry point. The old one would
+not. This one is only needed *because* there are two.
 
-**What it costs, stated:** the fleet can no longer re-pin in one place. Bumping
-osv-scanner is a sweep over eleven callers instead of an edit to one file, and
-`EXTERNAL_PERMISSIONS` is a transcription of an upstream `permissions:` block
-that nothing resolves for us, so it must be re-read against upstream when the
-pin moves. That is the price of not maintaining a wrapper, and it is the
-cheaper of the two.
+**What it buys.** The alternative to wrapping is two jobs per caller with
+opposing `if:` conditions, two permissions blocks and the lockfile list written
+twice — in ten repos. It also puts `upload_sarif` in one place, and that turned
+out to matter within the day: the default was false because code scanning on a
+private repository requires a GitHub Code Security license and nine of the
+eleven repos are private. That license is now held. Flipping the default is one
+edit here rather than ten call sites, which is the whole argument for a wrapper
+made concrete faster than the argument was written down.
+
+**`upload_sarif` now defaults true**, because findings belong in the Security
+tab — triaged, dated, assignable — rather than in a job log nobody opens. Two
+things keep that honest. A license is org-wide but **enablement is per
+repository**, so acceptance is not guaranteed by billing alone; and an upload
+that is refused fails the step and takes the scan's verdict with it, so a wrong
+assumption here turns every osv job in the fleet red at once. It is therefore
+rolled out one repo at a time, canary first, on the same pattern as every other
+fleet-wide flip — the caller-side lever is `upload_sarif: false` with the reason
+at the call site.
+
+**What it costs, stated.** A third-party pin now sits one level of indirection
+away from the call site, which was a real part of the argument for calling
+upstream directly. Re-pinning becomes an edit here plus a caller sweep to move
+the version — the same sweep as before, minus the ten `scan-args` blocks that
+no longer need touching. `EXTERNAL_JOBS` and `EXTERNAL_PERMISSIONS` stay until
+the last direct caller is migrated; they are what stops a repo reaching for an
+unrecorded third-party workflow.
+
+**First of its kind, twice.** This is the first catalog file that calls another
+reusable workflow (three levels: caller → here → upstream; GitHub allows four),
+and the first with more than one job. The second fact made a latent bug in
+`check-caller-permissions` reachable: it read one job's `permissions` per file
+and let the last win, which was correct only while every catalog file had
+exactly one job. It now takes the union at the widest scope any job requests,
+because a caller grants permissions once for the whole `uses:` and must hold
+what any job might ask for. Both jobs here request the same three, so the old
+code would have been right by luck — which is why it was worth fixing before
+the next multi-job file made it wrong.
 
 #### Wiring
 

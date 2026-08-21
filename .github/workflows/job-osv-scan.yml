@@ -1,0 +1,124 @@
+# Fleet capability: lockfile vulnerability scanning (CI_STANDARD Principle 12 —
+# one way per capability).
+#
+# This wrapper exists for ONE reason: upstream ships two workflows and the
+# right one depends on the event.
+#
+#   osv-scanner-reusable-pr.yml   scans base and head and reports only what
+#                                 the change INTRODUCES
+#   osv-scanner-reusable.yml      scans the tree and reports EVERYTHING
+#
+# Calling the second one on pull requests — which every repo in this fleet did
+# until now — judges a pull request against the whole backlog. The only way to
+# stop that blocking unrelated work is `fail-on-vuln: false`, which also stops
+# it blocking a vulnerability the pull request just added. One knob, two
+# meanings, and the more important of the two silently lost.
+#
+# Split by event, the two questions get separate answers: a pull request is
+# blocked by what it introduces (fail_on_new, default true), while the standing
+# backlog warns until it is paid down (fail_on_existing, default false). That
+# is CI_STANDARD Principle 3's stabilization window applied to the half that
+# deserves it, instead of to both halves because they shared a flag.
+#
+# NOT a re-implementation. The catalog's earlier job-osv-scanner was eighty
+# lines of Python, a JSON input and a Go toolchain installed in six repos with
+# no Go, all to reach a scan upstream already performs — deleting it was right
+# and this does not undo it. Every line below forwards; nothing here scans.
+#
+# The first catalog file that calls another reusable workflow. That nesting is
+# what makes the split cost one stub per repo instead of two jobs, two `if:`
+# conditions and a duplicated lockfile list per repo. GitHub allows four levels
+# and this uses three: caller ci.yml -> here -> google.
+name: job-osv-scan
+
+on:
+  workflow_call:
+    inputs:
+      scan-args:
+        description: >-
+          Newline-separated osv-scanner arguments, and in practice the
+          repo's lockfile list. Required, and named rather than discovered:
+          the upstream default is a recursive walk, so a scan that finds its
+          own inputs stops covering a file the day it moves and reports the
+          same clean result either way. A named lockfile that is missing
+          exits 127 and writes no report, which fails the job.
+        type: string
+        required: true
+      runner:
+        description: >-
+          Override runs-on. Leave empty for the fleet default. Set to a
+          GitHub-hosted label where a repo must not build on the fleet
+          (CI_STANDARD Principle 4).
+        type: string
+        default: ""
+      fail_on_new:
+        description: >-
+          Block a pull request that introduces a vulnerability the base branch
+          does not have. Default true, and it should stay true: a repo with a
+          backlog can still merge, so long as it is not adding to it. Set false
+          only with a reason at the call site.
+        type: boolean
+        default: true
+      fail_on_existing:
+        description: >-
+          Block a push to main on the standing backlog. Default FALSE — the
+          Principle 3 stabilization window, held per repo until its count
+          reaches zero (workflows#107), then flipped. The test for whether a
+          repo still deserves it is whether the count is falling.
+        type: boolean
+        default: false
+      upload_sarif:
+        description: >-
+          Upload results to Security > Code Scanning. Default TRUE.
+
+          It was false for as long as it was an entitlement rather than a
+          preference: code scanning on a private repository needs a GitHub
+          Code Security license, nine of the eleven repos here are private,
+          and left on without one the upload step fails and takes the scan's
+          verdict with it. That licence is now held, so the constraint is
+          gone and the default follows the thing we actually want — findings
+          in the Security tab, where they are triaged, dated and assignable,
+          instead of in a job log nobody opens.
+
+          The caller-side lever if a repo is not yet enabled: set false with
+          the reason at the call site. Enablement is per repository, so the
+          license alone does not guarantee acceptance — this default is being
+          rolled out one repo at a time for that reason.
+        type: boolean
+        default: true
+
+jobs:
+  # Exactly one of these runs. `full` takes everything that is not a pull
+  # request rather than naming `push`, so a schedule or a workflow_dispatch
+  # gets the whole-tree scan instead of nothing at all.
+  #
+  # Neither job has needs:, so neither can be suppressed by a skipped ancestor
+  # the way the prune callers were. The caller's own job is a different matter:
+  # if it hangs osv scanning off a gate that can skip, it needs !cancelled().
+  pr:
+    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+    permissions:
+      actions: read
+      contents: read
+      # Requested whether or not upload_sarif is set — the upstream job asks
+      # for it either way, so the caller must hold it either way.
+      security-events: write
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@6e4298ebc4db23e847df9b2e2de2939d6f066c67 # v2.5.1
+    with:
+      scan-args: ${{ inputs.scan-args }}
+      runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-26.04' }}
+      upload-sarif: ${{ inputs.upload_sarif }}
+      fail-on-vuln: ${{ inputs.fail_on_new }}
+
+  full:
+    if: github.event_name != 'pull_request' && github.event_name != 'merge_group'
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@6e4298ebc4db23e847df9b2e2de2939d6f066c67 # v2.5.1
+    with:
+      scan-args: ${{ inputs.scan-args }}
+      runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-26.04' }}
+      upload-sarif: ${{ inputs.upload_sarif }}
+      fail-on-vuln: ${{ inputs.fail_on_existing }}

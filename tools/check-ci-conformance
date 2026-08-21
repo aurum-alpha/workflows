@@ -147,11 +147,21 @@ def is_library(path: pathlib.Path) -> bool:
 # job id carries purpose, language and framework before the capability, and an
 # earlier version allowed exactly one segment, so `client-ts-react-build` read
 # as an orphan the first time a real three-token id appeared.
+#
+# `composer` sits beside `mod`, `build` and `install` because in PHP the
+# dependency install IS a build: `vendor/` ships inside the image rather than
+# being scaffolding for producing it (Principle 21). Leaving it out would mean
+# D2 — a build must not wait on a gate — silently stopped applying to the one
+# job in that repo which assembles what gets shipped.
+#
+# `-prod` was allowed here and is not any more. Principle 20 makes the
+# unsuffixed id the production path, so an `install-prod` job is now a naming
+# violation, and there is no reason for the checker to keep a seat warm for it.
 ROOT_RE = re.compile(
     r"^(changes|create-docker-[\w-]+-image"
-    r"|([a-z0-9]+-)*(mod|build|install(-prod)?))$"
+    r"|([a-z0-9]+-)*(mod|build|install|composer))$"
 )
-BUILD_RE = re.compile(r"(^|-)(build|install)$")
+BUILD_RE = re.compile(r"(^|-)(build|install|composer)$")
 GATE_RE = re.compile(r"(lint|typecheck|test|vet|gofmt|prettier|analysis|scanner|check|audit)")
 PUBLISH_RE = re.compile(r"(publish|release|package|image)")
 REPORTING_RE = re.compile(r"risk$")
@@ -1090,8 +1100,7 @@ LOCAL_ALLOWLIST = {
     # all. So it is allow-listed with that reason, per Principle 19, and the
     # entry disappears the day this app leaves webpack.
     "event-manager": {
-        "server-php-ci4-install",
-        "server-php-ci4-install-prod",
+        "server-php-composer",
         "server-php-ci4-test-unit",
         "server-php-ci4-static-analysis",
         "server-php-ci4-test-integration",

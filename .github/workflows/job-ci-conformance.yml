@@ -34,6 +34,25 @@ on:
         type: string
         required: false
         default: ""
+      warn_only:
+        description: >-
+          Report findings without failing the job. The stabilization window of
+          Principle 3, same contract as job-lint-js-eslint's input of the same
+          name: a repo adopting conformance against existing debt runs
+          warn-only while the debt burns down, then flips to a hard gate.
+
+          It exists because the alternative is worse in both directions. A repo
+          with debt either adopts the job and blocks every merge until the debt
+          is paid, or does not adopt it and nobody sees the debt at all —
+          which is how event-manager and client-manager, the two most
+          complicated pipelines in the fleet, ended up being the two nobody
+          checked.
+
+          Findings stay in the step log and the step is marked
+          failed-but-continued. Not a mode: a repo that leaves this true while
+          its count does not fall is not stabilizing, it is hiding.
+        type: boolean
+        default: false
       standard_ref:
         description: >-
           Commit of aurum-alpha/workflows to take the checkers from. A caller
@@ -63,7 +82,7 @@ on:
           default in the same wave that adds a catalog file, not the one after.
         type: string
         required: false
-        default: 15eb8311f5b83c2a1e98abff71426e9cedc78662
+        default: c9bbb9406949f5b30284a318c3e4b49d83dc3468
 
 jobs:
   ci-conformance:
@@ -73,7 +92,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      # check-caller-thinness, check-caller-permissions and check-fleet-versions
+      # check-catalog-adoption, check-caller-permissions and check-fleet-versions
       # all address a repo by name under a root holding one clone per repo, so
       # the repo under test is checked out at the path its own name implies
       # rather than at the workspace root. Taken from GITHUB_REPOSITORY, not the
@@ -149,13 +168,15 @@ jobs:
           REPO: ${{ steps.repo.outputs.name }}
           AURUM_CATALOG_ROOT: .aurum-catalog
         run: .aurum-standard/tools/check-ci-conformance --repo-root ".ci-root/$REPO"
+        continue-on-error: ${{ inputs.warn_only }}
 
-      - name: The caller is a thin stub
+      - name: The caller has adopted the catalog
         if: ${{ !cancelled() }}
         env:
           REPO: ${{ steps.repo.outputs.name }}
           AURUM_CATALOG_ROOT: .aurum-catalog
-        run: .aurum-standard/tools/check-caller-thinness --root .ci-root --repo "$REPO"
+        run: .aurum-standard/tools/check-catalog-adoption --root .ci-root --repo "$REPO"
+        continue-on-error: ${{ inputs.warn_only }}
 
       - name: The caller grants what the shared jobs request
         if: ${{ !cancelled() }}
@@ -163,6 +184,7 @@ jobs:
           REPO: ${{ steps.repo.outputs.name }}
           AURUM_CATALOG_ROOT: .aurum-catalog
         run: .aurum-standard/tools/check-caller-permissions --root .ci-root --repo "$REPO"
+        continue-on-error: ${{ inputs.warn_only }}
 
       - name: Toolchain versions match the fleet
         if: ${{ !cancelled() }}
@@ -170,6 +192,7 @@ jobs:
           REPO: ${{ steps.repo.outputs.name }}
           AURUM_CATALOG_ROOT: .aurum-catalog
         run: .aurum-standard/tools/check-fleet-versions --root .ci-root --repo "$REPO"
+        continue-on-error: ${{ inputs.warn_only }}
 
       # The shared eslint config says, in its own header, that a byte-identity
       # checker fails the build if one repo edits it. No such checker existed;
@@ -180,3 +203,4 @@ jobs:
           REPO: ${{ steps.repo.outputs.name }}
           AURUM_CATALOG_ROOT: .aurum-catalog
         run: .aurum-standard/tools/check-eslint-config --root .ci-root --repo "$REPO"
+        continue-on-error: ${{ inputs.warn_only }}

@@ -49,6 +49,30 @@ jobs:
       - name: Check our own ci.yml against CI_STANDARD
         run: tools/check-ci-conformance --repo-root .
 
+      # #126 renamed a checker and left job-ci-conformance.yml invoking the
+      # old path. It stayed invisible because standard_ref lags by design: the
+      # callers were still reading a tree where the old name existed, so the
+      # break was scheduled for whenever standard_ref next moved. This is the
+      # cheapest possible check for that, and it is here rather than in a
+      # checker because it is a question about this repo's own wiring.
+      - name: Every checker job-ci-conformance invokes exists
+        run: |
+          set -euo pipefail
+          missing=0
+          grep -oE '\.aurum-standard/tools/[a-z0-9-]+' \
+            .github/workflows/job-ci-conformance.yml | sort -u |
+          while read -r ref; do
+            path="tools/${ref##*/}"
+            if [ ! -x "$path" ]; then
+              echo "::error::job-ci-conformance.yml invokes ${ref}, but ${path}" \
+                   "does not exist or is not executable. A rename that misses this" \
+                   "file breaks every caller the moment standard_ref moves past it."
+              missing=1
+            fi
+            echo "  ok  ${path}"
+          done
+          exit $missing
+
       # The catalog's own CI never RUNS the image jobs — they only execute in
       # caller repos — so a bug in one of their shell loops reaches the fleet
       # unexamined. This is the one class of that bug cheap enough to check

@@ -1334,22 +1334,37 @@ cheaper of the two.
 
 ### PHP job catalog (event-manager)
 
-Same ids where meaningful: `builder-image` (tier 2, reusable) →
-`server-php-composer` → `package` → `test-unit` / `static-analysis` in parallel
-→ `test-integration` (service containers) → `test-e2e` (compose) → `image` →
-`ci-ok`. Stays repo-local until a second PHP repo exists.
+`builder-image` (tier 2, reusable) → `client-ts-react-build` → `build` →
+`test-unit` / `static-analysis` in parallel → `test-integration` (service
+containers) → `test-e2e` (compose) → `image` → `ci-ok`. Stays repo-local until
+a second PHP repo exists.
 
-There is one composer job, not two, and it is the production one — per
-Principle 20 the unsuffixed id is the shippable path. It always installs
-`--no-dev` and uploads `vendor/` as an artifact, because in PHP that tree is
-part of the image rather than scaffolding for building it (Principle 21).
+**One build, one artifact.** `build` runs the repo's Makefile and emits the
+complete deployable tree — PHP, vendor, React bundles, CSS, images, scripts.
+There is no separate composer job. In PHP the vendor tree ships (Principle 21),
+but it ships *inside* that artifact, so publishing it on its own would be
+handing an intermediate between jobs: an artifact, an assertion that it
+arrived, and a guard to stop the receiving job rebuilding it. One job needs
+none of that.
 
-There is no dev-dependency job. The dev tree does not ship, so it is a cache
-like `node_modules`: `test-unit`, `static-analysis` and `test-integration` each
-install from the composer cache themselves. That is the same shape the TS
-catalog already has, where `client-ts-react-install` was deleted for the same
-reason — a job that exists only to write a cache another job reads is a
-dependency edge bought for nothing.
+**No dev-dependency job.** The dev tree does not ship, so it is a cache like
+`node_modules`: `test-unit`, `static-analysis` and `test-integration` each
+install from the composer download cache themselves. Same shape as the TS
+catalog, where `client-ts-react-install` was deleted for the same reason — a
+job existing only to write a cache another job reads is an edge bought for
+nothing.
+
+**The React compile stays its own job**, because it is a compile and the three
+React gates hang off it. `build` consumes its artifact.
+
+**The gates hang off `build`, across both stacks.** They read source rather
+than build output, so the edge is ordering rather than data — the same shape as
+the fleet's eslint job, which needs `build` and lints source. Fail-fast was
+never a claim that gates consume build output; it is a refusal to spend gate
+time on a commit that cannot ship. Here that couples the stacks: PHP gates wait
+on the React compile. That is deliberate and it is why this repo can do it —
+it ships ONE image containing both stacks, so they are not independent
+deliverables, and a failed React compile means nothing ships.
 
 ### Embedded job catalog (lid-firmware — PlatformIO)
 

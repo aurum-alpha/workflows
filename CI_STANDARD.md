@@ -868,7 +868,12 @@ A repo needing more than that baseline cannot express it through
 - **Codecov everywhere it can be supported**: `codecov/codecov-action` **v7**
   (v7.0.0 current as of 2026-06; client-manager already on it), SHA-pinned,
   `fail_ci_if_error: true`, thresholds in `codecov.yml`. The upload happens
-  once per run, from `job-coverage-upload`, not from the test jobs.
+  once per run, from `job-coverage-upload`, not from the test jobs. **One
+  action for both kinds of report**: coverage and test results alike go
+  through `codecov-action`, the latter with `report_type: test_results`.
+  `codecov/test-results-action` is deprecated by its own maintainers and says
+  so on every run; using one action means one pin and one thing to keep
+  current.
 
 ### A test job answers one question; uploading is a different question
 

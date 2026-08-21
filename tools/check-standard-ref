@@ -66,6 +66,42 @@ def main() -> int:
     for f in touched:
         print(f"  {f}")
 
+    # The same change that moves standard_ref has to move .version, because a
+    # catalog change nobody can name is a catalog change nobody can adopt.
+    # CI tags each merge to main with the value of this file, and Dependabot
+    # resolves that tag to open re-pin pull requests across the fleet. Skip the
+    # bump and the tag does not move, so the change reaches no repo until
+    # somebody notices by hand — which is exactly how eight of ten repos ended
+    # up pinning between two and four different commits.
+    changed = [f for f in diff.splitlines() if f == ".version"]
+    if not changed:
+        print("\nFAIL: a shared job or checker changed but .version did not.\n"
+              "CI tags main with .version and Dependabot re-pins the fleet from "
+              "that tag; without a bump this change reaches nobody.")
+        return 1
+
+    def read(rev):
+        r = subprocess.run(["git", "show", f"{rev}:.version"],
+                           cwd=root, capture_output=True, text=True)
+        return r.stdout.strip() if r.returncode == 0 else ""
+
+    before, after = read(args.base), read("HEAD")
+    if before == after:
+        print(f"\nFAIL: .version is in the diff but still reads {after!r}.")
+        return 1
+    if not re.fullmatch(r"\d+\.\d+\.\d+", after):
+        print(f"\nFAIL: .version is {after!r}; expected MAJOR.MINOR.PATCH.")
+        return 1
+    if re.fullmatch(r"\d+\.\d+\.\d+", before):
+        lo = tuple(map(int, before.split(".")))
+        hi = tuple(map(int, after.split(".")))
+        if hi <= lo:
+            print(f"\nFAIL: .version went {before} -> {after}, which is not forward. "
+                  "Tags are created once and never moved, so a repeat or a "
+                  "decrease silently ships nothing.")
+            return 1
+    print(f"\n.version {before or '(absent)'} -> {after}")
+
     if declared == args.base:
         print(f"\nPASS: standard_ref is {declared[:7]}, the base of this "
               f"pull request")

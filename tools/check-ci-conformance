@@ -355,6 +355,37 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
         elif not comment or not re.match(r"#\s*v", comment.strip()):
             bad("PIN", f"{action}@{ref[:8]} has no trailing '# vX.Y.Z' comment")
 
+    # --- LOCK: one catalog version per repo ------------------------------
+    # A repo may not draw jobs from several commits of the catalog at once.
+    # The point of a shared catalog is that it is the single source of truth
+    # about how CI runs; a repo pinning four commits is consuming four
+    # different answers and is only nominally standardised.
+    #
+    # This was not hypothetical when the rule was written: eight of ten repos
+    # pinned between two and four commits, six of them four, which meant their
+    # conformance checkers came from one commit and the jobs they gate came
+    # from three others.
+    #
+    # Every workflow file counts, not just ci.yml. A release workflow calling
+    # the catalog from an older commit is the same divergence, and P18 already
+    # names those files as debt.
+    if wf_dir.is_dir():
+        pins: dict[str, list[str]] = {}
+        for wf in sorted(wf_dir.glob("*.yml")) + sorted(wf_dir.glob("*.yaml")):
+            for m in re.finditer(
+                r"uses:\s*aurum-alpha/workflows/[^@\s]+@([0-9a-f]{40})", wf.read_text()
+            ):
+                pins.setdefault(m.group(1), []).append(wf.name)
+        if len(pins) > 1:
+            detail = "; ".join(
+                f"{sha[:7]} in {', '.join(sorted(set(files)))}"
+                for sha, files in sorted(pins.items())
+            )
+            bad("LOCK", f"{len(pins)} different aurum-alpha/workflows commits are "
+                        f"pinned in this repo — {detail}. One catalog version at a "
+                        "time: a repo taking jobs from several commits is running "
+                        "several standards.")
+
     # --- RU: the rollup is shared, not copied ----------------------------
     # ci-ok is the one job every repo has and the one job none of them called
     # from the catalog, because a reusable workflow would rename the check to
@@ -436,18 +467,27 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
             # must name every job that can report a failure, which is every job
             # in the file — see rule D4, which is this same hole found once, for
             # publish alone, the hard way.
-            # The prune is the one job deliberately outside the rollup:
-            # housekeeping that fails says nothing about the commit, and a merge
+            # Housekeeping is the one shape deliberately outside the rollup:
+            # it fails without saying anything about the commit, and a merge
             # blocked on a registry API hiccup is worse than a week of extra
-            # blobs. Exempt by name, not by inference — and it must sit
-            # downstream of ci-ok, so it cannot run before the gates pass.
-            is_prune = "job-image-prune" in props.get("uses", "")
-            if "ci-ok" in jobs and job not in rollup and not is_prune:
-                bad("D6", f"'{job}' is not named in ci-ok's needs — the rollup "
-                          "cannot see it fail")
-            if is_prune and "ci-ok" not in graph[job]:
-                bad("D6", f"'{job}' prunes the registry but does not need ci-ok — "
-                          "housekeeping must not run ahead of the gates")
+            # blobs. The registry prune was the first; tagging a release is the
+            # second, and there will be others.
+            #
+            # The test is structural rather than a list of job names: a job is
+            # housekeeping exactly when the rollup is upstream of it. That
+            # placement is the whole claim — it cannot run before the gates
+            # pass, and the rollup has already reported by the time it starts.
+            # A name-based exemption said the same thing for one job while
+            # quietly leaving the next one to be discovered by failing.
+            housekeeping = "ci-ok" in ancestors(job, graph)
+            if "ci-ok" in jobs and job not in rollup and not housekeeping:
+                bad("D6", f"'{job}' is not named in ci-ok's needs, and the rollup "
+                          "is not upstream of it either — so the rollup cannot see "
+                          "it fail. Housekeeping goes downstream of ci-ok; "
+                          "everything else goes in its needs")
+            if "job-image-prune" in props.get("uses", "") and not housekeeping:
+                bad("D6", f"'{job}' prunes the registry but ci-ok is not upstream "
+                          "of it — housekeeping must not run ahead of the gates")
 
             # `image-build` ends in -build and is not one. D2 says a build never
             # needs a gate — build first, fail fast — and that is about SOURCE
@@ -481,7 +521,7 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
             # exist in the catalog", which is true and irrelevant.
             #
             # Whether a third-party workflow is ALLOWED is a different
-            # question, and check-caller-thinness owns it — EXTERNAL_JOBS
+            # question, and check-catalog-adoption owns it — EXTERNAL_JOBS
             # there is the approved list. Copying that list here would make
             # two places to update and one place to forget.
             m_uses = re.match(r"([\w.-]+)/([\w.-]+)/\.github/workflows/([\w.-]+\.ya?ml)@", uses.strip())
@@ -546,10 +586,21 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
             # commit was never built. It had also silently stopped running four
             # merges earlier, so production was told it was four commits older
             # than it was.
-            if re.search(r"^\s*git push\b", blob, re.M):
-                bad("CM", f"'{job}' runs `git push` — CI must not commit to the "
-                          "repository it is testing; emit generated files into "
-                          "the build output instead")
+            # A tag is not a commit. It changes no tree, cannot re-trigger an
+            # `on: push: branches` workflow, and Principle 14 says in as many
+            # words that "CI may create a tag afterwards as a human index".
+            # This rule is about commits — hiring-tracker stamping a version
+            # onto main and rebuilding itself — so it now matches what it says
+            # rather than every use of the verb.
+            for m in re.finditer(r"^\s*git push\b(?P<args>[^\n]*)", blob, re.M):
+                args = m.group("args")
+                if re.search(r"(^|\s)(--tags\b|(\S+\s+)?(refs/tags/|[\"']?v?\$\{?\w*[Tt]ag)"
+                             r"|\S+\s+\$\{?\{?\s*(env\.)?\w*[Tt]ag)", args):
+                    continue
+                bad("CM", f"'{job}' runs `git push{args.rstrip()}` — CI must not commit "
+                          "to the repository it is testing; emit generated files into "
+                          "the build output instead. (Pushing a tag is allowed — "
+                          "Principle 14.)")
 
             # --- D7: an image nothing runs ---------------------------------
             # Under the three-way split the build job never starts anything, so
@@ -650,7 +701,7 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
                 PUBLISH_RE.search(job)
                 and not REPORTING_RE.search(job)
                 and not NOT_A_PRODUCT_RE.search(job)
-                and "job-image-prune" not in uses
+                and "ci-ok" not in ancestors(job, graph)
             ):
                 reach = ancestors(job, graph)
                 if not any(

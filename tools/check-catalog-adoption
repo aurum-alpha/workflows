@@ -14,7 +14,7 @@ repo's ci.yml is a thin stub: every job either
   * is the local ci-ok rollup, whose needs: must cover every stub job, or
   * is an explicitly allow-listed repo-local job.
 
-Usage: check-caller-thinness [--root DIR] [--repo NAME ...]
+Usage: check-catalog-adoption [--root DIR] [--repo NAME ...]
   DIR contains one clone per repo (default: /workspace).
 Exit: 0 if every checked caller is thin, 1 otherwise, 2 on missing clones.
 """

@@ -59,17 +59,42 @@ jobs:
           pnpm run test:unit
           --reporter=default --reporter=junit
           --outputFile.junit=test-report.junit.xml
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+      # Artifact names are a namespace shared by every job in the caller's run,
+      # and a called workflow cannot see the caller's job id (github.job reads
+      # `test-unit`, the id inside this file). workdir is the only thing that
+      # distinguishes two callers of this job, so it is the key.
+      - name: Name this unit's artifacts
+        id: key
+        shell: bash
+        env:
+          WD: ${{ inputs.workdir }}
+        run: |
+          set -euo pipefail
+          key="${WD//\//-}"
+          key="${key//./root}"
+          echo "key=${key}" >> "$GITHUB_OUTPUT"
+
+      # Handed to job-coverage-upload rather than sent to Codecov from here, so
+      # this job answers only "do the tests pass" and a Codecov outage cannot
+      # skip the caller's image-build. See job-coverage-upload.yml.
+      #
+      # Inherits success() deliberately: a failed unit publishes no coverage,
+      # exactly as the codecov step it replaces was gated.
+      - name: Publish coverage for the upload job
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          directory: ${{ inputs.workdir }}/coverage
-          flags: unittests
-          fail_ci_if_error: true
-      - name: Upload test results to Codecov
-        # Runs on test failure too — failed runs are the analytics signal.
+          name: coverage-node-${{ steps.key.outputs.key }}
+          path: ${{ inputs.workdir }}/coverage
+          if-no-files-found: error
+          retention-days: 1
+
+      # !cancelled(), unlike coverage: a failed run IS the test-analytics
+      # signal, which is why the step this replaces carried the same condition.
+      - name: Publish test results for the upload job
         if: ${{ !cancelled() }}
-        uses: codecov/test-results-action@0fa95f0e1eeaafde2c782583b36b28ad0d8c77d3 # v1.2.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: ${{ inputs.workdir }}/test-report.junit.xml
+          name: testresults-node-${{ steps.key.outputs.key }}
+          path: ${{ inputs.workdir }}/test-report.junit.xml
+          if-no-files-found: error
+          retention-days: 1

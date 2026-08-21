@@ -867,7 +867,63 @@ A repo needing more than that baseline cannot express it through
 
 - **Codecov everywhere it can be supported**: `codecov/codecov-action` **v7**
   (v7.0.0 current as of 2026-06; client-manager already on it), SHA-pinned,
-  per-tree flags, `fail_ci_if_error: true`, thresholds in `codecov.yml`.
+  `fail_ci_if_error: true`, thresholds in `codecov.yml`. The upload happens
+  once per run, from `job-coverage-upload`, not from the test jobs.
+
+### A test job answers one question; uploading is a different question
+
+A `test-unit` job used to run the tests *and* push the result to Codecov, so it
+reported one conclusion for two unrelated outcomes: **did the tests pass**, and
+**did a third-party service accept an HTTP POST**. Callers gate `image-build` on
+`test-unit`, so the second outcome was quietly deciding the first one's
+downstream.
+
+That is not hypothetical. On 2026-08-21 every private repo's Dependabot pull
+requests went red at "Upload coverage to Codecov" — Dependabot-triggered runs
+read a *separate secret store* from Actions secrets, so `CODECOV_TOKEN` rendered
+empty, and Codecov refuses a tokenless upload on a private repo. In each of
+those runs `image-build`, `image-starts` and `image-publish` were **skipped**.
+Nothing was wrong with the code. Three image jobs simply never ran, because an
+upload had no token.
+
+So the split follows the question:
+
+| job | answers | a failure here means |
+|---|---|---|
+| `*-test-unit` | do the tests pass | the code is broken; gates must not proceed |
+| `coverage-upload` | did Codecov take it | re-run this one job; nothing else is affected |
+
+`coverage-upload` sits in `ci-ok`'s `needs:` and **nothing else depends on it**.
+A Codecov outage turns one job red and leaves the pipeline running.
+
+### The collector counts nothing
+
+Test jobs publish artifacts named `coverage-*` and `testresults-*`;
+`job-coverage-upload` globs those patterns and uploads whatever is there.
+
+There is deliberately **no expected report count** anywhere — not in the job,
+not in `codecov.yml`. A unit with no tests publishes nothing, a unit whose tests
+failed publishes no coverage, and a repo may have one test job or five. Any
+design holding an expected number would have to stay right about all of that in
+every repo forever, and would be wrong the first time a unit gained or lost
+tests. `download-artifact` treats a zero-match `pattern` as success, so the
+empty case needs no special handling — only a warning that says which of the two
+innocent reasons it was.
+
+This is also what makes **one** Codecov call per run possible, which is the
+second reason the job exists. Codecov scores and posts a commit status as soon
+as it has a report (`codecov.notify.after_n_builds` defaults to 1). With uploads
+arriving from jobs that finish minutes apart, it scored partial data and
+re-scored on each arrival — results that visibly drifted for minutes after CI
+went green. One upload means there is no partial state to score, and no
+`after_n_builds` to keep in step with the job graph.
+
+**What this costs, stated plainly.** A flag is a property of an upload, so a
+single merged upload cannot carry a different flag per unit, and the per-unit
+flag breakdown goes away. Nothing gates on it — every repo's `codecov.yml`
+configures `project.default` and `patch.default` only. Codecov **components**
+(`component_management`) slice by path rather than by upload and give the same
+breakdown back without reintroducing a per-unit upload.
 
 ## Action pinning — SHA everywhere
 
@@ -1178,7 +1234,8 @@ install (store-cached) → its one script. All SHA-pinned, least-privilege.
 | `build` | — | frozen install, `run build` | `dist` artifact (1-day) |
 | `lint` | build | `eslint <dir> --max-warnings 0` | — |
 | `typecheck` | build | `tsc -b --noEmit` | — |
-| `test-unit` | build | `vitest run --coverage` + codecov v7 (flags) | coverage |
+| `test-unit` | build | `vitest run --coverage` | `coverage-*` + `testresults-*` artifacts (1-day) |
+| `coverage-upload` | the test-unit jobs | globs those artifacts, one Codecov upload for the run | — |
 | `image` | lint, typecheck, test-unit | docker metadata + build-push; **downloads `dist`** (Dockerfile COPYs prebuilt artifacts — no in-image rebuild) | ghcr image, push on non-PR |
 | `ci-ok` | all | `if: always()`, fails on any failure/cancel | the single required check |
 
@@ -1188,7 +1245,8 @@ install (store-cached) → its one script. All SHA-pinned, least-privilege.
 |---|---|---|
 | `go-mod` | — | `go mod download && go mod verify`, saves module cache |
 | `build` | go-mod | `go build ./...`, uploads binaries (BUILD-ONCE) |
-| `gofmt` / `vet` / `test-unit` / `vuln-scan` | build | parallel: `gofmt -l`, `go vet`, `go test -cover` + codecov, `govulncheck`/osv-scanner |
+| `gofmt` / `vet` / `test-unit` / `vuln-scan` | build | parallel: `gofmt -l`, `go vet`, `go test -cover` (publishes `coverage-*`), `govulncheck`/osv-scanner |
+| `coverage-upload` | the test-unit jobs | globs those artifacts, one Codecov upload for the run |
 | `image` | the gates | packages **prebuilt binaries** (gofast pattern) |
 | `ci-ok` | all | rollup |
 
@@ -1707,6 +1765,15 @@ written in TypeScript therefore calls a `js` job, and that is correct — the
 caller names its source, the job names its tool. This is the same distinction
 that broke once already: a shared job proves the language of the tooling, never
 which unit the source belongs to.
+
+**Jobs with no language token.** Some shared jobs act on the *run* rather than
+on a codebase — `job-image-build`, `job-image-publish`, `job-image-prune`,
+`job-osv-scan`, `job-ci-conformance`, `job-coverage-upload`. None of them can be
+pointed at a language, because none of them reads source: they read a Dockerfile,
+a lockfile, a `ci.yml`, or an artifact another job produced. A language token
+would be a lie about what the job examines, so these take `<function>` alone.
+The test is the same one the language tier uses in reverse — if changing the
+repo's language would not change a single line of the job, it has no language.
 
 **Framework-tier shared jobs.** A framework earns a shared job only when
 it owns a tool: React does (`vite build`), CodeIgniter 4 does (`spark test`),

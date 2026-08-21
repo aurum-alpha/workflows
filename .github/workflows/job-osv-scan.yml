@@ -69,18 +69,23 @@ on:
         default: false
       upload_sarif:
         description: >-
-          Upload results to Security > Code Scanning. Default false, and that
-          default is an entitlement rather than a preference: code scanning on
-          a private repository needs a GitHub Code Security license, and nine
-          of the eleven repos here are private. Left true without one, the
-          upload step fails and takes the scan's verdict with it.
+          Upload results to Security > Code Scanning. Default TRUE.
 
-          gofast and workflows are public and would be accepted today. They
-          stay off so the fleet reads the same and flips together — a
-          deliberate uniformity, recorded here rather than argued in ten
-          call sites.
+          It was false for as long as it was an entitlement rather than a
+          preference: code scanning on a private repository needs a GitHub
+          Code Security license, nine of the eleven repos here are private,
+          and left on without one the upload step fails and takes the scan's
+          verdict with it. That licence is now held, so the constraint is
+          gone and the default follows the thing we actually want — findings
+          in the Security tab, where they are triaged, dated and assignable,
+          instead of in a job log nobody opens.
+
+          The caller-side lever if a repo is not yet enabled: set false with
+          the reason at the call site. Enablement is per repository, so the
+          license alone does not guarantee acceptance — this default is being
+          rolled out one repo at a time for that reason.
         type: boolean
-        default: false
+        default: true
 
 jobs:
   # Exactly one of these runs. `full` takes everything that is not a pull

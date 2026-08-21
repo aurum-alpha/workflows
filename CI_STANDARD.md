@@ -1294,10 +1294,22 @@ not. This one is only needed *because* there are two.
 
 **What it buys.** The alternative to wrapping is two jobs per caller with
 opposing `if:` conditions, two permissions blocks and the lockfile list written
-twice — in ten repos. It also puts `upload_sarif` in one place, which matters
-because that default is an entitlement and not a preference: code scanning on
-a private repository requires a GitHub Code Security license and nine of the
-eleven repos are private. When that changes it is one edit, not ten.
+twice — in ten repos. It also puts `upload_sarif` in one place, and that turned
+out to matter within the day: the default was false because code scanning on a
+private repository requires a GitHub Code Security license and nine of the
+eleven repos are private. That license is now held. Flipping the default is one
+edit here rather than ten call sites, which is the whole argument for a wrapper
+made concrete faster than the argument was written down.
+
+**`upload_sarif` now defaults true**, because findings belong in the Security
+tab — triaged, dated, assignable — rather than in a job log nobody opens. Two
+things keep that honest. A license is org-wide but **enablement is per
+repository**, so acceptance is not guaranteed by billing alone; and an upload
+that is refused fails the step and takes the scan's verdict with it, so a wrong
+assumption here turns every osv job in the fleet red at once. It is therefore
+rolled out one repo at a time, canary first, on the same pattern as every other
+fleet-wide flip — the caller-side lever is `upload_sarif: false` with the reason
+at the call site.
 
 **What it costs, stated.** A third-party pin now sits one level of indirection
 away from the call site, which was a real part of the argument for calling

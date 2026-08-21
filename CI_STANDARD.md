@@ -209,7 +209,7 @@ that is not yet true of the fleet is tracked as a GitHub issue in
     often false, and then the fix is a catalog job, not a local one.
 
     So every local job carries the gap it represents, and closing that gap is
-    backlog rather than decoration. `tools/check-catalog-adoption` holds the
+    backlog rather than decoration. `tools/check-ci-conformance` holds the
     allow-list; an entry there is a debt with a name, not a permission.
 
     *This is what makes the difference between a standard and a suggestion. Two
@@ -1235,7 +1235,7 @@ only thing they added was somewhere else for a bug to live.
 
 **This is Principle 12 held, not waived.** One way per capability does not
 require that the one way be ours. What the catalog contributes here is the
-decision and the pin — recorded in `check-catalog-adoption`'s `EXTERNAL_JOBS`
+decision and the pin — recorded in `check-ci-conformance`'s `EXTERNAL_JOBS`
 and `check-caller-permissions`'s `EXTERNAL_PERMISSIONS`, so a caller reaching
 for some other scanner, or for an unrecorded third-party workflow, still fails
 conformance. A repo-local body would still be drift; this is not one.
@@ -1267,7 +1267,7 @@ cheaper of the two.
   requests it whether or not the upload runs.
 * **No `secrets:`.** `secrets: inherit` into the catalog is right and required;
   into a third party it is a standing grant of every token the repo holds, for
-  a job that needs none. `check-catalog-adoption` refuses it.
+  a job that needs none. `check-ci-conformance` refuses it.
 * **DAG position: a standard gate.** It belongs to the standard-gate tier with
   `fmt`, `vet`, `test-unit` and the linters: it takes the same `needs:` on the
   repo's build jobs that the rest of that tier takes, it is named in `ci-ok`
@@ -1649,10 +1649,10 @@ will.
 | 6 | Concurrency everywhere | `check-ci-conformance` P6 | gated |
 | 7 | BUILD ONCE | — | **review only** |
 | 8 | No multi-stage prod Dockerfiles | — | **review only** |
-| 9 | Canonical script names | `check-catalog-adoption` | gated¹ |
+| 9 | Canonical script names | `check-ci-conformance` | gated¹ |
 | 10 | Lint output through standard channels | — | **review only** |
 | 11 | Registry auth in user-level npmrc | — | **review only** |
-| 12 | One way per capability | `check-catalog-adoption` | gated¹ |
+| 12 | One way per capability | `check-ci-conformance` | gated¹ |
 | 13 | Provenance in every artifact | — | **review only** |
 | 14 | A version is a commit, not a tag | — | **review only** |
 | 15 | The repo is versioned, not the artifact | — | **review only** |

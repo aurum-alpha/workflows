@@ -104,12 +104,43 @@ jobs:
           # branch could not actually ship — but being quietly saved by a second
           # gate is not the same as being correct, and this is the run where
           # someone can still see it. `latest` is main's tag, and only main's.
+          #
+          # REF, not event. This asked for `push` as well, and that conflated
+          # two different claims: "this tag would be wrong" and "this run will
+          # not publish". Only the first deserves an error. A workflow_dispatch
+          # on main computes `latest` because metadata-action's
+          # {{is_default_branch}} is true — and it is right: the image IS main's,
+          # so the tag describes it accurately. The run simply is not the one
+          # that promotes, which the Promote step below already decides on its
+          # own. Failing here made every manual run of CI on main red at a step
+          # whose entire job is to PRINT what would happen, before it had done
+          # anything at all.
+          #
+          # A pull_request still fails, and that is the case worth keeping: its
+          # GITHUB_REF is refs/pull/N/merge, so a stray `latest` on a branch is
+          # caught exactly where a human is looking at it.
           if printf '%s\n' "$TAGS" | grep -qE ':latest$'; then
-            if [ "$GITHUB_EVENT_NAME" != "push" ] || [ "$GITHUB_REF" != "refs/heads/main" ]; then
-              echo "::error::The computed tags include ':latest' on ${GITHUB_REF}" \
-                   "(event ${GITHUB_EVENT_NAME}). Only a push to main may claim latest."
+            if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+              echo "::error::The computed tags include ':latest' on ${GITHUB_REF}." \
+                   "latest is main's tag, and only main's."
               exit 1
             fi
+          fi
+
+          # Say why nothing will ship, on the run where someone is watching.
+          # A skipped Promote step is silent, and "the job was green and no tag
+          # moved" is the same shape as the failure this repo keeps finding:
+          # something that did not happen, reported as nothing wrong. Cheap to
+          # print, and it answers the question a person actually has when they
+          # dispatched CI by hand and went looking for their tag.
+          if [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$GITHUB_REF" = "refs/heads/main" ]; then
+            echo "This run promotes: push to main."
+          else
+            echo "::notice title=Nothing will be promoted::This is \
+          ${GITHUB_EVENT_NAME} on ${GITHUB_REF}. Promotion is restricted to a \
+          push to main, so the tags above were computed and checked but no tag \
+          will move. The image itself was built and started by the two jobs \
+          before this one; only the final manifest write is suppressed."
           fi
 
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0

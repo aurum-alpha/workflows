@@ -1387,9 +1387,21 @@ at the call site.
 away from the call site, which was a real part of the argument for calling
 upstream directly. Re-pinning becomes an edit here plus a caller sweep to move
 the version — the same sweep as before, minus the ten `scan-args` blocks that
-no longer need touching. `EXTERNAL_JOBS` and `EXTERNAL_PERMISSIONS` stay until
-the last direct caller is migrated; they are what stops a repo reaching for an
+no longer need touching. `EXTERNAL_JOBS` and `EXTERNAL_PERMISSIONS` stayed until
+the last direct caller was migrated; they are what stops a repo reaching for an
 unrecorded third-party workflow.
+
+**Both are now empty**, and the emptying is the point. The migration finished on
+2026-08-22, and while the allow-list stood, a direct call to
+`osv-scanner-reusable.yml` was conformant by design — which is why nine repos
+ran a scan that found real vulnerabilities and threw them away for weeks
+without a single check complaining. `check-ci-conformance` looks at what a job
+*is*, never at what it does with its results, so an exemption there is an
+exemption from the only automated reading anything gets. They are kept as an
+empty set and an empty dict rather than deleted: the mechanism is right, and
+the next upstream project that maintains a job better than we would goes in
+one, named, with the judgement written beside it — and comes back out the day
+the catalog wraps it.
 
 **First of its kind, twice.** This is the first catalog file that calls another
 reusable workflow (three levels: caller → here → upstream; GitHub allows four),

@@ -1,9 +1,18 @@
 # CI Pipeline Standard
 
 Status: **agreed 2026-08-14**, revised as rules are learned and enforced. This
-document holds the standards and the reasoning that justifies them. Everything
-that is not yet true of the fleet is tracked as a GitHub issue in
-`aurum-alpha/workflows` — see **Open work** at the bottom.
+document holds the standards and the reasoning that justifies them.
+
+Referred to across the fleet, and in job comments, as **CI_STANDARD** (this
+file was `CI_STANDARD.md` at the repository root until the standards were
+indexed under a charter).
+
+One of the Aurum Alpha engineering standards — see [`../STANDARDS.md`](../STANDARDS.md)
+for the charter every standard is written under, and
+[`enforcement.md`](enforcement.md) for which of the rules below are gated and
+which are review-only. Everything this document describes that is not yet true
+of a repository is tracked in *that repository's* issue tracker; work on the
+standard itself, and on the shared catalog that implements it, is tracked here.
 
 ## Principles
 
@@ -1810,75 +1819,40 @@ job across the repos that HAVE it → extract the byte-identical job to
 
 ## Enforcement — what actually gates, and what does not
 
-A principle nobody can fail is a preference. Every rule below was written here
-first and violated afterwards, in a repo whose CI was green the entire time,
-because writing it down and enforcing it are different acts and only the second
-one holds. **A rule is not done when it is written. It is done when
-something fails if it is broken.**
+**A rule is not done when it is written. It is done when something fails if it
+is broken.** That law, and the three tiers it produces, belong to the charter —
+see [`../STANDARDS.md`](../STANDARDS.md). It came from here: every principle
+above was written down first and violated afterwards, in a repo whose CI was
+green the entire time.
 
-`tools/check-ci-conformance` is that something. It runs two ways from one
+`tools/check-ci-conformance` is the something. It runs two ways from one
 source — `--repo-root` inside a repo's own CI via `job-ci-conformance.yml`, and
 `--fleet` for sweeps — because an audit and a gate that can disagree eventually
 will.
 
-| # | Principle | Enforced by | Status |
-|---|---|---|---|
-| 1 | One source of truth per pin | — | **review only** |
-| 2 | Local = CI | — | **review only** |
-| 3 | Fail closed | `check-ci-conformance` P3 | gated |
-| 4 | Standard runner line | `check-ci-conformance` P4 | gated |
-| 5 | Ephemeral-runner assumptions | — | **review only** |
-| 6 | Concurrency everywhere | `check-ci-conformance` P6 | gated |
-| 7 | BUILD ONCE | — | **review only** |
-| 8 | No multi-stage prod Dockerfiles | — | **review only** |
-| 9 | Canonical script names | `check-ci-conformance` | gated¹ |
-| 10 | Lint output through standard channels | — | **review only** |
-| 11 | Registry auth in user-level npmrc | — | **review only** |
-| 12 | One way per capability | `check-ci-conformance` | gated¹ |
-| 13 | Provenance in every artifact | — | **review only** |
-| 14 | A version is a commit, not a tag | — | **review only** |
-| 15 | The repo is versioned, not the artifact | — | **review only** |
-| 16 | A version exists only where consumed | — | **review only** |
-| 17 | Release is promotion, not production | `check-ci-conformance` D4, D5 | gated |
-| 18 | One workflow per repo | `check-ci-conformance` P18 | gated |
-| — | Standard job DAG (build first) | `check-ci-conformance` D1–D3 | gated |
-| — | Every job blocks something | `check-ci-conformance` D6 | gated |
-| — | Something runs the image | `check-ci-conformance` D7 | gated |
-| — | `needs.<id>` expressions resolve | `check-ci-conformance` D8 | gated |
-| — | `workdir` names a shape, not a path | `check-ci-conformance` WD | gated |
-| — | Per-stack DAG in multi-codebase repos | — | **review only** |
-| — | SHA pinning | `check-ci-conformance` PIN | gated |
-| — | `ci-ok` is the only required check | branch protection | gated |
-| — | Fleet pnpm version | `check-fleet-versions` | gated¹ |
-| — | Caller `with:` matches the shared job's inputs | `check-ci-conformance` IN | gated |
-| — | One shared `ci-ok` rollup, not eleven copies | `check-ci-conformance` RU | gated |
-| — | Caller permissions cover shared jobs | `check-caller-permissions` | gated¹ |
+**Which principle is gated, and by what, is recorded in the fleet enforcement
+ledger: [`enforcement.md`](enforcement.md).** It lives there rather than here
+because the question spans every standard, and a table per document answers it
+once per document — the duplication Principle 1 exists to prevent, applied to
+prose.
 
-¹ Gated in every repo whose `ci.yml` calls `job-ci-conformance`, which runs
-these three checkers alongside `check-ci-conformance`. Issue #79 tracks the
-per-repo rollout; until a repo adopts the job, these rules are unenforced
-**in that repo** and nothing there will say so. The row claims what the
-mechanism can do, not what every repo has taken up — check the rollout, not
-this table, before believing a given repo is covered.
+Two things those rows depend on, which belong here with their reasoning:
 
-Three tiers, and the difference between them matters:
+- **`gated¹` is a claim about the mechanism, not about adoption.** Those rules
+  are gated in every repo whose `ci.yml` calls `job-ci-conformance`. Until a
+  repo adopts that job they are unenforced *in that repo* and nothing there will
+  say so. Check the rollout, not the ledger, before believing a given repo is
+  covered.
+- **Audit-only is not weaker enforcement — it is a checker quietly rotting.**
+  Four rows now marked `gated¹` spent months at that tier, and the cost was
+  exact: nobody ran `check-fleet-versions` after two repos moved their Node app
+  out of `web/`, so it reported "package.json not found" for both and no one saw
+  it.
 
-- **gated** — a violation turns that repo's `ci-ok` red. This is enforcement.
-- **audit only** — a checker exists but runs from a workstation when someone
-  remembers. This is a habit, and habits are what drifted in the first place.
-  Every one of these is a candidate for folding into the gate. The four rows
-  now marked gated¹ spent months here, and the cost was exact: nobody ran
-  `check-fleet-versions` after two repos moved their Node app out of `web/`,
-  so it reported "package.json not found" for both and no one saw it. A
-  checker nothing runs does not degrade to weaker enforcement — it degrades
-  to a checker that is itself wrong, silently.
-- **review only** — nothing mechanical. Some of these resist automation
-  honestly (BUILD ONCE needs to know what an artifact is; the per-stack DAG
-  needs to know which stack a job belongs to). Saying so is the point: an
-  unenforced rule should be visibly unenforced, not quietly assumed.
-
-Rules that resist a checker get the next best thing — a review question
-someone has to answer, not a line someone has to remember.
+Rules that resist a checker get the next best thing — a review question someone
+has to answer, not a line someone has to remember. In this document those are
+BUILD ONCE, which needs to know what an artifact is, and the per-stack DAG,
+which needs to know which stack a job belongs to.
 
 ### Why this section exists
 
@@ -1927,8 +1901,14 @@ checker says so rather than implying coverage it lacks.
 
 ## Open work
 
-Everything this document describes that is not yet true of the fleet is tracked
-as a GitHub issue in `aurum-alpha/workflows` — one issue per item, carrying the
-reasoning it was written with. This document does not track progress. It states
-what the standard is and why; an issue closing means the standard it was chasing
-is now simply true.
+**This document does not track progress.** It states what the standard is and
+why. Two different things are outstanding at any time, and they are tracked in
+two different places:
+
+- **Gaps in the standard or the catalog** — a capability with no shared job, a
+  rule with no checker, a decision not yet made — are issues in
+  `aurum-alpha/workflows`, one per item, carrying the reasoning it was written
+  with.
+- **A repository not yet meeting the standard** is work in *that repository's*
+  issue tracker, against its own code and its own roadmap. It is not recorded
+  here; see the charter's "Non-compliance is tracked where the code is".

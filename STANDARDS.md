@@ -1,0 +1,143 @@
+# Aurum Alpha engineering standards
+
+Status: **charter agreed 2026-08-21.** This is the index and the constitution.
+It says what a standard is, what makes one binding, and where the individual
+standards live. It states no engineering rules itself — every rule belongs to a
+document under `standards/`.
+
+## What this repository is
+
+`aurum-alpha/workflows` is the definition of how this organisation builds
+software. Not a convenience library of things several repos happened to need —
+the answer, per language and per capability, that repos are standardized *onto*
+rather than each arriving at independently.
+
+That was already true of continuous integration, and the CI standard is the
+worked example the rest of this follows: a document that states the rule and
+the reasoning, a catalog that implements it once, and a checker that fails the
+build when a repo drifts. The scope is now every layer of a product, not just
+its pipeline.
+
+**Two repos solving the same problem two ways is not diversity, it is the fleet
+having no opinion — and an organisation with no opinion re-litigates the same
+decision every time someone starts a service.**
+
+## Scope: internal and client work alike
+
+These standards bind everything Aurum Alpha builds — the products we operate and
+the systems we build for clients. A client engagement is not an exemption. It is
+the case that matters most, because it is the code that leaves.
+
+**A standard must survive handover.** A client repository follows these rules and
+then, at handover, stops being able to reach this repository at all: no shared
+job to call, no checker to run, no catalog to resolve. A standard that only works
+while `aurum-alpha/workflows` is reachable is not a standard, it is a dependency.
+
+Three consequences, and they constrain how every document here is written:
+
+1. **State the rule, not just the mechanism.** A reader with no access to this
+   repo must be able to read the rule, understand why it exists, and comply. The
+   shared job is how *we* comply cheaply; it is never the only description of
+   what compliance is.
+2. **Every standard must be satisfiable without this repo.** Where a rule is
+   normally met by calling a shared workflow, the document says what the
+   workflow does in terms a person could reimplement.
+3. **Handover is a copy, not a link.** A repository leaving the fleet vendors the
+   standards it was built to, so the rules travel with the code. What it loses is
+   the updates, which is correct — it is no longer ours.
+
+## The law
+
+**A rule is not done when it is written. It is done when something fails if it
+is broken.**
+
+Every rule in the CI standard was written down first and violated afterwards, in
+a repo whose CI was green the entire time, because writing a rule and enforcing
+it are different acts and only the second one holds. A principle nobody can fail
+is a preference.
+
+That history also taught what *kind* of rule survives. Three rules failed the
+same way in three disguises: one keyed on a file, one keyed on a filename, one
+keyed on an outcome with no mechanism named. The common shape is that **a rule
+naming anything other than the act itself stops applying the moment the act
+moves.** Write rules against acts, then make something fail when the act is
+wrong.
+
+### Three tiers, and the difference between them matters
+
+- **gated** — a violation turns that repo's required check red. This is
+  enforcement.
+- **audit only** — a checker exists but runs from a workstation when someone
+  remembers. This is a habit, and habits are what drifted in the first place.
+  Every one of these is a candidate for folding into the gate. A checker nothing
+  runs does not degrade to weaker enforcement — it degrades to a checker that is
+  itself wrong, silently.
+- **review only** — nothing mechanical. Some rules resist automation honestly.
+  Saying so is the point: an unenforced rule should be visibly unenforced, not
+  quietly assumed. A rule that resists a checker gets the next best thing — a
+  review question someone has to answer, not a line someone has to remember.
+
+### A new standard starts review-only and names its gate
+
+Landing a standard and landing its enforcement in one change is how standards
+stall. So the sequence is fixed:
+
+1. The standard lands **review only**, with every rule registered in
+   [`standards/enforcement.md`](standards/enforcement.md).
+2. Each rule names, in that ledger, **the gate it is eventually getting** — or
+   states plainly that it resists one and will stay review-only.
+3. Promoting a rule to gated is its own change, and the ledger row moves with it.
+
+A rule that lands review-only with no proposed gate and no admission that it
+cannot have one is not finished. That is exactly the failure the law above
+describes, arriving one document earlier.
+
+## Non-compliance is tracked where the code is
+
+This repository holds the standard. **It does not hold the list of who is
+failing it.**
+
+A repo that does not yet comply has work to do in *its own* issue tracker,
+against its own code, prioritized against its own roadmap. Recording that here
+turns the standard into a scoreboard, gives every standards change a second
+diff to maintain, and puts a client repository's shortcomings in a repository it
+will never own.
+
+The rule, therefore: **no document under `standards/` names a repository in
+order to describe its state.** Two things are deliberately not covered by that:
+
+- **Incident citations.** "Learned the hard way" evidence naming the repo and
+  the run that proved a rule necessary is what makes these documents arguments
+  rather than assertions. A citation is history, not a status report.
+- **Checker allow-lists.** `tools/` carries per-repo entries because a gate has
+  to know what it is currently letting through. Each entry states the gap it
+  represents — a debt with a name, not a permission — and the target state for
+  every list is empty.
+
+## The standards
+
+| Standard | Covers | Status |
+|---|---|---|
+| [`standards/ci.md`](standards/ci.md) | Pipeline doctrine, the shared job catalog, build/release/publish | agreed, largely gated |
+| [`standards/enforcement.md`](standards/enforcement.md) | The ledger: every rule, its gate, its tier | live |
+| [`AGENTS.md`](AGENTS.md) | How coding agents work in an Aurum Alpha repository | agreed, review only |
+
+Standards still to be written are tracked as issues in this repository. Each
+carries the reasoning it was proposed with, so the document can be written from
+the issue rather than from memory.
+
+## Adding or changing a standard
+
+1. **Open an issue first**, stating the rule and the reasoning. A standard
+   arriving as a finished document with no argument attached is a preference
+   with formatting.
+2. **Write the document under `standards/`.** State the rule, the reasoning, and
+   what compliance looks like to a reader outside this repo.
+3. **Register every rule in the ledger**, at the tier it actually holds today
+   and with the gate it is getting.
+4. **Add the row to the index above.**
+
+Changing an existing rule follows the same path. A rule that has been violated
+in production gets its incident written into the document beside it — that
+evidence is the reason these documents get followed, and the reason the next
+person does not re-litigate a decision already paid for once.

@@ -44,7 +44,41 @@ on:
         type: string
         default: ""
       platforms:
-        description: Comma-separated build platforms.
+        description: >-
+          Comma-separated build platforms, e.g. `linux/amd64,linux/arm64`.
+
+          ONE call builds them all. buildx produces a single OCI image index
+          carrying every platform under one digest, which is what `digest`
+          below returns and what job-image-publish promotes — so a `docker
+          pull` resolves to the puller's own architecture with no manifest
+          assembly on our side. Do not reach for a matrix here: that would
+          produce N single-platform images and N digests, and then need a
+          further job to stitch back together what buildx already built.
+
+          NO QEMU, and that is a constraint on the Dockerfile rather than a
+          setting. This catalog deliberately sets up buildx and not
+          setup-qemu-action, so a multi-platform build may not EXECUTE
+          anything for a foreign architecture. In practice:
+
+            - `FROM` and `COPY --from=` are free. Upstream bases (debian,
+              alpine, distroless, static tool images) are multi-arch manifest
+              lists, so each leg resolves its own platform automatically and
+              nothing runs.
+            - `RUN` is not. It executes inside a target-arch container, which
+              is exactly what would need emulation. A runtime stage that
+              installs packages cannot go multi-arch here — bring the binary
+              in with `COPY --from=<multi-arch image>` instead of installing
+              it, and the stage stays runnable on every platform.
+
+          The one thing that cannot resolve itself is OUR artifact: `bin/` is
+          files on disk, not a manifest list. Declare `ARG TARGETARCH` in the
+          stage and copy the per-arch filename job-go-build produces, e.g.
+          `COPY bin/cm-linux-${TARGETARCH} /cm`.
+
+          Default is single-platform on purpose. Most callers ship one
+          architecture and should not silently start paying for two; the Go
+          repos pass both explicitly, so what an image targets is always
+          visible at the call site rather than inherited from this line.
         type: string
         default: linux/amd64
       artifacts:

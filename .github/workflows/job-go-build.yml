@@ -180,18 +180,32 @@ jobs:
           name: ${{ inputs.needs_artifact }}
           path: ${{ inputs.artifact_path }}
 
-      # Compile everything before linking anything. `go build ./...` is the
-      # cheapest possible statement of "does this repo compile", and it fails
-      # on a package no binary imports — which is exactly the breakage a
-      # per-binary link would miss.
-      - name: Compile all packages
-        working-directory: ${{ inputs.workdir }}
-        run: go build ./...
-
+      # ONE `go build` per binary per architecture, and nothing else. There
+      # used to be a `go build ./...` above this, named "Compile all packages",
+      # which made the pair read as a compile step and a link step. It never
+      # was: `go build -o <out> ./cmd/<name>` compiles AND links in one
+      # command, and that command is this step.
+      #
+      # What the extra build actually did was compile every package in the
+      # module, including ones no binary imports. That is not what this job is
+      # for. The job's promise is that every production artifact compiles, and
+      # each artifact's own build proves exactly that for the dependencies it
+      # actually has — a package only fastproxy imports fails fastproxy's
+      # build, which is where anyone would look for it. Nothing was gained by
+      # also failing fastgen's.
+      #
+      # It was not free either. It ran with no GOOS/GOARCH/CGO_ENABLED and no
+      # -trimpath, so on a cross-compiling leg it built for the RUNNER's
+      # platform — re-checking amd64 on the arm64 leg, identical to what the
+      # amd64 leg had already done — and every one of those four mismatches
+      # meant its compiled objects could not be reused by the build below.
+      # Measured on gofast: 29s of whole-module compile that left the real
+      # build still taking its full 23s.
+      #
       # python3, not bash: the binaries list is JSON and the ldflags are
       # assembled from four inputs. A shell loop over caller-supplied data is
       # the bug class check-catalog-loops exists to catch, so there isn't one.
-      - name: Link binaries and stamp provenance
+      - name: Build binaries and stamp provenance
         id: stamp
         shell: python3 {0}
         working-directory: ${{ inputs.workdir }}

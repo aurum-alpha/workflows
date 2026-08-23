@@ -97,6 +97,28 @@ standard itself, and on the shared catalog that implements it, is tracked here.
 7. **BUILD ONCE.** The `build` job is the only compiler anywhere. It produces
    every required artifact variant; packaging, docker, and release steps consume
    those artifacts — nothing downstream rebuilds.
+
+   **For Go, that means exactly one `go build` per binary per architecture, and
+   nothing else.** Two binaries on two architectures is four builds, and four is
+   the number of build commands the job runs. `go build -o <out> ./cmd/<name>`
+   compiles *and* links in one command — there is no separate compile step to
+   add, and adding one is the mistake this rule exists to name.
+
+   In particular, **no `go build ./...` before the real builds.** It compiles
+   every package in the module, including ones no binary imports, and that is
+   not what a build job is for: the job's promise is that every production
+   artifact compiles, and each artifact's own build proves exactly that for the
+   dependencies it actually has. A package only one binary imports fails that
+   binary's build, which is where anyone would look for it. A package no binary
+   imports is not a production artifact and does not get to fail the build —
+   adding unused code to the tree is allowed.
+
+   The waste is not hypothetical. Such a step ran in job-go-build until v1.29.0
+   with no `GOOS`, `GOARCH`, `CGO_ENABLED` or `-trimpath`, so on a
+   cross-compiling leg it built for the *runner's* platform — the arm64 leg
+   re-ran the amd64 leg's check verbatim — and each of those four mismatches
+   independently defeated the build cache, so its objects could not be reused by
+   the build that followed.
 8. **No multi-stage production Dockerfiles.** Shipped images are thin runtime
    images that COPY the prebuilt `dist`/`bin` artifact (gofast pattern). Dev
    images may compile for local HMR; the rule governs shipped images.
@@ -1202,7 +1224,7 @@ of check is in the name.
 
 | Script | TS | Go (tools/checks or make) | PHP (composer) |
 |---|---|---|---|
-| `build` | bundle ALL production artifacts into `dist/` | `go build ./...` → `bin/` | asset/app build |
+| `build` | bundle ALL production artifacts into `dist/` | one `go build` per binary per arch → `bin/` | asset/app build |
 | `lint` | *(no script — CI runs `eslint`/`oxlint` directly)* | golangci-lint / vet wrapper | phpcs/pint (when adopted) |
 | `typecheck` | *(no script — CI runs `tsc -b --noEmit`)* | `go vet ./...` | `phpstan analyse` |
 | `test:unit` | *(no script — CI runs `vitest run --coverage`)* | `go test ./... -cover` | phpunit unit suite |
@@ -1258,7 +1280,7 @@ install (store-cached) → its one script. All SHA-pinned, least-privilege.
 | Job id | needs | Does |
 |---|---|---|
 | `go-mod` | — | `go mod download && go mod verify`, saves module cache |
-| `build` | go-mod | `go build ./...`, uploads binaries (BUILD-ONCE) |
+| `build` | go-mod | one `go build` per binary per arch, uploads binaries (BUILD-ONCE) |
 | `gofmt` / `vet` / `test-unit` / `vuln-scan` | build | parallel: `gofmt -l`, `go vet`, `go test -cover` (publishes `coverage-*`), `govulncheck`/osv-scanner |
 | `coverage-upload` | the test-unit jobs | globs those artifacts, one Codecov upload for the run |
 | `image` | the gates | packages **prebuilt binaries** (gofast pattern) |

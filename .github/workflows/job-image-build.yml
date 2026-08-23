@@ -55,20 +55,31 @@ on:
           produce N single-platform images and N digests, and then need a
           further job to stitch back together what buildx already built.
 
-          NO QEMU, and that is a constraint on the Dockerfile rather than a
-          setting. This catalog deliberately sets up buildx and not
-          setup-qemu-action, so a multi-platform build may not EXECUTE
-          anything for a foreign architecture. In practice:
+          What a multi-platform build costs depends on what the stage DOES,
+          and the difference is large enough to design around:
 
             - `FROM` and `COPY --from=` are free. Upstream bases (debian,
               alpine, distroless, static tool images) are multi-arch manifest
               lists, so each leg resolves its own platform automatically and
-              nothing runs.
-            - `RUN` is not. It executes inside a target-arch container, which
-              is exactly what would need emulation. A runtime stage that
-              installs packages cannot go multi-arch here — bring the binary
-              in with `COPY --from=<multi-arch image>` instead of installing
-              it, and the stage stays runnable on every platform.
+              nothing executes. A runtime stage built this way costs the same
+              on two platforms as on one.
+            - `RUN` is not free. It executes inside a target-arch container,
+              so a foreign architecture needs emulation, and an emulated
+              package install runs minutes rather than seconds — per foreign
+              leg, per image.
+
+          Emulation IS set up, conditionally, for exactly that case: the QEMU
+          step below runs only when `platforms` names more than one, so a
+          single-platform caller pays nothing. v1.27.0 documented no-QEMU as a
+          rule and required RUN-free runtime stages; v1.28.0 makes it a
+          preference with a stated price, because forcing a distroless
+          rewrite (and a third-party dependency for anything apt used to
+          supply) onto a repo that just wants arm64 was the worse trade.
+
+          Prefer the RUN-free shape where it is natural — it is materially
+          faster and it is why the fleet's distroless images cost nothing on
+          arm64. Reach for `RUN` where the alternative is contorting an image
+          around the build system.
 
           The one thing that cannot resolve itself is OUR artifact: `bin/` is
           files on disk, not a manifest list. Declare `ARG TARGETARCH` in the
@@ -341,6 +352,23 @@ jobs:
             chmod 755 "$path"
             echo "Restored execute bit on $path"
           done <<< "$EXECUTABLES"
+
+      # Emulation for foreign-architecture RUN steps, and ONLY when there is a
+      # foreign architecture to emulate. Registering binfmt costs a few seconds
+      # and buys nothing for a single-platform build, so the seven callers that
+      # ship one architecture skip it entirely.
+      #
+      # It has to precede setup-buildx-action: binfmt is registered on the host
+      # and the builder inherits what is already there.
+      #
+      # A RUN-free runtime stage never reaches this — an upstream multi-arch
+      # base plus COPY --from executes nothing, so there is nothing to emulate.
+      # That shape stays much faster and stays preferred; this exists so a stage
+      # that genuinely needs a package manager is not forced to choose between
+      # arm64 and a Dockerfile rewrite.
+      - name: Set up QEMU for cross-platform RUN steps
+        if: contains(inputs.platforms, ',')
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
 
       - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 

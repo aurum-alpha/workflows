@@ -56,18 +56,40 @@ on:
         type: string
         default: .version
       goos:
-        description: Target OS. Empty builds for the runner's own platform.
-        type: string
-        default: ""
-      goarch:
         description: >-
-          Target architecture. Empty builds for the runner's own. When either
-          this or goos is set, binaries are named <name>-<goos>-<goarch>, which
-          is the convention the cross-compiling repo already follows.
+          Target OS. Empty builds for the runner's own platform, and is only
+          correct for a repo that ships no cross-compiled artifact: the binary
+          is then named plainly, with nothing recording what it was built for.
+          Set it alongside `goarches` for anything published.
         type: string
         default: ""
+      goarches:
+        description: >-
+          JSON array of target architectures, e.g. '["amd64","arm64"]'. Each
+          becomes one leg of this job's matrix, so one call produces every
+          architecture the caller ships and the caller stays a single block.
+
+          JSON and not a newline list for the same reason `binaries` is JSON:
+          it goes straight into the matrix via fromJSON, so there is no shell
+          loop over caller data and no empty-line guard to get wrong.
+
+          Was a singular `goarch` until v1.27.0. One call per architecture
+          meant the cross-compiling repo carried two near-identical job blocks
+          differing in one field, and the two repos that shipped one
+          architecture each reached that by saying nothing rather than by
+          deciding.
+        type: string
+        default: '["amd64"]'
       artifact_name:
-        description: Artifact to upload the linked binaries as. Empty skips the upload.
+        description: >-
+          Artifact to upload the linked binaries as. Empty skips the upload.
+
+          This is a PREFIX, not the final name: each matrix leg appends its own
+          architecture, so `server-go-bin` uploads `server-go-bin-amd64` and
+          `server-go-bin-arm64`. That is not a convenience — actions/upload-artifact
+          refuses a duplicate name, so two legs sharing one would fail the
+          second, and the catalog owning the suffix is what keeps three repos
+          from inventing three naming conventions for the same thing.
         type: string
         default: ""
       needs_artifact:
@@ -101,7 +123,23 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
+    strategy:
+      # One architecture failing to build should not hide whether the others
+      # do. Cross-compilation breaks on things that are invisible on the host
+      # — a cgo dependency, an unsafe size assumption, a syscall that exists
+      # on one arch — and an arch that breaks only on arm64 is exactly what
+      # this matrix exists to catch.
+      fail-fast: false
+      matrix:
+        goarch: ${{ fromJSON(inputs.goarches) }}
     outputs:
+      # LAST WRITER WINS. A matrixed job exposes one outputs map and every leg
+      # overwrites it, so the surviving value is whichever leg finished last.
+      # That is harmless for `version` and only for `version`: every leg reads
+      # the same version_file, so all legs write the same string and which one
+      # lands cannot matter. Nothing per-leg may be added here — a digest or a
+      # path would be silently nondeterministic. Per-leg results leave this job
+      # as artifacts, which are named per leg and cannot collide.
       version: ${{ steps.stamp.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -129,9 +167,12 @@ jobs:
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.GOCACHE }}
-          key: go-build-${{ runner.os }}-${{ hashFiles(format('{0}/go.sum', inputs.workdir)) }}
+          # Scoped by target arch: the compiled objects in GOCACHE are for the
+          # architecture they were built for, so an arm64 leg restoring an
+          # amd64 leg's cache gets nothing it can use and evicts what it could.
+          key: go-build-${{ runner.os }}-${{ matrix.goarch }}-${{ hashFiles(format('{0}/go.sum', inputs.workdir)) }}
           restore-keys: |
-            go-build-${{ runner.os }}-
+            go-build-${{ runner.os }}-${{ matrix.goarch }}-
       - name: Download embedded assets
         if: inputs.needs_artifact != ''
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -158,7 +199,7 @@ jobs:
           BINARIES: ${{ inputs.binaries }}
           VERSION_FILE: ${{ inputs.version_file }}
           GOOS_IN: ${{ inputs.goos }}
-          GOARCH_IN: ${{ inputs.goarch }}
+          GOARCH_IN: ${{ matrix.goarch }}
         run: |
           import json, os, pathlib, re, subprocess, sys
           from datetime import datetime, timezone
@@ -255,7 +296,24 @@ jobs:
               env["GOOS"] = goos
           if goarch:
               env["GOARCH"] = goarch
-          suffix = f"-{goos or 'native'}-{goarch}" if (goos or goarch) else ""
+
+          # A named target needs BOTH halves, and the old logic let either
+          # stand alone with results nobody wanted. goarch without goos gave
+          # the literal string `native` in a shipped filename
+          # (bin/cm-native-arm64); goos without goarch gave a trailing hyphen
+          # (bin/cm-linux-) on a binary that was silently built for whatever
+          # the runner happened to be. Both are the same defect this repo
+          # keeps finding — something that did not happen, reported as fine —
+          # so they fail here instead of shipping.
+          if bool(goos) != bool(goarch):
+              have, missing = ("goos", "goarches") if goos else ("goarches", "goos")
+              sys.exit(
+                  f"{have} is set but {missing} is not. A cross-compiled "
+                  "binary is named <name>-<goos>-<goarch>, so half a target "
+                  "produces either the literal 'native' or a trailing hyphen "
+                  "in the filename, over a binary built for the runner's own "
+                  "platform. Set both, or neither.")
+          suffix = f"-{goos}-{goarch}" if goos else ""
 
           os.makedirs("bin", exist_ok=True)
           for name, path in entries:
@@ -267,11 +325,16 @@ jobs:
                   check=True, env=env)
               os.chmod(out, 0o755)
 
+      # The arch suffix is the catalog's, not the caller's. upload-artifact
+      # refuses a duplicate name, so without it two matrix legs would race and
+      # the second would fail; with it, one `artifact_name: server-go-bin`
+      # yields server-go-bin-amd64 and server-go-bin-arm64 and every repo in
+      # the fleet names the same thing the same way.
       - name: Upload binaries
         if: inputs.artifact_name != '' && inputs.binaries != '[]'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ${{ inputs.artifact_name }}
+          name: ${{ inputs.artifact_name }}-${{ matrix.goarch }}
           path: ${{ inputs.workdir }}/bin/
           if-no-files-found: error
           retention-days: 1

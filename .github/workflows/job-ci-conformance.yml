@@ -82,11 +82,10 @@ on:
           default in the same wave that adds a catalog file, not the one after.
         type: string
         required: false
-        default: 2333be157c98dbbdb7dc591d83969a19e19afd01
+        default: 51090a64a2271791f064b087cf4a0866b52d5f42
 
 jobs:
   ci-conformance:
-    name: ci-conformance
     runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-26.04' }}
     timeout-minutes: 15
     permissions:

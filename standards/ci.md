@@ -1926,13 +1926,53 @@ checker says so rather than implying coverage it lacks.
 
 | Question | Decision |
 |---|---|
-| Make on the runner image | **Settled 2026-08-24 (#44): no.** No job on the fleet runner image needs it — event-manager's Makefile runs in its tier-2 container, gha-runner-controller is GitHub-hosted where make is present, and gofast (the last candidate) no longer has a Makefile at all. Adding it would be capacity for a need that does not exist, now at an emulated-apt cost on the arm64 image leg |
-| Go repos converting to Make | **Settled 2026-08-24 (#44): no.** CI calls catalog jobs which call `go` directly; inserting make would re-couple CI to a per-repo file that Principle 13 deliberately decoupled. gofast's local-dev Makefile is already gone and client-manager never had one. gha-runner-controller keeps its Makefile for `deb` packaging and local dev — a real build system earning its place, not a CI dependency |
+| Make on the runner image | **Settled 2026-08-24 (#44): no.** See *When Make is the right tool* below |
+| Go repos converting to Make | **Settled 2026-08-24 (#44): no.** See *When Make is the right tool* below |
+| Task running | Shell, not Make. A shared local-dev runner, not per-repo one-offs |
 | Action pinning | SHA-pin everything + `# vX.Y.Z` comment + Dependabot |
 | Coverage | Codecov v7 everywhere supportable |
 | Per-branch images | Deferred until staging infra exists |
 | Shared workflows home | New `aurum-alpha/workflows` repo |
 | Build vs gates order | Build first, then parallel gates |
+
+**When Make is the right tool.** Make is a fileset transformer. It maps
+patterns of input files onto output files, and rebuilds only the outputs whose
+inputs are stale. That is the entire proposition, and it is the only thing it
+should be adopted for. The test before adding a Makefile is two questions, both
+of which must answer yes: **is there a real file-to-file transform here, and
+does no toolchain already own it?**
+
+event-manager passes and keeps its Makefile. Static pattern rules map hundreds
+of files from `src/{server,client}` into the deployable `public_html/` tree,
+alongside genuine derived-file rules (`public_html/vendor/autoload.php` from
+`composer.lock`). Its only `.PHONY` targets are the six aggregates, which
+genuinely are phony. Nothing else owns that transform: assembling a PHP deploy
+tree from a source layout is not a compile, so composer cannot do it, and a
+shell script would either copy everything every run or reimplement staleness
+tracking badly.
+
+gha-runner-controller fails, on its own evidence: **all nine of its targets are
+`.PHONY`.** Not one names a file it produces, so make can never skip anything —
+`build:` shells straight to `go build`, which does its own staleness checking.
+That is a task runner wearing a build system's syntax, and task running is what
+shell is for.
+
+Everything else fails the second question. Modern toolchains already carry a
+dependency graph, and a better one than Make's: `go build` keys a content hash
+of sources *and flags*, vite and rollup walk a module graph, `tsc` keeps
+`.tsbuildinfo`, PlatformIO owns `.c → .o → .elf`. Make compares mtimes, so
+layered over any of them it cannot be more correct — only less. Demonstrated
+2026-08-24 while measuring job-go-build: `go build ./...` and
+`go build -trimpath …` over identical files with identical mtimes produce
+completely different cache entries, because the flags differ. A rule reading
+`bin/x: $(wildcard **/*.go)` would have called that up to date and shipped a
+stale binary. Make cannot see flags.
+
+So Make is not a tier-1 runner-image dependency: the one repo entitled to it
+runs its Makefile inside its own tier-2 container, and the only other holder is
+GitHub-hosted where make already exists. And the Go repos do not convert to it —
+they have no transform of their own to describe, and CI reaching a per-repo
+Makefile would re-couple what Principle 13 decoupled.
 
 ## Open work
 

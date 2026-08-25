@@ -1926,7 +1926,8 @@ checker says so rather than implying coverage it lacks.
 
 | Question | Decision |
 |---|---|
-| Make on the runner image | Not tier-1 today (no repo needs it there); revisit with the held build-tooling sweep — Make may become tier-1 if repos adopt it as a real build system |
+| Make on the runner image | **Settled 2026-08-24 (#44): no.** No job on the fleet runner image needs it — event-manager's Makefile runs in its tier-2 container, gha-runner-controller is GitHub-hosted where make is present, and gofast (the last candidate) no longer has a Makefile at all. Adding it would be capacity for a need that does not exist, now at an emulated-apt cost on the arm64 image leg |
+| Go repos converting to Make | **Settled 2026-08-24 (#44): no.** CI calls catalog jobs which call `go` directly; inserting make would re-couple CI to a per-repo file that Principle 13 deliberately decoupled. gofast's local-dev Makefile is already gone and client-manager never had one. gha-runner-controller keeps its Makefile for `deb` packaging and local dev — a real build system earning its place, not a CI dependency |
 | Action pinning | SHA-pin everything + `# vX.Y.Z` comment + Dependabot |
 | Coverage | Codecov v7 everywhere supportable |
 | Per-branch images | Deferred until staging infra exists |

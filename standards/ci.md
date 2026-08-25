@@ -1928,7 +1928,7 @@ checker says so rather than implying coverage it lacks.
 |---|---|
 | Make on the runner image | **Settled 2026-08-24 (#44): no.** See *When Make is the right tool* below |
 | Go repos converting to Make | **Settled 2026-08-24 (#44): no.** See *When Make is the right tool* below |
-| Task running | Shell, not Make. A shared local-dev runner, not per-repo one-offs |
+| Task running | Shell, not Make. A shared local-dev runner (#170), not per-repo one-offs |
 | Action pinning | SHA-pin everything + `# vX.Y.Z` comment + Dependabot |
 | Coverage | Codecov v7 everywhere supportable |
 | Per-branch images | Deferred until staging infra exists |

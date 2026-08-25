@@ -27,7 +27,9 @@ principle needed enforcing:
                           nothing worth linting or testing, so no gate runs
                           beside the build
   D2  no inverted DAG      a build never needs a gate
-  D3  publish is gated     a publish job reaches a gate transitively
+  D3  publish is gated     a publish job reaches a gate transitively —
+                           unless its whole image chain is sourceless
+                           (job-image-build with no artifacts:)
   D4  publish is in ci-ok  a publish job outside the rollup fails invisibly
   D5  publish runs on PRs  the main-check goes on the step, never the job
   D6  every job blocks     every job is NAMED in ci-ok's needs, not merely
@@ -171,9 +173,14 @@ REPORTING_RE = re.compile(r"risk$")
 #   *-parity        asserts pins match across files; a gate, not a build
 #   create-*-image  the CI toolchain image every other job runs inside, so by
 #                   construction upstream of every gate
-#   runner-image    a base image plus packages, sharing no source with the
-#                   repo's code — there is nothing here to gate it on
-NOT_A_PRODUCT_RE = re.compile(r"parity$|^create-docker-[\w-]+-image$|^runner-image$")
+# gha-runner-controller's `runner-image` used to be third on this list, by
+# name, with the reason "a base image plus packages, sharing no source with
+# the repo's code — there is nothing here to gate it on". The reason was
+# right and the mechanism was wrong: a name exemption died the moment the job
+# moved onto the catalog triad and stopped being called `runner-image`. The
+# property the name stood for is now detected directly — see
+# sourceless_image_builds() and its use in D3.
+NOT_A_PRODUCT_RE = re.compile(r"parity$|^create-docker-[\w-]+-image$")
 
 # A shared job proves the LANGUAGE of the source it runs against, and nothing
 # more. job-go-vet can only be pointed at Go; job-node-lint can only be pointed
@@ -296,6 +303,44 @@ def ancestors(job: str, graph: dict[str, set[str]]) -> set[str]:
         seen.add(n)
         stack.extend(graph[n])
     return seen
+
+
+def sourceless_image_builds(text: str) -> set[str]:
+    """Callers of job-image-build that pass no artifacts: input.
+
+    D3 exists for artifact provenance: an image that COPYs a binary or a
+    dist/ this repo built must sit downstream of the gates that tested that
+    code, or a green publish ships code nothing looked at. `artifacts:` is
+    where that provenance enters the image job — and when a caller passes
+    none, the image contains no repo-built code at all. It is a Dockerfile
+    over an upstream base: it either builds or it does not, and any
+    assertions worth making about it belong in the Dockerfile as RUN steps,
+    where a failure already fails the build (the runner image checks
+    `docker compose version` and `node --version` exactly this way). There
+    is no gate a chain like that could reach, because there is nothing in
+    it a gate could have tested.
+
+    Detection reads the raw job blocks rather than parse_jobs(): that parser
+    folds every 6-space line into the preceding key, comments included, so a
+    caller whose comment merely mentions "artifacts:" would count as passing
+    it.
+    """
+    blocks: list[tuple[str, list[str]]] = []
+    for ln in text.splitlines():
+        m = re.match(r"^  ([\w-]+):\s*$", ln)
+        if m:
+            blocks.append((m.group(1), []))
+        elif blocks:
+            blocks[-1][1].append(ln)
+    out: set[str] = set()
+    for job, body in blocks:
+        code = [ln for ln in body if not ln.lstrip().startswith("#")]
+        if not any(re.match(r"^    uses:.*\bjob-image-build\.ya?ml@", ln) for ln in code):
+            continue
+        if not any(re.match(r"^      artifacts:", ln) for ln in code):
+            out.add(job)
+    return out
+
 
 
 def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
@@ -748,7 +793,20 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
                     GATE_RE.search(a) and not BUILD_RE.search(a) and not REPORTING_RE.search(a)
                     for a in reach
                 ):
-                    bad("D3", f"'{job}' publishes but reaches no gate")
+                    # No gate in reach. Before failing, ask what a gate could
+                    # have tested: if every image build in this chain (the job
+                    # itself included) is a job-image-build caller passing no
+                    # artifacts:, the image carries no repo-built code and D3's
+                    # premise — artifact provenance — is absent. D4 and D5 are
+                    # NOT waived with it: the chain still answers to ci-ok and
+                    # still must not be gated to main at the job level.
+                    image_builds = {
+                        a
+                        for a in (reach | {job})
+                        if "job-image-build.y" in jobs.get(a, {}).get("uses", "")
+                    }
+                    if not (image_builds and image_builds <= sourceless_image_builds(text)):
+                        bad("D3", f"'{job}' publishes but reaches no gate")
                 if "ci-ok" in jobs and job not in rollup:
                     bad("D4", f"'{job}' publishes but is not in ci-ok's needs — it fails invisibly")
                 if MAIN_GATE_RE.search(props.get("if", "")):

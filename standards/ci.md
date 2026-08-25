@@ -97,6 +97,28 @@ standard itself, and on the shared catalog that implements it, is tracked here.
 7. **BUILD ONCE.** The `build` job is the only compiler anywhere. It produces
    every required artifact variant; packaging, docker, and release steps consume
    those artifacts — nothing downstream rebuilds.
+
+   **For Go, that means exactly one `go build` per binary per architecture, and
+   nothing else.** Two binaries on two architectures is four builds, and four is
+   the number of build commands the job runs. `go build -o <out> ./cmd/<name>`
+   compiles *and* links in one command — there is no separate compile step to
+   add, and adding one is the mistake this rule exists to name.
+
+   In particular, **no `go build ./...` before the real builds.** It compiles
+   every package in the module, including ones no binary imports, and that is
+   not what a build job is for: the job's promise is that every production
+   artifact compiles, and each artifact's own build proves exactly that for the
+   dependencies it actually has. A package only one binary imports fails that
+   binary's build, which is where anyone would look for it. A package no binary
+   imports is not a production artifact and does not get to fail the build —
+   adding unused code to the tree is allowed.
+
+   The waste is not hypothetical. Such a step ran in job-go-build until v1.29.0
+   with no `GOOS`, `GOARCH`, `CGO_ENABLED` or `-trimpath`, so on a
+   cross-compiling leg it built for the *runner's* platform — the arm64 leg
+   re-ran the amd64 leg's check verbatim — and each of those four mismatches
+   independently defeated the build cache, so its objects could not be reused by
+   the build that followed.
 8. **No multi-stage production Dockerfiles.** Shipped images are thin runtime
    images that COPY the prebuilt `dist`/`bin` artifact (gofast pattern). Dev
    images may compile for local HMR; the rule governs shipped images.
@@ -1202,7 +1224,7 @@ of check is in the name.
 
 | Script | TS | Go (tools/checks or make) | PHP (composer) |
 |---|---|---|---|
-| `build` | bundle ALL production artifacts into `dist/` | `go build ./...` → `bin/` | asset/app build |
+| `build` | bundle ALL production artifacts into `dist/` | one `go build` per binary per arch → `bin/` | asset/app build |
 | `lint` | *(no script — CI runs `eslint`/`oxlint` directly)* | golangci-lint / vet wrapper | phpcs/pint (when adopted) |
 | `typecheck` | *(no script — CI runs `tsc -b --noEmit`)* | `go vet ./...` | `phpstan analyse` |
 | `test:unit` | *(no script — CI runs `vitest run --coverage`)* | `go test ./... -cover` | phpunit unit suite |
@@ -1258,7 +1280,7 @@ install (store-cached) → its one script. All SHA-pinned, least-privilege.
 | Job id | needs | Does |
 |---|---|---|
 | `go-mod` | — | `go mod download && go mod verify`, saves module cache |
-| `build` | go-mod | `go build ./...`, uploads binaries (BUILD-ONCE) |
+| `build` | go-mod | one `go build` per binary per arch, uploads binaries (BUILD-ONCE) |
 | `gofmt` / `vet` / `test-unit` / `vuln-scan` | build | parallel: `gofmt -l`, `go vet`, `go test -cover` (publishes `coverage-*`), `govulncheck`/osv-scanner |
 | `coverage-upload` | the test-unit jobs | globs those artifacts, one Codecov upload for the run |
 | `image` | the gates | packages **prebuilt binaries** (gofast pattern) |
@@ -1904,12 +1926,53 @@ checker says so rather than implying coverage it lacks.
 
 | Question | Decision |
 |---|---|
-| Make on the runner image | Not tier-1 today (no repo needs it there); revisit with the held build-tooling sweep — Make may become tier-1 if repos adopt it as a real build system |
+| Make on the runner image | **Settled 2026-08-24 (#44): no.** See *When Make is the right tool* below |
+| Go repos converting to Make | **Settled 2026-08-24 (#44): no.** See *When Make is the right tool* below |
+| Task running | Shell, not Make. A shared local-dev runner (#170), not per-repo one-offs |
 | Action pinning | SHA-pin everything + `# vX.Y.Z` comment + Dependabot |
 | Coverage | Codecov v7 everywhere supportable |
 | Per-branch images | Deferred until staging infra exists |
 | Shared workflows home | New `aurum-alpha/workflows` repo |
 | Build vs gates order | Build first, then parallel gates |
+
+**When Make is the right tool.** Make is a fileset transformer. It maps
+patterns of input files onto output files, and rebuilds only the outputs whose
+inputs are stale. That is the entire proposition, and it is the only thing it
+should be adopted for. The test before adding a Makefile is two questions, both
+of which must answer yes: **is there a real file-to-file transform here, and
+does no toolchain already own it?**
+
+event-manager passes and keeps its Makefile. Static pattern rules map hundreds
+of files from `src/{server,client}` into the deployable `public_html/` tree,
+alongside genuine derived-file rules (`public_html/vendor/autoload.php` from
+`composer.lock`). Its only `.PHONY` targets are the six aggregates, which
+genuinely are phony. Nothing else owns that transform: assembling a PHP deploy
+tree from a source layout is not a compile, so composer cannot do it, and a
+shell script would either copy everything every run or reimplement staleness
+tracking badly.
+
+gha-runner-controller fails, on its own evidence: **all nine of its targets are
+`.PHONY`.** Not one names a file it produces, so make can never skip anything —
+`build:` shells straight to `go build`, which does its own staleness checking.
+That is a task runner wearing a build system's syntax, and task running is what
+shell is for.
+
+Everything else fails the second question. Modern toolchains already carry a
+dependency graph, and a better one than Make's: `go build` keys a content hash
+of sources *and flags*, vite and rollup walk a module graph, `tsc` keeps
+`.tsbuildinfo`, PlatformIO owns `.c → .o → .elf`. Make compares mtimes, so
+layered over any of them it cannot be more correct — only less. Demonstrated
+2026-08-24 while measuring job-go-build: `go build ./...` and
+`go build -trimpath …` over identical files with identical mtimes produce
+completely different cache entries, because the flags differ. A rule reading
+`bin/x: $(wildcard **/*.go)` would have called that up to date and shipped a
+stale binary. Make cannot see flags.
+
+So Make is not a tier-1 runner-image dependency: the one repo entitled to it
+runs its Makefile inside its own tier-2 container, and the only other holder is
+GitHub-hosted where make already exists. And the Go repos do not convert to it —
+they have no transform of their own to describe, and CI reaching a per-repo
+Makefile would re-couple what Principle 13 decoupled.
 
 ## Open work
 

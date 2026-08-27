@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(sleep:*)",
+      "Bash(tools/check-ci-conformance:*)",
+      "Bash(tools/check-caller-permissions:*)",
+      "Bash(tools/check-catalog-loops:*)",
+      "Bash(tools/check-standard-ref:*)",
+      "Bash(tools/check-eslint-config:*)",
+      "Bash(tools/check-fleet-versions:*)",
+      "mcp__Claude_Code_Remote__get_session",
+      "mcp__Claude_Code_Remote__list_triggers",
+      "mcp__Claude_Code_Remote__list_repos"
+    ]
+  }
+}

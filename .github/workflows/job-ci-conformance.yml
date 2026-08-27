@@ -82,7 +82,7 @@ on:
           default in the same wave that adds a catalog file, not the one after.
         type: string
         required: false
-        default: 51090a64a2271791f064b087cf4a0866b52d5f42
+        default: 41a1c840fd1258528455ccc445ea1e9e2b223e28
 
 jobs:
   ci-conformance:
@@ -195,4 +195,21 @@ jobs:
           REPO: ${{ steps.repo.outputs.name }}
           AURUM_CATALOG_ROOT: .aurum-catalog
         run: .aurum-standard/tools/check-eslint-config --root .ci-root --repo "$REPO"
+        continue-on-error: ${{ inputs.warn_only }}
+
+      # AGENTS.md says there is one source of agent guidance and only one. What
+      # it could not say, until this step existed, is what happens when a repo
+      # has seven. Nothing happened: the trees sat there agreeing by luck, and
+      # the one that had drifted was the one carrying content the others lacked.
+      #
+      # A repo not yet in the checker's ADOPTED list still gets every finding
+      # printed here — it just does not fail on them. That is the same contract
+      # check-ci-conformance gives an UNCONVERTED repo, and it exists so an
+      # unadopted repo is visibly a known gap rather than silently unchecked.
+      - name: One source of agent guidance
+        if: ${{ !cancelled() }}
+        env:
+          REPO: ${{ steps.repo.outputs.name }}
+          AURUM_CATALOG_ROOT: .aurum-catalog
+        run: .aurum-standard/tools/check-agent-docs --root .ci-root --repo "$REPO"
         continue-on-error: ${{ inputs.warn_only }}

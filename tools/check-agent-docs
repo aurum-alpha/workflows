@@ -218,7 +218,17 @@ def main() -> int:
         print(f"root {args.root} is not a directory", file=sys.stderr)
         return 2
 
-    repos = args.repo or sorted(p.name for p in args.root.iterdir() if p.is_dir())
+    # Enumeration skips dotted directories. A root holding clones also holds
+    # things that are not clones — .claude, .config, .cache — and reporting
+    # "no AGENTS.md" against a settings directory is a finding nobody can act
+    # on. Findings that cannot be acted on are how a checker teaches people to
+    # skim its output.
+    #
+    # The --repo form does not enumerate, so this cannot affect a caller's
+    # conformance run, which names its one repo explicitly.
+    repos = args.repo or sorted(
+        p.name for p in args.root.iterdir() if p.is_dir() and not p.name.startswith(".")
+    )
 
     failures = 0
     pending = 0

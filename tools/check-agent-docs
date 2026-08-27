@@ -1,0 +1,266 @@
+#!/usr/bin/env python3
+"""Assert a repo has one source of agent guidance, and only one.
+
+AGENTS.md states the rule; this is what makes it hold. The failure it exists to
+stop is not a mistake anyone makes on purpose — it is accumulation. A tool
+arrives, it reads its own directory and nothing else, the obvious move is to
+copy the guidance into the shape it wants, and nothing anywhere announces that a
+second copy now exists. Nothing goes red when the copies disagree. By the time
+someone looks, several contradict each other and nobody knows which one any
+given agent actually read.
+
+*Measured 2026-08-22, before this checker existed: one repo carried the same 17
+rule documents in four trees plus a fifth holding 20 — three of which existed
+nowhere else — and a sixth and seventh besides. The bodies matched; only
+per-tool frontmatter differed, because a generator produced them once and was
+then never run again. Another repo carried five trees. Nothing was failing.*
+
+Two agent tools are supported: Cursor and Claude Code. That closed set is what
+makes this checkable — every additional tool is another directory, and a rule
+that has to enumerate an open-ended list is a rule that silently stops applying
+the day a new one appears.
+
+Rules, each naming what it can actually prove:
+
+  A1  AGENTS.md exists at the repo root
+  A2  it answers all six required sections
+  A3  it references the fleet standard, or vendors a copy (client repos cannot
+      reach aurum-alpha/workflows after handover, so a link is not always right)
+  A4  no unsupported rule tree exists
+  A5  CLAUDE.md opens by importing AGENTS.md
+
+A5 checks the ACT — does this file import the source — not the length. The rule
+phrased as "keep the pointer short" would have passed the broken version of
+itself: AGENTS.md originally prescribed `See [AGENTS.md](AGENTS.md)`, which is
+one line, and which Claude Code loads as a file whose entire content tells the
+agent to read something it will not then read. Short and wrong. Every rule here
+is written against an act for that reason.
+
+Run against local clones:  tools/check-agent-docs --root /workspace
+Run against one repo:      tools/check-agent-docs --root DIR --repo NAME
+"""
+
+import argparse
+import pathlib
+import re
+import sys
+
+SOURCE = "AGENTS.md"
+POINTER = "CLAUDE.md"
+IMPORT = "@AGENTS.md"
+
+# A2. The six sections a repo's own AGENTS.md answers. Matched on the heading
+# text, case-insensitively, at any depth — the standard specifies which
+# questions get answered, not how deeply the author nests them.
+SECTIONS = [
+    "source of truth",
+    "work queue",
+    "commands",
+    "quality gates",
+    "approval",
+    "conventions",
+]
+
+# A3. Either form satisfies the rule. A repo inside the fleet links the
+# standard; one built for a client vendors it, because after handover a link to
+# a private repo is worse than nothing — it reads like guidance that exists.
+STANDARD_URL = "aurum-alpha/workflows"
+VENDORED = ("docs/agent-standard.md", "docs/AGENT_STANDARD.md")
+
+# A4. Paths belonging to no supported tool. Guidance nobody maintains that
+# agents may still read.
+#
+# `.claude/rules/` is deliberately absent: it is Claude Code's own path-scoped
+# mechanism, loading only when the agent touches matching files, and it is how a
+# repo keeps CLAUDE.md under the length where adherence falls off. It is a
+# supplement for a supported tool. A rule file there that restates AGENTS.md is
+# still a violation of the standard — but it is one no checker can see, so this
+# does not pretend to.
+#
+# Configuration is not guidance and is not listed: .mcp.json, .cursor/mcp.json,
+# .claude/settings.json, .cursor/plans. The rule governs prose telling an agent
+# how to work, and deleting someone's MCP server list on a technicality would
+# discredit the whole check.
+FORBIDDEN = [
+    ".clinerules",
+    ".cursor/rules",
+    ".cursorrules",
+    ".github/copilot-instructions.md",
+    ".github/instructions",
+    ".github/prompts",
+    ".kiro/steering",
+    ".roo",
+    ".roomodes",
+    ".rulesync",
+    ".windsurfrules",
+    ".windsurf/rules",
+    "WARP.md",
+    ".claude/memories",
+]
+
+# Repos held to the full standard. A repo NOT listed still has every finding
+# printed — it just does not fail the run.
+#
+# This mirrors CONVERTED/UNCONVERTED in check-ci-conformance, and for the same
+# reason: an unadopted repo is a known gap with a name, which is a different
+# thing from a repo nobody has looked at. Silence would make those two
+# indistinguishable.
+#
+# The charter's "no document names a repository to describe its state" exempts
+# checker allow-lists precisely here — a gate has to declare what it currently
+# lets through. Moving a name in is the adoption. The target state is every
+# repo listed and this comment deleted.
+ADOPTED = [
+    "workflows",
+]
+
+# The repo whose AGENTS.md IS the standard rather than a repo's answer to it.
+#
+# check-ci-conformance draws the same line for the same reason: "This repo IS
+# the catalog — its jobs are the definitions, not calls to them." A2 and A3 ask
+# whether a repository answered the standard's six questions about itself and
+# said where the standard lives. Asked of the standard, both are category
+# errors, and the fix a finding would suggest — put repo-specific sections in
+# it, make it link to itself — is the opposite of what this document is for.
+#
+# A4 and A5 still apply. Someone works in this repo with an agent like anywhere
+# else, and the standard is the guidance they need.
+STANDARD_REPO = "workflows"
+
+
+def first_meaningful_line(text: str) -> str:
+    """First line that is not blank and not an HTML comment.
+
+    Claude Code strips block-level HTML comments before loading, so a
+    maintainer note above the import does not stop the import working — and a
+    checker that called that a violation would be wrong about the tool.
+    """
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("<!--"):
+            continue
+        return line
+    return ""
+
+
+def _content_findings(repo_dir: pathlib.Path, text: str) -> list[str]:
+    """A2 and A3 — what a repo's own AGENTS.md must say about that repo."""
+    findings = []
+
+    headings = [
+        re.sub(r"[^a-z ]", "", line.lstrip("#").strip().lower())
+        for line in text.splitlines()
+        if line.lstrip().startswith("#")
+    ]
+    for want in SECTIONS:
+        if not any(want in h for h in headings):
+            findings.append(
+                f"[A2] {SOURCE} has no '{want}' section — a reader cannot tell "
+                "'the fleet default applies' from 'nobody considered it'"
+            )
+
+    vendored = any((repo_dir / v).is_file() for v in VENDORED)
+    if STANDARD_URL not in text and not vendored:
+        findings.append(
+            f"[A3] {SOURCE} neither references {STANDARD_URL} nor vendors it at "
+            f"{VENDORED[0]}"
+        )
+
+    return findings
+
+
+def check(repo_dir: pathlib.Path, name: str) -> list[str]:
+    findings = []
+
+    source = repo_dir / SOURCE
+    if not source.is_file():
+        # Every later rule reads this file. Reporting five findings for one
+        # missing file would bury the only one worth acting on.
+        return [f"[A1] no {SOURCE} at the repo root — the standard has no source to point at"]
+
+    text = source.read_text(encoding="utf-8", errors="replace")
+
+    if name != STANDARD_REPO:
+        findings.extend(_content_findings(repo_dir, text))
+
+    for rel in FORBIDDEN:
+        if (repo_dir / rel).exists():
+            findings.append(
+                f"[A4] {rel} belongs to no supported tool — guidance nobody "
+                "maintains that agents may still read"
+            )
+
+    pointer = repo_dir / POINTER
+    if not pointer.is_file():
+        findings.append(
+            f"[A5] no {POINTER} — Claude Code reads {POINTER}, not {SOURCE}, so "
+            f"this repo's guidance does not reach it"
+        )
+    else:
+        head = first_meaningful_line(pointer.read_text(encoding="utf-8", errors="replace"))
+        if head != IMPORT:
+            findings.append(
+                f"[A5] {POINTER} opens with {head!r}, not {IMPORT!r} — only the "
+                "@ import expands the source into context; a markdown link "
+                "loads a file that tells the agent to read something it will not"
+            )
+
+    return findings
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--root", default="/workspace", type=pathlib.Path)
+    ap.add_argument("--repo", action="append", help="limit to specific repo(s)")
+    args = ap.parse_args()
+
+    if not args.root.is_dir():
+        print(f"root {args.root} is not a directory", file=sys.stderr)
+        return 2
+
+    repos = args.repo or sorted(p.name for p in args.root.iterdir() if p.is_dir())
+
+    failures = 0
+    pending = 0
+    for name in repos:
+        repo_dir = args.root / name
+        if not repo_dir.is_dir():
+            print(f"{name}: not found under {args.root}", file=sys.stderr)
+            return 2
+
+        findings = check(repo_dir, name)
+        adopted = name in ADOPTED
+
+        if not findings:
+            print(f"{name}: conformant" + ("" if adopted else " (not yet adopted)"))
+            continue
+
+        label = "" if adopted else "  [not yet adopted — reported, not failing]"
+        print(f"{name}: {len(findings)} finding(s){label}")
+        for f in findings:
+            print(f"  {f}")
+        if adopted:
+            failures += len(findings)
+        else:
+            pending += len(findings)
+
+    print()
+    if pending:
+        print(
+            f"{pending} finding(s) in repos not yet in ADOPTED. Not failures "
+            "today; they are what adoption has to clear. Moving a name into "
+            "ADOPTED in tools/check-agent-docs is the adoption."
+        )
+    if failures:
+        print(
+            f"FAIL: {failures} finding(s) in adopted repo(s). One source of "
+            "agent guidance, and only one — see AGENTS.md rule 1."
+        )
+        return 1
+
+    print(f"PASS: {len(repos)} repo(s) checked, no findings in adopted repos.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

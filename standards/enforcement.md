@@ -71,24 +71,33 @@ for the gate.
 
 ## Agent standard
 
-Rules from [`../AGENTS.md`](../AGENTS.md). The whole standard lands review only,
-per the charter's sequence. The proposed gate is `tools/check-agent-docs`, run
-from `job-ci-conformance.yml` alongside the existing checkers, so adopting it is
-a checker change rather than a per-repo workflow change.
+Rules from [`../AGENTS.md`](../AGENTS.md). `tools/check-agent-docs` runs from
+`job-ci-conformance.yml` alongside the other caller-side checkers, so adopting
+it was a checker change rather than twelve workflow changes.
 
-| # | Rule | Enforced by | Status | Proposed gate |
-|---|---|---|---|---|
-| A1 | Every repository has an `AGENTS.md` at its root | — | **review only** | `check-agent-docs` — file exists |
-| A2 | It answers all six required sections | — | **review only** | `check-agent-docs` — headings present |
-| A3 | It references the fleet standard, or vendors it | — | **review only** | `check-agent-docs` — reference or vendored copy present |
-| A4 | One source of agent guidance; no parallel per-tool rule trees | — | **review only** | `check-agent-docs` — no unlisted rule directories |
-| A5 | Per-tool files are pointers, never second copies | — | **review only** | `check-agent-docs` — pointer files under a line budget |
-| A6 | The named work queue is the only work queue | — | **review only** | resists a checker; review question |
-| A7 | Gates pass before commit; hooks are never skipped | — | **review only** | partially reachable: `--no-verify` in history is detectable |
-| A8 | The human approval gate is honoured | — | **review only** | resists a checker; review question |
-| A9 | Docs win over code, and a correction lands in the docs | — | **review only** | resists a checker; review question |
+| # | Rule | Enforced by | Status |
+|---|---|---|---|
+| A1 | Every repository has an `AGENTS.md` at its root | `check-agent-docs` A1 | gated¹ |
+| A2 | It answers all six required sections | `check-agent-docs` A2 | gated¹ |
+| A3 | It references the fleet standard, or vendors it | `check-agent-docs` A3 | gated¹ |
+| A4 | No rule tree outside the two supported tools | `check-agent-docs` A4 | gated¹ |
+| A5 | `CLAUDE.md` opens by importing `AGENTS.md` | `check-agent-docs` A5 | gated¹ |
+| A6 | The named work queue is the only work queue | — | **review only** |
+| A7 | Gates pass before commit; hooks are never skipped | — | **review only** |
+| A8 | The human approval gate is honoured | — | **review only** |
+| A9 | Docs win over code, and a correction lands in the docs | — | **review only** |
 
-A4 and A5 are the two that most need the gate, because they fail silently and
-by accumulation: nothing announces that a second rule tree has appeared, and by
-the time anyone notices, the copies disagree and no one knows which one the
-agents read.
+¹ Gated in repos named in the checker's `ADOPTED` list. Elsewhere the findings
+are printed on every run without failing it — the same contract
+`check-ci-conformance` gives an `UNCONVERTED` repo, and for the same reason: a
+gap someone has looked at and a gap nobody has looked at should not read the
+same. Adoption is moving a name into that list.
+
+A4 and A5 are the two that earn the gate. A4 fails by accumulation — a tree
+appears, nothing announces it, and the copies drift until nobody knows which one
+an agent read. A5 fails by looking correct: `AGENTS.md` prescribed a markdown
+link until it was checked against the tool, and Claude Code would have loaded a
+file whose whole content told it to read something it then would not read.
+
+A6 to A9 resist a checker honestly. Whether a correction reached the docs, or an
+agent stopped at the approval gate, is not a fact on disk.

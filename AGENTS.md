@@ -1,6 +1,6 @@
 # AGENTS.md — the Aurum Alpha agent standard
 
-Status: **agreed 2026-08-21, review only.** One of the Aurum Alpha engineering
+Status: **agreed 2026-08-21; rules 1-5 gated 2026-08-22.** One of the Aurum Alpha engineering
 standards; read [`STANDARDS.md`](STANDARDS.md) for the charter it is written
 under and [`standards/enforcement.md`](standards/enforcement.md) for what
 enforces it.
@@ -77,24 +77,43 @@ cannot distinguish "the default applies" from "nobody considered it" by absence.
 
 `AGENTS.md` at the repository root is the source. There is no second copy.
 
-Per-tool files that a tool will only find at its own path — `CLAUDE.md`,
-`.github/copilot-instructions.md`, and whatever arrives next — are **pointers**,
-not copies:
+**Two agent tools are supported: Cursor and Claude Code.** That is a closed set,
+and it is the reason this rule is enforceable at all. Every tool admitted brings
+a directory, every directory acquires a copy of the guidance, and no copy
+announces itself. A third tool is a decision someone argues for and this document
+records — never a directory that appears in a repository and is discovered later.
+
+Cursor reads `AGENTS.md` directly and needs nothing else.
+
+Claude Code reads `CLAUDE.md`, not `AGENTS.md`. So `CLAUDE.md` exists, and its
+first line imports the source:
 
 ```markdown
-See [AGENTS.md](AGENTS.md).
+@AGENTS.md
 ```
 
-That is the whole file. A pointer that grows a second paragraph of real guidance
-has become a copy, and copies diverge — that is not a prediction, it is the
-observed failure this rule exists to stop.
+**The `@` is load-bearing.** It is Claude Code's import syntax, which expands the
+target into context at session start. A markdown link — `See [AGENTS.md](AGENTS.md)` —
+is *not* an import: it loads a file whose entire content tells the agent to go
+read something it will not go and read. That was this document's own instruction
+until it was checked against the tool, and it would have left every adopting repo
+with guidance Claude Code never saw. Claude-specific lines may follow the import;
+what may not follow is a restatement of anything above it.
 
 Parallel rule trees are not created: no `.clinerules/`, `.kiro/steering/`,
-`.rulesync/`, `.roo/`, `.windsurfrules`, `.cursor/rules/` holding content of
-their own. Where a tool cannot be pointed at `AGENTS.md` and can only read its
-own directory, that directory is **generated** from `AGENTS.md` by a committed
-script and never hand-edited — and the generator's existence is a gap worth
-closing, not a pattern worth spreading.
+`.rulesync/`, `.roo/`, `.windsurfrules`, `.github/copilot-instructions.md`,
+`.cursor/rules/`, `WARP.md`. Not one of these belongs to a supported tool, and a
+tree for a tool nobody runs is guidance nobody maintains that agents may still
+read.
+
+`.claude/rules/` is the one exception, and it is not a loophole. It is Claude
+Code's own path-scoped mechanism: files carrying `paths:` frontmatter that load
+only when the agent touches matching code. It exists because guidance that
+belongs to one subsystem should not sit in every session's context, and because
+adherence falls off past roughly 200 lines in `CLAUDE.md`. It is a **supplement
+for a supported tool, never a second copy of `AGENTS.md`** — a rule file
+restating what `AGENTS.md` already says is the failure this section exists to
+stop, arriving through the one door left open.
 
 *A tool-specific configuration file is not guidance and is out of scope: an MCP
 server list, a model selection, an editor setting. The rule governs prose that
@@ -191,21 +210,23 @@ vendored copy, in a handed-over repository — before changing anything under
 
 ## Enforcement
 
-The whole standard lands **review only**, per the charter's sequence: a standard
-and its gate are separate changes, and coupling them is how standards stall.
+`tools/check-agent-docs` is the gate, running from `job-ci-conformance.yml`
+alongside the existing checkers — so adopting it is a checker change, not twelve
+workflow changes. What it proves mechanically: that `AGENTS.md` exists, that the
+six sections are present, that the fleet standard is referenced or vendored,
+that no unsupported rule tree exists, and that `CLAUDE.md` opens by importing
+`AGENTS.md`.
 
-The proposed gate is `tools/check-agent-docs`, running from
-`job-ci-conformance.yml` alongside the existing checkers — so adopting it is a
-checker change, not twelve workflow changes. What it can prove mechanically:
-that `AGENTS.md` exists, that the six sections are present, that the fleet
-standard is referenced or vendored, that no unlisted rule tree has appeared, and
-that per-tool pointer files are still pointers rather than copies.
+That last check is written against the act — *does this file import the
+source* — rather than against length. A pointer rule phrased as "keep it short"
+would have passed the broken markdown-link version of itself, because that
+version was one line and wrong.
 
-What it cannot prove: that the work queue is honoured, that the approval gate is
-respected, that a correction reached the docs. Those stay review questions, and
-[`standards/enforcement.md`](standards/enforcement.md) says so in the row rather
-than implying coverage it lacks.
+What the checker cannot prove: that the work queue is honoured, that the approval
+gate is respected, that a correction reached the docs. Those stay review
+questions, and [`standards/enforcement.md`](standards/enforcement.md) says so in
+the row rather than implying coverage it lacks.
 
-Rules 1 and 5 are the two most worth gating early, for opposite reasons. Rule 1
-fails by silent accumulation and is trivially checkable. Rule 5 fails once,
-expensively, and cannot be checked at all.
+Repos are held to it by name. A repository not yet listed still has its findings
+printed on every run — a known gap with somewhere to read it, which is what
+distinguishes it from a repository nobody has looked at.

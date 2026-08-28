@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify every Node app in the fleet pins the same package manager version.
+"""Verify every Node app in the fleet pins the same toolchain versions.
 
 The version each repo actually uses comes from package.json's packageManager
 field — that is what corepack activates locally and what pnpm/action-setup
@@ -16,6 +16,26 @@ own clone, so a checker that can only run over all eleven at once is a checker
 that only runs when someone remembers to run it from a workstation. Naming a
 repo with no Node app is a pass, not an error, so every caller can wire this up
 unconditionally without first knowing whether it is a Node repo.
+
+It checks TWO things, for the same reason and against the same file:
+
+  packageManager   one pnpm across the fleet
+  devDependencies  one version of each converged toolchain package
+
+The second half exists because the first was the whole check while eight
+packages were converged by hand across nine repos and NOTHING held them there.
+aurum-alpha/workflows#169 moved @types/node and the eslint six to a single
+exact version in every Node app; a week later any `pnpm up` in any repo could
+have undone that silently, because the only thing that would have noticed was
+somebody re-reading nine manifests. Convergence that is not asserted is a
+snapshot, not a standard.
+
+Versions are compared EXACTLY. A caret or tilde fails: `^7.3.0` in two repos
+can resolve to different versions on different days, so a range is not a pin
+and cannot be a fleet standard. That is also why a package mid-wave is absent
+from fleet-versions.json rather than listed with a target -- listing it would
+fail every repo whose turn has not come, and a check that is expected to fail
+is a check nobody reads.
 """
 
 import argparse
@@ -45,9 +65,12 @@ NODE_APPS = {
 }
 
 
-def load_expected(repo_root: pathlib.Path) -> str:
+def load_expected(repo_root: pathlib.Path) -> tuple[str, dict[str, str]]:
     data = json.loads((repo_root / "fleet-versions.json").read_text())
-    return data["pnpm"]
+    # devDependencies is optional so this checker still runs against an older
+    # fleet-versions.json -- a caller pins standard_ref, so the checker and the
+    # data it reads can be one commit apart.
+    return data["pnpm"], data.get("devDependencies", {})
 
 
 def main() -> int:
@@ -57,7 +80,7 @@ def main() -> int:
     args = ap.parse_args()
 
     here = pathlib.Path(__file__).resolve().parent.parent
-    expected = load_expected(here)
+    expected, want_dev = load_expected(here)
     want = f"pnpm@{expected}"
 
     if args.repo:
@@ -82,7 +105,9 @@ def main() -> int:
             failures += 1
             continue
 
-        declared = json.loads(pkg.read_text()).get("packageManager")
+        manifest = json.loads(pkg.read_text())
+
+        declared = manifest.get("packageManager")
         if declared is None:
             print(f"{repo}: no packageManager field — must declare {want}")
             failures += 1
@@ -92,6 +117,23 @@ def main() -> int:
         else:
             print(f"{repo}: {declared}")
 
+        dev = manifest.get("devDependencies", {})
+        for name, version in sorted(want_dev.items()):
+            got = dev.get(name)
+            if got is None:
+                # Absent is a failure, not a skip. Every package listed in
+                # fleet-versions.json is one the whole fleet converged on, so a
+                # Node app that has dropped one has drifted just as surely as
+                # one carrying the wrong version.
+                print(f"{repo}: {name} is not declared, fleet standard is {version}")
+                failures += 1
+            elif got != version:
+                # Names the range case explicitly: "^10.9.1 is not 10.9.1" reads
+                # like a checker being pedantic unless it says why.
+                hint = " (a range, not a pin)" if got[:1] in "^~><=" else ""
+                print(f"{repo}: {name} is {got}{hint}, fleet standard is {version}")
+                failures += 1
+
     if failures:
         print(
             f"\nFAIL: {failures} repo(s) disagree with fleet-versions.json. "
@@ -100,7 +142,10 @@ def main() -> int:
         )
         return 1
 
-    print(f"\nPASS: all {len(selected)} Node app(s) pin {want}")
+    print(
+        f"\nPASS: all {len(selected)} Node app(s) pin {want} "
+        f"and {len(want_dev)} converged devDependencies"
+    )
     return 0
 
 

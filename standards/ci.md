@@ -549,8 +549,9 @@ re-pinning is also what makes it single-version.
 
 Direct pushes to the default branch are blocked org-wide. Every change reaches
 `main` through a pull request whose `ci-ok` is green — required status check,
-no required approvals, no merge queue. Merge commits are disabled; **squash is
-the merge method**, so one merged pull request is one commit on `main`.
+branches required to be up to date before merging, no required approvals, no
+merge queue. Merge commits are disabled; **squash is the merge method**, so one
+merged pull request is one commit on `main`.
 
 The publish triggers did not change, and did not need to. **A merge fires
 `push` on `refs/heads/main`** exactly as a direct push did, so every
@@ -569,19 +570,66 @@ So the two run kinds divide cleanly, and neither is a special case:
   steps — the artifact acquires a name, durability and an audience. Nothing
   else about it differs (see Publishing, above, and Principle 17).
 
+**Up to date before merging is on, org-wide, and it is what makes the green
+mean anything.** GitHub tests `refs/pull/N/merge` — the branch merged into the
+base as it then stood — so a pull request that went green before `main` moved
+is a proof about a merge result that no longer exists. Strict mode closes that:
+the head branch must contain the current tip of `main`, and GitHub re-checks it
+at the moment of merge, so the tree that was proved and the tree that lands are
+the same tree. Post-merge `main` runs stop being the thing that catches a
+semantic conflict and go back to being what they are — the release event.
+
+What it costs is throughput, and the bill falls on whichever pull request is
+second. **Every merge to `main` stales every other open pull request against
+it.** Each one then needs its branch updated; updating writes a new head
+commit, which starts a new run, which has to go green before that pull request
+can merge — by which time the next merge has staled the rest again. With one
+pull request open this is invisible. With a Dependabot re-pin fanned out across
+eleven repos, it is the dominant cost of landing them, and the order they land
+in stops being free.
+
 Two things this does **not** buy, stated so nobody assumes them:
 
-- **Green on the pull request is a proof about the merge result at the time it
-  ran, not about `main` afterwards.** GitHub tests `refs/pull/N/merge` — the
-  branch merged into the base as it then stood. If `main` moves before the
-  merge lands, that proof is stale, and "require branches to be up to date
-  before merging" is deliberately off. Post-merge `main` runs are what catch
-  the semantic conflict; that is a real gap and it is accepted, not covered.
 - **The merge queue stays off, and turning it on is not a settings change.**
-  No repo handles `on: merge_group`, so the required check would never report
-  on the merge-group event and every pull request would sit un-mergeable
-  forever. Adding `merge_group` to all eleven `ci.yml` triggers is the
-  prerequisite, and it comes first or not at all.
+  A queue is what turns the one-at-a-time work above into something a machine
+  does: it tests each pull request against the result of the ones ahead of it
+  and lands them in order, without a human updating branches between merges.
+  That is worth more now than it was before strict mode, not less. But no repo
+  handles `on: merge_group`, so the required check would never report on the
+  merge-group event and every pull request would sit un-mergeable forever.
+  Adding `merge_group` to all eleven `ci.yml` triggers is the prerequisite, and
+  it comes first or not at all.
+- **The gate is required by name, and the branch under test supplies the body.**
+  What branch protection stores is the string `ci-ok`. It blocks the merge until
+  *a* check by that name reports success on the head commit, and it does not
+  know which workflow produced it — restricting the source to an app narrows the
+  author to GitHub Actions in this repo, which for a same-repo pull request
+  narrows nothing. `ci-ok` is a job in the repo's own `ci.yml`, and a
+  pull-request run executes the head branch's copy of that file. So a pull
+  request that trims `ci-ok`'s `needs:` list, or repoints a `uses:` at another
+  ref, still lands a green check by that name and still satisfies the rule.
+  Review is the only thing standing between that and `main`. The mechanism that
+  would close it is the ruleset rule **Require workflows to pass before
+  merging**, which pins a workflow file by repository and ref instead of
+  matching a name, so the head branch cannot substitute its own copy. It does
+  not replace `ci-ok`: it is configurable only at the organisation level, it
+  ignores the workflow's own event filters, and it takes only workflows
+  carrying their own `pull_request` trigger — every `job-*.yml` here is
+  `workflow_call`, so the catalog cannot be required that way, and requiring a
+  repo's whole DAG would run it a second time alongside `ci.yml`.
+
+  **What it does fit is conformance, and that is the gate to pin.**
+  `check-ci-conformance` and the checkers beside it are the one gate whose
+  entire value is that the repository under test gets no vote on it, and they
+  are small enough to sit in a workflow this repo owns carrying its own
+  `pull_request` trigger. Required org-wide and pinned to a ref here, it would
+  run the checkers this repo shipped, rather than the ones the head branch's
+  `ci.yml` chose to call. `ci-ok` stays the required status check for the DAG,
+  where matching by name costs little: a pull request that guts its own build
+  gates has stopped proving anything about itself, and review catches that. A
+  pull request that quietly drops the conformance job is the one nobody
+  notices. That is the split, and building it is work this standard has named
+  and not yet done.
 
 ### CI does not commit to the repository it is testing
 
@@ -1767,6 +1815,47 @@ conformance checker reads workflows too. What caught it was this repo using its
 own action in its own `ci.yml` — the catalog eating its own cooking, which is
 worth more here than another rule, because it catches the class rather than the
 instance. Prose about an expression names it without its delimiters.
+
+### The prelude a bespoke job may not rewrite
+
+A repo's pipeline is shared jobs plus, where Principle 19 applies, a handful of
+local job bodies that are policy about *that* codebase and belong nowhere else —
+client-manager's prettier, golden-corpus and Go/TypeScript contract gates. Those
+bodies are legitimately local. **Their Node setup is not.** Reaching a working
+`pnpm` is the same eight steps in every repo in the fleet, and a bespoke job
+that spells them out again is a second answer to a question the catalog already
+answers.
+
+`setup/node-pnpm` is that answer for a steps-level consumer: a composite action,
+because a bespoke job needs a *prelude*, not a whole job body, and a reusable
+workflow cannot supply one. Reference it at the same commit as every other
+`aurum-alpha/workflows` pin in the repo — rule LOCK does not care that this one
+is an action rather than a workflow.
+
+**The shared `job-node-*` workflows keep the prelude inline, and that is
+deliberate.** They run in the caller's checkout, so calling the composite would
+mean pinning this repo from inside this repo: every prelude change would take
+two commits, the second one only to move the pin the first one invalidated. One
+definition per audience is the trade, and it is worth making — but it is a
+trade, and it has a cost that has to be paid on purpose.
+
+**The cost is that two copies exist, so they must stay step-for-step
+identical.** They did not. #123 re-pinned all ten inline preludes and left the
+composite two majors behind on both of its actions, for one reason: nothing was
+watching that path. `dependabot.yml` said `directory: /`, which reaches
+`.github/workflows` and a root `action.yml` and nothing else. actionlint does
+not cover it either — it lints workflows, not action manifests, the same blind
+spot that let `ci-ok` ship an unevaluatable `description`. A composite outside
+`.github/` therefore has exactly one instrument available, and it has to be
+named: **every composite gets its own `directories:` entry the day it is
+added.**
+
+**And a composite is a consumed surface, so a change to one bumps `.version`.**
+Callers reach it by SHA; SHAs move through tags; tags come from `.version`.
+`check-standard-ref` watched `tools/` and `job-*.yml` and not `setup/`, which
+meant the composite could be fixed in a way that could never reach the caller
+that needed the fix. It watches `setup/` now. `standard_ref` stays a narrower
+question — it selects *checkers*, and a composite is not one.
 
 ### Job ids name the deployable unit
 

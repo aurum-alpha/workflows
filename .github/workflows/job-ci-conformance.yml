@@ -82,7 +82,7 @@ on:
           default in the same wave that adds a catalog file, not the one after.
         type: string
         required: false
-        default: 9cc4d74dec1156b6b33a5193ae46eba4256f5009
+        default: 2e9d8ca196210e7c23fab48b31761a93e6a574e2
 
 jobs:
   ci-conformance:

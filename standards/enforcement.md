@@ -52,6 +52,8 @@ will.
 | — | Per-stack DAG in multi-codebase repos | — | **review only** |
 | — | SHA pinning | `check-ci-conformance` PIN | gated |
 | — | `ci-ok` is the only required check | branch protection | gated |
+| — | Branches up to date before merging | branch protection | gated |
+| — | The `ci-ok` body is the one the pull request ships | — | **review only** |
 | — | Fleet pnpm version | `check-fleet-versions` | gated¹ |
 | — | Fleet oxlint / oxlint-tsgolint versions | `check-fleet-versions` | gated¹ |
 | — | Shared lint configs unedited (`eslint.config.mjs`, `.oxlintrc.json`) | `check-lint-configs` | gated¹ |

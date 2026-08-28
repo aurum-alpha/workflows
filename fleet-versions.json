@@ -1,18 +1,45 @@
 {
   "$comment": [
     "Single source of truth for toolchain versions the fleet standardizes on.",
-    "Nothing reads this at build time \u2014 each repo still declares its own pin in",
-    "the file its tooling actually reads (package.json packageManager, go.mod,",
-    ".node-version), because that is what corepack, setup-go and setup-node",
-    "consume both in CI and on a developer's machine. This file is what those",
-    "per-repo pins are checked AGAINST: tools/check-fleet-versions compares every",
-    "repo to the values here, so drift is a failing check rather than something",
-    "noticed months later.",
+    "Nothing reads this at build time — each repo still declares its own pin in",
+    "the file its tooling actually reads (package.json packageManager,",
+    "package.json devDependencies, go.mod, .node-version), because that is what",
+    "corepack, pnpm, setup-go and setup-node consume both in CI and on a",
+    "developer's machine. This file is what those per-repo pins are checked",
+    "AGAINST: tools/check-fleet-versions compares every repo to the values here,",
+    "so drift is a failing check rather than something noticed months later.",
     "Bumping a version here is the start of a fleet wave, not the end: update the",
-    "value, then update every repo's own pin to match.",
-    "Lint toolchain versions are here for the same reason pnpm is: the shared oxlint config is byte-identical fleet-wide, so the tool reading it has to be too. A config that assumes a rule the local oxlint has not shipped fails in one repo and nowhere else."
+    "value, then update every repo's own pin to match."
+  ],
+
+  "$packageManager_comment": [
+    "Compared against package.json's `packageManager` field, which is what",
+    "corepack activates and what pnpm/action-setup reads in the shared jobs."
   ],
   "pnpm": "10.34.5",
-  "oxlint": "1.78.0",
-  "oxlint-tsgolint": "7.0.2001"
+
+  "$devDependencies_comment": [
+    "Compared against package.json's `devDependencies`, EXACTLY -- a caret or",
+    "tilde is a failure, not a near miss. A range is not a pin: two repos",
+    "declaring ^7.3.0 can resolve to different vite versions on different days,",
+    "which is the drift this file exists to stop. Every entry below is a package",
+    "the fleet has actually converged on; a package still mid-wave does not",
+    "belong here until every repo carries the value, or the check fails for",
+    "repos whose turn has not come and the failure stops meaning anything.",
+    "",
+    "@types/node landed in wave 1 of aurum-alpha/workflows#169; the eslint six",
+    "landed in wave 2. Both are converged across all nine Node apps -- verified",
+    "against each repo's main, not assumed -- which is what makes them",
+    "assertable now. vite, vitest, react and typescript are waves 3 to 6 and are",
+    "deliberately absent until they converge."
+  ],
+  "devDependencies": {
+    "@types/node": "26.3.0",
+    "eslint": "10.9.1",
+    "@eslint/js": "10.0.1",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "eslint-plugin-react-refresh": "0.5.4",
+    "typescript-eslint": "8.67.0"
+  }
 }

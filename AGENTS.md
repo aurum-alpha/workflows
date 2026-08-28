@@ -163,6 +163,29 @@ and runnable. An agent should never have to reconstruct a command from a CI
 workflow file — and per the CI standard's Principle 2, a gate a developer cannot
 reproduce locally with one command is a defect in the gate.
 
+**A green that has gone stale is not a green.** Branch protection requires a
+pull request's branch to be up to date with the default branch before it can
+merge — on, org-wide. A pull request that passed and then fell behind cannot
+land until it is updated and CI has run again, so that the tree which was proved
+and the tree which lands are the same tree.
+[`standards/ci.md`](standards/ci.md) carries the reasoning and the throughput
+cost; what follows is only the part an agent gets wrong.
+
+**Bring the branch up to date by merging the default branch into it, not by
+rebasing.** Both satisfy the check. A rebase rewrites pushed history and needs a
+force-push, which invalidates every existing checkout of that branch, a human's
+included. The usual argument for rebasing — keeping trunk history clean — does
+not apply here, because **squash is the merge method**: the branch's history,
+merge commits and all, is discarded at merge and the default branch still gets
+exactly one commit. Merging costs nothing and breaks nothing, so it is the
+default; rebase only where a repository's **Conventions** section says to.
+
+**Do not report a pull request as landed while it is green but behind.** It is
+not mergeable yet. Sitting through the update and the re-run is part of landing
+it, not an optional extra, and with several pull requests open against one
+repository each merge stales the rest — so they land one at a time, and the
+order is a decision rather than an accident.
+
 ### 5. The human approval gate
 
 **An agent does not merge, deploy, or close an issue on its own verification.**

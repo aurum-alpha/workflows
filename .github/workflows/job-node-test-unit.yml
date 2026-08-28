@@ -63,8 +63,18 @@ jobs:
       # and a called workflow cannot see the caller's job id (github.job reads
       # `test-unit`, the id inside this file). workdir is the only thing that
       # distinguishes two callers of this job, so it is the key.
+      #
+      # !cancelled(), because the test-results upload below runs on a failed
+      # run and reads this output. Inheriting success() meant a failing unit
+      # skipped this step, rendered the artifact name as a bare
+      # `testresults-node-`, and two failing units in one repo then collided
+      # on that name. job-test-unit-js-vitest avoids this a different way —
+      # its census step runs BEFORE the tests, so its output is already set
+      # when they fail. Either shape works; what does not is a naming step
+      # after the tests with nothing to keep it alive.
       - name: Name this unit's artifacts
         id: key
+        if: ${{ !cancelled() }}
         shell: bash
         env:
           WD: ${{ inputs.workdir }}

@@ -1891,20 +1891,53 @@ test family however much it feels adjacent.
 
 ### Two linters, on purpose, for now
 
-`job-lint-js-eslint` and `job-lint-js-oxlint` both exist. That is a deliberate
-exception to "one way per capability" and it is written down rather than
-allowed to look accidental.
+`job-lint-js-eslint` and `job-lint-js-oxlint` both exist, both run in every repo
+with JS, and that is a deliberate exception to "one way per capability" written
+down rather than allowed to look accidental.
 
-They are not interchangeable. oxlint is Rust, runs 50-100x faster, and
-implements a **subset** of the rules: no eslint plugins, and no type-aware
-linting at all — every `@typescript-eslint` rule that needs the type checker is
-simply absent. A repo on oxlint is getting *less* checking than one on eslint,
-not different checking.
+**The reason changed, and the old reason was wrong by the time anyone read it.**
+This section used to say oxlint had "no type-aware linting at all" and that a
+repo on oxlint got *less* checking than one on eslint. Neither survived being
+measured. oxlint runs the type-aware rules through `--type-aware`
+(oxlint-tsgolint, built on typescript-go), and runs the eslint plugins it has
+not ported through a JS plugin bridge. Against the fleet eslint config on
+gofast's client it reports **every finding eslint reports, and eight more**, in
+roughly half the time. What made oxlint look like a subset was one repo's
+`.oxlintrc.json` enabling two rules and a default category — a config, not a
+tool. The fleet spent a release arguing with that file.
 
-gofast is the only oxlint caller. Two jobs exist so that repo is not blocked on
-a linter migration nobody asked for, and so the fleet is not blocked on gofast.
-The target is one linter; this is the honest way to hold the position until
-that is decided, instead of pretending the fleet already agrees.
+So the configs are shared now, on the same terms as `eslint.config.mjs`:
+`config/.oxlintrc.json` is byte-identical fleet-wide and `check-eslint-config`
+fails the build if a repo edits it. **It is written as a translation of the
+eslint config** — same rules, same severity tiers, same ignores — because that
+is the only arrangement in which running both is worth anything. Two linters
+meant to agree produce evidence when they do not. Two linters configured
+differently produce noise, and nobody reads the second check.
+
+**oxlint is not in `fleet-versions.json` yet, deliberately.** That file asserts
+packages the fleet has *converged* on, and a package still mid-wave does not
+belong there until every repo carries the value — listing it would fail every
+repo whose turn has not come, and a check expected to fail is a check nobody
+reads. oxlint and oxlint-tsgolint join it, pinned exactly, on the day the last
+repo adopts the shared config. Until then each adopting repo pins them exactly
+in its own `package.json`, the way every wave has worked.
+
+**Why both still run.** oxlint's JS plugin API is alpha and the type-aware path
+rides on a TypeScript compiler rewrite that has not shipped as TypeScript's
+default. Those are two pre-1.0 dependencies, and this is the only blocking JS
+lint gate the fleet has. Running eslint beside it is how a regression in either
+one is visible as a disagreement rather than as a silence. Every oxlint caller
+is therefore `warn_only`, and stays that way while the bridge is alpha: a
+pre-1.0 dependency does not get to turn the fleet red.
+
+**What retires one of them.** Either the JS plugin API leaves alpha, or oxlint
+ports the react-hooks compiler rules natively and the bridge stops being needed
+at all — 14 of the 16 rules in `eslint-plugin-react-hooks`'s recommended set are
+the only reason it is loaded. On that day the surviving linter is oxlint, the
+eslint job and config are deleted, and because the two configs already say the
+same thing the change is a deletion rather than a migration. Until then this
+file says "two", out loud, with the condition attached, instead of pretending
+the fleet has already decided.
 
 ### Shared job names: `<function>-<language>-<runner|framework>`
 

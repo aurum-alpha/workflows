@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify every repo's eslint.config.mjs is byte-identical to the catalog's.
+"""Verify every repo's shared lint configs are byte-identical to the catalog's.
 
 The config's own header says:
 
@@ -11,9 +11,16 @@ match, and the sentence enforcing it was decoration — which is worse than no
 rule, because it reads as a guarantee. A rule nothing enforces is a rule
 already broken; nobody has just noticed yet.
 
-This is the checker. The canonical copy lives at config/eslint.config.mjs in
-this repository, so there is one place to change and one thing to compare
-against, rather than six copies agreeing by luck.
+This is the checker. The canonical copies live in config/ in this repository,
+so there is one place to change and one thing to compare against, rather than
+six copies agreeing by luck.
+
+It covers two files now. `.oxlintrc.json` arrived with the same claim in its
+own header and the same way of failing: oxlint's config was one repo's local
+file, and the argument the fleet had been having about oxlint's coverage turned
+out to be an argument with that file rather than with the tool. A second shared
+config enforced the same way is one checker with a longer list, not a second
+checker -- the rule is about shared configs, not about eslint.
 
 The comparison is bytes, not semantics, and deliberately so. The point is not
 that the configs behave alike — it is that they are ONE config, so that
@@ -23,7 +30,25 @@ than a merge.
 Run against local clones:  tools/check-eslint-config --root /workspace
 Run against one repo:      tools/check-eslint-config --root DIR --repo NAME
 
-Naming a repo with no eslint config is a pass, not an error, for the same
+THE NAME IS NARROWER THAN THE JOB, and deliberately so for now. Renaming this
+file to check-lint-configs is a two-wave operation, not a tidy-up: the calling
+job takes its body from the caller's `uses:` pin but its tools from
+`standard_ref`, which lags one commit by design, so the commit that renames the
+tool ships a job invoking a name the previous main does not have -- exit 127,
+which is what the first attempt at this change did to gofast. The rename waits
+until a main exists that already carries both names. Until then this file
+checks every shared lint config, whatever its name says.
+
+ADDING a shared config is safe; EDITING one is a fleet-wide event. The
+canonical copy is read from the catalog's default branch, not from the caller's
+pinned standard_ref (see AURUM_CATALOG_ROOT below), so the moment an edit lands
+on main every repo still carrying the old bytes fails -- including repos that
+changed nothing and are pinned to an older catalog. A new file has no such
+blast radius, because a repo without it passes. So a new shared config can ship
+with one pilot repo; a change to an existing one ships with all of them or not
+at all, which is what its "DO NOT EDIT IN ONE REPO" header has always meant.
+
+Naming a repo with no such config is a pass, not an error, for the same
 reason check-fleet-versions passes a repo with no Node app: a checker that
 only runs when someone remembers to exclude the right repos is a checker that
 stops being run.
@@ -35,7 +60,7 @@ import os
 import pathlib
 import sys
 
-CONFIG = "eslint.config.mjs"
+CONFIGS = ("eslint.config.mjs", ".oxlintrc.json")
 
 # Where a repo may keep its copy, in order. Repo root covers the repos whose JS
 # project IS the repo; client/ covers the ones whose React app is its own pnpm
@@ -68,11 +93,13 @@ def main() -> int:
     # has already moved past.
     here = pathlib.Path(os.environ.get("AURUM_CATALOG_ROOT")
                         or pathlib.Path(__file__).resolve().parent.parent)
-    canonical = here / "config" / CONFIG
-    if not canonical.is_file():
-        print(f"canonical config not found at {canonical}", file=sys.stderr)
-        return 2
-    want = digest(canonical)
+    want = {}
+    for config in CONFIGS:
+        canonical = here / "config" / config
+        if not canonical.is_file():
+            print(f"canonical config not found at {canonical}", file=sys.stderr)
+            return 2
+        want[config] = digest(canonical)
 
     if args.repo:
         repos = args.repo
@@ -82,36 +109,37 @@ def main() -> int:
     failures = 0
     checked = 0
     for repo in repos:
-        found = [
-            args.root / repo / sub / CONFIG if sub else args.root / repo / CONFIG
-            for sub in SEARCH_DIRS
-        ]
-        found = [c for c in found if c.is_file()]
-        if not found:
-            if args.repo:
-                print(f"{repo}: no {CONFIG} — nothing to check")
-            continue
-        for path in found:
-            checked += 1
-            where = path.relative_to(args.root / repo)
-            got = digest(path)
-            if got == want:
-                print(f"{repo}: identical ({where})")
-            else:
-                failures += 1
-                print(f"{repo}: DIFFERS from config/{CONFIG} ({where})")
-                print(f"  catalog {want[:12]}  repo {got[:12]}")
+        for config in CONFIGS:
+            found = [
+                args.root / repo / sub / config if sub else args.root / repo / config
+                for sub in SEARCH_DIRS
+            ]
+            found = [c for c in found if c.is_file()]
+            if not found:
+                if args.repo:
+                    print(f"{repo}: no {config} — nothing to check")
+                continue
+            for path in found:
+                checked += 1
+                where = path.relative_to(args.root / repo)
+                got = digest(path)
+                if got == want[config]:
+                    print(f"{repo}: identical ({where})")
+                else:
+                    failures += 1
+                    print(f"{repo}: DIFFERS from config/{config} ({where})")
+                    print(f"  catalog {want[config][:12]}  repo {got[:12]}")
 
     if failures:
         print(
-            f"\nFAIL: {failures} repo(s) have edited {CONFIG} locally. Change it "
-            f"in config/{CONFIG} and roll the whole fleet, or if the change is "
-            "genuinely repo-specific, say so out loud — this file is shared on "
-            "the claim that no repo needs its own."
+            f"\nFAIL: {failures} shared config(s) edited locally. Change the "
+            "file in config/ and roll the whole fleet, or if the change is "
+            "genuinely repo-specific, say so out loud — these files are shared "
+            "on the claim that no repo needs its own."
         )
         return 1
 
-    print(f"\nPASS: {checked} repo(s) match config/{CONFIG}")
+    print(f"\nPASS: {checked} shared config(s) match the catalog")
     return 0
 
 

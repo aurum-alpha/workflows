@@ -4,7 +4,17 @@
 version: 2
 updates:
   - package-ecosystem: github-actions
-    directory: /
+    # `/` reaches .github/workflows and a root action.yml, and nothing else.
+    # setup/node-pnpm/action.yml sat outside it and duly went stale: #123
+    # re-pinned all ten inline node preludes and left the composite on
+    # pnpm/action-setup v4.3.0 and actions/cache v4.3.0, silently, because no
+    # instrument was looking at that path. actionlint does not cover it either
+    # -- it lints workflows, not action manifests -- so Dependabot is the only
+    # thing that can watch these pins. A composite added anywhere else needs
+    # its own entry here on the same day it is added.
+    directories:
+      - /
+      - /setup/node-pnpm
     schedule:
       interval: daily
     # Minor and patch bumps arrive as ONE pull request per run instead of one

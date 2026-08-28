@@ -489,10 +489,12 @@ The fix is a real release, cut by CI, so Dependabot has something to resolve:
 - **`.version` is a committed file**, `MAJOR.MINOR.PATCH`. Principle 14's
   direction, unchanged: file → build → tag, never tag → build. The claim "this
   is 1.20.0" arrives as a diff someone can challenge.
-- **`check-standard-ref` requires it to move** whenever a `job-*.yml` or a
-  checker changes — the same trigger that already forces `standard_ref`
-  forward. A catalog change nobody can name is a catalog change nobody can
-  adopt.
+- **A release is its own pull request.** `check-standard-ref` used to require
+  the bump in the same pull request as the catalog change. That rule is
+  retired: it could not coexist with the diff-shape gate below, and it only
+  ever proved a number moved, never that anyone had decided to release. The
+  checker now reports the unreleased backlog instead, and a release is opened
+  deliberately.
 - **CI tags `main` with it** after `ci-ok`, alongside the other housekeeping
   that sits downstream of the rollup. Created once, never moved: if the tag
   already exists on a different commit the job fails rather than repointing
@@ -544,6 +546,65 @@ re-pinning is also what makes it single-version.
   no version file, no release step, and deploy from `latest` or a SHA.
 - **Per-branch images: deferred** until per-branch staging spin-up/teardown infra
   exists. Revisit then.
+
+### Only a version change mints a version
+
+**A version-named emission is produced only by a commit that changed the
+version file.** A git tag, a `v<version>` image tag, a GitHub release, a
+versioned package — all of them, and nothing else about the build, key on that
+one question. Provenance-named emissions are unconditional: every green build
+still publishes `sha-<short>`, moves `latest` on the default branch, and uploads
+its run artifacts.
+
+The failure this closes had been running in the open. `gha-runner-controller`
+applied its `v<version>` image tag on `enable={{is_default_branch}}`, so every
+merge re-pointed `ghcr.io/…:v0.15.0` at new bytes — a mutable version, which is
+the exact thing Principle 14 puts the version in a file to avoid. This
+repository's own tag job ran on every merge too, and a merge that did not touch
+`.version` failed the run on the collision check, *after* `ci-ok` had gone
+green; five of the twenty merges before this rule landed did exactly that.
+
+Three consequences, stated because each one surprises someone:
+
+- **Main is not versioned at every commit, and that is the design.** Work
+  merges without a version. Everything between two releases is built, gated
+  and installable under `sha-<short>` and `latest` — it is simply not minted.
+  This was already true in practice; what changes is that the artifacts stop
+  claiming otherwise.
+- **A release pull request changes the version file and prose, nothing else.**
+  Enforced by `job-version-gate`. The bytes a release mints are then a build of
+  a tree main has already proved, and the reviewer approving it is approving a
+  release rather than approving a change and getting a release with it.
+- **Mid-stream builds say so in their own version string.** Go binaries stamp
+  a SemVer **pre-release of the next patch** on any commit that did not change
+  the version file: `0.15.0` in the file becomes `0.15.1-dev.<sha7>`
+  (`job-go-build`'s `stamp` output).
+
+  The next patch is a floor, not a guess. Whatever the next release turns out
+  to be, it is at least `0.15.1`, so the stamp is correctly ordered against a
+  version nobody has chosen yet:
+
+  ```
+  0.15.0  <  0.15.1-dev.abc1234  <  0.15.1-rc.1  <  0.15.1  <  0.16.0  <  1.0.0
+  ```
+
+  Build metadata (`0.15.0+dev.abc`) was the first attempt and is wrong: SemVer
+  ignores it in precedence, so that build compares *equal* to the release it is
+  not. And the identifier is `dev` rather than `beta` because `-beta.N` and
+  `-rc.N` belong to pre-releases a human cuts deliberately — an automatic
+  per-commit stamp must not spend those words. Ordering is unaffected: `dev` <
+  `rc` by SemVer's ASCII rule.
+
+  **A `.deb` is not this string.** dpkg reads `-` as the separator before the
+  debian-revision, so `0.15.1-dev.abc` sorts *above* `0.15.1` there. Debian's
+  sorts-below marker is `~`, so a packaging job wants `0.15.1~dev.abc`. The
+  translation belongs to the job that packages, and lands with it.
+
+**The version moves forward or not at all.** `job-version-gate` fails a pull
+request that moves the version backward, repeats it, malforms it, or deletes
+the file. A repeat is as fatal as a decrease: tags are created once and never
+moved, so the release step finds the tag, skips, and reports success — shipping
+nothing, greenly.
 
 ### Main is reached only by merge, and a merge to main is the release event
 

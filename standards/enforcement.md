@@ -52,6 +52,8 @@ will.
 | — | Per-stack DAG in multi-codebase repos | — | **review only** |
 | — | SHA pinning | `check-ci-conformance` PIN | gated |
 | — | `ci-ok` is the only required check | branch protection | gated |
+| — | Branches up to date before merging | branch protection | gated |
+| — | The `ci-ok` body is the one the pull request ships | — | **review only** |
 | — | Fleet pnpm version | `check-fleet-versions` | gated¹ |
 | — | Caller `with:` matches the shared job's inputs | `check-ci-conformance` IN | gated |
 | — | One shared `ci-ok` rollup, not eleven copies | `check-ci-conformance` RU | gated |

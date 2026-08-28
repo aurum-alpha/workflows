@@ -1712,6 +1712,47 @@ own action in its own `ci.yml` — the catalog eating its own cooking, which is
 worth more here than another rule, because it catches the class rather than the
 instance. Prose about an expression names it without its delimiters.
 
+### The prelude a bespoke job may not rewrite
+
+A repo's pipeline is shared jobs plus, where Principle 19 applies, a handful of
+local job bodies that are policy about *that* codebase and belong nowhere else —
+client-manager's prettier, golden-corpus and Go/TypeScript contract gates. Those
+bodies are legitimately local. **Their Node setup is not.** Reaching a working
+`pnpm` is the same eight steps in every repo in the fleet, and a bespoke job
+that spells them out again is a second answer to a question the catalog already
+answers.
+
+`setup/node-pnpm` is that answer for a steps-level consumer: a composite action,
+because a bespoke job needs a *prelude*, not a whole job body, and a reusable
+workflow cannot supply one. Reference it at the same commit as every other
+`aurum-alpha/workflows` pin in the repo — rule LOCK does not care that this one
+is an action rather than a workflow.
+
+**The shared `job-node-*` workflows keep the prelude inline, and that is
+deliberate.** They run in the caller's checkout, so calling the composite would
+mean pinning this repo from inside this repo: every prelude change would take
+two commits, the second one only to move the pin the first one invalidated. One
+definition per audience is the trade, and it is worth making — but it is a
+trade, and it has a cost that has to be paid on purpose.
+
+**The cost is that two copies exist, so they must stay step-for-step
+identical.** They did not. #123 re-pinned all ten inline preludes and left the
+composite two majors behind on both of its actions, for one reason: nothing was
+watching that path. `dependabot.yml` said `directory: /`, which reaches
+`.github/workflows` and a root `action.yml` and nothing else. actionlint does
+not cover it either — it lints workflows, not action manifests, the same blind
+spot that let `ci-ok` ship an unevaluatable `description`. A composite outside
+`.github/` therefore has exactly one instrument available, and it has to be
+named: **every composite gets its own `directories:` entry the day it is
+added.**
+
+**And a composite is a consumed surface, so a change to one bumps `.version`.**
+Callers reach it by SHA; SHAs move through tags; tags come from `.version`.
+`check-standard-ref` watched `tools/` and `job-*.yml` and not `setup/`, which
+meant the composite could be fixed in a way that could never reach the caller
+that needed the fix. It watches `setup/` now. `standard_ref` stays a narrower
+question — it selects *checkers*, and a composite is not one.
+
 ### Job ids name the deployable unit
 
 **`<purpose>-<language>[-<framework>]-<capability>`.**

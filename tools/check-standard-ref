@@ -20,6 +20,16 @@ gate prevents is the lag being five commits, or twenty.
 
 A pull request touching neither is not asked to bump anything.
 
+Two surfaces, not one. A caller consumes `tools/`, `.github/workflows/job-*.yml`
+AND `setup/` — the composite actions a bespoke caller-side job references by
+SHA. Only the first two are checkers, so only they can leave standard_ref
+stale; but all three reach a caller solely through a tag, so all three need
+.version to move. setup/ was outside this check entirely, which meant a
+composite could be fixed and the fix could reach nobody: no bump, no tag, no
+re-pin, and a caller pinning it by SHA would go on getting the old body
+forever. That is not hypothetical either — it is why setup/node-pnpm spent
+its whole life on pins two majors behind the prelude it duplicates.
+
 Usage: check-standard-ref --base <sha>   (empty base: not a pull request, pass)
 """
 
@@ -29,7 +39,10 @@ import re
 import subprocess
 import sys
 
-WATCHED = re.compile(r"^(tools/|\.github/workflows/job-[\w.-]+\.yml$)")
+# Changes a caller consumes, and so cannot reach one without a tag.
+CONSUMED = re.compile(r"^(tools/|\.github/workflows/job-[\w.-]+\.yml$|setup/)")
+# Of those, the ones standard_ref actually selects.
+CHECKERS = re.compile(r"^(tools/|\.github/workflows/job-[\w.-]+\.yml$)")
 DEFAULT_RE = re.compile(
     r"standard_ref:.*?default:\s*([0-9a-f]{40})", re.DOTALL)
 
@@ -56,13 +69,14 @@ def main() -> int:
     diff = subprocess.run(
         ["git", "diff", "--name-only", f"{args.base}...HEAD"],
         cwd=root, capture_output=True, text=True, check=True).stdout
-    touched = sorted(f for f in diff.splitlines() if WATCHED.match(f))
+    touched = sorted(f for f in diff.splitlines() if CONSUMED.match(f))
+    checkers = sorted(f for f in touched if CHECKERS.match(f))
 
     if not touched:
-        print("no checker or shared job changed — standard_ref not required to move")
+        print("nothing a caller consumes changed — no bump required")
         return 0
 
-    print("changed, and visible to a caller's conformance run:")
+    print("changed, and consumed by callers:")
     for f in touched:
         print(f"  {f}")
 
@@ -75,7 +89,7 @@ def main() -> int:
     # up pinning between two and four different commits.
     changed = [f for f in diff.splitlines() if f == ".version"]
     if not changed:
-        print("\nFAIL: a shared job or checker changed but .version did not.\n"
+        print("\nFAIL: something a caller consumes changed but .version did not.\n"
               "CI tags main with .version and Dependabot re-pins the fleet from "
               "that tag; without a bump this change reaches nobody.")
         return 1
@@ -101,6 +115,11 @@ def main() -> int:
                   "decrease silently ships nothing.")
             return 1
     print(f"\n.version {before or '(absent)'} -> {after}")
+
+    if not checkers:
+        print("\nPASS: no checker or shared job changed — standard_ref not "
+              "required to move")
+        return 0
 
     if declared == args.base:
         print(f"\nPASS: standard_ref is {declared[:7]}, the base of this "

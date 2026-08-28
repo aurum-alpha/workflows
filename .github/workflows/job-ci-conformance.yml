@@ -82,7 +82,7 @@ on:
           default in the same wave that adds a catalog file, not the one after.
         type: string
         required: false
-        default: 9cc4d74dec1156b6b33a5193ae46eba4256f5009
+        default: 2e9d8ca196210e7c23fab48b31761a93e6a574e2
 
 jobs:
   ci-conformance:
@@ -189,7 +189,12 @@ jobs:
       # The shared eslint config says, in its own header, that a byte-identity
       # checker fails the build if one repo edits it. No such checker existed;
       # six repos matched by luck and the sentence was decoration. This is it.
-      - name: The shared eslint config is unedited
+      #
+      # It covers .oxlintrc.json on the same terms. That file made the case for
+      # itself: oxlint's config was one repo's local file, and the fleet spent
+      # a release arguing about oxlint's coverage when it was arguing with that
+      # file. A shared config nothing compares is a shared config in name only.
+      - name: The shared lint configs are unedited
         if: ${{ !cancelled() }}
         env:
           REPO: ${{ steps.repo.outputs.name }}

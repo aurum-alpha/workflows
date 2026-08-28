@@ -55,12 +55,13 @@ will.
 | — | Branches up to date before merging | branch protection | gated |
 | — | The `ci-ok` body is the one the pull request ships | — | **review only** |
 | — | Fleet pnpm version | `check-fleet-versions` | gated¹ |
+| — | Shared lint configs unedited (`eslint.config.mjs`, `.oxlintrc.json`) | `check-eslint-config` | gated¹ |
 | — | Caller `with:` matches the shared job's inputs | `check-ci-conformance` IN | gated |
 | — | One shared `ci-ok` rollup, not eleven copies | `check-ci-conformance` RU | gated |
 | — | Caller permissions cover shared jobs | `check-caller-permissions` | gated¹ |
 
 ¹ Gated in every repo whose `ci.yml` calls `job-ci-conformance`, which runs
-these three checkers alongside `check-ci-conformance`. Issue #79 tracks the
+these checkers alongside `check-ci-conformance`. Issue #79 tracks the
 per-repo rollout; until a repo adopts the job, these rules are unenforced
 **in that repo** and nothing there will say so. The row claims what the
 mechanism can do, not what every repo has taken up — check the rollout, not

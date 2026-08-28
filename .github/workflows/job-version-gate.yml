@@ -1,0 +1,247 @@
+# Fleet capability: enforce version discipline on a pull request
+# (CI_STANDARD Principle 12 — one way per capability). Single-job reusable
+# workflow: the caller owns the job id and needs: wiring; this file owns the
+# entire job body.
+#
+# WAS job-release-risk, which only commented. That job existed because a
+# version bump was allowed to ride along with the change that justified it,
+# and the risk was a reviewer approving a feature and cutting a release
+# without noticing. It never failed the build, on the reasoning that blocking
+# would be friction for something a reviewer is entitled to do deliberately.
+#
+# Two things were wrong with that. A backward or repeated version is not
+# something anyone is entitled to do: tags are created once and never moved,
+# so a repeat silently ships nothing and a decrease is a claim that time ran
+# backwards. And a comment is not a mechanism — it depends on a human reading
+# it, which is the failure mode this whole repository exists to replace.
+#
+# So the rule is now structural rather than advisory:
+#
+#   A version-named emission — a git tag, a v<version> image tag, a release,
+#   a versioned package — is produced only by a commit that changed the
+#   version file. Provenance-named emissions (sha-<short>, latest, run
+#   artifacts) are produced by every green build.
+#
+# This job is one half of that. It gates the pull request: the version moves
+# forward or not at all, and a commit that moves it carries nothing but the
+# version and prose. The other half is the emission gating in the callers,
+# which reads `version_changed` from job-go-build.
+#
+# The consequence, stated because it is a real change in how main behaves:
+# MAIN IS NOT VERSIONED AT EVERY COMMIT. Work merges without a version; a
+# release is its own pull request, reviewed as a release and nothing else.
+# Everything between two releases is still built, still gated and still
+# published under sha-<short> and latest — it is installable, it is just not
+# minted. That was already true in practice (five of the twenty merges before
+# this one did not touch .version); what changes is that the artifacts stop
+# claiming otherwise.
+name: job-version-gate
+
+on:
+  workflow_call:
+    inputs:
+      version_file:
+        description: >-
+          Path to the committed version file (CI_STANDARD Principle 14). A repo
+          with no version file passes this job trivially — Principle 16 says a
+          repo with nothing deciding from the string has no version at all, and
+          this job does not exist to talk anyone into having one.
+        type: string
+        default: ".version"
+      runner:
+        description: >-
+          Override runs-on. Leave empty for the fleet default. Set to a
+          GitHub-hosted label where a repo must not build on the fleet
+          (CI_STANDARD Principle 4).
+        type: string
+        default: ""
+
+jobs:
+  version-gate:
+    # Only pull requests have a base to compare against, and only pull requests
+    # have somewhere to post. On main this job has nothing to say: the decision
+    # it gates was already made and merged.
+    if: github.event_name == 'pull_request'
+    runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-26.04' }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      # Escalated above the read-only fleet floor: this job writes one comment
+      # on a release pull request. Nothing else in the workflow needs it.
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      # python3, not bash: this compares SemVer triples and matches a diff
+      # against an allowed shape. Both are things shell does badly and quietly,
+      # and a version gate that is wrong in a corner is worse than no gate.
+      - name: Check the version move
+        id: gate
+        shell: python3 {0}
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          VERSION_FILE: ${{ inputs.version_file }}
+        run: |
+          import os, pathlib, re, subprocess, sys
+
+          base = os.environ["BASE_SHA"]
+          vf = os.environ["VERSION_FILE"]
+          SEMVER = re.compile(r"\d+\.\d+\.\d+")
+
+          def out(**kw):
+              with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+                  for k, v in kw.items():
+                      fh.write(f"{k}={v}\n")
+
+          def summary(text):
+              with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as fh:
+                  fh.write(text + "\n")
+
+          def fail(headline, *body):
+              # ::error:: puts it on the Checks tab where a reviewer is already
+              # looking; the summary carries the explanation, because an
+              # annotation nobody can act on is just a louder failure.
+              print(f"::error::{headline}")
+              summary(f"### Version gate failed\n\n**{headline}**\n")
+              for line in body:
+                  summary(line)
+              sys.exit(1)
+
+          def read_at(rev):
+              r = subprocess.run(["git", "show", f"{rev}:{vf}"],
+                                 capture_output=True, text=True)
+              return r.stdout.strip() if r.returncode == 0 else None
+
+          before = read_at(base)
+          after = pathlib.Path(vf).read_text().strip() if pathlib.Path(vf).is_file() else None
+
+          if before is None and after is None:
+              print(f"No {vf} at the base or at HEAD — this repo has no version.")
+              out(changed="false")
+              sys.exit(0)
+
+          # Deleting the file is the one manipulation nothing else would catch:
+          # every downstream gate keys on the value moving, and an absent file
+          # moves nothing. It is also never a legitimate step — retiring a
+          # version is retiring a released product, which is a decision with a
+          # conversation attached, not a deletion inside a feature branch.
+          if before is not None and after is None:
+              fail(f"{vf} was deleted.",
+                   f"`{vf}` read `{before}` on the base branch and is gone at HEAD.",
+                   "",
+                   "Every version-named emission keys on this file. Removing it "
+                   "does not stop releases, it makes them unaccountable.")
+
+          if before == after:
+              print(f"{vf} unchanged ({after}); nothing to gate.")
+              out(changed="false")
+              sys.exit(0)
+
+          if not SEMVER.fullmatch(after):
+              fail(f"{vf} reads {after!r}; expected MAJOR.MINOR.PATCH.",
+                   "SemVer is the only version scheme in the fleet "
+                   "(CI_STANDARD, Publishing).")
+
+          # A first version has nothing to be ahead of, so the comparison is
+          # skipped rather than invented. An unparseable PREVIOUS value is the
+          # same case: whatever it was, it was not a version.
+          if before is not None and SEMVER.fullmatch(before):
+              lo = tuple(int(p) for p in before.split("."))
+              hi = tuple(int(p) for p in after.split("."))
+              if hi <= lo:
+                  direction = "repeats" if hi == lo else "goes backward"
+                  fail(f"{vf} {direction}: {before} -> {after}.",
+                       f"`{vf}` must move strictly forward.",
+                       "",
+                       "Tags are created once and never moved, and callers may "
+                       "already pin the existing one. A repeat therefore ships "
+                       "nothing at all — the release step finds the tag, skips, "
+                       "and reports success — and a decrease claims a release "
+                       "that already happened has not happened yet.",
+                       "",
+                       f"Bump `{vf}` past `{before}` instead of moving it.")
+
+          # The diff shape. A release pull request carries the claim and the
+          # prose that explains it, and nothing else: that is what makes the
+          # released bytes a build of a tree main already proved, and what makes
+          # "approve this release" a question a reviewer can answer on its own
+          # terms rather than one smuggled into a code review.
+          diff = subprocess.run(
+              ["git", "diff", "--name-only", f"{base}...HEAD"],
+              capture_output=True, text=True, check=True).stdout.split()
+          strays = sorted(f for f in diff
+                          if f != vf and not f.lower().endswith(".md"))
+          if strays:
+              shown = "\n".join(f"- `{f}`" for f in strays[:20])
+              more = f"\n\n…and {len(strays) - 20} more." if len(strays) > 20 else ""
+              fail(f"a release pull request may change only {vf} and markdown "
+                   f"({len(strays)} other file(s) changed).",
+                   f"This pull request moves `{vf}` **{before} → {after}** and "
+                   "also changes:",
+                   "",
+                   shown + more,
+                   "",
+                   "Land the code on its own, then cut the release in a pull "
+                   f"request that touches nothing but `{vf}` and prose. The "
+                   "release then publishes a build of a tree main has already "
+                   "gated, and the reviewer approving it is approving a "
+                   "release rather than approving a change and getting a "
+                   "release with it.")
+
+          major = before is not None and SEMVER.fullmatch(before) \
+              and before.split(".")[0] != after.split(".")[0]
+          out(changed="true", before=before or "none", after=after,
+              major="true" if major else "false")
+          summary(f"### Release: `{before or 'none'}` → `{after}`\n")
+          print(f"{vf}: {before} -> {after}")
+
+      - name: Comment on the release pull request
+        if: steps.gate.outputs.changed == 'true'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          BEFORE: ${{ steps.gate.outputs.before }}
+          AFTER: ${{ steps.gate.outputs.after }}
+          MAJOR: ${{ steps.gate.outputs.major }}
+          VERSION_FILE: ${{ inputs.version_file }}
+        with:
+          script: |
+            // Stable marker so the comment is updated in place. A new comment
+            // on every push would train reviewers to ignore it.
+            const MARKER = '<!-- aurum-alpha:version-gate -->';
+            const { BEFORE, AFTER, MAJOR, VERSION_FILE } = process.env;
+
+            const lines = [
+              MARKER,
+              '### This pull request cuts a release',
+              '',
+              `\`${VERSION_FILE}\`: **${BEFORE} → ${AFTER}**`,
+              '',
+              'Merging mints this version: the tag, the release, and every version-named artifact. Nothing else on main produces them — builds between releases publish under `sha-<short>` and `latest` and stamp a pre-release version (`0.15.1-dev.<sha>`), so they are installable but not minted.',
+              '',
+              'The code is not under review here. It is already on main and already gated; this pull request decides only that the tree at this commit is worth a name.',
+            ];
+
+            if (MAJOR === 'true') {
+              lines.push(
+                '',
+                '**Major bump.** This asserts a breaking change to something outside this repo. No tool can check that claim — it is the reviewer’s to confirm.',
+              );
+            }
+
+            const body = lines.join('\n');
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+
+            const existing = await github.paginate(
+              github.rest.issues.listComments,
+              { owner, repo, issue_number, per_page: 100 },
+            );
+            const mine = existing.find((c) => c.body && c.body.includes(MARKER));
+
+            if (mine) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: mine.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }

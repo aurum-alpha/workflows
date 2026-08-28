@@ -91,6 +91,20 @@ jobs:
       - name: Check standard_ref moved with the checkers
         run: tools/check-standard-ref --base "${{ github.event.pull_request.base.sha }}"
 
+  # The catalog eats its own cooking, the local path form — same reasoning as
+  # the ci-ok action below it. A version rule this repo ships to eleven callers
+  # and does not run on itself is a rule nobody has tested.
+  #
+  # It is also the rule this repo needed most. Five of the twenty merges before
+  # this one left .version untouched, and every one of them still reached the
+  # release job below, read a version whose tag already existed, and failed —
+  # after ci-ok had gone green — for the crime of being a documentation change.
+  version-gate:
+    uses: ./.github/workflows/job-version-gate.yml
+    permissions:
+      contents: read
+      pull-requests: write
+
   # Housekeeping, downstream of the rollup — rule D6's declared exemption, the
   # same shape as job-image-prune. Nothing gates on a tag existing; the tag is
   # a human and machine index created after the fact, which is the direction
@@ -104,10 +118,20 @@ jobs:
   # by themselves in every repo whose dependabot.yml already covers
   # github-actions, which is all of them.
   #
-  # Created once and never moved. check-standard-ref refuses a catalog change
-  # that does not carry .version forward, so a repeat value cannot arise from
-  # forgetting; if one ever does, the existing tag wins and the step says so
-  # rather than silently repointing what eleven repos may already have pinned.
+  # Created once and never moved, and now only where a release was actually
+  # cut. This job used to run its tagging step on EVERY merge to main, which
+  # was wrong in both directions at once: a merge that did not touch .version
+  # found the tag already sitting on an earlier commit and failed the run —
+  # after ci-ok had gone green — and the only thing standing between a merge
+  # that did touch it and a silently re-pointed tag was that same collision
+  # check. Five of the twenty merges before this one took the first path.
+  #
+  # So the switch is now what it always should have been: did THIS commit
+  # change .version. The collision check stays underneath it as a backstop,
+  # not as the mechanism — job-version-gate rejects a backward or repeated
+  # version on the pull request, and if one ever reaches main anyway the
+  # existing tag wins and the step says so rather than repointing what eleven
+  # repos may already have pinned.
   release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [ci-ok]
@@ -130,6 +154,21 @@ jobs:
           GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
         run: |
           set -euo pipefail
+
+          # THE RELEASE SWITCH. A version-named emission — this tag, a
+          # v<version> image tag, a release, a versioned package — is produced
+          # only by a commit that changed the version file. Everything else on
+          # main is still built, still gated and still reachable by SHA; it is
+          # simply not minted.
+          #
+          # -F, because `.version` as a regex matches any character where the
+          # dot is: a file called `aversion` would satisfy `grep -qx '.version'`
+          # and mint a release nobody asked for.
+          if ! git diff --name-only HEAD^ HEAD | grep -qxF '.version'; then
+            echo "This commit did not change .version; nothing to mint."
+            exit 0
+          fi
+
           version="$(tr -d ' \t\r\n' < .version)"
           case "$version" in
             [0-9]*.[0-9]*.[0-9]*) ;;
@@ -157,7 +196,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   ci-ok:
-    needs: [lint, conformance]
+    needs: [lint, conformance, version-gate]
     if: always()
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
     steps:

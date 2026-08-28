@@ -39,7 +39,7 @@ will.
 | 11 | Registry auth in user-level npmrc | — | **review only** |
 | 12 | One way per capability | `check-ci-conformance` | gated¹ |
 | 13 | Provenance in every artifact | — | **review only** |
-| 14 | A version is a commit, not a tag | — | **review only** |
+| 14 | A version is a commit, not a tag | `job-version-gate` (partly) | mixed² |
 | 15 | The repo is versioned, not the artifact | — | **review only** |
 | 16 | A version exists only where consumed | — | **review only** |
 | 17 | Release is promotion, not production | `check-ci-conformance` D4, D5 | gated |
@@ -58,6 +58,10 @@ will.
 | — | Shared lint configs unedited (`eslint.config.mjs`, `.oxlintrc.json`) | `check-eslint-config` | gated¹ |
 | — | Caller `with:` matches the shared job's inputs | `check-ci-conformance` IN | gated |
 | — | One shared `ci-ok` rollup, not eleven copies | `check-ci-conformance` RU | gated |
+| — | The version moves forward, or not at all | `job-version-gate` | gated² |
+| — | A release pull request changes only the version file and prose | `job-version-gate` | gated² |
+| — | The version file is never deleted | `job-version-gate` | gated² |
+| — | Only a version change mints a version-named artifact | — | **review only** |
 | — | Caller permissions cover shared jobs | `check-caller-permissions` | gated¹ |
 
 ¹ Gated in every repo whose `ci.yml` calls `job-ci-conformance`, which runs
@@ -66,6 +70,21 @@ per-repo rollout; until a repo adopts the job, these rules are unenforced
 **in that repo** and nothing there will say so. The row claims what the
 mechanism can do, not what every repo has taken up — check the rollout, not
 this table, before believing a given repo is covered.
+
+² Gated in every repo whose `ci.yml` calls `job-version-gate`, and in no
+other. Unlike the ¹ checkers this one is not carried by
+`job-ci-conformance` — it needs the pull request's base commit and its own
+`pull-requests: write` grant, so it is a job a repo adds deliberately. A repo
+with no version file passes it trivially and is right to call it anyway: the
+job is what makes adding one later safe.
+
+Row 14 reads **mixed** because the principle is two claims and only one of them
+has a mechanism. That the version moves forward, alone, and in a pull request
+of its own is gated. That the direction is file → build → tag — that no tag,
+release or versioned artifact is minted except by a commit which changed the
+file — is enforced in each repo's own `ci.yml`, and nothing checks that a repo
+did it. That is the next checker worth writing, and until it exists this row
+does not claim it.
 
 Where a CI rule reads **review only** above, `ci.md` explains why: BUILD ONCE
 needs to know what an artifact is, and the per-stack DAG needs to know which

@@ -23,12 +23,26 @@ A pull request touching neither is not asked to bump anything.
 Two surfaces, not one. A caller consumes `tools/`, `.github/workflows/job-*.yml`
 AND `setup/` — the composite actions a bespoke caller-side job references by
 SHA. Only the first two are checkers, so only they can leave standard_ref
-stale; but all three reach a caller solely through a tag, so all three need
-.version to move. setup/ was outside this check entirely, which meant a
-composite could be fixed and the fix could reach nobody: no bump, no tag, no
-re-pin, and a caller pinning it by SHA would go on getting the old body
-forever. That is not hypothetical either — it is why setup/node-pnpm spent
-its whole life on pins two majors behind the prelude it duplicates.
+stale; but all three reach a caller solely through a tag, which is why this
+file also reports the unreleased backlog below.
+
+THIS CHECKER USED TO DEMAND A .version BUMP in the same pull request, and no
+longer does. The version file now moves in a pull request of its own that
+changes nothing but the version and prose, gated by job-version-gate: a
+release is reviewed as a release, and the bytes it mints are a build of a tree
+main has already proved. A rule requiring the bump HERE and a rule forbidding
+it THERE cannot both be satisfied, so this one gave way — it was the weaker of
+the two, because it only ever proved that a number moved, never that anyone
+had decided to release.
+
+What is lost with it is a forcing function, and pretending otherwise would be
+the failure this repository exists to name. Nothing now makes a catalog change
+reach the fleet on the day it lands. What replaces it is visibility rather
+than a gate: every run prints how many consumed changes are sitting on main
+unreleased, and the oldest one's age. A release pull request is then something
+someone opens on purpose. If that backlog is still being ignored a month from
+now, the honest next step is a job that opens the release pull request itself
+— not a rule that pretends the bump belongs to the feature that preceded it.
 
 Usage: check-standard-ref --base <sha>   (empty base: not a pull request, pass)
 """
@@ -45,6 +59,51 @@ CONSUMED = re.compile(r"^(tools/|\.github/workflows/job-[\w.-]+\.yml$|setup/)")
 CHECKERS = re.compile(r"^(tools/|\.github/workflows/job-[\w.-]+\.yml$)")
 DEFAULT_RE = re.compile(
     r"standard_ref:.*?default:\s*([0-9a-f]{40})", re.DOTALL)
+
+
+def report_backlog(root, base) -> None:
+    """Say how much consumed change is sitting on main with no release.
+
+    Never fails. Nobody's pull request is at fault for a backlog that predates
+    it, and a gate that goes red for something the author cannot fix is a gate
+    people learn to click past.
+
+    Measured from the last commit that touched .version rather than from the
+    newest tag, because the file is the source of truth and the tag is an index
+    created after the fact (Principle 14). That also means this works in a
+    clone with no tags fetched, which is most of them.
+    """
+    last = subprocess.run(
+        ["git", "log", "--format=%H", "-1", base, "--", ".version"],
+        cwd=root, capture_output=True, text=True).stdout.strip()
+    if not last:
+        return
+
+    span = f"{last}..{base}"
+    commits = subprocess.run(["git", "log", "--format=%H", span],
+                             cwd=root, capture_output=True, text=True).stdout.split()
+    unreleased = []
+    for c in commits:
+        names = subprocess.run(
+            ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", c],
+            cwd=root, capture_output=True, text=True).stdout.splitlines()
+        if any(CONSUMED.match(f) for f in names):
+            unreleased.append(c)
+
+    if not unreleased:
+        print("\nbacklog: every consumed change on main is released")
+        return
+
+    oldest = unreleased[-1]
+    when = subprocess.run(["git", "log", "-1", "--format=%as", oldest],
+                          cwd=root, capture_output=True, text=True).stdout.strip()
+    subject = subprocess.run(["git", "log", "-1", "--format=%s", oldest],
+                             cwd=root, capture_output=True, text=True).stdout.strip()
+    print(f"\nbacklog: {len(unreleased)} consumed change(s) on main are "
+          f"unreleased; the oldest landed {when}:")
+    print(f"  {oldest[:7]} {subject[:72]}")
+    print("Open a release pull request — .version and prose only — to mint "
+          "them and let Dependabot re-pin the fleet.")
 
 
 def main() -> int:
@@ -72,49 +131,18 @@ def main() -> int:
     touched = sorted(f for f in diff.splitlines() if CONSUMED.match(f))
     checkers = sorted(f for f in touched if CHECKERS.match(f))
 
+    # Printed on every pull request, not only the ones that add to it: the
+    # backlog is a fleet-wide state, and the person most likely to act on it is
+    # whoever is looking at CI right now.
+    report_backlog(root, args.base)
+
     if not touched:
-        print("nothing a caller consumes changed — no bump required")
+        print("\nnothing a caller consumes changed")
         return 0
 
-    print("changed, and consumed by callers:")
+    print("\nchanged, and consumed by callers:")
     for f in touched:
         print(f"  {f}")
-
-    # The same change that moves standard_ref has to move .version, because a
-    # catalog change nobody can name is a catalog change nobody can adopt.
-    # CI tags each merge to main with the value of this file, and Dependabot
-    # resolves that tag to open re-pin pull requests across the fleet. Skip the
-    # bump and the tag does not move, so the change reaches no repo until
-    # somebody notices by hand — which is exactly how eight of ten repos ended
-    # up pinning between two and four different commits.
-    changed = [f for f in diff.splitlines() if f == ".version"]
-    if not changed:
-        print("\nFAIL: something a caller consumes changed but .version did not.\n"
-              "CI tags main with .version and Dependabot re-pins the fleet from "
-              "that tag; without a bump this change reaches nobody.")
-        return 1
-
-    def read(rev):
-        r = subprocess.run(["git", "show", f"{rev}:.version"],
-                           cwd=root, capture_output=True, text=True)
-        return r.stdout.strip() if r.returncode == 0 else ""
-
-    before, after = read(args.base), read("HEAD")
-    if before == after:
-        print(f"\nFAIL: .version is in the diff but still reads {after!r}.")
-        return 1
-    if not re.fullmatch(r"\d+\.\d+\.\d+", after):
-        print(f"\nFAIL: .version is {after!r}; expected MAJOR.MINOR.PATCH.")
-        return 1
-    if re.fullmatch(r"\d+\.\d+\.\d+", before):
-        lo = tuple(map(int, before.split(".")))
-        hi = tuple(map(int, after.split(".")))
-        if hi <= lo:
-            print(f"\nFAIL: .version went {before} -> {after}, which is not forward. "
-                  "Tags are created once and never moved, so a repeat or a "
-                  "decrease silently ships nothing.")
-            return 1
-    print(f"\n.version {before or '(absent)'} -> {after}")
 
     if not checkers:
         print("\nPASS: no checker or shared job changed — standard_ref not "

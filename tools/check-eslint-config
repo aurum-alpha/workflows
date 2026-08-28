@@ -37,6 +37,19 @@ import sys
 
 CONFIG = "eslint.config.mjs"
 
+# Where a repo may keep its copy, in order. Repo root covers the repos whose JS
+# project IS the repo; client/ covers the ones whose React app is its own pnpm
+# project inside a Go or PHP tree. Those are the same two shapes job-lint-js-*
+# already distinguishes with its `workdir` input, so this is not a new
+# convention -- it is the checker catching up to one the catalog already has.
+#
+# Root-only was a silent hole rather than a strict rule: a missing file is a
+# pass, so gofast and client-manager -- the two repos with a client/ -- were
+# never checked at all, and the run still printed PASS. A checker that reports
+# success for a repo it did not look at is worse than one that fails, because
+# it answers the question it was asked without ever asking it.
+SEARCH_DIRS = ("", "client")
+
 
 def digest(path: pathlib.Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -69,19 +82,25 @@ def main() -> int:
     failures = 0
     checked = 0
     for repo in repos:
-        path = args.root / repo / CONFIG
-        if not path.is_file():
+        found = [
+            args.root / repo / sub / CONFIG if sub else args.root / repo / CONFIG
+            for sub in SEARCH_DIRS
+        ]
+        found = [c for c in found if c.is_file()]
+        if not found:
             if args.repo:
                 print(f"{repo}: no {CONFIG} — nothing to check")
             continue
-        checked += 1
-        got = digest(path)
-        if got == want:
-            print(f"{repo}: identical")
-        else:
-            failures += 1
-            print(f"{repo}: DIFFERS from config/{CONFIG}")
-            print(f"  catalog {want[:12]}  repo {got[:12]}")
+        for path in found:
+            checked += 1
+            where = path.relative_to(args.root / repo)
+            got = digest(path)
+            if got == want:
+                print(f"{repo}: identical ({where})")
+            else:
+                failures += 1
+                print(f"{repo}: DIFFERS from config/{CONFIG} ({where})")
+                print(f"  catalog {want[:12]}  repo {got[:12]}")
 
     if failures:
         print(

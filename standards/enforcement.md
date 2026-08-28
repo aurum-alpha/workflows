@@ -101,3 +101,26 @@ file whose whole content told it to read something it then would not read.
 
 A6 to A9 resist a checker honestly. Whether a correction reached the docs, or an
 agent stopped at the approval gate, is not a fact on disk.
+
+## Platform standard
+
+Rules from [`platform.md`](platform.md), **proposed (issue #185)** — the
+doctrine the per-capability application standards are written under. The
+per-capability rules themselves register here as each standard lands; these
+rows govern the doctrine.
+
+| # | Rule | Enforced by | Status |
+|---|---|---|---|
+| PC1 | An opinion is a contract, never a tool | — resists honestly | **review only** |
+| PC2 | Standard protocol first, profile second, internal contract last | — resists honestly | **review only** |
+| PC3 | An agreed contract carries its artifacts (schemas, corpus) | `check-contract-artifacts` (proposed) | **review only** |
+| PC4 | Gates run the corpus at the boundary, never check the implementation | `job-contract-conformance` (proposed) | **review only** |
+| PC5 | A package conforms to the spec, never the reverse; no fleet package depends on another | corpus run + manifest check in package CI (proposed) | **review only** |
+| PC6 | Contracts evolve additively, versioned, with deprecation windows | `check-contract-evolution` (proposed) | **review only** |
+
+PC1 and PC2 are judgment — what "a tool the lifecycle depends on" or "a
+standard that suffices" means is not a fact on disk — so they stay review
+questions, stated as such in the document. PC3 through PC6 name real
+mechanisms and are commitments: each becomes buildable the moment the first
+`contracts/<capability>/` tree lands, and promoting each is its own change
+that moves its row.

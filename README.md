@@ -12,6 +12,7 @@ standard is here, what makes one binding, and indexes the rest.
 | [STANDARDS.md](STANDARDS.md) | The charter: scope, the enforcement law, the tiers, how a standard is added |
 | [AGENTS.md](AGENTS.md) | How coding agents work in an Aurum Alpha repository |
 | [standards/ci.md](standards/ci.md) | Pipeline doctrine, the shared job catalog, build and release |
+| [standards/platform.md](standards/platform.md) | The platform contract: application-layer opinions as protocols and interface specs |
 | [standards/enforcement.md](standards/enforcement.md) | Every rule, its gate, and the tier it actually reaches |
 
 Consult the relevant standard before any change it governs, in any repository.

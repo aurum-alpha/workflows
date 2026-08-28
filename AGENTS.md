@@ -192,10 +192,25 @@ order is a decision rather than an accident.
 Tests passing is evidence the change did not break what was already covered. It
 is not evidence the change does what was asked.
 
-Each repository states where its line sits — some stop before commit, some
-before push, some before merge. Wherever it sits, an agent reaching it posts a
-handoff and stops. The handoff carries three things, every time, without being
-asked:
+**The gate is at merge, and pushing is not the gate.** Every repository takes
+changes into its default branch through a pull request, so a push releases
+nothing — it is how the work reaches CI. An agent commits, pushes, and opens or
+updates a pull request as soon as the work is coherent, and does not wait to be
+told to. What it never does without explicit sign-off is merge that pull
+request, deploy it, or close the issue behind it.
+
+Holding a push until someone asks for one buys no safety, because the pull
+request is the safety. What it costs is the earliest signal available: a branch
+nobody has built is a branch nobody knows is broken, and the failure surfaces
+after the review rather than before it.
+
+A repository may set an *additional* gate earlier, on a named class of change —
+workflow files that publish images, a plan that must be agreed before
+implementation — and says so in its own **Approval** section. That is a narrower
+hold on specific work, never a reason to sit on an ordinary change.
+
+An agent reaching the gate posts a handoff and stops. The handoff carries three
+things, every time, without being asked:
 
 - **What changed**, in a sentence or two.
 - **The exact commands to run** to see it.

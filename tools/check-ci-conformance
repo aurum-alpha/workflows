@@ -204,7 +204,7 @@ LANGUAGE_OF_SHARED_JOB = {
 SPANS_REPO = {
     "ci-ok", "changes", "image", "package", "release", "test-e2e",
     "runner-image", "contract", "image-tag-parity", "osv-scanner",
-    "release-risk", "package-deb", "package-image",
+    "version-gate", "package-deb", "package-image",
 }
 
 MAIN_GATE_RE = re.compile(
@@ -228,7 +228,7 @@ CALLEE_NEEDS = {
     "job-image-starts": {"packages": "read"},
     "job-image-publish": {"packages": "write"},
     "job-image-prune": {"packages": "write"},
-    "job-release-risk": {"pull-requests": "write"},
+    "job-version-gate": {"pull-requests": "write"},
 }
 PERM_RANK = {"none": 0, "read": 1, "write": 2}
 

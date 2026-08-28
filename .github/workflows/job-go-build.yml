@@ -112,10 +112,41 @@ on:
     outputs:
       version:
         description: >-
-          What was stamped. The image jobs tag with it and a release job cuts a
-          tag from it, so it is read once here rather than parsed again by
-          everything downstream.
+          The version file's contents, verbatim. The image jobs tag with it and
+          a release job cuts a tag from it, so it is read once here rather than
+          parsed again by everything downstream. `dev` where the repo has no
+          version file.
+
+          This is the RELEASE version — what the last release was called, or
+          what this commit is about to call one. It is not necessarily what the
+          binary says: see `stamp`.
         value: ${{ jobs.build.outputs.version }}
+      version_changed:
+        description: >-
+          `true` when this commit changed the version file, `false` otherwise.
+
+          THIS IS THE RELEASE SWITCH. A version-named emission — a git tag, a
+          v<version> image tag, a GitHub release, a versioned package — is
+          produced only where this is true. Everything else on main publishes
+          under sha-<short> and latest, which name a commit rather than a
+          claim.
+
+          Read it in the caller as
+          `needs.<build-job>.outputs.version_changed == 'true'`, alongside the
+          main-branch condition. Without it, a v<version> tag is re-applied on
+          every merge and silently re-points at new bytes — a mutable version,
+          which is the exact thing Principle 14 puts the version in a file to
+          avoid.
+        value: ${{ jobs.build.outputs.version_changed }}
+      stamp:
+        description: >-
+          What actually went into the binary's Version field. Equals `version`
+          on a release commit. Otherwise it is a SemVer PRE-RELEASE of the next
+          patch — `0.15.0` in the file becomes `0.15.1-dev.<sha7>` — which
+          sorts above the last release and below every release that could come
+          next, so a build taken off a mid-stream run is both self-describing
+          and correctly ordered against a version nobody has chosen yet.
+        value: ${{ jobs.build.outputs.stamp }}
 
 jobs:
   build:
@@ -141,8 +172,17 @@ jobs:
       # path would be silently nondeterministic. Per-leg results leave this job
       # as artifacts, which are named per leg and cannot collide.
       version: ${{ steps.stamp.outputs.version }}
+      version_changed: ${{ steps.stamp.outputs.version_changed }}
+      stamp: ${{ steps.stamp.outputs.stamp }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Two commits, so the stamp step can ask whether THIS commit changed
+          # the version file. On a push that is HEAD against its parent; on a
+          # pull request actions/checkout gives the merge ref, whose first
+          # parent is the base branch tip, so the same diff is the pull
+          # request's own changes. One depth answers both.
+          fetch-depth: 2
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: ${{ inputs.workdir }}/go.mod
@@ -291,13 +331,92 @@ jobs:
                                   capture_output=True, text=True).stdout.strip() or "unknown"
           built = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
+          # DID THIS COMMIT CUT A RELEASE? Everything version-named downstream
+          # keys on this answer, so it is computed once, here, where the version
+          # file is already being read — rather than three callers each
+          # hand-rolling `git diff | grep` and each getting a different corner
+          # wrong.
+          #
+          # fetch-depth: 2 above makes HEAD^ available. It resolves on a push
+          # (the previous commit on the branch) and on a pull request (the base
+          # branch tip, because the checked-out merge ref's first parent is the
+          # base). A root commit has no parent and is treated as no release:
+          # a repository's first commit is not a release event, and if it ever
+          # should be, that is a tag someone creates deliberately.
+          def cut_release():
+              if not vf.is_file():
+                  return False
+              if subprocess.run(["git", "rev-parse", "--verify", "-q", "HEAD^"],
+                                capture_output=True).returncode != 0:
+                  print("HEAD has no parent; treating this as not a release.")
+                  return False
+              r = subprocess.run(["git", "diff", "--name-only", "HEAD^", "HEAD"],
+                                 capture_output=True, text=True)
+              if r.returncode != 0:
+                  # Never guess `true` here. A false positive mints a version;
+                  # a false negative only withholds one, and a withheld release
+                  # is a pull request someone reopens.
+                  print(f"::warning::could not diff HEAD^..HEAD "
+                        f"({r.stderr.strip()}); treating this as not a release.")
+                  return False
+              return os.environ["VERSION_FILE"] in r.stdout.split()
+
+          changed = cut_release()
+
+          # A mid-stream build is a PRE-RELEASE, and SemVer has a category for
+          # that. Build metadata (`0.15.0+dev.abc`) was the wrong one: SemVer
+          # ignores it in precedence, so such a build compares EQUAL to the
+          # 0.15.0 release it is not.
+          #
+          # The pre-release is of the next PATCH, and that is a floor rather
+          # than a guess. Whatever the next release turns out to be — 0.15.1,
+          # 0.16.0, 1.0.0 — it is at least 0.15.1, and 0.15.1-dev.abc sorts
+          # below every one of them and above 0.15.0. So the stamp is correctly
+          # ordered against a release nobody has decided on yet, which is the
+          # whole difficulty this had to get around.
+          #
+          #   0.15.0  <  0.15.1-dev.abc  <  0.15.1  <  0.16.0  <  1.0.0
+          #
+          # `dev` and not `beta`: SemVer gives the identifier no meaning, but
+          # people do, and lid-firmware has already reserved `-beta.N` and
+          # `-rc.N` for pre-releases a human cuts on purpose. An automatic
+          # per-commit stamp must not spend that word. Ordering is unaffected
+          # either way — `dev` < `rc` by the ASCII rule, so a later hand-cut
+          # `0.15.1-rc.1` still sorts above every dev build of the same patch.
+          #
+          # Debian is NOT the same string: dpkg reads `-` as the separator
+          # before the debian-revision, so `0.15.1-dev.abc` sorts ABOVE
+          # `0.15.1` there. A .deb wants `~`, which dpkg sorts below everything
+          # including end-of-string. That translation belongs to the job that
+          # packages a .deb, and lands with it (Principle: config grows with
+          # the feature that reads it) — there is no such consumer here yet.
+          #
+          # A repo with no version file stamps `dev` and stops: there is no
+          # release version for this to be a pre-release OF.
+          if changed or version == "dev":
+              stamp = version
+          else:
+              m = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", version)
+              if m:
+                  major, minor, patch = (int(g) for g in m.groups())
+                  stamp = f"{major}.{minor}.{patch + 1}-dev.{commit}"
+              else:
+                  # Unparseable version: there is no next patch to be a
+                  # pre-release of, so say what it is and order nothing.
+                  print(f"::warning::{vf} reads {version!r}, which is not "
+                        "MAJOR.MINOR.PATCH; stamping it unordered.")
+                  stamp = f"{version}-dev.{commit}"
+
           with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
               fh.write(f"version={version}\n")
-          print(f"version={version} build={build} commit={commit} builtAt={built}")
+              fh.write(f"version_changed={'true' if changed else 'false'}\n")
+              fh.write(f"stamp={stamp}\n")
+          print(f"version={version} stamp={stamp} release={changed} "
+                f"build={build} commit={commit} builtAt={built}")
 
           ldflags = ["-s", "-w"] + [
               f"-X {pkg}.{var}={val}"
-              for var, val in (("Version", version), ("Build", build),
+              for var, val in (("Version", stamp), ("Build", build),
                                ("Commit", commit), ("BuiltAt", built))
           ]
 

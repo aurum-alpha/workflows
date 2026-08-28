@@ -28,10 +28,19 @@
     "repos whose turn has not come and the failure stops meaning anything.",
     "",
     "@types/node landed in wave 1 of aurum-alpha/workflows#169; the eslint six",
-    "landed in wave 2. Both are converged across all nine Node apps -- verified",
-    "against each repo's main, not assumed -- which is what makes them",
-    "assertable now. vite, vitest, react and typescript are waves 3 to 6 and are",
-    "deliberately absent until they converge."
+    "landed in wave 2; the vite four landed in wave 3. All are converged across",
+    "all nine Node apps -- verified against each repo's main, not assumed --",
+    "which is what makes them assertable now. react and typescript are waves 4",
+    "to 6 and are deliberately absent until they converge.",
+    "",
+    "The vite four are one entry in four lines, not four independent pins.",
+    "@vitejs/plugin-react peers vite ^8 only from 6.0.0, and vitest reaches vite",
+    "through @vitest/mocker, which admits vite 8 only from 4.1.0 -- so a repo",
+    "moving vite alone gets a SECOND vite in its tree rather than a moved one,",
+    "with no pnpm warning and a passing `vite build`. @vitest/coverage-v8 peers",
+    "an EXACT vitest version on top of that. Bump one of these here and the",
+    "other three move in the same wave, or the check passes on a tree that is",
+    "quietly wrong."
   ],
   "devDependencies": {
     "@types/node": "26.3.0",
@@ -40,6 +49,10 @@
     "eslint-config-prettier": "10.1.8",
     "eslint-plugin-react-hooks": "7.1.1",
     "eslint-plugin-react-refresh": "0.5.4",
-    "typescript-eslint": "8.67.0"
+    "typescript-eslint": "8.67.0",
+    "vite": "8.2.2",
+    "vitest": "4.1.11",
+    "@vitest/coverage-v8": "4.1.11",
+    "@vitejs/plugin-react": "6.1.1"
   }
 }

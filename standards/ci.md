@@ -1914,6 +1914,14 @@ is the only arrangement in which running both is worth anything. Two linters
 meant to agree produce evidence when they do not. Two linters configured
 differently produce noise, and nobody reads the second check.
 
+**oxlint is not in `fleet-versions.json` yet, deliberately.** That file asserts
+packages the fleet has *converged* on, and a package still mid-wave does not
+belong there until every repo carries the value — listing it would fail every
+repo whose turn has not come, and a check expected to fail is a check nobody
+reads. oxlint and oxlint-tsgolint join it, pinned exactly, on the day the last
+repo adopts the shared config. Until then each adopting repo pins them exactly
+in its own `package.json`, the way every wave has worked.
+
 **Why both still run.** oxlint's JS plugin API is alpha and the type-aware path
 rides on a TypeScript compiler rewrite that has not shipped as TypeScript's
 default. Those are two pre-1.0 dependencies, and this is the only blocking JS

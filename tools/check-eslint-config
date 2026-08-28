@@ -27,8 +27,17 @@ that the configs behave alike — it is that they are ONE config, so that
 collapsing them into a published package later is a mechanical move rather
 than a merge.
 
-Run against local clones:  tools/check-lint-configs --root /workspace
-Run against one repo:      tools/check-lint-configs --root DIR --repo NAME
+Run against local clones:  tools/check-eslint-config --root /workspace
+Run against one repo:      tools/check-eslint-config --root DIR --repo NAME
+
+THE NAME IS NARROWER THAN THE JOB, and deliberately so for now. Renaming this
+file to check-lint-configs is a two-wave operation, not a tidy-up: the calling
+job takes its body from the caller's `uses:` pin but its tools from
+`standard_ref`, which lags one commit by design, so the commit that renames the
+tool ships a job invoking a name the previous main does not have -- exit 127,
+which is what the first attempt at this change did to gofast. The rename waits
+until a main exists that already carries both names. Until then this file
+checks every shared lint config, whatever its name says.
 
 ADDING a shared config is safe; EDITING one is a fleet-wide event. The
 canonical copy is read from the catalog's default branch, not from the caller's

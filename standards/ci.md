@@ -1907,7 +1907,7 @@ roughly half the time. What made oxlint look like a subset was one repo's
 tool. The fleet spent a release arguing with that file.
 
 So the configs are shared now, on the same terms as `eslint.config.mjs`:
-`config/.oxlintrc.json` is byte-identical fleet-wide and `check-lint-configs`
+`config/.oxlintrc.json` is byte-identical fleet-wide and `check-eslint-config`
 fails the build if a repo edits it. **It is written as a translation of the
 eslint config** — same rules, same severity tiers, same ignores — because that
 is the only arrangement in which running both is worth anything. Two linters

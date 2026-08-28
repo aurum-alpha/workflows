@@ -199,7 +199,7 @@ jobs:
         env:
           REPO: ${{ steps.repo.outputs.name }}
           AURUM_CATALOG_ROOT: .aurum-catalog
-        run: .aurum-standard/tools/check-lint-configs --root .ci-root --repo "$REPO"
+        run: .aurum-standard/tools/check-eslint-config --root .ci-root --repo "$REPO"
         continue-on-error: ${{ inputs.warn_only }}
 
       # AGENTS.md says there is one source of agent guidance and only one. What

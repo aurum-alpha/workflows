@@ -3,8 +3,9 @@
 # needs: wiring; this file owns the entire job body. Callers pass
 # secrets: inherit; vars.RUNNER resolves in the caller's context.
 #
-# One way: `go test -race -covermode=atomic -coverprofile=coverage/go-unit.out ./...`
-# followed by the fleet Codecov upload (flag `go`). Before extraction the
+# One way: `gotestsum --junitfile=… -- ./... -race -covermode=atomic
+# -coverprofile=coverage/go-unit.out`, publishing the coverage profile and the
+# JUnit report as artifacts for job-coverage-upload. Before extraction the
 # three repos disagreed on two axes — client-manager and gofast wrote the
 # coverage profile but skipped -race; the controller ran -race but produced
 # no profile. Taking the union is the standardization: race detection is the
@@ -37,6 +38,10 @@ on:
         description: Destination path for needs_artifact.
         type: string
         default: ""
+      gotestsum_version:
+        description: gotestsum version to install, for the JUnit report.
+        type: string
+        default: "v1.13.0"
 
 jobs:
   test-unit:
@@ -73,6 +78,30 @@ jobs:
           key: go-build-${{ runner.os }}-${{ hashFiles(format('{0}/go.sum', inputs.workdir)) }}
           restore-keys: |
             go-build-${{ runner.os }}-
+      # `go test` has no JUnit mode and is not going to grow one, so the report
+      # Codecov Test Analytics reads — per-test timings, failure rates, flaky
+      # detection — comes from gotestsum wrapping it.
+      #
+      # Unlike golangci-lint in job-go-lint, gotestsum is NOT sensitive to the
+      # repo's toolchain: it parses `go test -json` output rather than linking
+      # against the compiler's export data, so a Go bump does not invalidate the
+      # binary and the cache key does not carry the toolchain version.
+      - name: Cache gotestsum
+        id: gotestsum-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/gotestsum-bin
+          key: gotestsum-${{ inputs.gotestsum_version }}-${{ runner.os }}
+      - name: Install gotestsum
+        if: steps.gotestsum-cache.outputs.cache-hit != 'true'
+        shell: bash
+        working-directory: ${{ inputs.workdir }}
+        env:
+          GOBIN: ${{ runner.temp }}/gotestsum-bin
+        run: |
+          set -euo pipefail
+          go install "gotest.tools/gotestsum@${{ inputs.gotestsum_version }}"
+
       - name: Download embedded assets
         if: inputs.needs_artifact != ''
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -88,16 +117,28 @@ jobs:
           # with "go: -race requires cgo". Set here rather than left to the
           # environment so the job behaves the same on any runner.
           CGO_ENABLED: "1"
+        # The `--` is load-bearing and in the opposite direction to the pnpm
+        # lesson in job-node-test-unit: everything before it is gotestsum's,
+        # everything after it is handed to `go test`. Drop it and gotestsum
+        # rejects `-race` as an unknown flag of its own.
         run: |
           set -euo pipefail
           mkdir -p coverage
-          go test ./... -race -covermode=atomic -coverprofile=coverage/go-unit.out
+          "${RUNNER_TEMP}/gotestsum-bin/gotestsum" \
+            --junitfile=test-report.junit.xml \
+            -- ./... -race -covermode=atomic -coverprofile=coverage/go-unit.out
       # Artifact names are a namespace shared by every job in the caller's run,
       # and a called workflow cannot see the caller's job id (github.job reads
       # `test-unit`, the id inside this file). workdir is the only thing that
       # distinguishes two callers of this job, so it is the key.
+      #
+      # !cancelled(), because the test-results upload below runs on a failed
+      # run and reads this output. Without it a failing unit skips this step,
+      # renders the artifact name as a bare `testresults-go-`, and two failing
+      # units in one repo then collide on that name.
       - name: Name this unit's artifacts
         id: key
+        if: ${{ !cancelled() }}
         shell: bash
         env:
           WD: ${{ inputs.workdir }}
@@ -112,13 +153,29 @@ jobs:
       # skip the caller's image-build. See job-coverage-upload.yml.
       #
       # Inherits success() deliberately: a failed unit publishes no coverage,
-      # exactly as the codecov step it replaces was gated. Go emits no junit
-      # report, so there is no testresults artifact here — the collector globs
-      # what exists and does not miss what was never produced.
+      # exactly as the codecov step it replaces was gated.
       - name: Publish coverage for the upload job
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-go-${{ steps.key.outputs.key }}
           path: ${{ inputs.workdir }}/coverage/go-unit.out
+          if-no-files-found: error
+          retention-days: 1
+
+      # !cancelled(), unlike coverage: a failed run IS the test-analytics
+      # signal, and it is the run Codecov most wants to see.
+      #
+      # if-no-files-found: error is safe here in a way it would not be for a
+      # bare `go test`. gotestsum writes the report in every outcome measured
+      # — tests pass, a test fails, a package fails to COMPILE (the build error
+      # lands in the report as an error entry), and a unit with no tests at all
+      # (an empty testsuite). So a missing file means the job died before the
+      # test step, which is worth failing on rather than passing over.
+      - name: Publish test results for the upload job
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: testresults-go-${{ steps.key.outputs.key }}
+          path: ${{ inputs.workdir }}/test-report.junit.xml
           if-no-files-found: error
           retention-days: 1

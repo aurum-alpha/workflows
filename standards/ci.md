@@ -961,6 +961,35 @@ configures `project.default` and `patch.default` only. Codecov **components**
 (`component_management`) slice by path rather than by upload and give the same
 breakdown back without reintroducing a per-unit upload.
 
+### Every unit emits JUnit, whatever the language
+
+Codecov **Test Analytics** — per-test timings, failure rates, flaky-test
+detection — reads JUnit XML. A unit that emits none is invisible to it however
+green it is, and nothing says so: the collector uploads what it finds and a repo
+contributing nothing looks identical to a repo with nothing to report.
+
+Each toolchain produces it its own way, configured where that unit's test
+command already lives:
+
+| language | producer | configured in |
+|---|---|---|
+| TypeScript | vitest | `--reporter=junit --outputFile.junit=…`, shared test job |
+| Go | gotestsum, wrapping `go test` | `--junitfile=…`, shared test job |
+| PHP | phpunit | `<logging><junit>`, the repo's `phpunit.xml` |
+
+Go is the one that needs a pinned wrapper binary rather than a flag, because
+`go test` has no JUnit mode and is not going to grow one.
+
+However it is produced, the report reaches Codecov the same way coverage does —
+a `testresults-*` artifact the collector globs — so a new language adds a
+producer and nothing else.
+
+**Every one of these uploads gates on `!cancelled()`, never `success()`.** A
+failed run is the signal Test Analytics most wants; gating on success would
+withhold exactly the runs flaky-test detection exists to find. Coverage is the
+opposite and stays on `success()`, because a failed unit has no coverage worth
+scoring.
+
 ## Action pinning — SHA everywhere
 
 Version tags are mutable pointers; the tj-actions/changed-files incident (2025-03)

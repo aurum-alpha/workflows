@@ -1,7 +1,7 @@
 {
   "$comment": [
     "Single source of truth for toolchain versions the fleet standardizes on.",
-    "Nothing reads this at build time — each repo still declares its own pin in",
+    "Nothing reads this at build time \u2014 each repo still declares its own pin in",
     "the file its tooling actually reads (package.json packageManager, go.mod,",
     ".node-version), because that is what corepack, setup-go and setup-node",
     "consume both in CI and on a developer's machine. This file is what those",
@@ -9,7 +9,10 @@
     "repo to the values here, so drift is a failing check rather than something",
     "noticed months later.",
     "Bumping a version here is the start of a fleet wave, not the end: update the",
-    "value, then update every repo's own pin to match."
+    "value, then update every repo's own pin to match.",
+    "Lint toolchain versions are here for the same reason pnpm is: the shared oxlint config is byte-identical fleet-wide, so the tool reading it has to be too. A config that assumes a rule the local oxlint has not shipped fails in one repo and nowhere else."
   ],
-  "pnpm": "10.34.5"
+  "pnpm": "10.34.5",
+  "oxlint": "1.78.0",
+  "oxlint-tsgolint": "7.0.2001"
 }

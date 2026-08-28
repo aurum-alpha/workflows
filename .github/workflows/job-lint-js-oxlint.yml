@@ -2,16 +2,19 @@
 # (CI_STANDARD Principle 12 — one way per capability, and this is the second
 # way, deliberately).
 #
-# oxlint and eslint are not interchangeable. oxlint is Rust, runs ~50-100x
-# faster, and implements a subset of the rules: no eslint plugins, and no
-# type-aware linting at all — the @typescript-eslint rules that need the type
-# checker do not exist there. So it is a fast first pass, not a replacement,
-# and a repo on oxlint is getting less checking than one on eslint, not
-# different checking.
+# oxlint and eslint are not interchangeable, and the direction of that has
+# changed. oxlint is Rust and runs the syntactic rules in about a second; with
+# `--type-aware` (oxlint-tsgolint, typescript-go) it also runs the rules that
+# need the type checker, and with the JS plugin bridge it runs the eslint
+# plugins it has not ported. Measured against the fleet eslint config on
+# gofast's client, it reports every finding eslint reports and eight more. It
+# is not a subset any more.
 #
-# Both jobs exist so no repo is blocked on a linter migration it did not ask
-# for. gofast is the only oxlint caller today; the fleet target is one linter,
-# and until that is decided this file is the honest way to say "we run two".
+# What it is, still, is younger: the JS plugin API is alpha and the type-aware
+# path rides on typescript-go. That is why both jobs run and why every oxlint
+# caller is warn_only — a pre-1.0 dependency does not get to turn the fleet
+# red. See CI_STANDARD "Two linters, on purpose, for now" for the condition
+# that retires one of them.
 name: job-lint-js-oxlint
 
 on:
@@ -28,8 +31,22 @@ on:
         default: "."
       dir:
         description: >-
-          Which standard unit to act on: `client`, `server` or `shared`. Not a
-          path — the layout is fixed fleet-wide, and any other value fails.
+          Path to lint, relative to `workdir`. An oxlint path argument and
+          nothing more — `client`, `src/client/react`, `server/api`, whatever
+          this call should cover.
+
+          It used to accept only `client`, `server` or `shared`. That is the
+          rule job-lint-js-eslint already dropped, for a reason that applies
+          here identically: a repo with more than one client has no way to name
+          the second, and `src/` is an ordinary layout rather than drift. Layout
+          is enforced by CI_STANDARD and check-ci-conformance, which is where it
+          belongs; smuggling it into a path argument only meant this job could
+          not lint code that plainly needed linting — event-manager's
+          `src/client/react` among it.
+
+          One path per call. A repo with several trees to lint calls this
+          several times and names each job, which is also how it gets a
+          separate check per tree instead of one verdict over all of them.
         type: string
         required: true
       warn_only:
@@ -67,21 +84,22 @@ jobs:
                     "See CI_STANDARD 'Standard repository layout'."; exit 1 ;;
           esac
 
-      # The unit is one of three names, fleet-wide (CI_STANDARD "Standard
-      # repository layout"). This input says *which* standard unit, never
-      # *where a repo happens to keep it* — a free-form path here would make the
-      # catalog accommodate variance instead of removing it.
-      - name: Validate unit
+      # `dir` is an oxlint path argument, so the only things worth rejecting
+      # are the two that would misfire rather than fail: an empty value, which
+      # makes oxlint lint nothing while exiting 0, and a leading dash, which
+      # oxlint would read as a flag. A path that simply does not exist needs no
+      # check here — oxlint fails loudly on its own rather than silently
+      # passing. Same two cases, same wording, as job-lint-js-eslint.
+      - name: Validate lint path
         env:
-          UNIT: ${{ inputs.dir }}
+          LINT_DIR: ${{ inputs.dir }}
         run: |
           set -euo pipefail
-          case "$UNIT" in
-            client|server|shared) ;;
-            # The workdir is itself the unit — see job-test-unit-js-vitest.
-            .) ;;
-            *) echo "::error::dir must be client, server, shared or '.'; got '$UNIT'." \
-                    "See CI_STANDARD 'Standard repository layout'."; exit 1 ;;
+          case "$LINT_DIR" in
+            "")  echo "::error::dir is empty. oxlint would lint nothing and" \
+                      "exit 0, reporting a pass over no files."; exit 1 ;;
+            -*)  echo "::error::dir must be a path, not a flag; got" \
+                      "'$LINT_DIR'."; exit 1 ;;
           esac
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -112,8 +130,19 @@ jobs:
         run: pnpm install --frozen-lockfile
       # oxlint invoked directly, not via a `lint` script whose only content is a
       # path (Phase F2). --deny-warnings because a warning nobody must fix is a
-      # warning nobody reads.
+      # warning nobody reads. --type-aware turns on the rules that need the type
+      # checker, which the shared .oxlintrc.json enables and which are half of
+      # why this job is worth running at all.
+      #
+      # `dir` goes through the environment and quoted, never interpolated into
+      # the script body, for the same reason job-lint-js-eslint does it: it is
+      # caller-supplied text now rather than one of four fixed words, and
+      # ${{ }} inside `run:` is substituted before bash ever sees it.
       - name: Lint ${{ inputs.dir }}
         working-directory: ${{ inputs.workdir }}
         continue-on-error: ${{ inputs.warn_only }}
-        run: pnpm exec oxlint ${{ inputs.dir }} --deny-warnings
+        env:
+          LINT_DIR: ${{ inputs.dir }}
+        run: |
+          set -euo pipefail
+          pnpm exec oxlint "$LINT_DIR" --type-aware --deny-warnings

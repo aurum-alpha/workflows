@@ -189,12 +189,17 @@ jobs:
       # The shared eslint config says, in its own header, that a byte-identity
       # checker fails the build if one repo edits it. No such checker existed;
       # six repos matched by luck and the sentence was decoration. This is it.
-      - name: The shared eslint config is unedited
+      #
+      # It covers .oxlintrc.json on the same terms. That file made the case for
+      # itself: oxlint's config was one repo's local file, and the fleet spent
+      # a release arguing about oxlint's coverage when it was arguing with that
+      # file. A shared config nothing compares is a shared config in name only.
+      - name: The shared lint configs are unedited
         if: ${{ !cancelled() }}
         env:
           REPO: ${{ steps.repo.outputs.name }}
           AURUM_CATALOG_ROOT: .aurum-catalog
-        run: .aurum-standard/tools/check-eslint-config --root .ci-root --repo "$REPO"
+        run: .aurum-standard/tools/check-lint-configs --root .ci-root --repo "$REPO"
         continue-on-error: ${{ inputs.warn_only }}
 
       # AGENTS.md says there is one source of agent guidance and only one. What

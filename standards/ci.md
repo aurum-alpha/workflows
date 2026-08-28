@@ -1051,6 +1051,62 @@ rewrote existing tags to malicious code and SHA-pinned consumers were untouched.
   *new* release still needs review before you bump into it.
 - Optional backstop: org-level allowlist of permitted actions.
 
+## Dependency updates — every manifest gets a watcher
+
+Action pinning above covers one ecosystem. This is the rule for the rest, settled
+in aurum-alpha/workflows#47 (audit 2026-08-16, decided 2026-08-25).
+
+**Two mechanisms, and only one of them is configured.** GitHub enables *security
+updates* by default: a published CVE against a version you use opens a PR, and no
+`dependabot.yml` entry is involved. *Version updates* are the opposite — nothing
+happens unless an `updates:` entry names the ecosystem. An unwatched manifest is
+therefore not unprotected; it is frozen, drifting further from current every week
+until a CVE forces the jump across several majors at once. That eventual leap is
+the cost being managed here, not exposure.
+
+**Every ecosystem with a manifest in the repository gets an `updates:` entry.**
+`directories` (plural) accepts a list and globs, so a repo carrying two trees of
+one ecosystem needs one entry, not two.
+
+**One grouping shape, everywhere:**
+
+```yaml
+    schedule:
+      interval: weekly
+    groups:
+      <ecosystem>-minor-patch:
+        update-types: [minor, patch]
+```
+
+Minor and patch arrive as one pull request per run. **Majors stay ungrouped** —
+a major bump is where breakage lives, so it gets its own review and its own
+revert. **Security updates stay ungrouped too**, because `applies-to` defaults to
+`version-updates`, so a fix still lands alone and immediately. Weekly is the
+fleet cadence; this repository is the exception at `daily`, because the catalog's
+own pins are the fleet's pins and a bump here propagates to every consumer.
+
+**Dependabot can only bump a reference that carries a comparable version.**
+`node:26-alpine` it can advance; `debian:bookworm-slim` is a codename with
+nothing to compare, and a bare `busybox` has no tag at all. Version-pin before
+adding the watcher, or the entry is a watcher that finds nothing —
+aurum-alpha/workflows#178 tracks the fleet's unpinned compose images.
+
+**The two container ecosystems read different files and neither one watches what
+you build.** `docker` reads `FROM` in Dockerfiles; `docker-compose` reads
+`image:` in compose files. Your own published image is CI's output and is not
+Dependabot's business. A repository whose base images are pinned in a Dockerfile
+and whose service images are pinned in compose needs **both** entries — one does
+not reach the other's file.
+
+**Where the fleet stands (2026-08-25).** `github-actions` everywhere; `gomod` on
+all three Go repositories; `composer` on event-manager's two trees; `docker` and
+`docker-compose` where the images are pinned well enough to advance. `npm` is
+held on aurum-alpha/workflows#177 until the Node cohorts converge
+(aurum-alpha/workflows#169) — turning it loose on 755 dependencies across two
+sets of majors would do that convergence accidentally, in grouped PRs nobody
+reviews as a migration. lid-firmware watches nothing beyond actions: Dependabot
+has no `platformio` ecosystem, so those pins stay manual.
+
 ## Shared infrastructure — aurum-alpha/workflows
 
 **Created 2026-08-14, public** (NOT gha-runner-controller — the fleet controller
@@ -2081,6 +2137,7 @@ checker says so rather than implying coverage it lacks.
 | Go repos converting to Make | **Settled 2026-08-24 (#44): no.** See *When Make is the right tool* below |
 | Task running | Shell, not Make. A shared local-dev runner (#170), not per-repo one-offs |
 | Action pinning | SHA-pin everything + `# vX.Y.Z` comment + Dependabot |
+| Dependabot ecosystems | **Settled 2026-08-25 (#47): every manifest with a comparable version gets a watcher.** npm held on #177 until #169 |
 | Coverage | Codecov v7 everywhere supportable |
 | Per-branch images | Deferred until staging infra exists |
 | Shared workflows home | New `aurum-alpha/workflows` repo |

@@ -81,11 +81,14 @@ on:
         required: true
       artifacts:
         description: >-
-          Optional. Newline-separated download-artifact patterns to fetch into
-          dist/ and attach to the release. Patterns, matched by name — never
-          "every artifact in the run", which also sweeps up buildx's
-          .dockerbuild build record and fails digest validation deterministically.
-          Leave empty for a release with no assets.
+          Optional. Download-artifact patterns to fetch into dist/ and attach
+          to the release — one per line, or a single minimatch pattern (a
+          brace glob like {a-*,b-*} works). Multiple lines are folded into one
+          brace glob before the download, because download-artifact takes a
+          single pattern and a raw newline inside it matches nothing. Matched
+          by name — never "every artifact in the run", which also sweeps up
+          buildx's .dockerbuild build record and fails digest validation
+          deterministically. Leave empty for a release with no assets.
         type: string
         default: ""
       required_files:
@@ -163,11 +166,39 @@ jobs:
           echo "tag=${{ inputs.tag_prefix }}${VERSION}" >> "$GITHUB_OUTPUT"
         shell: bash
 
+      # The input promises "one pattern per line"; download-artifact takes ONE
+      # pattern. This is the fold that keeps the promise: n lines become a
+      # single {a,b} brace glob, which minimatch reads, where the raw newline
+      # the first version passed through would have matched nothing. Found by
+      # gha-runner-controller, the first caller with two artifact families —
+      # its stub shipped a hand-built brace glob rather than lean on a
+      # description the implementation did not honor, and both forms now work.
+      - name: Resolve the artifact pattern
+        if: steps.decide.outputs.release == 'true' && inputs.artifacts != ''
+        id: resolve_pattern
+        env:
+          PATTERNS: ${{ inputs.artifacts }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t pats < <(printf '%s\n' "${PATTERNS}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed '/^$/d')
+          if [ "${#pats[@]}" -eq 0 ]; then
+            echo "::error::artifacts was set but contains no pattern"
+            exit 1
+          elif [ "${#pats[@]}" -eq 1 ]; then
+            pattern="${pats[0]}"
+          else
+            joined=$(IFS=,; echo "${pats[*]}")
+            pattern="{${joined}}"
+          fi
+          echo "pattern=${pattern}" >> "$GITHUB_OUTPUT"
+          echo "Downloading artifacts matching: ${pattern}"
+
       - name: Download the release assets
         if: steps.decide.outputs.release == 'true' && inputs.artifacts != ''
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: ${{ inputs.artifacts }}
+          pattern: ${{ steps.resolve_pattern.outputs.pattern }}
           merge-multiple: true
           path: dist/
 

@@ -133,7 +133,30 @@ jobs:
   # existing tag wins and the step says so rather than repointing what eleven
   # repos may already have pinned.
   release:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # always() IS LOAD-BEARING, and its absence silently killed this job.
+    #
+    # GitHub skips a job when ANY job in its `needs` closure was skipped, and
+    # `always()` rescues only the job that carries it. ci-ok carries one, so it
+    # survives version-gate skipping on a push; this job did not, so it
+    # inherited the skip through ci-ok and never ran. The 2673932 merge is the
+    # evidence: lint, conformance and ci-ok all green, release skipped with no
+    # steps at all.
+    #
+    # version-gate skips on EVERY push to main — it is pull_request-only, since
+    # only a pull request has a base to compare against — so this was not a
+    # one-merge accident. It would have skipped on a release merge too, and the
+    # first anyone would have known is a release that produced no tag, which is
+    # the failure this whole standard exists to stop: something that did not
+    # happen, reported as fine.
+    #
+    # needs.ci-ok.result is then checked explicitly, because always() also
+    # disarms the implicit "only if my dependencies succeeded". Without that
+    # clause this job would tag a commit whose CI had failed.
+    if: >-
+      always()
+      && github.event_name == 'push'
+      && github.ref == 'refs/heads/main'
+      && needs.ci-ok.result == 'success'
     needs: [ci-ok]
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
     permissions:

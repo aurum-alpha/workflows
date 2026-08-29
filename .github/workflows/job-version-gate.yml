@@ -35,6 +35,36 @@
 # minted. That was already true in practice (five of the twenty merges before
 # this one did not touch .version); what changes is that the artifacts stop
 # claiming otherwise.
+# ADOPTING THIS JOB CAN SILENTLY KILL YOUR RELEASE PATH. READ THIS.
+#
+# This job is pull_request-only — only a pull request has a base to compare
+# against — so it is SKIPPED on every push to main. Put it in ci-ok's `needs:`
+# (you must, or it gates nothing), and GitHub then skips every job whose
+# `needs` closure contains it, because a skip propagates transitively and
+# `always()` rescues only the job that carries it. ci-ok carries one and
+# survives. Anything downstream of ci-ok does not.
+#
+# So a main-only job below ci-ok — the tag, the release, the publish — stops
+# running the moment you adopt this, and nothing goes red: the run is green and
+# the job simply is not there. This catalog did it to itself on the very merge
+# that introduced the job (2673932): lint, conformance and ci-ok green, release
+# skipped, no tag.
+#
+# Every push-gated job downstream of ci-ok therefore needs its own always(),
+# plus an explicit result check, because always() also disarms the implicit
+# "only if my dependencies succeeded":
+#
+#   release:
+#     if: >-
+#       always()
+#       && github.event_name == 'push'
+#       && github.ref == 'refs/heads/main'
+#       && needs.ci-ok.result == 'success'
+#     needs: [ci-ok]
+#
+# Without the result check the job tags a commit whose CI failed. Without
+# always() it never runs at all.
+#
 name: job-version-gate
 
 on:

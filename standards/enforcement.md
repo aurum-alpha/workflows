@@ -39,7 +39,7 @@ will.
 | 11 | Registry auth in user-level npmrc | — | **review only** |
 | 12 | One way per capability | `check-ci-conformance` | gated¹ |
 | 13 | Provenance in every artifact | — | **review only** |
-| 14 | A version is a commit, not a tag | `job-version-gate` (partly) | mixed² |
+| 14 | A version is a commit, not a tag | `job-version-gate` + `job-version-release` (partly) | mixed² |
 | 15 | The repo is versioned, not the artifact | — | **review only** |
 | 16 | A version exists only where consumed | — | **review only** |
 | 17 | Release is promotion, not production | `check-ci-conformance` D4, D5 | gated |
@@ -62,7 +62,8 @@ will.
 | — | The version moves forward, or not at all | `job-version-gate` | gated² |
 | — | A release pull request changes only the version file and prose | `job-version-gate` | gated² |
 | — | The version file is never deleted | `job-version-gate` | gated² |
-| — | Only a version change mints a version-named artifact | — | **review only** |
+| — | Only a version change mints the tag and the GitHub release | `job-version-release` | gated³ |
+| — | Only a version change mints a `v<version>` image tag or package version | — | **review only** |
 | — | Caller permissions cover shared jobs | `check-caller-permissions` | gated¹ |
 
 ¹ Gated in every repo whose `ci.yml` calls `job-ci-conformance`, which runs
@@ -71,6 +72,15 @@ per-repo rollout; until a repo adopts the job, these rules are unenforced
 **in that repo** and nothing there will say so. The row claims what the
 mechanism can do, not what every repo has taken up — check the rollout, not
 this table, before believing a given repo is covered.
+
+³ Gated in every repo whose `ci.yml` calls `job-version-release`. It covers
+the two emissions the job itself produces and nothing else: a `v<version>`
+image tag comes from an `enable=` expression in the caller's own
+`job-image-publish` stub, and a package version from whatever renders it, so
+both stay review questions. `gha-runner-controller` is the reason that
+distinction is drawn rather than assumed — its `v<version>` tag was applied on
+`is_default_branch` alone, so every merge re-pointed it at new bytes, and no
+release job anywhere would have caught it.
 
 ² Gated in every repo whose `ci.yml` calls `job-version-gate`, and in no
 other. Unlike the ¹ checkers this one is not carried by

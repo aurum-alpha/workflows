@@ -1,0 +1,273 @@
+# Fleet capability: mint the version-named emission — the git tag and the
+# GitHub release — for the one commit that changed the version file
+# (CI_STANDARD Principle 12, one way per capability; Principle 14, a version is
+# a commit, not a tag). Single-job reusable workflow: the caller owns the job id
+# and needs: wiring; this file owns the entire job body.
+#
+# THE OTHER HALF OF job-version-gate. That job gates the pull request — the
+# version moves forward or not at all, and a release pull request carries
+# nothing but the version and prose. This job acts on the merge: it mints
+# exactly when `version_changed` says the commit moved the file, and mints
+# nothing otherwise.
+#
+# WHY THIS EXISTS AS A SHARED JOB. Three repositories had written this rule out
+# by hand — this catalog, gha-runner-controller, and lid-firmware — and the
+# copies had already drifted in the way that matters. Two of them re-derived
+# "did this commit cut a release" with
+#
+#   git diff --name-only HEAD^ HEAD | grep -qx '.version'
+#
+# which is both a second answer to a question the build job already answers and
+# subtly wrong: unquoted in a regex the dot matches any character, so a file
+# named `aversion` mints a release nobody asked for. A rule with three
+# handwritten implementations is a rule with three chances to be wrong, and the
+# fleet found two of them.
+#
+# SO THIS JOB NEVER DECIDES. `version_changed` and `version` are inputs, read
+# from job-go-build or job-build-cpp-pio, which carry the byte-identical shared
+# block that answers the question once. Adding a `git diff` here would recreate
+# the exact duplication it was extracted to end.
+#
+# IT RUNS ON PULL REQUESTS, and that is deliberate (Principle 17: a release is
+# promotion, not production). Everything up to and including "the files
+# `gh release create` will be handed exist and are named correctly" happens
+# identically on a pull request; only the publish itself is suppressed. The
+# alternative — gating the whole job to main — means its first execution is the
+# merge that has to work. gha-runner-controller was shaped that way and failed
+# exactly there, on a broken artifact download, after ci-ok had already gone
+# green.
+#
+# ADOPTING THIS ALONGSIDE job-version-gate NEEDS always() IN THE CALLER.
+# job-version-gate is pull_request-only and so is skipped on every push to
+# main; GitHub propagates that skip transitively to every job whose `needs`
+# closure contains it, and always() rescues only the job that carries it. A
+# caller that puts this job below ci-ok without its own guard gets a green run
+# with no release in it — silently. The caller's stub wants:
+#
+#   release:
+#     needs: [ci-ok]
+#     if: >-
+#       always()
+#       && needs.ci-ok.result == 'success'
+#     uses: aurum-alpha/workflows/.github/workflows/job-version-release.yml@<sha>
+#     with:
+#       version: ${{ needs.<build-job>.outputs.version }}
+#       version_changed: ${{ needs.<build-job>.outputs.version_changed }}
+#     permissions:
+#       contents: write
+#
+# Note what is NOT in that `if:`: the push/main condition. This job applies it
+# per-step, so the caller must not gate the job to main — doing so is rule D5,
+# and it is what put the untested-until-merge failure above into the fleet.
+name: job-version-release
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: >-
+          The version this commit carries, bare, with no leading v — the
+          `version` output of job-go-build or job-build-cpp-pio. Never the
+          stamp: a mid-stream build's `0.16.1-dev.abc` names no release and
+          this job would refuse it.
+        type: string
+        required: true
+      version_changed:
+        description: >-
+          'true' when this commit changed the version file — the
+          `version_changed` output of the build job. This job mints when it is
+          'true' and does nothing when it is not. It does not re-derive it.
+        type: string
+        required: true
+      artifacts:
+        description: >-
+          Optional. Newline-separated download-artifact patterns to fetch into
+          dist/ and attach to the release. Patterns, matched by name — never
+          "every artifact in the run", which also sweeps up buildx's
+          .dockerbuild build record and fails digest validation deterministically.
+          Leave empty for a release with no assets.
+        type: string
+        default: ""
+      required_files:
+        description: >-
+          Optional. Newline-separated paths that must exist after the download.
+          This is what a pull request checks in place of publishing: the exact
+          files the release would be handed, present and named as it expects.
+        type: string
+        default: ""
+      tag_prefix:
+        description: Prefix for the tag name. The fleet uses `v`.
+        type: string
+        default: "v"
+      generate_notes:
+        description: Ask GitHub to generate release notes from the commits.
+        type: boolean
+        default: true
+      runner:
+        description: >-
+          Override runs-on. Leave empty for the fleet default. Set to a
+          GitHub-hosted label where a repo must not build on the fleet
+          (CI_STANDARD Principle 4).
+        type: string
+        default: ""
+
+jobs:
+  version-release:
+    runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-26.04' }}
+    timeout-minutes: 20
+    permissions:
+      # Escalated above the read-only fleet floor: creating a tag and a release
+      # writes to the repository. Nothing else this job does needs it, and the
+      # write is reached only on the main-push path below.
+      contents: write
+    steps:
+      # The decision is an input, so there is nothing here to diff against a
+      # parent commit and the shallow default is enough.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Is this a release commit?
+        id: decide
+        env:
+          VERSION_CHANGED: ${{ inputs.version_changed }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+
+          # workflow_dispatch is the retry path: a publish that failed after the
+          # merge must be repeatable without inventing a new version number.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            release=true
+          else
+            release="${VERSION_CHANGED}"
+          fi
+
+          if [ "${release}" != "true" ]; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "Version unchanged; nothing to mint."
+            echo "Version unchanged; nothing to mint." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # A release version is a bare SemVer triple. Anything else — a stamp
+          # wired in by mistake, an empty output from a job that did not run —
+          # must fail here rather than become a tag. An anchored regex, not a
+          # case glob: `[0-9]*.[0-9]*.[0-9]*` also matches `1.2.3.4` and `1..2`,
+          # because the dots are literal but the stars are not bounded.
+          if ! [[ "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::version reads '${VERSION}'; expected a bare" \
+                 "MAJOR.MINOR.PATCH. A stamp or pre-release names no release."
+            exit 1
+          fi
+
+          echo "release=true" >> "$GITHUB_OUTPUT"
+          echo "tag=${{ inputs.tag_prefix }}${VERSION}" >> "$GITHUB_OUTPUT"
+        shell: bash
+
+      - name: Download the release assets
+        if: steps.decide.outputs.release == 'true' && inputs.artifacts != ''
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: ${{ inputs.artifacts }}
+          merge-multiple: true
+          path: dist/
+
+      # What a pull request gets in place of the publish. Everything above this
+      # point is identical on a pull request and on main, so a broken artifact
+      # name fails on the pull request that introduced it rather than on the
+      # merge that had to cut the release.
+      - name: Verify the release inputs
+        if: steps.decide.outputs.release == 'true'
+        env:
+          REQUIRED_FILES: ${{ inputs.required_files }}
+        run: |
+          set -euo pipefail
+          if [ -d dist ]; then ls -l dist/; fi
+          missing=0
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            if ! compgen -G "$f" >/dev/null; then
+              echo "::error::required release file missing: $f"
+              missing=1
+            fi
+          done <<< "${REQUIRED_FILES}"
+          [ "$missing" -eq 0 ]
+          echo "Release inputs for \`${{ steps.decide.outputs.tag }}\` verified." >> "$GITHUB_STEP_SUMMARY"
+        shell: bash
+
+      # gh is on the GitHub-hosted images and not on the fleet's: the
+      # actions-runner base installs curl, unzip, sudo, jq and git, and the
+      # runner image adds only libatomic1, gcc and libc6-dev. Publishing is rare
+      # enough that gh is not a tier-1 dependency — putting it on the image
+      # would make every repository in the fleet carry it so that this job could
+      # run a few times a month.
+      #
+      # Gated exactly like the publish below rather than run unconditionally: an
+      # apt install on every other run is latency and one more thing that can
+      # fail, bought for a binary nothing is about to call. And it is worth
+      # having at all because of how it fails without it — `gh release create`
+      # exits 127 on a main merge, after ci-ok has gone green, on the one run
+      # that was cutting the release.
+      - name: gh, which the fleet runner image does not carry
+        if: >-
+          steps.decide.outputs.release == 'true'
+          && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
+          && github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          if command -v gh >/dev/null; then
+            gh --version | head -1
+            exit 0
+          fi
+          sudo mkdir -p -m 755 /etc/apt/keyrings
+          curl -fsSL --retry 3 https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+            | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg >/dev/null
+          sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+            | sudo tee /etc/apt/sources.list.d/github-cli.list >/dev/null
+          sudo apt-get update
+          sudo apt-get install -y gh
+          gh --version | head -1
+
+      # The one step a pull request does not run. `gh release create` creates
+      # the tag as well, at --target, so this is the whole minting act.
+      - name: Mint the release
+        if: >-
+          steps.decide.outputs.release == 'true'
+          && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
+          && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.decide.outputs.tag }}
+          NOTES: ${{ inputs.generate_notes }}
+        run: |
+          set -euo pipefail
+
+          # Idempotent, because the retry path exists. A release that is already
+          # there is the success case, not a collision.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; nothing to do."
+            echo "Release \`$TAG\` already existed." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # A tag that exists WITHOUT a release is a different thing and must
+          # not be moved: tags are created once. Say which commit holds it.
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null 2>&1; then
+            existing="$(git rev-list -n1 "$TAG")"
+            if [ "$existing" != "$GITHUB_SHA" ]; then
+              echo "::error::$TAG already exists at $existing and this commit is" \
+                   "$GITHUB_SHA. Tags are immutable — bump the version file" \
+                   "instead of moving it."
+              exit 1
+            fi
+          fi
+
+          args=(release create "$TAG" --title "$TAG" --target "$GITHUB_SHA")
+          [ "$NOTES" = "true" ] && args+=(--generate-notes)
+          if [ -d dist ] && [ -n "$(ls -A dist 2>/dev/null)" ]; then
+            while IFS= read -r f; do args+=("$f"); done < <(find dist -maxdepth 1 -type f | sort)
+          fi
+          gh "${args[@]}"
+
+          echo "Minted \`$TAG\` at $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+        shell: bash

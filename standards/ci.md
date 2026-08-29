@@ -600,6 +600,32 @@ Three consequences, stated because each one surprises someone:
   sorts-below marker is `~`, so a packaging job wants `0.15.1~dev.abc`. The
   translation belongs to the job that packages, and lands with it.
 
+**Adopting the gate needs one change to every push-gated job below `ci-ok`.**
+`job-version-gate` is pull_request-only, so it is skipped on every push to
+main. It has to sit in `ci-ok`'s `needs:` or it gates nothing — and GitHub then
+propagates that skip transitively to every job whose `needs` closure contains
+it, because `always()` rescues only the job carrying it. `ci-ok` has one and
+survives; the tag, release and publish jobs below it do not.
+
+The failure is silent, which is what makes it worth a paragraph: the run is
+green and the job is simply absent. This repository did it to itself on the
+merge that introduced the gate — `2673932` came up green with `release`
+skipped and no tag cut, and had it not been caught, the next release pull
+request would have merged and minted nothing. Every main-only job downstream of
+`ci-ok` carries its own guard:
+
+```yaml
+if: >-
+  always()
+  && github.event_name == 'push'
+  && github.ref == 'refs/heads/main'
+  && needs.ci-ok.result == 'success'
+```
+
+The result check is not decoration. `always()` also disarms the implicit "only
+if my dependencies succeeded", so without it the job would tag a commit whose
+CI had failed.
+
 **The version moves forward or not at all.** `job-version-gate` fails a pull
 request that moves the version backward, repeats it, malforms it, or deletes
 the file. A repeat is as fatal as a decrease: tags are created once and never

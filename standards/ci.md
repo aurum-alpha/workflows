@@ -603,6 +603,15 @@ and both live in the catalog:
 | C/C++ via PlatformIO | `job-build-cpp-pio` | the same three, plus `AURUM_VERSION_STAMP` in the environment |
 | No build (a repo whose only version-named emission is its tag) | nothing to stamp | — |
 
+**And the minting is one implementation for all of them: `job-version-release`.**
+It takes `version` and `version_changed` from whichever build job produced them
+and does not re-derive either. Three repositories had written the rule out by
+hand before it was extracted, and two of those copies asked the question with
+`git diff --name-only HEAD^ HEAD | grep -qx '.version'` — a second answer to a
+question the build job already answers, and wrong in the same way in both: the
+dot is a regex wildcard, so a file named `aversion` mints a release. That is
+what a rule with three implementations buys.
+
 Those two jobs carry a **byte-identical shared block** that decides both
 questions, and `tools/check-version-stamp-shared` fails this repository if the
 copies diverge. It is duplicated rather than extracted because a reusable
@@ -649,7 +658,7 @@ Three consequences, stated because each one surprises someone:
   This was already true in practice; what changes is that the artifacts stop
   claiming otherwise.
 - **A release pull request changes the version file and prose, nothing else.**
-  Enforced by `job-version-gate`. The bytes a release mints are then a build of
+  Enforced by `job-version-gate`, and minted by `job-version-release`. The bytes a release mints are then a build of
   a tree main has already proved, and the reviewer approving it is approving a
   release rather than approving a change and getting a release with it.
 - **Mid-stream builds say so in their own version string.** Go binaries stamp

@@ -238,6 +238,10 @@ CALLEE_NEEDS = {
     "job-image-publish": {"packages": "write"},
     "job-image-prune": {"packages": "write"},
     "job-version-gate": {"pull-requests": "write"},
+    # Creating the tag and the release writes to the repository. The grant is
+    # reached only on the main-push path inside the job; the caller still has
+    # to hold it, because a called workflow can never hold more than its caller.
+    "job-version-release": {"contents": "write"},
 }
 PERM_RANK = {"none": 0, "read": 1, "write": 2}
 

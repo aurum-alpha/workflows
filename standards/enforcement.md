@@ -49,6 +49,7 @@ will.
 | — | Something runs the image | `check-ci-conformance` D7 | gated |
 | — | `needs.<id>` expressions resolve | `check-ci-conformance` D8 | gated |
 | — | `workdir` names a shape, not a path | `check-ci-conformance` WD | gated |
+| — | Every upload declares `retention-days` | `check-ci-conformance` RET | gated³ |
 | — | Per-stack DAG in multi-codebase repos | — | **review only** |
 | — | SHA pinning | `check-ci-conformance` PIN | gated |
 | — | `ci-ok` is the only required check | branch protection | gated |
@@ -85,6 +86,12 @@ release or versioned artifact is minted except by a commit which changed the
 file — is enforced in each repo's own `ci.yml`, and nothing checks that a repo
 did it. That is the next checker worth writing, and until it exists this row
 does not claim it.
+
+³ Presence only. `RET` proves an upload states a retention, never that the
+number is the right one — one day is correct for a hand-off between jobs and
+ninety is correct for firmware that has no other durable home, and no checker
+can tell those apart. Whether a long retention is earned stays a review
+question, and so does whether the deliverable should have a release instead.
 
 Where a CI rule reads **review only** above, `ci.md` explains why: BUILD ONCE
 needs to know what an artifact is, and the per-stack DAG needs to know which

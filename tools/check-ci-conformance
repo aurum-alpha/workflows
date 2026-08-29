@@ -59,6 +59,15 @@ principle needed enforcing:
                           the shell commands that share the old name — `go build`
                           became `go server-go-build`, which is not a subcommand
                           and fails in zero seconds
+  RET uploads state a life   every repo-local actions/upload-artifact declares
+                          retention-days. Without one it inherits the repository
+                          default of 90 days, and artifact storage is an org-wide
+                          quota: when it fills, every repo's uploads fail at once
+                          with a red check carrying no log and no output. The
+                          rule asserts presence, never a value — 1 day is right
+                          for a hand-off between jobs, 90 is right for firmware
+                          in a repo with no release pipeline, and only a person
+                          can tell those apart
   TRG push is default-only   ci.yml's push: trigger lists only the default
                           branch. A feature-branch push and its pull request are
                           different refs — refs/heads/<b> and refs/pull/<n>/merge
@@ -343,6 +352,45 @@ def sourceless_image_builds(text: str) -> set[str]:
 
 
 
+def upload_steps(text: str) -> list[tuple[str, int]]:
+    """Every actions/upload-artifact step, as (step text, 1-based line number).
+
+    A step runs from its own `- ` bullet to the next line indented no deeper
+    than that bullet, which is where the following step or the next block key
+    begins. Slicing on the bullet rather than a fixed indent is what makes this
+    work in both a caller's ci.yml (steps at six spaces, inside jobs.<id>.steps)
+    and this repo's own job-*.yml, without either indent being hardcoded.
+
+    Comments are stripped first. A step carrying `# retention-days: 1` in a note
+    about what it does not set would otherwise satisfy the rule it is describing
+    — the same trap sourceless_image_builds() documents for `artifacts:`.
+    """
+    lines = [
+        "" if ln.lstrip().startswith("#") else ln
+        for ln in text.splitlines()
+    ]
+    out: list[tuple[str, int]] = []
+    for i, ln in enumerate(lines):
+        if not re.search(r"uses:\s*actions/upload-artifact@", ln):
+            continue
+        # Walk back to the bullet that opens this step: `uses:` may sit under a
+        # `- name:` line rather than being the bullet itself.
+        start = i
+        while start >= 0 and not lines[start].lstrip().startswith("- "):
+            start -= 1
+        if start < 0:
+            start = i
+        bullet = len(lines[start]) - len(lines[start].lstrip())
+        end = start + 1
+        while end < len(lines):
+            cur = lines[end]
+            if cur.strip() and (len(cur) - len(cur.lstrip())) <= bullet:
+                break
+            end += 1
+        out.append(("\n".join(lines[start:end]), start + 1))
+    return out
+
+
 def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
     ci = find_ci(repo)
     if ci is None:
@@ -453,6 +501,39 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
                         f"pinned in this repo — {detail}. One catalog version at a "
                         "time: a repo taking jobs from several commits is running "
                         "several standards.")
+
+    # --- RET: every upload states how long it keeps ----------------------
+    # A repo-local upload-artifact with no retention-days silently inherits the
+    # repository setting — 90 days by default — and the org's artifact storage
+    # quota is a shared resource: when it fills, every repo's uploads start
+    # failing at once, with a red check carrying no log and no output.
+    #
+    # That is not hypothetical. On 2026-08-29 the quota was exhausted and
+    # reddened osv-scanner on expense-splitter#48 and image-build plus
+    # coverage-upload on wardley-mapper#39, none of which had a defect. The
+    # catalog's own twelve uploads all set 1 day; the one upload in the fleet
+    # that set nothing was a .deb that lives for the minutes between packaging
+    # and `gh release create`, kept for ninety days.
+    #
+    # The rule asserts presence, never a value, because the right number is a
+    # judgment the checker cannot make: 1 day is right for a hand-off between
+    # jobs, and lid-firmware's 90 is right for field firmware in a repo with no
+    # release pipeline, where that artifact is the only retrievable copy of what
+    # ships to a device. What a checker can prove is that somebody decided.
+    # Same shape as the AGENTS.md rule, which tests the act rather than length.
+    if wf_dir.is_dir():
+        for wf in sorted(wf_dir.glob("*.yml")) + sorted(wf_dir.glob("*.yaml")):
+            for step, line_no in upload_steps(wf.read_text()):
+                if not re.search(r"^\s*retention-days:", step, re.M):
+                    bad(
+                        "RET",
+                        f"{wf.name}:{line_no} uploads an artifact without "
+                        "retention-days, so it inherits the repository default "
+                        "(90 days) and consumes the org's shared artifact "
+                        "quota. State one: 1 for a hand-off between jobs in the "
+                        "same run, or a longer value where the artifact is the "
+                        "only durable copy of a deliverable.",
+                    )
 
     # --- RU: the rollup is shared, not copied ----------------------------
     # ci-ok is the one job every repo has and the one job none of them called

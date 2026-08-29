@@ -119,6 +119,21 @@ standard itself, and on the shared catalog that implements it, is tracked here.
    re-ran the amd64 leg's check verbatim — and each of those four mismatches
    independently defeated the build cache, so its objects could not be reused by
    the build that followed.
+   **Every upload declares how long it keeps.** An artifact passed between jobs
+   is a hand-off inside one run, and one day is long enough — the catalog's own
+   uploads all say `retention-days: 1`. An upload that declares nothing inherits
+   the *repository* default of ninety days, and artifact storage is an org-wide
+   quota rather than a per-repo one: when it fills, every repository's uploads
+   start failing at once, and they fail as a red check with no log and no output,
+   which is indistinguishable from a broken build until someone reads a sibling
+   repo's logs. That happened on 2026-08-29 and cost an evening.
+
+   The rule is that a number is stated, not which number. Where an artifact is
+   the only durable copy of a deliverable — firmware in a repository that has no
+   release pipeline, say — a long retention is correct, and the fix for the
+   storage it costs is to give that deliverable a real home, never to shorten
+   the only copy. Rule `RET` in `tools/check-ci-conformance` asserts presence
+   and deliberately does not judge the value.
 8. **No multi-stage production Dockerfiles.** Shipped images are thin runtime
    images that COPY the prebuilt `dist`/`bin` artifact (gofast pattern). Dev
    images may compile for local HMR; the rule governs shipped images.

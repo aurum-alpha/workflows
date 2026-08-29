@@ -17,10 +17,11 @@ that only runs when someone remembers to run it from a workstation. Naming a
 repo with no Node app is a pass, not an error, so every caller can wire this up
 unconditionally without first knowing whether it is a Node repo.
 
-It checks TWO things, for the same reason and against the same file:
+It checks THREE things, for the same reason and against the same file:
 
   packageManager   one pnpm across the fleet
-  devDependencies  one version of each converged toolchain package
+  devDependencies  one version of each converged build-time package
+  dependencies     one version of each converged RUNTIME package
 
 The second half exists because the first was the whole check while eight
 packages were converged by hand across nine repos and NOTHING held them there.
@@ -29,6 +30,18 @@ exact version in every Node app; a week later any `pnpm up` in any repo could
 have undone that silently, because the only thing that would have noticed was
 somebody re-reading nine manifests. Convergence that is not asserted is a
 snapshot, not a standard.
+
+The two dependency blocks are separate rather than one merged lookup, and the
+section a package sits in is part of what is asserted. For a year this checker
+read devDependencies alone, which meant the fleet could converge on a runtime
+package -- react, say -- and have no way to say so: react and react-dom are
+`dependencies` in all nine Node apps, correctly, and were therefore invisible
+here. Merging the two sections into one lookup would have fixed that and lost
+something worth keeping, because placement is itself a real defect class. A
+runtime package parked in devDependencies breaks `--prod` installs; a types
+package parked in dependencies ships nothing but noise, and jewelry-factory
+carried exactly that until aurum-alpha/jewelry-factory#52. A checker that
+accepted either section would have called both of those fine.
 
 Versions are compared EXACTLY. A caret or tilde fails: `^7.3.0` in two repos
 can resolve to different versions on different days, so a range is not a pin
@@ -65,12 +78,73 @@ NODE_APPS = {
 }
 
 
-def load_expected(repo_root: pathlib.Path) -> tuple[str, dict[str, str]]:
+def load_expected(
+    repo_root: pathlib.Path,
+) -> tuple[str, dict[str, str], dict[str, str]]:
     data = json.loads((repo_root / "fleet-versions.json").read_text())
-    # devDependencies is optional so this checker still runs against an older
-    # fleet-versions.json -- a caller pins standard_ref, so the checker and the
-    # data it reads can be one commit apart.
-    return data["pnpm"], data.get("devDependencies", {})
+    # Both dependency blocks are optional. This is defensive rather than a
+    # rollout mechanism, and it is worth being exact about which: fleet-
+    # versions.json is read from the checker's OWN repo root, so in CI both it
+    # and this file come from the same .aurum-standard checkout pinned at
+    # standard_ref. They move together, always. A new block therefore cannot
+    # reach a caller ahead of the code that reads it, and the .get() defaults
+    # buy compatibility only for someone running this checker against a
+    # hand-assembled tree.
+    return (
+        data["pnpm"],
+        data.get("devDependencies", {}),
+        data.get("dependencies", {}),
+    )
+
+
+def check_section(
+    repo: str,
+    manifest: dict,
+    want: dict[str, str],
+    section: str,
+    other: str,
+) -> int:
+    """Compare one manifest section against the fleet standard for it.
+
+    `section` is where the packages must be declared; `other` is the sibling
+    section, checked only so a misplaced package is reported as misplaced
+    rather than as missing. "react is not declared" sends a reader looking for
+    an absent package; "react is declared in devDependencies" sends them to
+    the line that is actually wrong.
+    """
+    declared = manifest.get(section, {})
+    sibling = manifest.get(other, {})
+    failures = 0
+
+    for name, version in sorted(want.items()):
+        got = declared.get(name)
+        if got is None:
+            if name in sibling:
+                print(
+                    f"{repo}: {name} is declared in {other}, "
+                    f"fleet standard has it in {section} at {version}"
+                )
+            else:
+                # Absent is a failure, not a skip. Every package listed in
+                # fleet-versions.json is one the whole fleet converged on, so a
+                # Node app that has dropped one has drifted just as surely as
+                # one carrying the wrong version.
+                print(
+                    f"{repo}: {name} is not declared in {section}, "
+                    f"fleet standard is {version}"
+                )
+            failures += 1
+        elif got != version:
+            # Names the range case explicitly: "^10.9.1 is not 10.9.1" reads
+            # like a checker being pedantic unless it says why.
+            hint = " (a range, not a pin)" if got[:1] in "^~><=" else ""
+            print(
+                f"{repo}: {name} is {got}{hint} in {section}, "
+                f"fleet standard is {version}"
+            )
+            failures += 1
+
+    return failures
 
 
 def main() -> int:
@@ -80,7 +154,7 @@ def main() -> int:
     args = ap.parse_args()
 
     here = pathlib.Path(__file__).resolve().parent.parent
-    expected, want_dev = load_expected(here)
+    expected, want_dev, want_deps = load_expected(here)
     want = f"pnpm@{expected}"
 
     if args.repo:
@@ -117,22 +191,12 @@ def main() -> int:
         else:
             print(f"{repo}: {declared}")
 
-        dev = manifest.get("devDependencies", {})
-        for name, version in sorted(want_dev.items()):
-            got = dev.get(name)
-            if got is None:
-                # Absent is a failure, not a skip. Every package listed in
-                # fleet-versions.json is one the whole fleet converged on, so a
-                # Node app that has dropped one has drifted just as surely as
-                # one carrying the wrong version.
-                print(f"{repo}: {name} is not declared, fleet standard is {version}")
-                failures += 1
-            elif got != version:
-                # Names the range case explicitly: "^10.9.1 is not 10.9.1" reads
-                # like a checker being pedantic unless it says why.
-                hint = " (a range, not a pin)" if got[:1] in "^~><=" else ""
-                print(f"{repo}: {name} is {got}{hint}, fleet standard is {version}")
-                failures += 1
+        failures += check_section(
+            repo, manifest, want_dev, "devDependencies", "dependencies"
+        )
+        failures += check_section(
+            repo, manifest, want_deps, "dependencies", "devDependencies"
+        )
 
     if failures:
         print(
@@ -143,8 +207,9 @@ def main() -> int:
         return 1
 
     print(
-        f"\nPASS: all {len(selected)} Node app(s) pin {want} "
-        f"and {len(want_dev)} converged devDependencies"
+        f"\nPASS: all {len(selected)} Node app(s) pin {want}, "
+        f"{len(want_dev)} converged devDependencies "
+        f"and {len(want_deps)} converged dependencies"
     )
     return 0
 

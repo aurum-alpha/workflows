@@ -547,6 +547,29 @@ re-pinning is also what makes it single-version.
 - **Per-branch images: deferred** until per-branch staging spin-up/teardown infra
   exists. Revisit then.
 
+### 2.0.0 — job-release-risk is gone, and adopters change one condition
+
+**`job-release-risk.yml` is removed. Callers switch to `job-version-gate.yml`.**
+The old job commented on a version change and never failed; the new one gates —
+a version that moves backward, repeats, malforms, disappears, or rides along
+with code fails the pull request. That is a breaking change to the catalog's
+surface, which is what makes this 2.0.0 and not 1.32.0.
+
+**Exactly one caller is affected.** `gha-runner-controller` references
+`job-release-risk.yml` (its `ci.yaml`, pinned at v1.29.9); its Dependabot re-pin
+to v2.0.0 fails until that `uses:` is changed. The other ten repositories
+pinning this catalog re-pin cleanly, because none of them called that job.
+
+**Adopting `job-version-gate` requires one change to every push-gated job below
+`ci-ok`**, and skipping it fails silently — see the section below. The gate is
+`pull_request`-only, so it is skipped on every push to main, and GitHub
+propagates that skip to everything downstream of the rollup. This catalog did it
+to itself: `2673932` merged green with `release` skipped and no tag cut, and
+`1.31.1` was then bumped and merged in that state, so it was never minted. There
+is no `v1.31.1` and there never will be. **2.0.0 is cut from 1.31.1 directly**,
+and 1.31.1 is a version that existed in the file for an hour and shipped
+nothing — no tag was created, so nothing ever consumed it.
+
 ### Only a version change mints a version
 
 **A version-named emission is produced only by a commit that changed the

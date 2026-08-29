@@ -132,8 +132,30 @@ jobs:
   # version on the pull request, and if one ever reaches main anyway the
   # existing tag wins and the step says so rather than repointing what eleven
   # repos may already have pinned.
+  #
+  # !cancelled(), not a bare condition, and the reason is the whole point of
+  # this change: a job whose `if:` omits a status function is also gated on
+  # success() of everything upstream, and a SKIPPED ancestor — not a failed
+  # one — is enough to suppress it. version-gate is pull-request-only, so it
+  # skips on every push to main. ci-ok survives that on always() and reports
+  # success, but the skip keeps travelling and lands here, so this job has been
+  # skipped on every merge since it was written and has never minted a tag.
+  #
+  # That is why .version reads 1.31.1 with no v1.31.1 anywhere: #213 bumped it,
+  # ci went green, and release was skipped rather than run. Bumping the version
+  # again would not have helped — no merge can mint a tag until this line
+  # changes. Downstream, eleven repos pin tags, and job-ci-conformance resolves
+  # the catalog listing from floating main, so a job deleted on main (#211
+  # replaced job-release-risk with job-version-gate) is reported missing to
+  # every caller pinned to a tag that still contains it, with no newer tag to
+  # move to. That is the fleet-wide breakage this unblocks.
+  #
+  # gha-runner-controller hit the identical GitHub behaviour on its prune jobs
+  # and documented it there; this is the same bug one level up.
   release:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: >-
+      !cancelled() && needs.ci-ok.result == 'success'
+      && github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [ci-ok]
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
     permissions:

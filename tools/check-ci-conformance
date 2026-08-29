@@ -1257,21 +1257,6 @@ LOCAL_ALLOWLIST = {
 # commenting failure block a merge, which inverts the point of it.
 REPORTING_JOBS = {"job-release-risk.yml"}
 
-# Shared jobs that sit OUTSIDE the rollup by design, downstream of it rather
-# than inside it. Distinct from REPORTING_JOBS: those are excluded because
-# their failure must not block a merge; these are excluded because they run
-# after ci-ok has already reported and cannot be in its needs: without making
-# the rollup wait on its own successor.
-#
-# check-ci-conformance has carried this exemption since the prune landed —
-# "D4 (be in ci-ok) is wrong for it by design; it sits downstream of the
-# rollup" — and this tool did not, so the two disagreed about the same job on
-# five repos for a whole phase. Nothing runs this tool in CI, which is why
-# nobody saw it. An exemption stated in one checker and not the other is not
-# an exemption, it is a discrepancy waiting to be resolved in whichever
-# direction is more convenient.
-OUTSIDE_ROLLUP = {"job-image-prune.yml"}
-
 # `permissions` is a stub key, not drift: a called workflow can never hold more
 # than the job calling it, so a stub whose shared job needs a stronger scope
 # than the workflow default (an image build wanting packages: write) has to say
@@ -1395,6 +1380,27 @@ def adoption_findings(repo: str, text: str) -> list[str]:
     if "ci-ok" not in jobs:
         problems.append("missing local ci-ok rollup job")
 
+    def _needs_of(props):
+        raw = props.get("needs", "")
+        if not isinstance(raw, str):
+            raw = " ".join(str(n) for n in raw)
+        return set(re.findall(r"[\w-]+", raw))
+
+    deps = {j: _needs_of(p) for j, p in jobs.items()}
+
+    def rollup_is_upstream(job):
+        """Is ci-ok anywhere in this job's needs closure?"""
+        seen, stack = set(), list(deps.get(job, ()))
+        while stack:
+            cur = stack.pop()
+            if cur in seen:
+                continue
+            seen.add(cur)
+            if cur == "ci-ok":
+                return True
+            stack.extend(deps.get(cur, ()))
+        return False
+
     allow = LOCAL_ALLOWLIST.get(repo, set())
     stub_ids = []
     for job_id, props in jobs.items():
@@ -1407,8 +1413,23 @@ def adoption_findings(repo: str, text: str) -> list[str]:
         if "uses" not in props:
             problems.append(f"job '{job_id}' has a local body (not a stub, not allow-listed)")
             continue
-        if not any(f"/{name}@" in props["uses"]
-                   for name in REPORTING_JOBS | OUTSIDE_ROLLUP):
+        # Housekeeping is outside the rollup BY PLACEMENT, not by name. A job
+        # the rollup is upstream of cannot be in ci-ok's needs — that would be
+        # a cycle — and it cannot run before the gates pass either, which is
+        # the whole claim the exemption rests on.
+        #
+        # This WAS a name list (OUTSIDE_ROLLUP), naming job-image-prune alone.
+        # Rule D6 above had already written down why that is wrong, and in its
+        # own words: "A name-based exemption said the same thing for one job
+        # while quietly leaving the next one to be discovered by failing."
+        #
+        # The next one was job-version-release, and it was discovered exactly
+        # that way — by the first repo trying to adopt it being told its
+        # release stub must appear in ci-ok's needs, which is impossible for a
+        # job ci-ok is upstream of. So the structural test D6 already uses is
+        # the test here too, and there is no second list to forget.
+        reporting = any(f"/{name}@" in props["uses"] for name in REPORTING_JOBS)
+        if not reporting and not rollup_is_upstream(job_id):
             stub_ids.append(job_id)
         extra = set(props) - STUB_KEYS
         if extra:

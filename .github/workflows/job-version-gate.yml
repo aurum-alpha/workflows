@@ -242,13 +242,43 @@ jobs:
             const MARKER = '<!-- aurum-alpha:version-gate -->';
             const { BEFORE, AFTER, MAJOR, VERSION_FILE } = process.env;
 
+            // The pre-release example is DERIVED from the version being cut,
+            // not written down. It used to read `0.15.1-dev.<sha>` in every
+            // repo's comment — gha-runner-controller's numbering, quoted at a
+            // reviewer of some other repo cutting some other version, who has
+            // to work out for themselves that the number is decorative.
+            //
+            // AFTER is a validated triple by the time this step runs (the gate
+            // fails the build otherwise), so the match is a formality; the
+            // fallback exists so a comment is still posted rather than the
+            // step dying on a null dereference if that ever stops being true.
+            const nextPatch = (() => {
+              const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(AFTER || '');
+              return m ? `${m[1]}.${m[2]}.${Number(m[3]) + 1}` : null;
+            })();
+
+            // Named conditionally, because the catalog itself publishes no
+            // image and stamps no binary. The old text asserted `sha-<short>`
+            // and `latest` to every repo flatly, which is a claim about
+            // emissions a reader can check — and on this repository, and on
+            // lid-firmware, it was simply false.
+            const midStream = nextPatch
+              ? 'Builds between releases are not minted, and say so in their own names: '
+                + 'provenance-named tags and run artifacts, where this repository publishes them, '
+                + `and a stamped pre-release of the next patch — \`${nextPatch}-dev.<sha>\` — `
+                + 'where it stamps a version into an artifact at all.'
+              : 'Builds between releases are not minted: they carry provenance names and, where '
+                + 'this repository stamps a version into an artifact, a pre-release of the next patch.';
+
             const lines = [
               MARKER,
               '### This pull request cuts a release',
               '',
               `\`${VERSION_FILE}\`: **${BEFORE} → ${AFTER}**`,
               '',
-              'Merging mints this version: the tag, the release, and every version-named artifact. Nothing else on main produces them — builds between releases publish under `sha-<short>` and `latest` and stamp a pre-release version (`0.15.1-dev.<sha>`), so they are installable but not minted.',
+              'Merging mints this version: the tag, the release, and every version-named artifact this repository emits. Nothing else on main produces them.',
+              '',
+              midStream,
               '',
               'The code is not under review here. It is already on main and already gated; this pull request decides only that the tree at this commit is worth a name.',
             ];

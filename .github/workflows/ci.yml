@@ -80,6 +80,14 @@ jobs:
       - name: Check the catalog's input loops
         run: tools/check-catalog-loops
 
+      # Same species as the loop check, and here for the same reason: it
+      # inspects this repo's own shared jobs, which never run in this repo's
+      # CI, so a divergence between them would otherwise reach the fleet
+      # unexamined. Two build systems answering "what version is this build"
+      # differently is not a cosmetic drift.
+      - name: Check the shared version-stamp block agrees across jobs
+        run: tools/check-version-stamp-shared
+
       # job-ci-conformance selects its checkers by SHA, and that SHA cannot be
       # derived — GitHub gives a called workflow no handle on its own commit,
       # so it is written down, and the writing down is what gets forgotten. It

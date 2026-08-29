@@ -331,81 +331,79 @@ jobs:
                                   capture_output=True, text=True).stdout.strip() or "unknown"
           built = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-          # DID THIS COMMIT CUT A RELEASE? Everything version-named downstream
-          # keys on this answer, so it is computed once, here, where the version
-          # file is already being read — rather than three callers each
-          # hand-rolling `git diff | grep` and each getting a different corner
-          # wrong.
+          # --- BEGIN shared: version stamp. KEEP EVERY COPY IDENTICAL.
+          # tools/check-version-stamp-shared compares this region across every catalog
+          # job that carries it and fails if they diverge, so editing one copy without
+          # the others turns this repo red rather than letting two build systems drift
+          # into two versioning semantics.
           #
-          # fetch-depth: 2 above makes HEAD^ available. It resolves on a push
-          # (the previous commit on the branch) and on a pull request (the base
-          # branch tip, because the checked-out merge ref's first parent is the
-          # base). A root commit has no parent and is treated as no release:
-          # a repository's first commit is not a release event, and if it ever
-          # should be, that is a tag someone creates deliberately.
-          def cut_release():
-              if not vf.is_file():
-                  return False
-              if subprocess.run(["git", "rev-parse", "--verify", "-q", "HEAD^"],
-                                capture_output=True).returncode != 0:
-                  print("HEAD has no parent; treating this as not a release.")
-                  return False
-              r = subprocess.run(["git", "diff", "--name-only", "HEAD^", "HEAD"],
-                                 capture_output=True, text=True)
-              if r.returncode != 0:
-                  # Never guess `true` here. A false positive mints a version;
-                  # a false negative only withholds one, and a withheld release
-                  # is a pull request someone reopens.
-                  print(f"::warning::could not diff HEAD^..HEAD "
-                        f"({r.stderr.strip()}); treating this as not a release.")
-                  return False
-              return os.environ["VERSION_FILE"] in r.stdout.split()
+          # It is duplicated rather than extracted because a reusable workflow runs in
+          # the CALLER's checkout: it cannot reference a catalog composite without its
+          # own SHA pin, which makes every change a two-commit dance. setup/node-pnpm's
+          # header records the fleet making the same trade for the same reason. The
+          # checker is what makes the duplicate safe.
+          def resolve_version_stamp(version_file, version, commit):
+              """Did THIS commit cut a release, and what should the build stamp?
 
-          changed = cut_release()
+              Returns (changed, stamp). One answer, so nothing downstream re-derives it.
 
-          # A mid-stream build is a PRE-RELEASE, and SemVer has a category for
-          # that. Build metadata (`0.15.0+dev.abc`) was the wrong one: SemVer
-          # ignores it in precedence, so such a build compares EQUAL to the
-          # 0.15.0 release it is not.
-          #
-          # The pre-release is of the next PATCH, and that is a floor rather
-          # than a guess. Whatever the next release turns out to be — 0.15.1,
-          # 0.16.0, 1.0.0 — it is at least 0.15.1, and 0.15.1-dev.abc sorts
-          # below every one of them and above 0.15.0. So the stamp is correctly
-          # ordered against a release nobody has decided on yet, which is the
-          # whole difficulty this had to get around.
-          #
-          #   0.15.0  <  0.15.1-dev.abc  <  0.15.1  <  0.16.0  <  1.0.0
-          #
-          # `dev` and not `beta`: SemVer gives the identifier no meaning, but
-          # people do, and lid-firmware has already reserved `-beta.N` and
-          # `-rc.N` for pre-releases a human cuts on purpose. An automatic
-          # per-commit stamp must not spend that word. Ordering is unaffected
-          # either way — `dev` < `rc` by the ASCII rule, so a later hand-cut
-          # `0.15.1-rc.1` still sorts above every dev build of the same patch.
-          #
-          # Debian is NOT the same string: dpkg reads `-` as the separator
-          # before the debian-revision, so `0.15.1-dev.abc` sorts ABOVE
-          # `0.15.1` there. A .deb wants `~`, which dpkg sorts below everything
-          # including end-of-string. That translation belongs to the job that
-          # packages a .deb, and lands with it (Principle: config grows with
-          # the feature that reads it) — there is no such consumer here yet.
-          #
-          # A repo with no version file stamps `dev` and stops: there is no
-          # release version for this to be a pre-release OF.
-          if changed or version == "dev":
-              stamp = version
-          else:
-              m = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", version)
-              if m:
-                  major, minor, patch = (int(g) for g in m.groups())
-                  stamp = f"{major}.{minor}.{patch + 1}-dev.{commit}"
-              else:
-                  # Unparseable version: there is no next patch to be a
-                  # pre-release of, so say what it is and order nothing.
-                  print(f"::warning::{vf} reads {version!r}, which is not "
+              A release is a commit that changed the version file. fetch-depth: 2 makes
+              HEAD^ available; it resolves on a push (the previous commit) and on a pull
+              request (the base branch tip, because the merge ref's first parent is the
+              base). A root commit has no parent and is not a release: a repository's
+              first commit is not a release event.
+
+              Anything else is a PRE-RELEASE of the next PATCH, which is a floor rather
+              than a guess. Whatever the next release turns out to be it is at least
+              0.15.1, so the stamp sorts above the last release and below every release
+              that could follow:
+
+                  0.15.0  <  0.15.1-dev.abc  <  0.15.1-rc.1  <  0.15.1  <  0.16.0
+
+              Build metadata (0.15.0+dev.abc) would be wrong: SemVer ignores it in
+              precedence, so such a build compares EQUAL to the release it is not.
+              `dev` and not `beta` or `rc`, which belong to pre-releases a human cuts on
+              purpose; ordering is unaffected, since dev < rc by SemVer's ASCII rule.
+
+              Debian is NOT this string. dpkg reads `-` as the separator before the
+              debian-revision, so 0.15.1-dev.abc sorts ABOVE 0.15.1 there; a .deb wants
+              `~`. That rendering belongs to whichever job packages one.
+              """
+              import pathlib as _pathlib, re as _re, subprocess as _subprocess
+
+              def _cut_release():
+                  if not _pathlib.Path(version_file).is_file():
+                      return False
+                  if _subprocess.run(["git", "rev-parse", "--verify", "-q", "HEAD^"],
+                                     capture_output=True).returncode != 0:
+                      print("HEAD has no parent; treating this as not a release.")
+                      return False
+                  r = _subprocess.run(["git", "diff", "--name-only", "HEAD^", "HEAD"],
+                                      capture_output=True, text=True)
+                  if r.returncode != 0:
+                      # Never guess True. A false positive mints a version; a false
+                      # negative only withholds one, and a withheld release is a pull
+                      # request someone reopens.
+                      print(f"::warning::could not diff HEAD^..HEAD "
+                            f"({r.stderr.strip()}); treating this as not a release.")
+                      return False
+                  return version_file in r.stdout.split()
+
+              changed = _cut_release()
+              if changed or version == "dev":
+                  return changed, version
+              m = _re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", version)
+              if not m:
+                  # No next patch to be a pre-release of, so say so and order nothing.
+                  print(f"::warning::{version_file} reads {version!r}, which is not "
                         "MAJOR.MINOR.PATCH; stamping it unordered.")
-                  stamp = f"{version}-dev.{commit}"
+                  return changed, f"{version}-dev.{commit}"
+              major, minor, patch = (int(g) for g in m.groups())
+              return changed, f"{major}.{minor}.{patch + 1}-dev.{commit}"
+          # --- END shared: version stamp ---
+
+          changed, stamp = resolve_version_stamp(
+              os.environ["VERSION_FILE"], version, commit)
 
           with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
               fh.write(f"version={version}\n")

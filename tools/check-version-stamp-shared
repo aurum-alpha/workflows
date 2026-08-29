@@ -1,0 +1,87 @@
+#!/usr/bin/env python3
+"""Every copy of the shared version-stamp block must be byte-identical.
+
+The block decides two things for every repo in the fleet that has a version:
+did THIS commit cut a release, and what does a build between releases stamp.
+Getting a different answer per build system is the whole failure this exists
+to stop — a Go repo and a firmware repo disagreeing about what 0.16.0 means is
+not a cosmetic difference, it is two versioning schemes wearing one name.
+
+It lives in two catalog jobs rather than one composite because a reusable
+workflow runs in the CALLER's checkout: it cannot reference a catalog
+composite without its own SHA pin, which makes every edit a two-commit dance.
+setup/node-pnpm's header records the fleet making the same trade for the same
+reason, and says the two definitions "must stay step-for-step identical,
+because the moment they diverge the fleet has two answers to one question".
+
+That file had no checker, and duly diverged — it spent its whole life on pins
+two majors behind the prelude it duplicates. This is that checker, for this
+block, so the duplicate is safe rather than merely intended to be.
+
+Comparison is on the DEDENTED text, so the two copies may sit at different
+YAML indentation and still agree; nothing else may differ.
+
+Usage: check-version-stamp-shared [--repo-root .]
+"""
+
+import argparse
+import pathlib
+import sys
+import textwrap
+
+BEGIN = "# --- BEGIN shared: version stamp"
+END = "# --- END shared: version stamp ---"
+
+
+def extract(path):
+    """The block's dedented body, or None where the file carries no block."""
+    text = path.read_text()
+    if BEGIN not in text:
+        return None
+    start = text.index(BEGIN)
+    try:
+        stop = text.index(END, start) + len(END)
+    except ValueError:
+        sys.exit(f"{path}: opens the shared block and never closes it. "
+                 f"Add a line reading exactly:\n  {END}")
+    return textwrap.dedent(text[start:stop])
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--repo-root", default=".", type=pathlib.Path)
+    args = ap.parse_args()
+
+    workflows = sorted((args.repo_root / ".github/workflows").glob("job-*.yml"))
+    carriers = [(p, b) for p in workflows if (b := extract(p)) is not None]
+
+    if not carriers:
+        print("no catalog job carries the shared version-stamp block")
+        return 0
+
+    print(f"shared version-stamp block, {len(carriers)} copy(ies):")
+    for path, _ in carriers:
+        print(f"  {path.relative_to(args.repo_root)}")
+
+    if len(carriers) == 1:
+        print("\nPASS: one copy, nothing to diverge from")
+        return 0
+
+    reference_path, reference = carriers[0]
+    bad = [p for p, body in carriers[1:] if body != reference]
+    if not bad:
+        print(f"\nPASS: all {len(carriers)} copies are identical")
+        return 0
+
+    print(f"\nFAIL: the shared block differs between copies.\n"
+          f"{reference_path.relative_to(args.repo_root)} is the one compared "
+          f"against; these do not match it:")
+    for p in bad:
+        print(f"  {p.relative_to(args.repo_root)}")
+    print("\nEdit every copy together, or the fleet gets two answers to one "
+          "question: what version is this build.")
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

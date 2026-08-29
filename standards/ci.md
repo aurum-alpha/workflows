@@ -585,6 +585,45 @@ is no `v1.31.1` and there never will be. **2.0.0 is cut from 1.31.1 directly**,
 and 1.31.1 is a version that existed in the file for an hour and shipped
 nothing — no tag was created, so nothing ever consumed it.
 
+### One versioning implementation, and no repo defines its own
+
+**A repository does not decide its own versioning semantics.** When a release
+is cut, how a build between releases names itself, and what may be emitted are
+fleet rules, stated here and nowhere else. A repo's `AGENTS.md` points at this
+section; it does not restate it, because a restatement is a second copy that
+nothing keeps honest — the failure the agent standard's Rule 1 describes,
+applied to versions.
+
+The rule is one thing; the implementation is one thing **per build system**,
+and both live in the catalog:
+
+| Build system | Implementation | Exposes |
+| --- | --- | --- |
+| Go | `job-go-build` | `version`, `version_changed`, `stamp` |
+| C/C++ via PlatformIO | `job-build-cpp-pio` | the same three, plus `AURUM_VERSION_STAMP` in the environment |
+| No build (a repo whose only version-named emission is its tag) | nothing to stamp | — |
+
+Those two jobs carry a **byte-identical shared block** that decides both
+questions, and `tools/check-version-stamp-shared` fails this repository if the
+copies diverge. It is duplicated rather than extracted because a reusable
+workflow runs in the caller's checkout and cannot reference a catalog composite
+without its own SHA pin — the same trade `setup/node-pnpm` records making, for
+the same reason. The difference is that this one has a checker, and that file
+did not: it spent its whole life on pins two majors behind the prelude it
+duplicated, because nothing was watching.
+
+**What is genuinely per-ecosystem is rendering, not deciding.** The decision —
+release or not, and what the pre-release identity is — is universal. How that
+identity is written down is not: SemVer wants `0.16.1-dev.abc`, and dpkg wants
+`0.16.1~dev.abc`, because a `-` there is the separator before the
+debian-revision and would sort the dev build *above* the release. A packaging
+job renders; it never re-decides.
+
+**A bench build is the one honest remainder.** A build on a workstation has no
+CI job to ask, so a repo may compute the same answer locally — but it consumes
+the stamp the catalog job provides whenever there is one, and the local path
+exists for the local case only.
+
 ### Only a version change mints a version
 
 **A version-named emission is produced only by a commit that changed the

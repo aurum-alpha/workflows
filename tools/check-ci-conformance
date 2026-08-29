@@ -1188,7 +1188,9 @@ LOCAL_ALLOWLIST = {
         "server-go-build",
         "server-go-test-integration",
         "package-deb",
-        "release",
+        # "release" was here until gha-runner-controller#163: the local body it
+        # explained is retired for a job-version-release stub, which answers to
+        # the structural downstream-of-ci-ok exemption like every other mint.
         # Splits the repo's two unrelated products so a Dockerfile edit does
         # not compile Go, and a Go change does not rebuild an image that
         # shares no source with it.

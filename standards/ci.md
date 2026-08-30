@@ -535,8 +535,30 @@ same commit. Lockstep. A repo drawing jobs from several commits is running
 several standards and is only nominally standardised.
 
 The rule reaches a repo when that repo re-pins, because a caller's checkers
-come from its own `standard_ref`. So no repo goes red unexpectedly: the act of
-re-pinning is also what makes it single-version.
+come from its own `standard_ref`. So no repo goes red unexpectedly *on rule
+LOCK*: the act of re-pinning is also what makes it single-version.
+
+**That guarantee does not extend past LOCK, and it is worth being exact about
+why.** `standard_ref` is a separate input from the pin, and its default lags by
+one commit of necessity — a workflow cannot name the commit that sets it. So
+re-pinning to vX runs checkers, and checker *inputs*, from whatever tree vX's
+`standard_ref` names, which is vX-1. For a rule change that is harmless: the
+repo gets an older rule, not a wrong answer.
+
+For a change to something the checkers *read*, it is not harmless, and the
+failure looks like the tree being wrong rather than the instrument being stale.
+Two files have caused this. A new catalog job (`job-go-build.yml`, #97) made
+gofast fail rule CAT for calling a job the checker's older listing did not
+contain. `fleet-versions.json` (wave A, `0521448`) removed four eslint packages
+and made flight-watch fail `check-fleet-versions` for not declaring packages
+the fleet had already retired.
+
+So the rule is: **a wave that changes any file the checkers read — a catalog
+job, a checker, `fleet-versions.json` — must be followed by a commit moving the
+`standard_ref` default onto it.** Because the wave cannot name its own commit,
+that bump is a follow-up, and it has to be planned as one. Discovering it from
+a red caller means the whole fleet is already pinned to a version whose
+checkers disagree with its own data.
 
 ## Publishing
 

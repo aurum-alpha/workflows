@@ -80,9 +80,31 @@ on:
           checker looking at a tree from before it did. The job was there; the
           instrument could not see it and reported that as absence. Move this
           default in the same wave that adds a catalog file, not the one after.
+
+          It is fatal for a DATA change too, and that is the wider rule this
+          entry was missing. The checkers read fleet-versions.json out of this
+          same clone, so the file is an input on exactly the footing of a
+          catalog listing. Wave A (0521448) removed eslint, @eslint/js,
+          eslint-config-prettier and typescript-eslint from it and set this
+          default to the main before itself, as the convention says. The effect
+          was that every repo pinned at v2.2.4 ran check-fleet-versions against
+          a tree where those four were still mandatory — so the first repo to
+          actually drop them, flight-watch#51, was failed for not declaring
+          packages the fleet had already retired. Same shape as the gofast
+          case: the tree was right and the instrument was looking at an older
+          one.
+
+          So the rule generalises. A wave that changes ANY file the checkers
+          read — a catalog job, a checker, fleet-versions.json — needs this
+          default moved to a commit that contains that change. A wave cannot
+          name its own commit, so when the change is to checker INPUT rather
+          than checker CODE, the bump is a follow-up commit and has to be
+          planned as one rather than discovered by a red caller.
         type: string
         required: false
-        default: 5a90eea3b62b0745e1914dc943fd0a169a407ad6
+        # v2.2.4, which contains wave A (0521448) and therefore the
+        # fleet-versions.json that no longer requires the four eslint packages.
+        default: 092765206114f80eab75ffb20c62b4f9dbc4efd6
 
 jobs:
   ci-conformance:

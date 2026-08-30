@@ -1833,7 +1833,7 @@ React gates hang off it. `build` consumes its artifact.
 
 **The gates hang off `build`, across both stacks.** They read source rather
 than build output, so the edge is ordering rather than data — the same shape as
-the fleet's eslint job, which needs `build` and lints source. Fail-fast was
+the fleet's JS lint job, which needs `build` and lints source. Fail-fast was
 never a claim that gates consume build output; it is a refusal to spend gate
 time on a commit that cannot ship. Here that couples the stacks: PHP gates wait
 on the React compile. That is deliberate and it is why this repo can do it —
@@ -2140,11 +2140,13 @@ and the variant second. Capabilities with no variants stay single words —
 `lint`, `build`, `typecheck`, `fmt`, `vet` — and `lint` is not a member of the
 test family however much it feels adjacent.
 
-### Two linters, on purpose, for now
+### One linter, after two on purpose
 
-`job-lint-js-eslint` and `job-lint-js-oxlint` both exist, both run in every repo
-with JS, and that is a deliberate exception to "one way per capability" written
-down rather than allowed to look accidental.
+`job-lint-js-oxlint` is the fleet's JS linter. `job-lint-js-eslint` is gone, and
+so is `config/eslint.config.mjs`. The two ran side by side for a release as a
+deliberate exception to "one way per capability"; this section records why that
+exception existed and why it closed, because a retired arrangement explains the
+shape of what replaced it.
 
 **The reason changed, and the old reason was wrong by the time anyone read it.**
 This section used to say oxlint had "no type-aware linting at all" and that a
@@ -2157,38 +2159,64 @@ roughly half the time. What made oxlint look like a subset was one repo's
 `.oxlintrc.json` enabling two rules and a default category — a config, not a
 tool. The fleet spent a release arguing with that file.
 
-So the configs are shared now, on the same terms as `eslint.config.mjs`:
 `config/.oxlintrc.json` is byte-identical fleet-wide and `check-eslint-config`
-fails the build if a repo edits it. **It is written as a translation of the
+fails the build if a repo edits it. **It was written as a translation of the
 eslint config** — same rules, same severity tiers, same ignores — because that
-is the only arrangement in which running both is worth anything. Two linters
-meant to agree produce evidence when they do not. Two linters configured
+is the only arrangement in which running both was worth anything. Two linters
+meant to agree produce evidence when they do not; two linters configured
 differently produce noise, and nobody reads the second check.
 
-**oxlint is not in `fleet-versions.json` yet, deliberately.** That file asserts
-packages the fleet has *converged* on, and a package still mid-wave does not
-belong there until every repo carries the value — listing it would fail every
-repo whose turn has not come, and a check expected to fail is a check nobody
-reads. oxlint and oxlint-tsgolint join it, pinned exactly, on the day the last
-repo adopts the shared config. Until then each adopting repo pins them exactly
-in its own `package.json`, the way every wave has worked.
+That translation is also what let the retirement be a **deletion rather than a
+migration**. The two were run side by side until they reported the same
+findings, so removing eslint moved no rule and changed no severity. The proof
+was mechanical: in all nine repositories, oxlint's `--type-aware` counts were
+identical before and after the removal.
 
-**Why both still run.** oxlint's JS plugin API is alpha and the type-aware path
-rides on a TypeScript compiler rewrite that has not shipped as TypeScript's
-default. Those are two pre-1.0 dependencies, and this is the only blocking JS
-lint gate the fleet has. Running eslint beside it is how a regression in either
-one is visible as a disagreement rather than as a silence. Every oxlint caller
-is therefore `warn_only`, and stays that way while the bridge is alpha: a
-pre-1.0 dependency does not get to turn the fleet red.
+**What eslint's departure unblocks is TypeScript 7.** `typescript-eslint` was
+the only thing in the fleet importing the `typescript` package as a *library*,
+and TS 7 is the native Go port whose default export is just `version` and
+`versionMajorMinor` — no `createProgram`, no `TypeChecker`. oxlint does not
+care: `oxlint-tsgolint` ships its own typescript-go binary and has no
+dependency on the `typescript` package at all. For the same reason, do not
+adopt `ts-node`, `ts-jest`, `typedoc`, `ts-morph` or `tsup` — each re-imports
+that API and would re-pin the fleet to TypeScript 6.
 
-**What retires one of them.** Either the JS plugin API leaves alpha, or oxlint
-ports the react-hooks compiler rules natively and the bridge stops being needed
-at all — 14 of the 16 rules in `eslint-plugin-react-hooks`'s recommended set are
-the only reason it is loaded. On that day the surviving linter is oxlint, the
-eslint job and config are deleted, and because the two configs already say the
-same thing the change is a deletion rather than a migration. Until then this
-file says "two", out loud, with the condition attached, instead of pretending
-the fleet has already decided.
+**`eslint-plugin-react-hooks` and `eslint-plugin-react-refresh` stayed**, and
+their names are misleading about why: oxlint consumes both through its JS
+plugin bridge, so they are oxlint dependencies now whatever their prefix says.
+14 of the 16 react-hooks rules arrive that way. They peer-depend on eslint, so
+`eslint` remains in every lockfile transitively — no longer a direct dependency
+and no longer run anywhere. That residue is the price of those 14 rules.
+
+**oxlint is not in `fleet-versions.json`, and the reason it was not has
+expired.** That file asserts packages the fleet has *converged* on, and a
+package still mid-wave does not belong there until every repo carries the
+value — listing it would fail every repo whose turn has not come, and a check
+expected to fail is a check nobody reads. The condition this file set was "the
+day the last repo adopts the shared config", and that day has passed: all nine
+Node apps carry `oxlint` and `oxlint-tsgolint` at one version each. Adding them
+is now a wave of its own rather than a thing waiting on anything, and it is not
+folded into the eslint retirement, because a new fleet-wide assertion should
+fail or pass on its own merits.
+
+**The retirement did not happen on the condition this file named, and saying
+so matters more than the outcome.** The stated trigger was that either oxlint's
+JS plugin API leaves alpha or oxlint ports the react-hooks rules natively.
+Neither has happened. The bridge is still alpha and still loads
+`eslint-plugin-react-hooks` for 14 of its 16 rules. What actually retired eslint
+was the measurement above — every configured rule matching finding for finding,
+type-aware rules included — which made the second linter's output a duplicate
+rather than a cross-check. A condition written down and then not used is worth
+recording as such; the alternative is a document that looks like it predicted
+what happened.
+
+**The cost is that the fleet now has no blocking JS lint gate.** Running eslint
+beside oxlint was how a regression in a pre-1.0 dependency showed up as a
+disagreement rather than a silence, and that cross-check is gone. Every oxlint
+caller is `warn_only` and stays that way for now — a pre-1.0 dependency does
+not get to turn the fleet red — so JS lint findings are visible and block
+nothing. That is a deliberate position with a real gap in it, not an oversight,
+and flipping oxlint to blocking is the decision that closes it.
 
 ### Shared job names: `<function>-<language>-<runner|framework>`
 
@@ -2196,7 +2224,7 @@ A caller names the **unit**; a shared job names the **tool it runs**. Same
 three-part discipline, different subject.
 
 ```
-job-test-unit-js-vitest      job-lint-js-eslint        job-typecheck-ts-tsc
+job-test-unit-js-vitest      job-lint-js-oxlint        job-typecheck-ts-tsc
 job-build-js-vite            job-bundle-js-esbuild
 job-test-unit-go             job-fmt-go                job-vet-go
 job-test-unit-php-phpunit    job-build-cpp-pio

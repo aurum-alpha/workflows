@@ -35,10 +35,11 @@ on:
           nothing more — `client`, `src/client/react`, `server/api`, whatever
           this call should cover.
 
-          It used to accept only `client`, `server` or `shared`. That is the
-          rule job-lint-js-eslint already dropped, for a reason that applies
-          here identically: a repo with more than one client has no way to name
-          the second, and `src/` is an ordinary layout rather than drift. Layout
+          It used to accept only `client`, `server` or `shared`. That rule was
+          dropped here and in the eslint job this one replaced, for a reason
+          that applies to any path input: a repo with more than one client has
+          no way to name the second, and `src/` is an ordinary layout rather
+          than drift. Layout
           is enforced by CI_STANDARD and check-ci-conformance, which is where it
           belongs; smuggling it into a path argument only meant this job could
           not lint code that plainly needed linting — event-manager's
@@ -89,7 +90,8 @@ jobs:
       # makes oxlint lint nothing while exiting 0, and a leading dash, which
       # oxlint would read as a flag. A path that simply does not exist needs no
       # check here — oxlint fails loudly on its own rather than silently
-      # passing. Same two cases, same wording, as job-lint-js-eslint.
+      # passing. Same two cases, same wording, as the eslint job this one
+      # replaced — the guard outlived the job it was written for.
       - name: Validate lint path
         env:
           LINT_DIR: ${{ inputs.dir }}
@@ -142,7 +144,7 @@ jobs:
       # why this job is worth running at all.
       #
       # `dir` goes through the environment and quoted, never interpolated into
-      # the script body, for the same reason job-lint-js-eslint does it: it is
+      # the script body, and the reason is the input's own history: it is
       # caller-supplied text now rather than one of four fixed words, and
       # ${{ }} inside `run:` is substituted before bash ever sees it.
       - name: Lint ${{ inputs.dir }}

@@ -60,7 +60,16 @@ import os
 import pathlib
 import sys
 
-CONFIGS = ("eslint.config.mjs", ".oxlintrc.json")
+# eslint.config.mjs is GONE from this list but its canonical copy deliberately
+# REMAINS in config/ for one more wave. The canonical is read from the catalog's
+# default branch while the checker itself comes from the caller's pinned
+# standard_ref, so the two move at different times: delete the file in the same
+# commit that drops it here and every repo still on the previous standard_ref
+# runs a checker that looks for a canonical which no longer exists -- "canonical
+# config not found", exit 2, for repos that changed nothing. That is the same
+# shape as the rename described above, which is what exit-127'd gofast. The file
+# goes once a standard_ref carrying this list has reached the fleet.
+CONFIGS = (".oxlintrc.json",)
 
 # Where a repo may keep its copy, in order. Repo root covers the repos whose JS
 # project IS the repo; client/ covers the ones whose React app is its own pnpm

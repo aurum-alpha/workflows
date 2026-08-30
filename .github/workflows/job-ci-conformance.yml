@@ -102,17 +102,20 @@ on:
           planned as one rather than discovered by a red caller.
         type: string
         required: false
-        # v2.2.5, the base of the wave that deleted job-lint-js-eslint.yml and
-        # config/eslint.config.mjs. The one commit of lag is harmless here, and
-        # worth saying why rather than leaving it to be re-derived: a deletion
-        # from the catalog is the mirror image of the job-go-build case above.
-        # The catalog LISTING is read from the unpinned .aurum-catalog clone,
-        # so a job that has gone is gone for every caller the moment it lands,
-        # whatever this default says; the failure mode of an addition — the
-        # instrument looking at a tree from before the file existed — has no
-        # counterpart in a removal, because a checker reading the older tree
-        # would only see a job no caller now names.
-        default: 86379c4e7fd31016bfe759761aa269c6d6c769ed
+        # v2.2.6, the base of the wave that asserted oxlint and oxlint-tsgolint
+        # in fleet-versions.json. That file is checker INPUT, so this is the
+        # case the entry above generalises to, and the lag behaves the way it
+        # describes: a caller pinned at v2.2.6 reads a fleet-versions.json
+        # without the two entries and simply does not assert them. Benign here
+        # only because every repo already carries both at the asserted version
+        # — an ADDITION nobody violates. The wave-A failure was a REMOVAL,
+        # where repos had already dropped what the older tree still demanded.
+        # Addition then removal, same lag, opposite consequence.
+        #
+        # What follows from that: the assertion does not begin gating until a
+        # release carrying it reaches the fleet and the callers re-pin. The
+        # re-pin is the point of the exercise, not an afterthought.
+        default: e6c8e249a1654ca203f107d36698140fd9e197ee
 
 jobs:
   ci-conformance:

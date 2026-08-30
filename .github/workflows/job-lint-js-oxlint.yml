@@ -10,11 +10,19 @@
 # gofast's client, it reports every finding eslint reports and eight more. It
 # is not a subset any more.
 #
-# What it is, still, is younger: the JS plugin API is alpha and the type-aware
-# path rides on typescript-go. That is why both jobs run and why every oxlint
-# caller is warn_only — a pre-1.0 dependency does not get to turn the fleet
-# red. See CI_STANDARD "Two linters, on purpose, for now" for the condition
-# that retires one of them.
+# It is the fleet's only JS linter now; the eslint job it ran beside is gone.
+#
+# Callers are warn_only, and the reason is DEBT rather than the tool. That
+# distinction used to be the other way round and the old wording is worth not
+# repeating: this comment justified warn_only by calling the JS plugin API
+# alpha, which made a stabilization window read as distrust of the linter. The
+# fleet has run oxlint across every repo for releases and has its own evidence
+# — every rule the eslint config configured, matched finding for finding,
+# type-aware rules included, and more besides. What holds the gate open is the
+# roughly 870 errors and 3,700 warnings already in the tree, which is exactly
+# the stabilization window Principle 3 describes: findings visible, gate open,
+# flipped when the count comes down. See CI_STANDARD "One linter, after two on
+# purpose".
 name: job-lint-js-oxlint
 
 on:

@@ -2188,35 +2188,39 @@ plugin bridge, so they are oxlint dependencies now whatever their prefix says.
 `eslint` remains in every lockfile transitively — no longer a direct dependency
 and no longer run anywhere. That residue is the price of those 14 rules.
 
-**oxlint is not in `fleet-versions.json`, and the reason it was not has
-expired.** That file asserts packages the fleet has *converged* on, and a
-package still mid-wave does not belong there until every repo carries the
-value — listing it would fail every repo whose turn has not come, and a check
-expected to fail is a check nobody reads. The condition this file set was "the
-day the last repo adopts the shared config", and that day has passed: all nine
-Node apps carry `oxlint` and `oxlint-tsgolint` at one version each. Adding them
-is now a wave of its own rather than a thing waiting on anything, and it is not
-folded into the eslint retirement, because a new fleet-wide assertion should
-fail or pass on its own merits.
+**oxlint is in `fleet-versions.json`.** That file asserts packages the fleet
+has *converged* on, and oxlint was held out of it while it was mid-wave —
+listing a package before every repo carries the value fails every repo whose
+turn has not come, and a check expected to fail is a check nobody reads. The
+condition was "the day the last repo adopts the shared config", and that day
+passed: all nine Node apps carry `oxlint` and `oxlint-tsgolint` at one version
+each, verified against each `package.json` rather than assumed. Both are
+asserted now, exactly pinned, like every other converged package.
 
-**The retirement did not happen on the condition this file named, and saying
-so matters more than the outcome.** The stated trigger was that either oxlint's
-JS plugin API leaves alpha or oxlint ports the react-hooks rules natively.
-Neither has happened. The bridge is still alpha and still loads
-`eslint-plugin-react-hooks` for 14 of its 16 rules. What actually retired eslint
-was the measurement above — every configured rule matching finding for finding,
-type-aware rules included — which made the second linter's output a duplicate
-rather than a cross-check. A condition written down and then not used is worth
-recording as such; the alternative is a document that looks like it predicted
-what happened.
+**The retirement did not happen on the condition this file named, and the
+condition itself was the wrong one.** The stated trigger was that oxlint's JS
+plugin API leaves alpha, or that oxlint ports the react-hooks rules natively.
+Neither occurred, and the retirement happened anyway — because what retired
+eslint was the measurement above, every configured rule matching finding for
+finding with the type-aware rules included, which made the second linter's
+output a duplicate rather than a cross-check.
 
-**The cost is that the fleet now has no blocking JS lint gate.** Running eslint
-beside oxlint was how a regression in a pre-1.0 dependency showed up as a
-disagreement rather than a silence, and that cross-check is gone. Every oxlint
-caller is `warn_only` and stays that way for now — a pre-1.0 dependency does
-not get to turn the fleet red — so JS lint findings are visible and block
-nothing. That is a deliberate position with a real gap in it, not an oversight,
-and flipping oxlint to blocking is the decision that closes it.
+The deeper error was writing an **upstream label** into a fleet standard as
+though it were evidence. This document used "alpha" to justify a gate setting,
+and kept using it after the fleet had run oxlint across every repository for
+releases and accumulated its own evidence. A version number someone else
+assigns is not a fact about whether a tool works here; the measurements are,
+and they said the opposite. **oxlint is production software in this fleet and
+this document treats it as such.** Where a maturity claim appeared, the reason
+underneath it has been stated instead.
+
+**The gate is open because of debt, not because of the linter.** Every oxlint
+caller is `warn_only`, and the reason is the roughly 870 errors and 3,700
+warnings already in the tree — exactly the stabilization window Principle 3
+describes: findings visible, gate open, flipped when the count comes down. The
+cost is real and worth naming: with eslint gone, the fleet's only JS lint job
+blocks nothing, so a regression lands silently. That is a deliberate position
+with a gap in it, and burning the debt down is what closes it.
 
 ### Shared job names: `<function>-<language>-<runner|framework>`
 

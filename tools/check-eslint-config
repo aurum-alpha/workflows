@@ -15,12 +15,15 @@ This is the checker. The canonical copies live in config/ in this repository,
 so there is one place to change and one thing to compare against, rather than
 six copies agreeing by luck.
 
-It covers two files now. `.oxlintrc.json` arrived with the same claim in its
-own header and the same way of failing: oxlint's config was one repo's local
-file, and the argument the fleet had been having about oxlint's coverage turned
-out to be an argument with that file rather than with the tool. A second shared
-config enforced the same way is one checker with a longer list, not a second
-checker -- the rule is about shared configs, not about eslint.
+It covered two files and now covers one. `.oxlintrc.json` arrived alongside
+`eslint.config.mjs` with the same claim in its own header and the same way of
+failing: oxlint's config was one repo's local file, and the argument the fleet
+had been having about oxlint's coverage turned out to be an argument with that
+file rather than with the tool. A second shared config enforced the same way
+was one checker with a longer list, not a second checker -- the rule is about
+shared configs, not about eslint. That is why eslint's retirement shortened the
+list and changed nothing else here, and why the list is written as a tuple
+rather than a constant.
 
 The comparison is bytes, not semantics, and deliberately so. The point is not
 that the configs behave alike — it is that they are ONE config, so that
@@ -60,15 +63,20 @@ import os
 import pathlib
 import sys
 
-# eslint.config.mjs is GONE from this list but its canonical copy deliberately
-# REMAINS in config/ for one more wave. The canonical is read from the catalog's
-# default branch while the checker itself comes from the caller's pinned
-# standard_ref, so the two move at different times: delete the file in the same
-# commit that drops it here and every repo still on the previous standard_ref
-# runs a checker that looks for a canonical which no longer exists -- "canonical
-# config not found", exit 2, for repos that changed nothing. That is the same
-# shape as the rename described above, which is what exit-127'd gofast. The file
-# goes once a standard_ref carrying this list has reached the fleet.
+# eslint.config.mjs left this list one wave before it left config/, and the gap
+# was the whole point. The canonical is read from the catalog's default branch
+# while the checker itself comes from the caller's pinned standard_ref, so the
+# two move at different times: delete the file in the same commit that drops it
+# here and every repo still on the previous standard_ref runs a checker that
+# looks for a canonical which no longer exists -- "canonical config not found",
+# exit 2, for repos that changed nothing. That is the same shape as the rename
+# described above, which is what exit-127'd gofast.
+#
+# The condition that released the file was "a standard_ref carrying this list
+# has reached the fleet", and it was checked rather than assumed: all nine JS
+# repos pin job-ci-conformance at v2.2.5, whose standard_ref default is the
+# v2.2.4 commit, which contains the wave that shortened this tuple. So every
+# caller was already running the one-entry list before the file was removed.
 CONFIGS = (".oxlintrc.json",)
 
 # Where a repo may keep its copy, in order. Repo root covers the repos whose JS

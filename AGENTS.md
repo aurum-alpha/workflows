@@ -1,9 +1,8 @@
 # AGENTS.md — the Aurum Alpha agent standard
 
-Status: **agreed 2026-08-21; rules 1-5 gated 2026-08-22.** One of the Aurum Alpha engineering
-standards; read [`STANDARDS.md`](STANDARDS.md) for the charter it is written
-under and [`standards/enforcement.md`](standards/enforcement.md) for what
-enforces it.
+One of the Aurum Alpha engineering standards; read
+[`STANDARDS.md`](STANDARDS.md) for the charter it is written under and
+[`standards/enforcement.md`](standards/enforcement.md) for what enforces it.
 
 This document is two things at once, deliberately:
 

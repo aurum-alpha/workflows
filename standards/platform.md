@@ -1,9 +1,9 @@
 # The platform contract
 
-Status: **proposed 2026-08-28 (issue #185), review only.** One of the Aurum
-Alpha engineering standards — read [`../STANDARDS.md`](../STANDARDS.md) for the
-charter this is written under, and [`enforcement.md`](enforcement.md) for the
-tier each rule below actually holds.
+One of the Aurum Alpha engineering standards — read
+[`../STANDARDS.md`](../STANDARDS.md) for the charter this is written under,
+and [`enforcement.md`](enforcement.md) for the tier each rule below actually
+holds.
 
 This document states the doctrine every application-layer standard is written
 under: what form a fleet opinion about a platform capability is allowed to
@@ -81,6 +81,13 @@ adopts it, as a **written profile**: the document pins the choices the
 standard leaves open, because "we use OIDC" unpinned is four implementations
 waiting to happen.
 
+This holds for methodologies as much as wire protocols. **The
+[twelve-factor app](https://12factor.net/) is the foundation under most of
+this roster**, and a capability standard that restates a factor cites it and
+pins what the factor leaves open, rather than re-deriving it in house style —
+see the charter's *The foundation: twelve-factor* for the citation rule and
+the one open tension.
+
 An **internal contract** is invented only where no standard suffices, and the
 capability's standard says why — naming the candidate that was evaluated and
 the reason it fell short. An internal contract invented where a standard
@@ -152,32 +159,33 @@ documents were supposed to be the fix.
 Every platform capability the fleet has an opinion on, or has decided to
 have one. **A capability's absence from this table is a claim that the fleet
 has considered it and declined** — so a reader can distinguish "not yet
-specced" (a row pointing at its issue) from "not considered" (a gap in this
-table, which is a defect in this document). Rows move from issue to section
-to artifacts as each standard lands; the ledger tracks what is enforced.
+written" (a row saying so) from "not considered" (a gap in this table, which
+is a defect in this document). A row gains its link when the standard lands;
+the ledger tracks what is enforced. Where a capability has no document yet,
+the work is an issue in this repository.
 
-| Capability | The fleet answer takes the form of | Where it stands |
+| Capability | The fleet answer takes the form of | Standard |
 |---|---|---|
-| Authentication | OIDC profile — the provider authenticates, identity claims only | #144 |
-| Authorization | Application-owned RBAC as a full interface spec: model, operations, semantics, corpus — never derived from token claims | #144 |
-| Configuration | 12-factor environment contract: naming, layering, fail-loud on missing, no environment detection in code | #143 |
-| Secrets | Delivery convention — how a secret reaches a process; never a vendor SDK in application code | #145 |
-| Logging | Structured log-line schema to stdout; transport is the platform's problem | #143 |
-| Health & readiness | Two-endpoint contract, fixed paths and shapes | #143 |
-| Service lifecycle | SIGTERM means drain: readiness flips, in-flight completes, stated timeout | #143 |
-| Runtime provenance | The running service reports the commit and build it is | #143 |
-| Observability & context propagation | OTLP profile; W3C trace context; one id vocabulary across logs, traces, events | #187 |
-| HTTP APIs | OpenAPI description; RFC 9457 errors; pagination, versioning, idempotency keys, retry semantics | #186 |
-| Identifiers & primitives | Internal keys never exposed; public-id format table; RFC 3339 UTC; integer minor-unit money | [`identifiers.md`](identifiers.md), proposed |
-| Data layer | Migrations-only schema change; seeding contract; tenancy isolation rules | #147 |
-| Async jobs & messaging | Internal envelope contract; at-least-once plus dedupe; signed webhooks | #189 |
-| Maintenance jobs | The Job interface contract: registration, single-flight, run observability | #190 |
-| Audit events | Event schema contract with required context fields | #191 |
-| Security baseline | Response-header set, scanning, image pinning, secrets doctrine | #145 |
-| Feature flags | Evaluation contract; standard-first (OpenFeature is the candidate) | #192 |
-| Notifications | Message contract over the async envelope; provider at the boundary | #193 |
-| Blob storage | S3 API as the storage protocol; reference, tenancy and upload rules | #194 |
-| Data subject rights | Export and erasure as endpoint contracts | #195 |
+| Authentication | OIDC profile — the provider authenticates, identity claims only | not yet written |
+| Authorization | Application-owned RBAC as a full interface spec: model, operations, semantics, corpus — never derived from token claims | not yet written |
+| Configuration | [Factor III](https://12factor.net/config) profile: variable naming, layering, fail-loud on missing, no environment detection in code | not yet written |
+| Secrets | Delivery convention — how a secret reaches a process; never a vendor SDK in application code | not yet written |
+| Logging | [Factor XI](https://12factor.net/logs) profile: structured log-line schema to stdout; transport is the platform's problem | not yet written |
+| Health & readiness | Two-endpoint contract, fixed paths and shapes | not yet written |
+| Service lifecycle | [Factor IX](https://12factor.net/disposability) profile: SIGTERM means drain — readiness flips, in-flight completes, stated timeout | not yet written |
+| Runtime provenance | The running service reports the commit and build it is | not yet written |
+| Observability & context propagation | OTLP profile; W3C trace context; one id vocabulary across logs, traces, events | [`observability.md`](observability.md) |
+| HTTP APIs | OpenAPI description; RFC 9457 errors; pagination, versioning, idempotency keys, retry semantics | not yet written |
+| Identifiers & primitives | Internal keys never exposed; public-id format table; RFC 3339 UTC; integer minor-unit money | [`identifiers.md`](identifiers.md) |
+| Data layer | Migrations-only schema change; seeding contract; tenancy isolation rules | not yet written |
+| Async jobs & messaging | Internal envelope contract; at-least-once plus dedupe; signed webhooks | not yet written |
+| Maintenance jobs | The Job interface contract: registration, single-flight, run observability — and where it lands against [factor XII](https://12factor.net/admin-processes) | not yet written |
+| Audit events | Event schema contract with required context fields | not yet written |
+| Security baseline | Response-header set, scanning, image pinning, secrets doctrine | not yet written |
+| Feature flags | Evaluation contract; standard-first (OpenFeature is the candidate) | not yet written |
+| Notifications | Message contract over the async envelope; provider at the boundary | not yet written |
+| Blob storage | S3 API as the storage protocol; reference, tenancy and upload rules | not yet written |
+| Data subject rights | Export and erasure as endpoint contracts | not yet written |
 
 Two rows deserve a word on why they are the worked examples:
 
@@ -190,14 +198,14 @@ corpus judges all three. When someone asks what "an interface spec, not a
 library" means, the answer is that standard.
 
 **Async messaging** is the model internal contract: no wire standard covers
-it fully (its issue evaluates CloudEvents before inventing), so the fleet
+it fully (its standard evaluates CloudEvents before inventing), so the fleet
 defines the envelope — and the discipline PC2 demands is visible right there:
 the invention is scoped to the envelope, while the identity inside it stays
 W3C trace context, per the propagation profile.
 
 ## Enforcement
 
-This standard lands review-only, honestly, with the gates named per rule in
+Every rule here is review-only today, honestly, with the gates named per rule in
 [`enforcement.md`](enforcement.md):
 
 - **PC1 and PC2 resist a checker** and stay review questions: what
@@ -225,8 +233,8 @@ every capability standard, and this document is what the reviewer points at.
 
 - Land the per-capability standards from the roster, each by the charter's
   own path: issue, document, ledger rows, artifacts.
-- The first corpus. Authorization (#144) is the candidate, as the worked
-  example above argues.
+- The first corpus run in anger. Authorization is the candidate, as the
+  worked example above argues.
 - The template repositories — the copy-once mechanism PC1 permits — are
   follow-on work once enough contracts exist for a template to have
   something to conform to.

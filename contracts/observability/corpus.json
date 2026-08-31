@@ -1,0 +1,49 @@
+{
+  "contract": "observability",
+  "schemaVersion": 1,
+  "description": "Conformance corpus for standards/observability.md. 'validity': the value must validate (or fail) against the named $def in context.schema.json. 'propagation': black-box cases — the implementation receives the described inbound context and the fields on its emitted log lines must satisfy 'expect' (a named $def per field, 'same-as-inbound' for continuation, 'fresh' for a newly minted value). An implementation passes the whole file or names the case it fails.",
+  "validity": [
+    { "id": "traceparent-ok", "def": "traceparent", "value": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01", "valid": true },
+    { "id": "traceparent-ok-unsampled", "def": "traceparent", "value": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00", "valid": true, "note": "flags 00 is a valid header; sampling is a flag, not validity (OC1)" },
+    { "id": "traceparent-rejects-uppercase", "def": "traceparent", "value": "00-4BF92F3577B34DA6A3CE929D0E0E4736-00F067AA0BA902B7-01", "valid": false, "note": "W3C wire form is lowercase hex (OC1)" },
+    { "id": "traceparent-rejects-zero-traceid", "def": "traceparent", "value": "00-00000000000000000000000000000000-00f067aa0ba902b7-01", "valid": false, "note": "an all-zero trace id is invalid per W3C; treat as absent and start a fresh trace (OC1)" },
+    { "id": "traceparent-rejects-zero-parentid", "def": "traceparent", "value": "00-4bf92f3577b34da6a3ce929d0e0e4736-0000000000000000-01", "valid": false, "note": "an all-zero parent id is invalid per W3C (OC1)" },
+    { "id": "traceparent-rejects-version-ff", "def": "traceparent", "value": "ff-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01", "valid": false, "note": "the profile pins version 00; version ff is forbidden by W3C outright (OC1)" },
+    { "id": "traceid-ok", "def": "traceId", "value": "4bf92f3577b34da6a3ce929d0e0e4736", "valid": true },
+    { "id": "traceid-rejects-hyphenated", "def": "traceId", "value": "4bf92f35-77b3-4da6-a3ce-929d0e0e4736", "valid": false, "note": "trace_id is the bare 32-hex W3C form, not a UUID rendering (OC2)" },
+    { "id": "spanid-ok", "def": "spanId", "value": "00f067aa0ba902b7", "valid": true },
+    { "id": "spanid-rejects-zero", "def": "spanId", "value": "0000000000000000", "valid": false },
+    { "id": "requestid-ok", "def": "requestId", "value": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99", "valid": true, "note": "UUIDv7 per the identifiers standard (OC2)" },
+    { "id": "requestid-rejects-v4", "def": "requestId", "value": "9b2edf3e-3b5a-4f0e-8f1d-2a6c4b8d9e0f", "valid": false },
+    { "id": "context-ok-minimal", "def": "contextFields", "value": { "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736", "request_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99" }, "valid": true, "note": "trace_id and request_id are the floor; span_id and tenant_id appear where they exist (OC4)" },
+    { "id": "context-ok-full", "def": "contextFields", "value": { "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736", "span_id": "00f067aa0ba902b7", "request_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99", "tenant_id": "ten_8fK2mQ7xW3pLzR" }, "valid": true },
+    { "id": "context-rejects-missing-request-id", "def": "contextFields", "value": { "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736" }, "valid": false, "note": "within request context both floor fields are required (OC4)" },
+    { "id": "context-rejects-camelcase", "def": "contextFields", "value": { "traceId": "4bf92f3577b34da6a3ce929d0e0e4736", "requestId": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99" }, "valid": false, "note": "one vocabulary: snake_case field names, identical in every language (OC2)" }
+  ],
+  "propagation": [
+    {
+      "id": "continues-inbound-trace",
+      "inbound": { "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01" },
+      "expect": { "trace_id": "same-as-inbound", "request_id": "fresh:requestId" },
+      "note": "a valid inbound traceparent is continued: emitted lines carry its trace id; the request id is minted at this edge (OC1, OC2)"
+    },
+    {
+      "id": "starts-fresh-when-absent",
+      "inbound": {},
+      "expect": { "trace_id": "fresh:traceId", "request_id": "fresh:requestId" },
+      "note": "no inbound traceparent: the service starts the trace at its edge (OC1)"
+    },
+    {
+      "id": "starts-fresh-when-invalid",
+      "inbound": { "traceparent": "00-00000000000000000000000000000000-00f067aa0ba902b7-01" },
+      "expect": { "trace_id": "fresh:traceId", "request_id": "fresh:requestId" },
+      "note": "an invalid traceparent is treated as absent, never propagated onward (OC1)"
+    },
+    {
+      "id": "outbound-carries-trace",
+      "inbound": { "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01", "tracestate": "vendorx=opaque" },
+      "expect": { "outbound.traceparent": "same-trace-id", "outbound.tracestate": "forwarded-unmodified" },
+      "note": "outbound HTTP calls carry the trace onward; tracestate is forwarded, never parsed, never logged (OC1)"
+    }
+  ]
+}

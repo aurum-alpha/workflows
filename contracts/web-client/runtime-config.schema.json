@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/web-client/runtime-config.schema.json",
+  "title": "Aurum Alpha browser runtime configuration document",
+  "description": "The document a server renders from its own environment and serves to the browser at load, so the bundle itself stays environment-agnostic. Governed by standards/web-client.md WC2. This document is served to every anonymous visitor and is therefore PUBLIC BY CONSTRUCTION — a value that must not be public belongs behind the BFF, never here. schemaVersion 1 — evolves additively per PC6.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Pins the shape so a client served a newer document by an older server, or the reverse, fails loudly rather than reading a field that moved (PC6)."
+    },
+    "environment": {
+      "type": "string",
+      "enum": ["development", "test", "staging", "production"],
+      "description": "Which environment served this bundle. The bundle is identical across all of them (WC2); this is how the running client knows where it landed."
+    },
+    "api_base_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Origin the API client (WC3) calls. Under the WC1 default this is the BFF's own origin, so requests are same-origin and the session cookie is sent without CORS credentials handling.",
+      "minLength": 1
+    },
+    "auth": {
+      "type": "object",
+      "description": "How this client authenticates. Under WC1's default the browser holds no token and needs no provider details — only where to start and end a session.",
+      "properties": {
+        "pattern": {
+          "type": "string",
+          "enum": ["bff", "token-mediating-backend", "browser-based-client"],
+          "description": "Which RFC 10017 pattern this application uses. 'bff' is the fleet default; the other two require a stated reason in the repository's Conventions (WC1).",
+          "default": "bff"
+        },
+        "login_path": {
+          "type": "string",
+          "description": "Path the client navigates to in order to begin a login. A top-level navigation, not a fetch — the OIDC provider must be able to render its own UI and redirect back.",
+          "pattern": "^/",
+          "minLength": 1
+        },
+        "logout_path": {
+          "type": "string",
+          "description": "Path that ends the session. Ending it is the server's job under WC1, because the credential is an HttpOnly cookie the browser cannot clear itself.",
+          "pattern": "^/",
+          "minLength": 1
+        }
+      },
+      "required": ["pattern", "login_path", "logout_path"],
+      "additionalProperties": false
+    },
+    "build": {
+      "type": "object",
+      "description": "What the browser is running. These are the two values WC2 permits to be compiled into the bundle, because they describe the build rather than the environment — the browser's half of service.md SC5. They are echoed here so a client can detect that it is running a bundle older than the one the server now serves.",
+      "properties": {
+        "version": {
+          "type": "string",
+          "description": "The application version this bundle was built as.",
+          "minLength": 1
+        },
+        "commit": {
+          "type": "string",
+          "description": "The full commit the bundle was built from. Required in every error report (WC5), because a stack trace against unknown source is unreadable.",
+          "pattern": "^[0-9a-f]{7,40}$"
+        }
+      },
+      "required": ["version", "commit"],
+      "additionalProperties": false
+    },
+    "features": {
+      "type": "object",
+      "description": "Per-environment toggles the client reads at load. Present so that a toggle is never a reason to rebuild the bundle, which is the WC2 failure this document exists to prevent. The evaluation contract itself belongs to the feature flags standard, not here.",
+      "additionalProperties": { "type": "boolean" }
+    }
+  },
+  "required": ["schema_version", "environment", "api_base_url", "auth", "build"],
+  "additionalProperties": false
+}

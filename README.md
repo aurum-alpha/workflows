@@ -17,6 +17,7 @@ standard is here, what makes one binding, and indexes the rest.
 | [standards/observability.md](standards/observability.md) | Observability transport and context propagation: trace context, id vocabulary, OTLP |
 | [standards/service.md](standards/service.md) | The service contract: health, logging, config, shutdown, provenance |
 | [standards/http.md](standards/http.md) | Service interfaces: protocol selection, OpenAPI, problem+json errors, pagination, idempotency, wire naming |
+| [standards/web-client.md](standards/web-client.md) | The web client: browser auth, runtime config, the API client, presentation and i18n, error reports |
 | [standards/enforcement.md](standards/enforcement.md) | Every rule, its gate, and the tier it actually reaches |
 
 Consult the relevant standard before any change it governs, in any repository.
@@ -39,6 +40,7 @@ the ledger, not this table, is the register of the rules themselves.
 | OC | [`standards/observability.md`](standards/observability.md) | Context propagation and telemetry: W3C trace context, the id vocabulary, OTLP |
 | SC | [`standards/service.md`](standards/service.md) | What a running service exposes: health and readiness, log lines, config, shutdown, provenance |
 | HA | [`standards/http.md`](standards/http.md) | Service interfaces: which protocol, then the HTTP surface — description, error envelope, pagination, versioning, idempotency, retries |
+| WC | [`standards/web-client.md`](standards/web-client.md) | Code running in a browser: authentication pattern, runtime configuration, the API client module, presentation and i18n, error reporting |
 
 Each new capability standard from the platform contract's roster adds its own
 prefix here as it lands.

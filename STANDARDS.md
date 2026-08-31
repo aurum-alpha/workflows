@@ -194,6 +194,7 @@ is held mechanically today; the ledger says which rule is which.
 | [`standards/observability.md`](standards/observability.md) | Observability transport and context propagation: W3C trace context, the id vocabulary, OTLP | review, corpus written |
 | [`standards/service.md`](standards/service.md) | The service contract: health and readiness, structured logging, configuration, graceful shutdown, runtime provenance | review, live gate available |
 | [`standards/http.md`](standards/http.md) | Service interfaces: protocol selection (HTTP, gRPC, SSE, WebSocket), OpenAPI, RFC 9457 errors, cursor pagination, versioning, idempotency, backpressure, snake_case wire naming | review, corpus written |
+| [`standards/web-client.md`](standards/web-client.md) | The web client: Backend-For-Frontend authentication, runtime configuration, the API client module, presentation and i18n, frontend error reporting | review, corpus written |
 
 Standards still to be written are tracked as issues in this repository, and the
 platform contract's capability roster names which capability is waiting on one.

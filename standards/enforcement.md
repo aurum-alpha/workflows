@@ -320,3 +320,32 @@ and can never prove it is true, so the honest mechanism is a repository's own
 contract tests and the review question is whether they exist. **HA5** needs to
 know whether a change is breaking, which is a judgment about meaning rather
 than a fact about a diff.
+
+## Web client standard
+
+Rules from [`web-client.md`](web-client.md) — the obligations of code running
+in a browser.
+
+| # | Rule | Enforced by | Status |
+|---|---|---|---|
+| WC1 | The browser is not a confidential client: BFF is the default, the credential is an `HttpOnly`, `Secure`, `SameSite=Lax`, `__Host-` cookie, and tokens are never written to web storage | half of it is a live gate — a login response's `Set-Cookie` either carries those attributes or it does not, and the corpus reads web storage after login (proposed). The central claim, that no token reaches JavaScript, **resists a checker entirely**: proving it means proving a negative about a running program, and a gate that read the source would be the PC4 violation. Review question: *where does this application's access token live, and who can read it* | **review only** |
+| WC2 | The bundle is environment-agnostic; configuration is fetched at load from a document the server renders from its own environment; nothing secret is in it | **the cheapest gate in this standard and the one to build first** — a static grep of the build output for any environment's API origin or provider hostname, needing no browser and no running service (proposed `check-bundle-config`). The served document validates against its schema under `job-image-starts`. The no-secrets half is held by the schema's closed property set | **review only** |
+| WC3 | One API client module, generated from the OpenAPI document, owning problem+json parsing, idempotency keys, bounded jittered retries, cursor paging and credentials mode | corpus behaviour case for key reuse across a retry (proposed). That the module is generated rather than hand-written correct **must not** be gated — a checker failing a build for a direct `fetch` would be enforcing an implementation choice, which PC4 forbids | **review only** |
+| WC4 | Locale and zone come from the viewer, never inferred server-side; formatting uses `Intl`; currency exponents come from the currency; the server never sends a pre-formatted string | corpus behaviour cases for the two that are actually got wrong — a zero-exponent currency, and an instant whose calendar day differs by zone (proposed). The server half is reviewable in the OpenAPI document: a response field typed as a formatted string is visible there | **review only** |
+| WC5 | The browser does not originate the server's trace; correlation is by the returned request id; the error report is a closed shape carrying build provenance and no session cookie, token or personal data | schema validation of emitted reports, and the conditional requirement that an `api_error` carries a `request_id` (proposed). What a report must *not* contain is held by `additionalProperties: false` rather than by a denylist, which is the only version of that rule that holds against a field nobody predicted | **review only** |
+
+**WC2 is the one to build first**, and it is unusual in this repository for
+being both cheap and high-value: the failure it catches — an API origin baked
+into the bundle at build time — produces one artifact per environment, breaks
+the build-once separation the [CI standard](ci.md) requires, and **nothing
+fails today when it happens**. That is the exact profile of a rule that is a
+preference until something enforces it.
+
+This is the least gateable standard here so far, and the reason is structural
+rather than an admission of laziness: its subject runs on someone else's
+machine, under a browser the fleet does not control, in a bundle that has been
+minified. Two of the five rules have a genuinely observable boundary — the
+cookie attributes of WC1 and the build output of WC2 — and those are where the
+gates go. For the rest, the boundary a gate could legitimately check is the
+wire, and the wire here is the two contracts under
+[`contracts/web-client/`](../contracts/web-client/).

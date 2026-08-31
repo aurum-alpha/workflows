@@ -21,7 +21,8 @@
     { "id": "timestamp-ok", "def": "timestamp", "value": "2026-08-31T14:07:02.417Z", "valid": true },
     { "id": "timestamp-rejects-offset", "def": "timestamp", "value": "2026-08-31T16:07:02.417+02:00", "valid": false, "note": "same instant, different string — canonical form is UTC Z (IP4)" },
     { "id": "timestamp-rejects-no-millis", "def": "timestamp", "value": "2026-08-31T14:07:02Z", "valid": false, "note": "canonical form carries exactly three fractional digits (IP4)" },
-    { "id": "timestamp-rejects-micros", "def": "timestamp", "value": "2026-08-31T14:07:02.417233Z", "valid": false, "note": "exactly three fractional digits; parsers truncate, emitters never exceed (IP4)" },
+    { "id": "timestamp-accepts-micros", "def": "timestamp", "value": "2026-08-31T14:07:02.417233Z", "valid": true, "note": "a repository may pin 6 (or 9) digits for finer timekeeping — never fewer than 3 (IP4)" },
+    { "id": "timestamp-rejects-four-digits", "def": "timestamp", "value": "2026-08-31T14:07:02.4172Z", "valid": false, "note": "precision comes in millis/micros/nanos steps: 3, 6 or 9 digits, nothing between (IP4)" },
     { "id": "timestamp-rejects-unix", "def": "timestamp", "value": "1788185222", "valid": false, "note": "Unix integers are not admitted on the wire (IP4)" },
     { "id": "tsinput-accepts-offset", "def": "timestampInput", "value": "2026-08-31T16:07:02.417+02:00", "valid": true, "note": "the accept side takes any valid RFC 3339; the server normalises before persistence (IP4)" },
     { "id": "tsinput-accepts-no-millis", "def": "timestampInput", "value": "2026-08-31T14:07:02Z", "valid": true },
@@ -41,7 +42,7 @@
   "canonical": [
     { "id": "ts-normalise-offset", "kind": "timestamp", "input": "2026-08-31T16:07:02.417+02:00", "emit": "2026-08-31T14:07:02.417Z" },
     { "id": "ts-add-millis", "kind": "timestamp", "input": "2026-08-31T14:07:02Z", "emit": "2026-08-31T14:07:02.000Z" },
-    { "id": "ts-truncate-micros", "kind": "timestamp", "input": "2026-08-31T14:07:02.417933Z", "emit": "2026-08-31T14:07:02.417Z", "note": "sub-millisecond precision is truncated, not rounded (IP4)" },
+    { "id": "ts-truncate-micros", "kind": "timestamp", "input": "2026-08-31T14:07:02.417933Z", "emit": "2026-08-31T14:07:02.417Z", "note": "precision below the pin is truncated, not rounded; the canonical cases test the default 3-digit profile (IP4)" },
     { "id": "ts-negative-offset", "kind": "timestamp", "input": "2026-08-31T07:07:02.417-07:00", "emit": "2026-08-31T14:07:02.417Z" },
     { "id": "ts-offset-crosses-midnight", "kind": "timestamp", "input": "2026-09-01T01:30:00.000+11:00", "emit": "2026-08-31T14:30:00.000Z", "note": "normalising to UTC moves the calendar day when the offset crosses midnight (IP4)" },
     { "id": "ts-lowercase-z", "kind": "timestamp", "input": "2026-08-31t14:07:02.417z", "emit": "2026-08-31T14:07:02.417Z", "note": "RFC 3339 permits lowercase t/z on input; the canonical emit is uppercase (IP4)" },

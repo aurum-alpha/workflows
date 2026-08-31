@@ -95,15 +95,22 @@ The rule is three stages, and the direction matters:
    input, offset forms included — a caller in Sydney sends `+11:00` and is
    not wrong to.
 2. **Normalise before persistence.** The server converts to UTC at the
-   edge, truncating sub-millisecond precision; what is stored is always
-   the normalised instant. Nothing downstream of the edge ever sees an
-   offset form.
+   edge, truncating below the repository's pinned precision; what is
+   stored is always the normalised instant. Nothing downstream of the
+   edge ever sees an offset form.
 3. **Emit canonically.** Anything the service produces — responses, logs,
-   events — is **RFC 3339, UTC, `Z` suffix, exactly three fractional
-   digits**: `2026-08-31T14:07:02.417Z`. Not a Unix integer (unreadable in
-   logs, ambiguous in unit), not an offset form (`+02:00` makes equal
-   instants unequal strings, and string inequality is how deduplication
-   breaks).
+   events — is **RFC 3339, UTC, `Z` suffix, at the repository's one pinned
+   fractional precision**: `2026-08-31T14:07:02.417Z`. Not a Unix integer
+   (unreadable in logs, ambiguous in unit), not an offset form (`+02:00`
+   makes equal instants unequal strings, and string inequality is how
+   deduplication breaks).
+
+Precision is **three digits by default, and a one-way ratchet**: a
+repository with a real need for finer timekeeping pins six or nine digits
+instead, says so in its own **Conventions** section, and applies it to
+everything it emits — never fewer than three, never mixed widths, because
+one fixed width per emitter is what keeps string equality and instant
+equality the same test.
 
 Timestamps are produced by clocks, never by hand; local time exists only
 in the presentation layer, per the base-representation rule above.
@@ -113,9 +120,10 @@ instant and does not get a time or a zone glued on: RFC 3339 `full-date`,
 `2026-08-31`. A birthdate stored as midnight-UTC is off by one for half
 the planet, permanently.
 
-Storage profile: MySQL columns are `DATETIME(3)` holding UTC (never
-`TIMESTAMP`, whose 2038 ceiling and session-zone conversion are both traps),
-`DATE` for calendar dates. Other engines state their profile in the
+Storage profile: MySQL columns are `DATETIME(3)` holding UTC — `DATETIME(6)`
+where the repository pins six digits — and never `TIMESTAMP`, whose 2038
+ceiling and session-zone conversion are both traps; `DATE` for calendar
+dates. Other engines state their profile in the
 data-layer standard (#147) as they are admitted.
 
 ### IP5. Money is integer minor units plus an explicit currency
@@ -174,9 +182,12 @@ count rows?*
   128-bit), but UUIDv7 is an RFC with native column types and driver
   support everywhere the fleet runs; ULID is a spec with libraries. PC2
   picks the standard.
-- **`Z`, never `+00:00`; exactly three fractional digits** (2026-08-31):
-  one canonical string per instant, so string equality and instant
-  equality agree — dedupe keys and log grep both depend on it.
+- **`Z`, never `+00:00`; pinned fractional precision, default three,
+  never fewer** (2026-08-31): one canonical string per instant within an
+  emitter, so string equality and instant equality agree — dedupe keys and
+  log grep both depend on it. Finer timekeeping is a per-repository
+  extension (six or nine digits, stated in its Conventions), never a
+  reduction and never a mix.
 - **Prefixed-handle body is base62, not full nanoid alphabet**
   (2026-08-31): keeping `_` out of the body makes the first underscore an
   unambiguous prefix delimiter without a parsing rule anyone can get wrong.

@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json",
+  "title": "Aurum Alpha primitive representations",
+  "description": "Wire-form definitions for identifiers, timestamps, dates, and money. Governed by standards/identifiers.md; other contracts reference these $defs instead of restating patterns. schemaVersion 1 — evolves additively per PC6.",
+  "$defs": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "uuidv7": {
+      "type": "string",
+      "description": "RFC 9562 UUIDv7, lowercase canonical hyphenated wire form (IP2).",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "nanoid": {
+      "type": "string",
+      "description": "Unprefixed user-facing handle: nanoid default alphabet, length >= 12 (IP2).",
+      "pattern": "^[A-Za-z0-9_-]{12,64}$"
+    },
+    "prefixedHandle": {
+      "type": "string",
+      "description": "Type-prefixed handle: lowercase prefix, one underscore, base62 body >= 12 so the first underscore always delimits the prefix (IP2).",
+      "pattern": "^[a-z][a-z0-9]{0,7}_[A-Za-z0-9]{12,64}$"
+    },
+    "publicId": {
+      "description": "Any admitted public identifier format (IP2). Opaque to consumers (IP3).",
+      "anyOf": [
+        { "$ref": "#/$defs/uuidv7" },
+        { "$ref": "#/$defs/prefixedHandle" },
+        { "$ref": "#/$defs/nanoid" }
+      ]
+    },
+    "timestamp": {
+      "type": "string",
+      "description": "Canonical instant for persistence and emission: RFC 3339, UTC, Z suffix, at the repository's one pinned fractional precision — 3 digits by default, 6 or 9 where a repository pins finer timekeeping, never fewer and never mixed widths within an emitter (IP4). Request-side schemas use timestampInput instead.",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}(\\d{3}){0,2}Z$"
+    },
+    "timestampInput": {
+      "type": "string",
+      "description": "Accept-side instant: any valid RFC 3339 date-time, offset forms and lowercase t/z included. The server normalises to the canonical timestamp def before persistence (IP4). Never used for stored or emitted shapes.",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?([Zz]|[+-]\\d{2}:\\d{2})$"
+    },
+    "date": {
+      "type": "string",
+      "description": "Calendar date, RFC 3339 full-date: no time, no zone (IP4).",
+      "format": "date",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "currency": {
+      "type": "string",
+      "description": "ISO 4217 alphabetic currency code, uppercase (IP5).",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "money": {
+      "type": "object",
+      "description": "Integer count of minor units plus explicit currency; the minor-unit exponent is the currency's own per ISO 4217 (IP5). Floats are not admitted.",
+      "properties": {
+        "amount": {
+          "type": "integer",
+          "description": "Signed count of the currency's minor units. Implementations hold this in a 64-bit integer; values outside int64 are out of contract."
+        },
+        "currency": { "$ref": "#/$defs/currency" }
+      },
+      "required": ["amount", "currency"]
+    }
+  }
+}

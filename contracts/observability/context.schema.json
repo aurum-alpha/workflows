@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/observability/context.schema.json",
+  "title": "Aurum Alpha context propagation and id vocabulary",
+  "description": "Wire forms for W3C trace context and the fleet id vocabulary. Governed by standards/observability.md; log-line and audit-event schemas $ref these $defs. schemaVersion 1 — evolves additively per PC6.",
+  "$defs": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "traceId": {
+      "type": "string",
+      "description": "W3C trace id: 32 lowercase hex, not all zeros (OC2).",
+      "pattern": "^(?!0{32})[0-9a-f]{32}$"
+    },
+    "spanId": {
+      "type": "string",
+      "description": "W3C span/parent id: 16 lowercase hex, not all zeros (OC2).",
+      "pattern": "^(?!0{16})[0-9a-f]{16}$"
+    },
+    "traceparent": {
+      "type": "string",
+      "description": "W3C traceparent header, version 00: version-traceid-parentid-flags, lowercase hex, trace and parent ids not all zeros (OC1).",
+      "pattern": "^00-(?!0{32})[0-9a-f]{32}-(?!0{16})[0-9a-f]{16}-[0-9a-f]{2}$"
+    },
+    "requestId": {
+      "type": "string",
+      "description": "Per-inbound-request id minted at the receiving service's edge; UUIDv7 per contracts/identifiers (OC2). Echoed to the caller as the x-request-id response header.",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "tenantId": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/publicId",
+      "description": "The authenticated tenant's public id (OC2). Vocabulary only — establishment belongs to the authorization standard."
+    },
+    "contextFields": {
+      "type": "object",
+      "description": "The context block OC4 requires on log lines and audit events emitted within request context. span_id where the service traces; tenant_id where tenant context is established.",
+      "properties": {
+        "trace_id": { "$ref": "#/$defs/traceId" },
+        "span_id": { "$ref": "#/$defs/spanId" },
+        "request_id": { "$ref": "#/$defs/requestId" },
+        "tenant_id": { "$ref": "#/$defs/tenantId" }
+      },
+      "required": ["trace_id", "request_id"]
+    }
+  }
+}

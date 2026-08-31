@@ -1,7 +1,6 @@
 # CI Pipeline Standard
 
-Status: **agreed 2026-08-14**, revised as rules are learned and enforced. This
-document holds the standards and the reasoning that justifies them.
+This document holds the standards and the reasoning that justifies them.
 
 Referred to across the fleet, and in job comments, as **CI_STANDARD** (this
 file was `CI_STANDARD.md` at the repository root until the standards were

@@ -21,6 +21,14 @@ These are wire rules, per PC1: they bind what crosses a boundary — a URL, a
 payload, a log line, an event. What a language does in memory is its own
 business until the value is serialized.
 
+One rule spans all of them: **the server speaks base representations, and
+presentation is the UI's job — never the server's.** Localisation and i18n —
+formatting an instant into a viewer's time zone, a money value into `€1.999,00`,
+a date into the reader's convention — happen in the presentation layer, against
+the canonical forms below. A server that emits pre-localised values has baked
+one viewer's locale into every consumer, and turned every other consumer's
+correct rendering into a parsing job.
+
 ## The rules
 
 ### IP1. Internal keys never leave the service
@@ -81,14 +89,24 @@ case: a consumer that case-folds ids has invented a second equality.
 
 ### IP4. Timestamps are RFC 3339 UTC, and a date is not a timestamp
 
-An instant that crosses a boundary is **RFC 3339, UTC, `Z` suffix,
-exactly three fractional digits**: `2026-08-31T14:07:02.417Z`. Not a Unix
-integer (unreadable in logs, ambiguous in unit), not an offset form
-(`+02:00` makes equal instants unequal strings, and string inequality is
-how deduplication breaks). Emit canonically; parse liberally — accept any
-valid RFC 3339 and normalise to UTC on the way in, truncating sub-millisecond
-precision. Timestamps are produced by clocks, never by hand; local time
-exists only in the presentation layer.
+The rule is three stages, and the direction matters:
+
+1. **Accept liberally.** An API accepts any valid RFC 3339 instant as
+   input, offset forms included — a caller in Sydney sends `+11:00` and is
+   not wrong to.
+2. **Normalise before persistence.** The server converts to UTC at the
+   edge, truncating sub-millisecond precision; what is stored is always
+   the normalised instant. Nothing downstream of the edge ever sees an
+   offset form.
+3. **Emit canonically.** Anything the service produces — responses, logs,
+   events — is **RFC 3339, UTC, `Z` suffix, exactly three fractional
+   digits**: `2026-08-31T14:07:02.417Z`. Not a Unix integer (unreadable in
+   logs, ambiguous in unit), not an offset form (`+02:00` makes equal
+   instants unequal strings, and string inequality is how deduplication
+   breaks).
+
+Timestamps are produced by clocks, never by hand; local time exists only
+in the presentation layer, per the base-representation rule above.
 
 A **calendar date** — a birthdate, a due date, a holiday — is not an
 instant and does not get a time or a zone glued on: RFC 3339 `full-date`,
@@ -123,9 +141,13 @@ Per PC3, the contract lives under
 
 - **`primitives.schema.json`** — JSON Schema (2020-12) `$defs` for
   `uuidv7`, `nanoid`, `prefixedHandle`, `publicId` (the union), `timestamp`,
-  `date`, `money`, `currency`. Every other contract's schema references
-  these by `$ref` rather than restating a pattern — one source of truth per
-  primitive, mechanically.
+  `timestampInput`, `date`, `money`, `currency`. Every other contract's
+  schema references these by `$ref` rather than restating a pattern — one
+  source of truth per primitive, mechanically. The two timestamp defs carry
+  IP4's direction: request-side schemas reference `timestampInput` (any
+  valid RFC 3339), everything stored or emitted references `timestamp`
+  (canonical `Z`). A response schema referencing `timestampInput` has the
+  rule backwards.
 - **`corpus.json`** — the conformance corpus as data, in two parts.
   `validity`: values that must be accepted or rejected against a named
   `$def`. `canonical`: parse-then-emit cases — an implementation reads

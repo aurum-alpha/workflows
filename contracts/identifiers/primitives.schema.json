@@ -32,9 +32,15 @@
     },
     "timestamp": {
       "type": "string",
-      "description": "Canonical emitted instant: RFC 3339, UTC, Z suffix, exactly three fractional digits (IP4). Parsers accept any valid RFC 3339 and normalise to this form.",
+      "description": "Canonical instant for persistence and emission: RFC 3339, UTC, Z suffix, exactly three fractional digits (IP4). Request-side schemas use timestampInput instead.",
       "format": "date-time",
       "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+    },
+    "timestampInput": {
+      "type": "string",
+      "description": "Accept-side instant: any valid RFC 3339 date-time, offset forms and lowercase t/z included. The server normalises to the canonical timestamp def before persistence (IP4). Never used for stored or emitted shapes.",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?([Zz]|[+-]\\d{2}:\\d{2})$"
     },
     "date": {
       "type": "string",

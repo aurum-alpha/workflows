@@ -278,3 +278,30 @@ SC3's "no environment detection in code" half resists a checker honestly: a
 grep for `NODE_ENV` finds the common case and misses a hostname test or a
 path-existence check, and the rule is about the act rather than the spelling.
 It stays a review question on every diff that reads its surroundings.
+
+## HTTP API standard
+
+Rules from [`http.md`](http.md) — the surface every product exposes and every
+client consumes.
+
+| # | Rule | Enforced by | Status |
+|---|---|---|---|
+| HA1 | A committed OpenAPI 3.1 document describes the API and matches the running service | static: the document exists and lints (proposed). That it still *matches* resists a checker — see below | **review only** |
+| HA2 | Every error is profiled RFC 9457 problem+json, with `type` stable, `detail` specific, `request_id` present | `job-image-starts` requesting an unroutable path and validating the body against the schema (proposed) | **review only** |
+| HA3 | Collections paginate by opaque cursor; offset only for genuinely static collections, declared | corpus behaviour case under a live harness (proposed) | **review only** |
+| HA4 | One major version in the path; change is additive until it cannot be | — resists honestly: whether a change is breaking is judgment | **review only** |
+| HA5 | Mutating endpoints accept `Idempotency-Key`; a replay returns the original response, a reused key with a changed body is refused | corpus behaviour cases, two requests under a live harness (proposed) | **review only** |
+| HA6 | `429` always carries `Retry-After`; clients retry only idempotent or keyed requests, with backoff and jitter | server half is a corpus behaviour case; the client half resists a checker | **review only** |
+
+HA2 is the cheapest live gate in this ledger after the service standard's own:
+`job-image-starts` already talks to a running service, so one request to a path
+that cannot exist, and one schema validation of what comes back, catches the
+failure the fleet actually has — a framework's default HTML error page escaping
+to clients from the one route nobody wrote a handler for.
+
+Two rules resist a checker and say so. **HA1's second half** — that the
+document still describes the service — is the important one: a checker can
+prove an OpenAPI file parses and can never prove it is true, so the honest
+mechanism is a repository's own contract tests and the review question is
+whether they exist. **HA4** needs to know whether a change is breaking, which
+is a judgment about meaning rather than a fact about a diff.

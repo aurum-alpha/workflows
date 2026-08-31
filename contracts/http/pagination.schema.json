@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/http/pagination.schema.json",
+  "title": "Aurum Alpha collection envelope",
+  "description": "The cursor-paginated collection response. Governed by standards/http.md HA3. schemaVersion 1 — evolves additively per PC6.",
+  "$defs": {
+    "cursor": {
+      "type": "string",
+      "description": "Opaque to every consumer (HA3, and identifiers.md IP3 for the same reason ids are opaque): the server generates it, the client echoes it, nobody parses it. A client that decodes a cursor has coupled itself to a query plan.",
+      "minLength": 1
+    },
+    "collection": {
+      "type": "object",
+      "description": "A page of a collection. next_cursor null means the end, unambiguously; an empty data array with a non-null cursor is legal, because filtering can empty a page.",
+      "properties": {
+        "data": {
+          "type": "array",
+          "description": "The page's items. Empty is legal and does not imply the end."
+        },
+        "next_cursor": {
+          "description": "The cursor for the next page, or null at the end.",
+          "oneOf": [
+            { "$ref": "#/$defs/cursor" },
+            { "type": "null" }
+          ]
+        }
+      },
+      "required": ["data", "next_cursor"]
+    }
+  }
+}

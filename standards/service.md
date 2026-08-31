@@ -205,20 +205,39 @@ configuration and a detail naming every broken variable, logs the same at
 traffic. Readiness that never passes is how an orchestrator fails a rollout
 and rolls back, and it is strictly more debuggable than the alternative.
 
-**Crashlooping is not a failure mode this fleet accepts.** A process that
-exits and restarts forever destroys the two things an operator needs — a
-live endpoint to interrogate and a log stream that stays put — and converts
-a five-second diagnosis into an archaeology exercise against a scrolling
-restart counter. `exit()` is for the genuinely unrecoverable, which is a
-narrow set: **the process cannot honestly serve its own health endpoints.**
-It could not bind the port, or the runtime itself is failing. Everything
-else — bad config, an unreachable database, an expired credential, a
-missing optional service — is a state to *report*, at length, on an
-endpoint that answers.
+**Exiting is for one situation: the process cannot serve its own health
+endpoints.** It could not bind its port, or the runtime itself is failing.
+Everything else — bad config, an unreachable database, an expired
+credential, a missing optional service — is a state to *report*, at length,
+on an endpoint that answers.
 
-The word doing the work is *honestly*. Exiting because a dependency is down
-is not unrecoverability, it is a service declining to hold a state it was
-built to hold.
+**A failure to bind exits immediately and non-zero, and that is correct
+even though it crashloops.** The two crashloops are not the same failure
+wearing one name, and the difference is what makes one acceptable:
+
+- **Deterministic and immediate.** A port that is taken is taken on every
+  restart, at the same instant, with the same message. Restarting hides
+  nothing and races nobody; the loop is just the same true statement
+  repeated. This is fail-early, fail-often working as intended, and it is
+  the *only* honest option, because a process that cannot bind cannot
+  report anything on an endpoint — there is no endpoint.
+- **Conditional and slow.** A process that exits because a database was
+  unreachable restarts into a world that may have changed, flaps, and
+  produces a scrolling restart counter racing whoever is trying to read
+  the logs. It converts a five-second diagnosis into archaeology, and it
+  is banned by everything above.
+
+Because a bind failure is the one case where nothing else will ever be
+readable, **the message carries the whole diagnosis**: a `fatal` line per
+SC2 naming the address and port it tried, the underlying cause, and the
+service — plainly, in the `msg` field itself, not a generic "startup
+failed" with the useful part buried in a nested object. It is the last
+thing the process writes, and it is on stdout, where every restart puts
+another identical copy in front of whoever finally looks.
+
+The word doing the work in the rule above is *cannot*. Exiting because a
+dependency is down is not inability, it is a service declining to hold a
+state it was built to hold.
 
 ## Decisions
 
@@ -241,10 +260,14 @@ built to hold.
   the wrong reader. A process that stays up reporting `fail` with the
   broken variables named can be curled, and its logs stay put; one that
   exits leaves a restart counter and a scrollback race.
-- **Crashlooping is a defect, not a state** (2026-08-31): `exit()` is for
-  the process that cannot honestly serve its own health endpoints — it
-  could not bind, or the runtime is failing. Everything else is a state to
-  report on an endpoint that answers.
+- **Crashlooping is a defect, except when it is the only honest answer**
+  (2026-08-31): a process that cannot bind has no endpoint to report on,
+  so it exits non-zero and loops — deterministically, immediately, with an
+  identical message every time, which hides nothing and races nobody. A
+  process that exits because a dependency was down loops conditionally and
+  slowly, flapping against whoever is reading the logs. The first is
+  fail-early working; the second is the banned one. What separates them is
+  whether restarting could produce a different answer.
 
 ## Out of scope, deliberately
 

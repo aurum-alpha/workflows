@@ -145,7 +145,7 @@ on:
         # A data change was never exempt from the bump; it was exempt from
         # being REMINDED about it, which is worse, because the reminder is the
         # whole mechanism.
-        default: db99159fed84dd3bc42f34e2a6c3e8f0e49b75e5
+        default: 12626408d8a2381da92adb3c29ff992807c61c1d
 
 jobs:
   ci-conformance:

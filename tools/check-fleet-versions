@@ -56,15 +56,26 @@ import json
 import pathlib
 import sys
 
-# Where a Node unit can live, and the whole of it. Six shared jobs -- vite,
-# esbuild, oxlint, vitest, tsc and image-docker -- reject any other workdir
-# with "workdir must be '.' or 'client'", so this is an enforced layout rather
-# than a convention this file is guessing at.
-UNIT_DIRS = (".", "client")
+# How deep to look for a Node unit, and what never holds one.
+#
+# This was UNIT_DIRS = (".", "client") -- a two-element allowlist, justified by
+# the six shared jobs rejecting any other workdir at runtime. workflows#252
+# relaxed that: a repo may keep its pnpm project anywhere and still call a
+# catalog job, because what the catalog standardises is the toolchain, not the
+# tree. So the allowlist here had to go with it, or a unit at a path the jobs
+# now accept would be invisible to the version check -- the same class of bug
+# as the NODE_APPS map both of these replaced.
+#
+# Depth 2 covers every shape in the fleet with room to spare (`.`, `client`,
+# and anything one level further in) without walking a whole tree to find
+# nothing. PRUNE is the important half: node_modules holds thousands of
+# package.json files, none of them units.
+MAX_DEPTH = 2
+PRUNE = {"node_modules", "vendor", "dist", "build", "coverage", "testdata"}
 
 
 def node_units(root, repo):
-    """Directories under `repo` holding a package.json, in UNIT_DIRS order.
+    """Directories under `repo` holding a package.json, nearest first.
 
     THIS REPLACES A HAND-MAINTAINED MAP, and the map's own comments are the
     argument for the replacement. It went stale twice. client-manager and
@@ -82,8 +93,32 @@ def node_units(root, repo):
     client/, and both sets of fleet standards apply to their own unit. Nothing
     here needs to classify the repo, and nothing should: that classification
     would be a second copy of what the directory tree already says.
+
+    Paths are returned relative to the repo, with "." for the root, and sorted
+    so output ordering does not depend on the filesystem.
     """
-    return [d for d in UNIT_DIRS if (root / repo / d / "package.json").is_file()]
+    base = root / repo
+    if not base.is_dir():
+        return []
+
+    found = []
+
+    def walk(d: pathlib.Path, depth: int) -> None:
+        if (d / "package.json").is_file():
+            rel = d.relative_to(base).as_posix()
+            found.append(rel if rel != "." else ".")
+            # A pnpm project inside a pnpm project is a workspace package, not
+            # a second unit -- its versions come from the root manifest. Stop.
+            return
+        if depth == MAX_DEPTH:
+            return
+        for child in sorted(d.iterdir()):
+            if child.is_dir() and not child.name.startswith(".") \
+                    and child.name not in PRUNE:
+                walk(child, depth + 1)
+
+    walk(base, 0)
+    return sorted(found)
 
 
 def load_expected(
@@ -204,13 +239,16 @@ def main() -> int:
     if args.repo:
         for r in args.repo:
             if not node_units(args.root, r):
-                print(f"{r}: no Node unit (no package.json in "
-                      f"{', '.join(d + '/' for d in UNIT_DIRS)}) — nothing to check")
+                print(f"{r}: no Node unit (no package.json within "
+                      f"{MAX_DEPTH} level(s)) — nothing to check")
 
     if not selected:
-        for r in names:
-            print(f"{r}: no Node unit (no package.json in {'/, '.join(UNIT_DIRS)}/)"
-                  f" — nothing to check")
+        # Not for NAMED repos: the loop above already printed a line for each,
+        # and printing it twice reads like two findings about one repo.
+        if not args.repo:
+            for r in names:
+                print(f"{r}: no Node unit (no package.json within {MAX_DEPTH} "
+                      f"level(s)) — nothing to check")
         print("\nPASS: no Node unit to check")
         return 0
 

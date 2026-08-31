@@ -1,0 +1,164 @@
+#!/usr/bin/env python3
+"""Every dependency in a package.json is an exact version. No ranges.
+
+CI_STANDARD "Version pinning — exact versions, no ranges". This is the
+package-manager half of SHA-pinning actions, and it exists for the same
+reason: a mutable pointer is not a pin.
+
+A caret states a CONSTRAINT; the lockfile records a RESOLUTION. Both are
+authoritative and they answer different questions, which is exactly why they
+drift. Measured before the rule landed, four repositories declared
+`autoprefixer: ^10.4.20` off the same registry and installed four different
+versions between them, one a full minor ahead. Nothing was red: each repo was
+internally consistent and reproducible, and a lockfile cannot see across
+repositories.
+
+WHY THE LOCKFILE IS NOT THE ANSWER. It pins within a repo, and CI runs
+--frozen-lockfile, so today's build is reproducible. What it cannot do is hold
+two repos to one version, or stop the pin moving the next time somebody
+installs something unrelated. check-fleet-versions compares MANIFESTS for that
+reason, and a range gives it nothing to assert -- one range is compatible with
+many installed versions.
+
+Run against local clones:  tools/check-exact-pins --root /workspace
+Run against one repo:      tools/check-exact-pins --root DIR --repo NAME
+
+Naming a repo with no Node unit is a pass, so every caller can wire this up
+unconditionally.
+"""
+
+import argparse
+import json
+import pathlib
+import sys
+
+# Keys that decide what gets installed. engines and peerDependencies are
+# deliberately absent, and the reasons are not symmetrical:
+#
+#   engines is a compatibility FLOOR, not an install target. Nothing resolves
+#   from it. An exact `node` would reject the next patch release for no gain,
+#   and the version actually used is pinned by .node-version.
+#
+#   peerDependencies SHOULD be a range. Pinning one forces a single version on
+#   every consumer, which is a defect rather than rigour. The fleet has none
+#   today -- all nine units are applications -- but a library repository would
+#   depend on this exclusion.
+PINNED_SECTIONS = ("dependencies", "devDependencies", "optionalDependencies")
+
+# A range is anything that is not one exact version. `*` and `x` are ranges
+# wearing a different hat; a space or `||` means a compound range.
+RANGE_LEAD = "^~><=*"
+
+
+def is_range(spec: str) -> bool:
+    if not isinstance(spec, str) or not spec:
+        return False
+    # Protocols name a source, not a version, and are out of scope here.
+    if spec.startswith(("file:", "link:", "workspace:", "git+", "github:",
+                        "http:", "https:")):
+        return False
+    if spec.startswith("npm:"):          # npm:tsx@4.22.4 -- check the version half
+        _, _, rest = spec.partition("@") if spec.count("@") == 1 else \
+            (None, None, spec[spec.rindex("@") + 1:])
+        return is_range(rest)
+    return spec[0] in RANGE_LEAD or " " in spec or "||" in spec or spec in ("x", "X")
+
+
+def walk_overrides(block, path, out):
+    """overrides nest: {"pkg": {"dep": "^1"}} and {"a>b": "^1"} both occur."""
+    for key, value in block.items():
+        if isinstance(value, dict):
+            walk_overrides(value, f"{path}.{key}", out)
+        elif is_range(value):
+            out.append((f"{path}[{key}]", value))
+
+
+def check_unit(path: pathlib.Path, label: str) -> int:
+    manifest = json.loads(path.read_text())
+    findings: list[tuple[str, str]] = []
+
+    for section in PINNED_SECTIONS:
+        for name, spec in (manifest.get(section) or {}).items():
+            if is_range(spec):
+                findings.append((f"{section}[{name}]", spec))
+
+    # A floating override is the same defect one level down: it rewrites a
+    # transitive resolution and then lets it move.
+    if manifest.get("overrides"):
+        walk_overrides(manifest["overrides"], "overrides", findings)
+    if (manifest.get("pnpm") or {}).get("overrides"):
+        walk_overrides(manifest["pnpm"]["overrides"], "pnpm.overrides", findings)
+
+    for where, spec in sorted(findings):
+        print(f"{label}: {where} is {spec} — a range, not a pin")
+    return len(findings)
+
+
+def node_units(root: pathlib.Path, repo: str) -> list[str]:
+    """Same discovery contract as check-fleet-versions: read the tree."""
+    base = root / repo
+    if not base.is_dir():
+        return []
+    found: list[str] = []
+
+    def walk(d: pathlib.Path, depth: int) -> None:
+        if (d / "package.json").is_file():
+            rel = d.relative_to(base).as_posix()
+            found.append(rel if rel != "." else ".")
+            return
+        if depth == 2:
+            return
+        for child in sorted(d.iterdir()):
+            if child.is_dir() and not child.name.startswith(".") and child.name not in (
+                    "node_modules", "vendor", "dist", "build", "coverage", "testdata"):
+                walk(child, depth + 1)
+
+    walk(base, 0)
+    return sorted(found)
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--root", default="/workspace", type=pathlib.Path)
+    ap.add_argument("--repo", action="append", help="limit to specific repo(s)")
+    args = ap.parse_args()
+
+    names = args.repo or sorted(
+        p.name for p in args.root.iterdir()
+        if p.is_dir() and not p.name.startswith("."))
+
+    units = [(r, d) for r in names for d in node_units(args.root, r)]
+
+    if args.repo:
+        for r in args.repo:
+            if not node_units(args.root, r):
+                print(f"{r}: no Node unit — nothing to check")
+
+    if not units:
+        print("\nPASS: no Node unit to check")
+        return 0
+
+    ranged = 0
+    for repo, subdir in units:
+        label = repo if subdir == "." else f"{repo}/{subdir}"
+        n = check_unit(args.root / repo / subdir / "package.json", label)
+        ranged += n
+        if not n:
+            print(f"{label}: all dependencies pinned exactly")
+
+    if ranged:
+        print(
+            f"\nFAIL: {ranged} range(s) in {len(units)} Node unit(s). A range "
+            "states what is permitted; the lockfile decides what installs, and "
+            "the two drift apart silently. Pin each to the version the lockfile "
+            "already resolved — that changes nothing about what installs. See "
+            "CI_STANDARD 'Version pinning — exact versions, no ranges'."
+        )
+        return 1
+
+    print(f"\nPASS: {len(units)} Node unit(s), every dependency pinned exactly")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

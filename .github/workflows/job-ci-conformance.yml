@@ -98,8 +98,14 @@ on:
           read — a catalog job, a checker, fleet-versions.json — needs this
           default moved to a commit that contains that change. A wave cannot
           name its own commit, so when the change is to checker INPUT rather
-          than checker CODE, the bump is a follow-up commit and has to be
-          planned as one rather than discovered by a red caller.
+          than checker CODE, the bump is a follow-up commit.
+
+          It is now ENFORCED rather than merely written here.
+          check-standard-ref carries a CHECKER_INPUT_FILES list and demands the
+          bump for a change to fleet-versions.json exactly as it does for a
+          change to tools/. Until that landed this paragraph was the only thing
+          standing between a data change and a silently inert release, which is
+          to say nothing was.
         type: string
         required: false
         # The commit that set typescript to 7.0.2 in fleet-versions.json
@@ -108,22 +114,35 @@ on:
         # precisely why the pin could land ahead of the fleet without turning
         # a single repo red.
         #
-        # THIS BUMP IS THE ONE NOTHING CAN FORCE. check-standard-ref demands a
-        # move when a CONSUMED file changes -- tools/, job-*.yml, setup/ --
-        # and fleet-versions.json is none of those. It is checker INPUT: read
-        # by the checkers out of this clone, never referenced by a caller. So
-        # on #247 the checker printed "nothing a caller consumes changed" and
-        # passed, exactly as designed, while the change it was passing needed
-        # this follow-up to have any effect at all.
+        # v2.2.8, the base of the change that taught check-standard-ref to
+        # demand this bump for checker INPUT and not only for checker code.
         #
-        # That is the shape of the wave-A failure stated forward instead of
-        # backward. There, fleet-versions.json lost four packages and this
-        # default stayed behind, so repos that had already dropped them were
-        # failed for not declaring what the fleet had retired. Same file, same
-        # silent checker, opposite direction. A data change is not exempt from
-        # the bump; it is exempt from being REMINDED about the bump, which is
-        # worse, and is why it gets planned rather than discovered.
-        default: 107c4043457aa811ecd9ebca9fe85c586c0f8652
+        # This bump used to be the one nothing could force, and that is no
+        # longer true -- check-standard-ref now lists fleet-versions.json in
+        # CHECKER_INPUT_FILES and fails a pull request that changes it without
+        # moving this default. That rule first applies to the commit that
+        # introduced it: this very line moved because the checker demanded it.
+        # The history is kept because it explains the rule, and because the
+        # same shape will recur the next time a checker starts reading
+        # something new out of this clone.
+        #
+        # What it used to do: demand a move only for a CONSUMED file --
+        # tools/, job-*.yml, setup/ -- and fleet-versions.json is none of
+        # those. It is checker INPUT: read by the checkers out of this clone,
+        # never referenced by a caller. So on #247 the checker printed
+        # "nothing a caller consumes changed" and passed, exactly as designed,
+        # while the change it was passing needed this follow-up to have any
+        # effect at all.
+        #
+        # That was the wave-A failure stated forward instead of backward.
+        # There, fleet-versions.json lost four packages and this default
+        # stayed behind, so repos that had already dropped them were failed
+        # for not declaring what the fleet had retired. Same file, same silent
+        # checker, opposite direction: a false red then, a false green in #247.
+        # A data change was never exempt from the bump; it was exempt from
+        # being REMINDED about it, which is worse, because the reminder is the
+        # whole mechanism.
+        default: e6de63647d572ecbab42206b2ed0ce54887f0781
 
 jobs:
   ci-conformance:

@@ -20,11 +20,35 @@ gate prevents is the lag being five commits, or twenty.
 
 A pull request touching neither is not asked to bump anything.
 
-Two surfaces, not one. A caller consumes `tools/`, `.github/workflows/job-*.yml`
-AND `setup/` — the composite actions a bespoke caller-side job references by
-SHA. Only the first two are checkers, so only they can leave standard_ref
-stale; but all three reach a caller solely through a tag, which is why this
-file also reports the unreleased backlog below.
+Three surfaces, not two, and the third was missing until it cost a wave. A
+caller consumes `tools/`, `.github/workflows/job-*.yml` AND `setup/` — the
+composite actions a bespoke caller-side job references by SHA. All three reach
+a caller solely through a tag, which is why this file also reports the
+unreleased backlog below.
+
+The third surface is checker INPUT: data the checkers read out of the SAME
+pinned clone they are themselves taken from, listed in CHECKER_INPUT_FILES.
+Today that is fleet-versions.json alone, and check-fleet-versions says so in
+its own words — "read from the checker's OWN repo root, so in CI both it and
+this file come from the same .aurum-standard checkout pinned at standard_ref."
+
+It is selected by standard_ref exactly as tools/ is, so it goes stale exactly
+as tools/ does. What it does NOT look like is code, which is why it sat
+outside both regexes while every other pinned-clone file sat inside them.
+
+That omission has now failed in both directions on the same file:
+
+  - wave A REMOVED four packages from fleet-versions.json and left this
+    default behind, so repos that had already dropped them were failed for not
+    declaring what the fleet had retired;
+  - wave 6 MODIFIED the typescript pin to 7.0.2 and this checker printed
+    "nothing a caller consumes changed" and passed, correctly by its own rule,
+    while the change it was passing asserted nothing against anybody until a
+    follow-up moved the pin onto it.
+
+The first was a false red, the second a false green. A data change was never
+exempt from the bump — it was exempt from being REMINDED about the bump, which
+is worse, because the reminder is the entire mechanism. It is no longer exempt.
 
 THIS CHECKER USED TO DEMAND A .version BUMP in the same pull request, and no
 longer does. The version file now moves in a pull request of its own that
@@ -53,12 +77,59 @@ import re
 import subprocess
 import sys
 
-# Changes a caller consumes, and so cannot reach one without a tag.
-CONSUMED = re.compile(r"^(tools/|\.github/workflows/job-[\w.-]+\.yml$|setup/)")
-# Of those, the ones standard_ref actually selects.
-CHECKERS = re.compile(r"^(tools/|\.github/workflows/job-[\w.-]+\.yml$)")
+# Data a checker reads out of the pinned clone rather than out of the repo
+# under test or the unpinned catalog. Membership is decided by ONE question:
+# does the checker resolve the path relative to its own __file__ with no
+# AURUM_CATALOG_ROOT escape? fleet-versions.json is the only file in this repo
+# that does, verified by reading every checker rather than by assumption --
+# check-caller-permissions, check-eslint-config and check-ci-conformance all
+# take the override, so in CI they read the CURRENT catalog and are immune to
+# this staleness by construction.
+#
+# A tuple and not a regex, because it is a LIST OF REAL FILES and gets checked
+# against the filesystem below. A regex naming a file that has been renamed
+# matches nothing, fails nothing, and reopens this gate in silence.
+CHECKER_INPUT_FILES = ("fleet-versions.json",)
+
+_SHARED = ["tools/", r"\.github/workflows/job-[\w.-]+\.yml$"]
+_INPUTS = [re.escape(f) + "$" for f in CHECKER_INPUT_FILES]
+
+# Changes a caller consumes, and so cannot reach one without a tag. Checker
+# input belongs here too: a caller only sees a new fleet-versions.json by
+# re-pinning to a tag that carries the standard_ref bump pointing at it.
+CONSUMED = re.compile("^(" + "|".join(_SHARED + ["setup/"] + _INPUTS) + ")")
+# Of those, the ones standard_ref actually selects -- checker code AND the
+# data that code reads beside it. setup/ is absent because a caller references
+# a composite action by its own SHA, not through standard_ref.
+CHECKERS = re.compile("^(" + "|".join(_SHARED + _INPUTS) + ")")
 DEFAULT_RE = re.compile(
     r"standard_ref:.*?default:\s*([0-9a-f]{40})", re.DOTALL)
+
+
+def verify_checker_inputs(root) -> bool:
+    """Every file in CHECKER_INPUT_FILES still exists at the repo root.
+
+    This guards the failure mode the list itself introduces. A rule written as
+    a filename is only a rule while the file is called that; rename or delete
+    it and the pattern stops matching, this gate stops asking for the bump, and
+    nothing anywhere goes red. That is precisely the silence this whole surface
+    was added to end, so it would be a poor joke to reintroduce it one layer up.
+
+    Loud and fatal rather than a warning: a checker that cannot verify its own
+    inputs has nothing useful to say about anyone else's.
+    """
+    missing = [f for f in CHECKER_INPUT_FILES if not (root / f).exists()]
+    if not missing:
+        return True
+    print("\nFAIL: CHECKER_INPUT_FILES names a file that is not in this repo:",
+          file=sys.stderr)
+    for f in missing:
+        print(f"  {f}", file=sys.stderr)
+    print("Either the file moved and this list must move with it, or it is "
+          "gone and the entry should be deleted. Until one of those happens "
+          "this gate silently stops requiring a standard_ref bump for it.",
+          file=sys.stderr)
+    return False
 
 
 def report_backlog(root, base) -> None:
@@ -112,11 +183,16 @@ def main() -> int:
     ap.add_argument("--repo-root", default=".", type=pathlib.Path)
     args = ap.parse_args()
 
+    root = args.repo_root
+
+    # Before the early return for a non-pull-request run: a broken input list
+    # is wrong on every invocation, not only on the ones that compare a diff.
+    if not verify_checker_inputs(root):
+        return 2
+
     if not args.base:
         print("not a pull request — nothing to compare against")
         return 0
-
-    root = args.repo_root
     wf = root / ".github/workflows/job-ci-conformance.yml"
     m = DEFAULT_RE.search(wf.read_text())
     if not m:
@@ -159,6 +235,18 @@ def main() -> int:
           f"A caller pinning this change would run checkers from {declared[:7]} "
           f"— without the change.\n"
           f"Set the default in job-ci-conformance.yml to {args.base}.")
+
+    # Spelled out when DATA is what triggered this, because the demand is
+    # otherwise surprising: nothing executable changed, and the natural read is
+    # that the gate has misfired. It has not. The checkers take this file from
+    # the same pinned clone they come from, so an unbumped pin means every
+    # caller keeps asserting the old values.
+    if all(f in CHECKER_INPUT_FILES for f in checkers):
+        print(f"\nNothing executable changed here — {', '.join(checkers)} is "
+              f"checker INPUT. It is read out of the same pinned clone the "
+              f"checkers are, so until this default moves onto it every caller "
+              f"goes on asserting the previous values and the change asserts "
+              f"nothing against anybody.")
     return 1
 
 

@@ -41,18 +41,57 @@ those and rebuilding them.
 | Interaction | Protocol | Why, and what it costs |
 |---|---|---|
 | Request/response — any public, partner or browser-facing surface | **HTTP/REST + JSON** | The default. Universally consumable, `curl`-debuggable, no codegen for the consumer, and every fleet contract already applies. |
-| Request/response between internal services, high volume or strongly typed | **gRPC** | Binary protobuf, generated clients, real streaming. Costs: not browser-native (needs a proxy and grpc-web), opaque on the wire to anyone debugging, and a schema pipeline to own. Admitted **service-to-service only**. |
-| Server pushes to client, one direction | **SSE** | Plain HTTP: it inherits authentication, proxies, the error envelope, observability and automatic reconnection for free. |
+| Request/response between internal services, high volume or strongly typed | **gRPC** | Binary protobuf, generated clients, real streaming. **Requires HTTP/2 end to end.** Costs: not browser-native (needs a proxy and grpc-web), opaque on the wire to anyone debugging, and a schema pipeline to own. Admitted **service-to-service only**. |
+| Server pushes to client, one direction | **SSE** | Plain HTTP: it inherits authentication, proxies, the error envelope, observability and automatic reconnection for free. **Requires HTTP/2 to survive contact with a real browser** — see below. |
 | Both ends push, low latency, genuinely conversational | **WebSocket** | Full duplex. Costs are large and listed below. |
 | Fire-and-forget, durable, retried | **Not a synchronous protocol at all** — the [async messaging standard](platform.md#the-capability-roster)'s envelope. |
 
-**HTTP/2 is not on that list, because it is not a choice of interface.** It
-is a transport under HTTP, negotiated between a client and the edge, and
-turning it on changes no application code. A service does not "use HTTP/2
-instead of REST"; it serves REST over whatever version the edge negotiated.
-Treating it as an architectural option is a common and expensive confusion —
-expensive because it usually arrives attached to a proposal to adopt gRPC
-"since we are on HTTP/2 anyway."
+**HTTP/2 is not on that list because it is not an interface — but it is a
+prerequisite for two things on it, and that is the part to get right.** You
+do not design "an HTTP/2 API" the way you design a REST or a gRPC one: REST
+over HTTP/2 is the same REST, and enabling the version changes no
+application code. So one common move stays wrong — adopting gRPC "since we
+are on HTTP/2 anyway" is a non-sequitur, because the transport does not
+argue for the interface.
+
+What that framing gets wrong, if left there, is that **the table above is
+not all available over HTTP/1.1.** An HTTP/1.1 connection carries one
+request and then one response; there is no working multiplexing (pipelining
+is disabled everywhere it was implemented) and no full duplex. HTTP/2 adds
+concurrent streams over one connection, server-initiated streams, and
+bidirectional flow — capabilities, not tuning. Concretely:
+
+- **gRPC requires HTTP/2.** Not as an optimisation: its streaming modes and
+  its status trailers have nowhere to live in HTTP/1.1's exchange model.
+  Choosing gRPC is choosing HTTP/2 whether anyone writes that down.
+- **SSE requires HTTP/2 to be usable at all in a browser**, and this is the
+  fact that makes the recommendation below practical rather than nostalgic.
+  Over HTTP/1.1 each open event stream holds one of the browser's **six**
+  connections *per domain, counted across every tab* — so a user with a few
+  tabs open has starved the origin and the next ordinary `fetch` blocks
+  behind an event stream. Over HTTP/2 the streams multiplex and the
+  negotiated ceiling defaults to **100**;
+  [MDN documents both numbers](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events).
+  An SSE surface on HTTP/1.1 passes every local test and fails as soon as
+  someone opens tabs.
+- **Full duplex over plain HTTP** — a client streaming a request body while
+  reading the response body — is not expressible in HTTP/1.1 at all. An
+  interaction that genuinely needs it needs HTTP/2 or a WebSocket, and that
+  requirement belongs in the reason a repository writes down.
+
+The operational half of this is what actually bites: **HTTP/2 has to reach
+the service, not just the edge.** A load balancer that terminates HTTP/2 and
+forwards HTTP/1.1 on the internal hop breaks gRPC outright and silently
+reimposes the six-connection cap on SSE — while every local test passes,
+because the developer's browser spoke to the process directly. A repository
+serving gRPC or SSE states in its **Conventions** where HTTP/2 is terminated
+and confirms the backend hop carries it; inside a cluster the usual answer
+is h2c.
+
+HTTP/3 changes the transport again — QUIC, and no TCP head-of-line blocking
+under a multiplexed connection — with the same HTTP semantics above it. It
+is an edge capability to enable where the edge supports it, and unlike
+HTTP/2 it is not a prerequisite for anything in the table.
 
 **SSE before WebSocket, unless the client genuinely needs to push.** This is
 the choice most often made wrongly, and in one direction: a WebSocket opened
@@ -270,3 +309,11 @@ contract tests, and the review question is whether they exist.
 - **`Idempotency-Key` as a header, not a body field** (2026-08-31): it is
   metadata about the request rather than part of it, and a header survives
   a body the server chooses not to parse.
+- **HTTP/2 is stated as a requirement, not left to the edge** (2026-08-31):
+  the first draft of HA1 called HTTP/2 purely a transport detail that
+  decides nothing. That is half right and the wrong half to lead with. It
+  does not decide the interface, but it is a hard prerequisite for gRPC and
+  the difference between SSE working and SSE exhausting a browser's
+  six-connection budget — so the rule names which interactions require it,
+  and requires the backend hop to carry it rather than assuming the edge is
+  the whole story.

@@ -289,7 +289,7 @@ conventions for the default answer.
 
 | # | Rule | Enforced by | Status |
 |---|---|---|---|
-| HA1 | HTTP is the default; gRPC is service-to-service only; SSE before WebSocket unless the client must push; HTTP/2 is transport, not an interface choice; leaving HTTP never leaves the standards | — resists honestly: whether a reason is good is judgment. The reviewable act is that a repository choosing a non-default protocol states why in its **Conventions** | **review only** |
+| HA1 | HTTP is the default; gRPC is service-to-service only; SSE before WebSocket unless the client must push; HTTP/2 is a prerequisite for gRPC and for usable SSE and must reach the service, not just the edge; leaving HTTP never leaves the standards | — resists honestly: whether a reason is good is judgment. Two reviewable acts: a repository choosing a non-default protocol states why in its **Conventions**, and one serving gRPC or SSE states there where HTTP/2 terminates and that the backend hop carries it | **review only** |
 | HA2 | A committed OpenAPI 3.1 document describes the API and matches the running service | static: the document exists and lints (proposed). That it still *matches* resists a checker — see below | **review only** |
 | HA3 | Every error is profiled RFC 9457 problem+json, with `type` stable, `detail` specific, `request_id` present | `job-image-starts` requesting an unroutable path and validating the body against the schema (proposed) | **review only** |
 | HA4 | Collections paginate by opaque cursor; offset only for genuinely static collections, declared | corpus behaviour case under a live harness (proposed) | **review only** |

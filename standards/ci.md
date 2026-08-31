@@ -1266,6 +1266,60 @@ rewrote existing tags to malicious code and SHA-pinned consumers were untouched.
   *new* release still needs review before you bump into it.
 - Optional backstop: org-level allowlist of permitted actions.
 
+## Version pinning — exact versions, no ranges
+
+**A range in a manifest is forbidden.** No `^`, no `~`, no `>=`, no `*`, no
+`||`. Every dependency is declared as the exact version it resolves to. This
+is the package-manager half of SHA-pinning actions above, and it is settled
+for the same reason: a mutable pointer is not a pin.
+
+**A caret is a constraint, not a version.** `package.json` says what is
+PERMITTED; the lockfile records what is INSTALLED. Both are authoritative and
+they answer different questions — the mistake is reading the first as if it
+answered the second. They drift apart the moment anyone runs an install, and
+nothing announces it.
+
+Measured across the fleet before this rule landed, four repositories declared
+`autoprefixer: ^10.4.20` — same range, same registry — and installed **four
+different versions between them**, one a full minor ahead. Nothing was red.
+Each repository was internally consistent and perfectly reproducible; the
+disagreement was BETWEEN repositories, and a lockfile cannot see that because
+it only knows its own tree. `concurrently` was declared `^9.2.1` in six repos
+while all six ran `9.2.4`.
+
+**The lockfile is not a sufficient answer.** It pins within a repository, and
+CI runs `--frozen-lockfile` so a build is reproducible today. What it cannot
+do is hold two repositories to the same version, or stop the pin from moving
+the next time somebody installs something unrelated. `tools/check-fleet-versions`
+compares MANIFESTS for exactly that reason — a fleet-wide claim has to live
+somewhere a fleet-wide checker can read — and a range gives it nothing to
+assert, since one range is compatible with many installed versions.
+
+**What this buys.** An upgrade becomes an event: a Dependabot pull request
+with a diff, a CI run and a reviewer. What it replaces is an upgrade as a side
+effect — a version moving because someone added an unrelated package on a
+Tuesday, recorded nowhere, attributable to nobody.
+
+**Scope: keys that decide what gets installed.**
+
+| key | pinned | why |
+|---|---|---|
+| `dependencies` | **yes** | resolves to an install |
+| `devDependencies` | **yes** | resolves to an install |
+| `optionalDependencies` | **yes** | resolves to an install |
+| `overrides`, `pnpm.overrides` | **yes** | rewrites a transitive resolution; a floating override is the same defect one level down |
+| `engines` | **no** | a compatibility floor, not an install target. Nothing resolves from it, and an exact `node` would reject the next patch for no gain — the real version is pinned by `.node-version` |
+| `peerDependencies` | **no** | a range is CORRECT here: a pinned peer forces one version on every consumer. The fleet has none today, all nine units being applications; a library repository would rely on this row |
+
+**Adopting it is a no-op by construction.** Pin to the version the lockfile has
+already resolved and nothing about the install changes — the proof is a lockfile
+diff in which `specifier:` lines move and not one resolved `version:` line does.
+A pin taken from the manifest's own floor instead would be a silent DOWNGRADE:
+`^9.2.1` → `9.2.1` in six repositories that were all running `9.2.4`.
+
+`tools/check-exact-pins` enforces this, per repository, from
+`job-ci-conformance`.
+
 ## Dependency updates — every manifest gets a watcher
 
 Action pinning above covers one ecosystem. This is the rule for the rest, settled

@@ -249,6 +249,25 @@ jobs:
         run: .aurum-standard/tools/check-fleet-versions --root .ci-root --repo "$REPO"
         continue-on-error: ${{ inputs.warn_only }}
 
+      # The sibling of the check above, and the division is worth stating.
+      # check-fleet-versions asks WHICH VERSION, for the packages the fleet has
+      # converged on. This asks a question about every other dependency too:
+      # is it a version at all, or merely a range that permits one?
+      #
+      # A caret states a constraint; the lockfile records a resolution. Both
+      # are authoritative and they answer different questions, which is exactly
+      # how they drift. Four repos once declared autoprefixer ^10.4.20 off the
+      # same registry and installed four different versions between them, one a
+      # full minor ahead, with nothing red anywhere -- each repo was internally
+      # consistent, and a lockfile cannot see across repositories.
+      - name: Every dependency is pinned exactly
+        if: ${{ !cancelled() }}
+        env:
+          REPO: ${{ steps.repo.outputs.name }}
+          AURUM_CATALOG_ROOT: .aurum-catalog
+        run: .aurum-standard/tools/check-exact-pins --root .ci-root --repo "$REPO"
+        continue-on-error: ${{ inputs.warn_only }}
+
       # The shared eslint config says, in its own header, that a byte-identity
       # checker fails the build if one repo edits it. No such checker existed;
       # six repos matched by luck and the sentence was decoration. This is it.

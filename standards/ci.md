@@ -556,9 +556,30 @@ the fleet had already retired.
 So the rule is: **a wave that changes any file the checkers read — a catalog
 job, a checker, `fleet-versions.json` — must be followed by a commit moving the
 `standard_ref` default onto it.** Because the wave cannot name its own commit,
-that bump is a follow-up, and it has to be planned as one. Discovering it from
-a red caller means the whole fleet is already pinned to a version whose
-checkers disagree with its own data.
+that bump is a follow-up, and it has to be planned as one.
+
+**`check-standard-ref` enforces this for data, not only for code.** It carries
+a `CHECKER_INPUT_FILES` list — `fleet-versions.json` today — and treats a
+change to one exactly as it treats a change to `tools/`. Membership is decided
+by a single question: *does a checker resolve that path relative to its own
+`__file__`, with no `AURUM_CATALOG_ROOT` escape?* If yes, the file arrives from
+the pinned clone and goes stale with it. `check-caller-permissions`,
+`check-eslint-config` and `check-ci-conformance` all take the override, so they
+read the current catalog and are immune to this by construction.
+
+That enforcement was added after the rule had failed in **both** directions on
+the same file. Wave A removed four packages and the pin stayed behind, so repos
+that had already dropped them were failed for not declaring what the fleet had
+retired — a false red. Wave 6 changed the typescript pin to 7.0.2 and the
+checker reported *"nothing a caller consumes changed"* and passed, while the
+change asserted nothing against anybody until a follow-up moved the pin onto
+it — a false green. A data change was never exempt from the bump; it was
+exempt from being **reminded** about it, which is worse, because the reminder
+is the whole mechanism.
+
+The list is checked against the filesystem on every run. A rule written as a
+filename is only a rule while the file is called that, and a regex naming a
+renamed file matches nothing and fails nothing.
 
 ## Publishing
 
@@ -2076,7 +2097,9 @@ Callers reach it by SHA; SHAs move through tags; tags come from `.version`.
 `check-standard-ref` watched `tools/` and `job-*.yml` and not `setup/`, which
 meant the composite could be fixed in a way that could never reach the caller
 that needed the fix. It watches `setup/` now. `standard_ref` stays a narrower
-question — it selects *checkers*, and a composite is not one.
+question — it selects what the pinned clone supplies, which is *checkers and
+the data they read beside them*. A composite is neither: a caller references it
+by its own SHA, so it is consumed without ever passing through `standard_ref`.
 
 ### Job ids name the deployable unit
 

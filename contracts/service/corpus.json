@@ -1,0 +1,534 @@
+{
+  "contract": "service",
+  "schemaVersion": 1,
+  "description": "Conformance corpus for standards/service.md. 'validity': the value must validate (or fail) against the named $def in health.schema.json, or against logline.schema.json where def is 'logLine'. 'lifecycle': black-box cases a running service must satisfy — the harness drives the described stimulus and asserts 'expect'. An implementation passes the whole file or names the case it fails.",
+  "validity": [
+    {
+      "id": "liveness-ok",
+      "def": "livenessResponse",
+      "value": {
+        "status": "ok",
+        "provenance": {
+          "service": "billing",
+          "version": "2.4.1",
+          "commit": "9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c",
+          "built_at": "2026-08-31T14:07:02.417Z"
+        }
+      },
+      "valid": true
+    },
+    {
+      "id": "liveness-rejects-short-commit",
+      "def": "livenessResponse",
+      "value": {
+        "status": "ok",
+        "provenance": {
+          "service": "billing",
+          "version": "2.4.1",
+          "commit": "9f8e7d6",
+          "built_at": "2026-08-31T14:07:02.417Z"
+        }
+      },
+      "valid": false,
+      "note": "the full 40-character SHA, never abbreviated (SC5)"
+    },
+    {
+      "id": "liveness-rejects-missing-provenance",
+      "def": "livenessResponse",
+      "value": {
+        "status": "ok"
+      },
+      "valid": false,
+      "note": "the running service says which build it is (SC5)"
+    },
+    {
+      "id": "liveness-rejects-fail-status",
+      "def": "livenessResponse",
+      "value": {
+        "status": "fail",
+        "provenance": {
+          "service": "billing",
+          "version": "2.4.1",
+          "commit": "9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c",
+          "built_at": "2026-08-31T14:07:02.417Z"
+        }
+      },
+      "valid": false,
+      "note": "liveness answers 'is the process alive'; a process answering at all is alive (SC1)"
+    },
+    {
+      "id": "readiness-ok",
+      "def": "readinessResponse",
+      "value": {
+        "status": "ok",
+        "checks": [
+          {
+            "name": "mysql",
+            "status": "ok",
+            "required": true,
+            "latency_ms": 3.2
+          },
+          {
+            "name": "keycloak",
+            "status": "ok",
+            "required": true,
+            "latency_ms": 41
+          }
+        ]
+      },
+      "valid": true
+    },
+    {
+      "id": "readiness-fail-required-down",
+      "def": "readinessResponse",
+      "value": {
+        "status": "fail",
+        "checks": [
+          {
+            "name": "mysql",
+            "status": "fail",
+            "required": true,
+            "latency_ms": 5000,
+            "detail": "connect timeout"
+          }
+        ]
+      },
+      "valid": true,
+      "note": "a required dependency down is 503 — but the service is up and saying so, not exiting (SC6)"
+    },
+    {
+      "id": "readiness-degraded-optional-down",
+      "def": "readinessResponse",
+      "value": {
+        "status": "degraded",
+        "checks": [
+          {
+            "name": "mysql",
+            "status": "ok",
+            "required": true,
+            "latency_ms": 3.2
+          },
+          {
+            "name": "search-index",
+            "status": "fail",
+            "required": false,
+            "latency_ms": 2000,
+            "detail": "connect refused"
+          }
+        ]
+      },
+      "valid": true,
+      "note": "an optional dependency down is 200 + degraded: the service was built to tolerate this, and 503 here would be a self-inflicted outage (SC1, SC6)"
+    },
+    {
+      "id": "readiness-misconfigured",
+      "def": "readinessResponse",
+      "value": {
+        "status": "fail",
+        "checks": [
+          {
+            "name": "configuration",
+            "status": "fail",
+            "required": true,
+            "latency_ms": 0,
+            "detail": "missing: DATABASE_URL, OIDC_ISSUER"
+          }
+        ]
+      },
+      "valid": true,
+      "note": "misconfiguration blocks serving, not observability: endpoints up, every broken variable named, no exit and no crashloop (SC3, SC6)"
+    },
+    {
+      "id": "check-rejects-missing-required-flag",
+      "def": "readinessResponse",
+      "value": {
+        "status": "ok",
+        "checks": [
+          {
+            "name": "mysql",
+            "status": "ok",
+            "latency_ms": 3.2
+          }
+        ]
+      },
+      "valid": false,
+      "note": "every check declares whether the service can serve without it; defaulting that decision is how an optional dependency becomes an outage (SC1)"
+    },
+    {
+      "id": "check-rejects-degraded-check-status",
+      "def": "readinessResponse",
+      "value": {
+        "status": "degraded",
+        "checks": [
+          {
+            "name": "search-index",
+            "status": "degraded",
+            "required": false,
+            "latency_ms": 12
+          }
+        ]
+      },
+      "valid": false,
+      "note": "one probe worked or did not; degradation is the service's property, derived from which checks failed"
+    },
+    {
+      "id": "readiness-rejects-empty-checks",
+      "def": "readinessResponse",
+      "value": {
+        "status": "ok",
+        "checks": []
+      },
+      "valid": false,
+      "note": "reporting ok while checking nothing converts an unknown into a wrong answer (SC1)"
+    },
+    {
+      "id": "readiness-rejects-missing-latency",
+      "def": "readinessResponse",
+      "value": {
+        "status": "ok",
+        "checks": [
+          {
+            "name": "mysql",
+            "status": "ok",
+            "required": true
+          }
+        ]
+      },
+      "valid": false,
+      "note": "a check that passes slowly is the earliest warning of one that will fail (SC1)"
+    },
+    {
+      "id": "logline-minimal-ok",
+      "def": "logLine",
+      "value": {
+        "ts": "2026-08-31T14:07:02.417Z",
+        "level": "info",
+        "msg": "listening",
+        "service": "billing"
+      },
+      "valid": true,
+      "note": "outside request context, the context block is absent and that is correct (OC4)"
+    },
+    {
+      "id": "logline-with-context-ok",
+      "def": "logLine",
+      "value": {
+        "ts": "2026-08-31T14:07:02.417Z",
+        "level": "error",
+        "msg": "payment failed",
+        "service": "billing",
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        "request_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "tenant_id": "ten_8fK2mQ7xW3pLzR",
+        "error": {
+          "type": "GatewayTimeout",
+          "message": "upstream did not respond"
+        }
+      },
+      "valid": true
+    },
+    {
+      "id": "logline-rejects-partial-context",
+      "def": "logLine",
+      "value": {
+        "ts": "2026-08-31T14:07:02.417Z",
+        "level": "error",
+        "msg": "payment failed",
+        "service": "billing",
+        "tenant_id": "ten_8fK2mQ7xW3pLzR",
+        "error": {
+          "type": "GatewayTimeout",
+          "message": "upstream did not respond"
+        }
+      },
+      "valid": false,
+      "note": "a line carrying any request-scoped id carries the floor pair; 'failed for this tenant, in no identifiable request' is not a lead (OC4)"
+    },
+    {
+      "id": "logline-rejects-unix-ts",
+      "def": "logLine",
+      "value": {
+        "ts": 1788185222,
+        "level": "info",
+        "msg": "listening",
+        "service": "billing"
+      },
+      "valid": false,
+      "note": "the timestamp is the identifiers contract's (IP4)"
+    },
+    {
+      "id": "logline-rejects-unknown-level",
+      "def": "logLine",
+      "value": {
+        "ts": "2026-08-31T14:07:02.417Z",
+        "level": "trace",
+        "msg": "x",
+        "service": "billing"
+      },
+      "valid": false,
+      "note": "five levels (SC2)"
+    },
+    {
+      "id": "logline-rejects-missing-service",
+      "def": "logLine",
+      "value": {
+        "ts": "2026-08-31T14:07:02.417Z",
+        "level": "info",
+        "msg": "listening"
+      },
+      "valid": false
+    },
+    {
+      "id": "logline-error-requires-reason",
+      "def": "logLine",
+      "value": {
+        "ts": "2026-08-31T14:07:02.417Z",
+        "level": "error",
+        "msg": "mysql connect timeout",
+        "service": "billing"
+      },
+      "valid": false,
+      "note": "an error line without an error object states the fact of failure and not its reason (SC2)"
+    },
+    {
+      "id": "logline-error-with-cause-ok",
+      "def": "logLine",
+      "value": {
+        "ts": "2026-08-31T14:07:02.417Z",
+        "level": "error",
+        "msg": "mysql connect timeout",
+        "service": "billing",
+        "host": "db-primary:3306",
+        "timeout_ms": 5000,
+        "error": {
+          "type": "ETIMEDOUT",
+          "message": "connect ETIMEDOUT 10.0.4.12:3306",
+          "cause": "no route to host"
+        }
+      },
+      "valid": true,
+      "note": "what was attempted, on what, and why — specifics in queryable fields, msg naming the failure mode precisely and stably (SC2)"
+    },
+    {
+      "id": "logline-fatal-requires-reason",
+      "def": "logLine",
+      "value": {
+        "ts": "2026-08-31T14:07:02.417Z",
+        "level": "fatal",
+        "msg": "startup failed",
+        "service": "billing"
+      },
+      "valid": false,
+      "note": "the msg is a bare failure class and the line carries no error object; a fatal without a reason is the worst case of both (SC2, SC6)"
+    },
+    {
+      "id": "logline-warn-needs-no-error-object",
+      "def": "logLine",
+      "value": {
+        "ts": "2026-08-31T14:07:02.417Z",
+        "level": "warn",
+        "msg": "search-index unavailable, serving degraded",
+        "service": "billing"
+      },
+      "valid": true,
+      "note": "the requirement is on error and fatal; a warn describing a tolerated condition is not a failure line (SC2)"
+    },
+    {
+      "id": "logline-rejects-bare-failure-class",
+      "def": "logLine",
+      "value": {
+        "ts": "2026-08-31T14:07:02.417Z",
+        "level": "error",
+        "msg": "invalid input",
+        "service": "billing",
+        "error": {
+          "type": "ValidationError",
+          "message": "invalid input"
+        }
+      },
+      "valid": false,
+      "note": "the class alone, twice over: which input, which rule, what value? A class is not a diagnosis (SC2)"
+    },
+    {
+      "id": "logline-accepts-failure-class-followed-through",
+      "def": "logLine",
+      "value": {
+        "ts": "2026-08-31T14:07:02.417Z",
+        "level": "error",
+        "msg": "invalid input: expiry_date must be RFC 3339 full-date",
+        "service": "billing",
+        "field": "expiry_date",
+        "received": "31/08/2026",
+        "error": {
+          "type": "ValidationError",
+          "message": "expiry_date must be RFC 3339 full-date, got \"31/08/2026\""
+        }
+      },
+      "valid": true,
+      "note": "the same words, followed through: the class opens the message and the specifics finish it. The matcher is equals, never contains, precisely so this passes (SC2)"
+    },
+    {
+      "id": "logline-accepts-internal-error-with-cause",
+      "def": "logLine",
+      "value": {
+        "ts": "2026-08-31T14:07:02.417Z",
+        "level": "error",
+        "msg": "internal error: template render panicked",
+        "service": "billing",
+        "template": "invoice/summary",
+        "error": {
+          "type": "NilPointerDereference",
+          "message": "customer.address was nil",
+          "cause": "customer record loaded without address join"
+        }
+      },
+      "valid": true,
+      "note": "'internal error' is admissible as a class when the line answers what exactly went wrong (SC2)"
+    }
+  ],
+  "lifecycle": [
+    {
+      "id": "readiness-503-on-failed-dependency",
+      "stimulus": "a required dependency is unreachable",
+      "expect": {
+        "GET /readyz": {
+          "status_code": 503,
+          "body.status": "fail"
+        },
+        "GET /healthz": {
+          "status_code": 200
+        }
+      },
+      "note": "the status code is what a load balancer reads; liveness stays 200 because the process is alive and restarting it fixes nothing (SC1)"
+    },
+    {
+      "id": "readiness-200-when-healthy",
+      "stimulus": "every dependency reachable",
+      "expect": {
+        "GET /readyz": {
+          "status_code": 200,
+          "body.status": "ok"
+        },
+        "headers.cache-control": "no-store"
+      }
+    },
+    {
+      "id": "starts-with-every-dependency-down",
+      "stimulus": "the service is started with no dependency reachable at all",
+      "expect": {
+        "GET /healthz": {
+          "status_code": 200,
+          "within": "the startup budget"
+        },
+        "GET /readyz": {
+          "status_code": 503,
+          "body.status": "fail"
+        },
+        "process": "running, not exited, not restarting"
+      },
+      "note": "the core of SC6: a dependency the service must survive losing at runtime is not a reason to refuse to start. Endpoints up, real state reported, no crashloop."
+    },
+    {
+      "id": "starts-degraded-with-optional-dependency-down",
+      "stimulus": "every required dependency reachable, one optional dependency unreachable",
+      "expect": {
+        "GET /readyz": {
+          "status_code": 200,
+          "body.status": "degraded"
+        },
+        "serves_application_traffic": true
+      },
+      "note": "the mode gracefully-degrading code was written for; refusing to start throws that code away (SC6)"
+    },
+    {
+      "id": "endpoints-up-before-dependencies-probed",
+      "stimulus": "a dependency that takes 10s to answer its first probe",
+      "expect": {
+        "GET /healthz": {
+          "status_code": 200,
+          "within": "the startup budget, not gated on the probe"
+        }
+      },
+      "note": "the listener and both endpoints come up as early as the process can bring them up; everything else happens after and concurrently (SC6)"
+    },
+    {
+      "id": "misconfiguration-serves-health-and-does-not-exit",
+      "stimulus": "two required environment variables absent",
+      "expect": {
+        "GET /healthz": {
+          "status_code": 200
+        },
+        "GET /readyz": {
+          "status_code": 503,
+          "body.checks[name=configuration].detail": "names both missing variables, not the first"
+        },
+        "log": "one fatal-level line naming both",
+        "process": "running, not exited",
+        "application_traffic": "refused"
+      },
+      "note": "misconfiguration blocks serving, never observability. Readiness that never passes is how an orchestrator fails a rollout and rolls back, and it beats a crashloop for diagnosis (SC3, SC6)"
+    },
+    {
+      "id": "startup-emits-provenance",
+      "stimulus": "service starts normally",
+      "expect": {
+        "first_lines": "a log line carrying service, version, commit and built_at"
+      },
+      "note": "unconditional, so CI can assert it without depending on how a repository exposes endpoints (SC5)"
+    },
+    {
+      "id": "sigterm-flips-readiness-before-draining",
+      "stimulus": "SIGTERM while one request is in flight",
+      "expect": {
+        "GET /readyz": {
+          "status_code": 503
+        },
+        "in_flight_request": "completes with its normal response",
+        "exit_code": 0
+      },
+      "note": "the order is the rule: readiness first is what makes a rolling deploy non-lossy (SC4)"
+    },
+    {
+      "id": "drain-deadline-logs-what-was-abandoned",
+      "stimulus": "SIGTERM with work still running at the drain deadline",
+      "expect": {
+        "exit": "occurs at the deadline",
+        "log": "names what was abandoned"
+      },
+      "note": "work lost quietly is work nobody reconciles (SC4)"
+    },
+    {
+      "id": "bind-failure-exits-loudly",
+      "stimulus": "the configured port is already held by another process",
+      "expect": {
+        "process": "exits non-zero immediately",
+        "stdout": "a final fatal line whose msg names the address, the port and the cause plainly",
+        "not": "a silent exit, a generic 'startup failed', or a retry loop against the port"
+      },
+      "note": "the one accepted exit and the one accepted crashloop (SC6): a process that cannot bind has no endpoint to report on, so the message is the whole diagnosis. Deterministic and immediate, so restarting hides nothing."
+    }
+  ],
+  "insufficientMessages": {
+    "description": "SC2: failure classes that are fine as part of a message and insufficient as the whole of one. A conformance run flags an error or fatal line whose msg, normalised (trimmed, lowercased, trailing .!: removed), EQUALS one of these — never one that merely contains it, because 'invalid input: expiry_date must be RFC 3339 full-date' is exactly the right message. Conservative by design: it catches the shapes people actually type, and no list can enumerate vagueness, so 'is this specific enough to act on' stays a review question.",
+    "normalisation": "trim whitespace, lowercase, strip trailing '.', '!' and ':'",
+    "matchRule": "equals, never contains",
+    "values": [
+      "error",
+      "error occurred",
+      "an error occurred",
+      "operation failed",
+      "request failed",
+      "failed",
+      "failure",
+      "invalid input",
+      "invalid request",
+      "something went wrong",
+      "internal error",
+      "unexpected error",
+      "unknown error",
+      "startup failed",
+      "exception",
+      "oops"
+    ]
+  }
+}

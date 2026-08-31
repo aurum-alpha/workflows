@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/service/logline.schema.json",
+  "title": "Aurum Alpha structured log line",
+  "description": "One JSON object per line, to stdout. Governed by standards/service.md SC2; the timestamp comes from the identifiers contract and the context block from the observability contract, referenced rather than restated. schemaVersion 1 — evolves additively per PC6.",
+  "type": "object",
+  "properties": {
+    "ts": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp"
+    },
+    "level": {
+      "enum": [
+        "debug",
+        "info",
+        "warn",
+        "error",
+        "fatal"
+      ],
+      "description": "Five levels, no more (SC2). The emitting threshold is configuration, never an environment the code detected."
+    },
+    "msg": {
+      "type": "string",
+      "description": "Names what happened precisely enough to be useful alone, and stably enough that lines about the same event group: 'mysql connect timeout', never 'db error' and never the whole incident inlined. A failure class such as 'invalid input' or 'internal error' may open the message but never be the whole of it — the specifics follow. Variable specifics belong in their own fields. The exception is a terminal fatal preceding an exit (SC6), where nothing downstream will query and a human reads raw stdout, so msg carries the whole diagnosis.",
+      "minLength": 1
+    },
+    "service": {
+      "type": "string",
+      "description": "The service's stable name, identical to the provenance block's service (SC5).",
+      "minLength": 1
+    },
+    "trace_id": {
+      "$ref": "https://contracts.aurumalpha.dev/observability/context.schema.json#/$defs/traceId"
+    },
+    "span_id": {
+      "$ref": "https://contracts.aurumalpha.dev/observability/context.schema.json#/$defs/spanId"
+    },
+    "request_id": {
+      "$ref": "https://contracts.aurumalpha.dev/observability/context.schema.json#/$defs/requestId"
+    },
+    "tenant_id": {
+      "$ref": "https://contracts.aurumalpha.dev/observability/context.schema.json#/$defs/tenantId"
+    },
+    "error": {
+      "type": "object",
+      "description": "Required on error and fatal lines (SC2): the reason, not the fact of failure. Names what failed and why, with the underlying cause preserved rather than replaced. Never carries a secret, a credential, or protected personal data — name the key and the record's public id, not the value and not the contents.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The specific failure class, as the runtime or the domain named it: an errno, an exception type, the constraint or validation rule violated. Never a generic wrapper type."
+        },
+        "message": {
+          "type": "string",
+          "description": "The underlying cause as received — the driver's message, the upstream status and reason, the timeout and its limit."
+        },
+        "stack": {
+          "type": "string"
+        },
+        "cause": {
+          "type": "string",
+          "description": "Where this failure wrapped another, the cause it wrapped. The chain is preserved rather than replaced, because the outermost error is rarely the actionable one."
+        }
+      },
+      "required": [
+        "type",
+        "message"
+      ]
+    }
+  },
+  "required": [
+    "ts",
+    "level",
+    "msg",
+    "service"
+  ],
+  "allOf": [
+    {
+      "description": "OC4: within request context, the context block is required. A line carrying any request-scoped id must carry the floor pair.",
+      "if": {
+        "anyOf": [
+          {
+            "required": [
+              "trace_id"
+            ]
+          },
+          {
+            "required": [
+              "span_id"
+            ]
+          },
+          {
+            "required": [
+              "request_id"
+            ]
+          },
+          {
+            "required": [
+              "tenant_id"
+            ]
+          }
+        ]
+      },
+      "then": {
+        "required": [
+          "trace_id",
+          "request_id"
+        ]
+      }
+    },
+    {
+      "description": "SC2: an error or fatal line states a reason. The error object is where the reason lives, so a failure line without one is a notification that logging happened.",
+      "if": {
+        "properties": {
+          "level": {
+            "enum": [
+              "error",
+              "fatal"
+            ]
+          }
+        },
+        "required": [
+          "level"
+        ]
+      },
+      "then": {
+        "required": [
+          "error"
+        ]
+      }
+    }
+  ]
+}

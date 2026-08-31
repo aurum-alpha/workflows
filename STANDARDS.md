@@ -1,8 +1,7 @@
 # Aurum Alpha engineering standards
 
-Status: **charter agreed 2026-08-21.** This is the index and the constitution.
-It says what a standard is, what makes one binding, and where the individual
-standards live. It states no engineering rules itself — every rule belongs to a
+This is the index and the constitution. It says what a standard is, what makes
+one binding, and where the individual standards live. It states no engineering rules itself — every rule belongs to a
 document under `standards/`.
 
 ## What this repository is
@@ -77,13 +76,14 @@ wrong.
   quietly assumed. A rule that resists a checker gets the next best thing — a
   review question someone has to answer, not a line someone has to remember.
 
-### A new standard starts review-only and names its gate
+### A new standard's rules start review-only and name their gates
 
 Landing a standard and landing its enforcement in one change is how standards
 stall. So the sequence is fixed:
 
-1. The standard lands **review only**, with every rule registered in
-   [`standards/enforcement.md`](standards/enforcement.md).
+1. The standard lands with every rule registered in
+   [`standards/enforcement.md`](standards/enforcement.md), at the tier that
+   rule actually holds — for a new standard, usually **review only**.
 2. Each rule names, in that ledger, **the gate it is eventually getting** — or
    states plainly that it resists one and will stay review-only.
 3. Promoting a rule to gated is its own change, and the ledger row moves with it.
@@ -91,6 +91,30 @@ stall. So the sequence is fixed:
 A rule that lands review-only with no proposed gate and no admission that it
 cannot have one is not finished. That is exactly the failure the law above
 describes, arriving one document earlier.
+
+**The tier describes the rule's enforcement, never the document's standing.** A
+merged document is binding — see the writing conventions below.
+
+## How these documents are written
+
+Two conventions, because both failures are quiet ones.
+
+**A merged document is binding, and says nothing about its own status.** No
+document carries a `Status: proposed` or `Status: agreed` header. Review happens
+in the pull request; merging it is the approval. A status line on a merged
+document is either wrong (it still says "proposed") or noise (it says "agreed",
+which every merged document is). What varies per rule is how it is *enforced*,
+and that lives in one place: the ledger.
+
+**A document references other documents, never a tracker.** Relative markdown
+links between `.md` files, always. An issue or pull request number in doctrine
+is a citation to something a reader outside this repository cannot open, that
+says nothing once merged, and that ages into a dead reference — a document
+citing its own paperwork. Where a rule depends on a standard not yet written,
+name that standard in prose ("the data-layer standard") and let the platform
+contract's capability roster be the one place that tracks what exists and what
+does not. Pending work is still tracked as issues here; the documents just do
+not cite them.
 
 ## Non-compliance is tracked where the code is
 
@@ -116,18 +140,22 @@ order to describe its state.** Two things are deliberately not covered by that:
 
 ## The standards
 
-| Standard | Covers | Status |
-|---|---|---|
-| [`standards/ci.md`](standards/ci.md) | Pipeline doctrine, the shared job catalog, build/release/publish | agreed, largely gated |
-| [`standards/enforcement.md`](standards/enforcement.md) | The ledger: every rule, its gate, its tier | live |
-| [`AGENTS.md`](AGENTS.md) | How coding agents work in an Aurum Alpha repository | agreed; rules 1-5 gated |
-| [`standards/platform.md`](standards/platform.md) | The platform contract: application-layer opinions as protocols and interface specs, never tools | proposed (#185), review only |
-| [`standards/identifiers.md`](standards/identifiers.md) | Identifiers and primitive representations: public vs internal ids, the format table, timestamps, money | proposed (#188), review only |
-| [`standards/observability.md`](standards/observability.md) | Observability transport and context propagation: W3C trace context, the id vocabulary, OTLP | proposed (#187), review only |
+Every standard here is binding. The **Enforcement** column says how much of it
+is held mechanically today; the ledger says which rule is which.
 
-Standards still to be written are tracked as issues in this repository. Each
-carries the reasoning it was proposed with, so the document can be written from
-the issue rather than from memory.
+| Standard | Covers | Enforcement |
+|---|---|---|
+| [`standards/ci.md`](standards/ci.md) | Pipeline doctrine, the shared job catalog, build/release/publish | largely gated |
+| [`standards/enforcement.md`](standards/enforcement.md) | The ledger: every rule, its gate, its tier | — it is the register |
+| [`AGENTS.md`](AGENTS.md) | How coding agents work in an Aurum Alpha repository | rules 1-5 gated, rest review |
+| [`standards/platform.md`](standards/platform.md) | The platform contract: application-layer opinions as protocols and interface specs, never tools | review, gates named |
+| [`standards/identifiers.md`](standards/identifiers.md) | Identifiers and primitive representations: public vs internal ids, the format table, timestamps, money | review, corpus written |
+| [`standards/observability.md`](standards/observability.md) | Observability transport and context propagation: W3C trace context, the id vocabulary, OTLP | review, corpus written |
+
+Standards still to be written are tracked as issues in this repository, and the
+platform contract's capability roster names which capability is waiting on one.
+Each issue carries the reasoning it was raised with, so the document can be
+written from the argument rather than from memory.
 
 ## Adding or changing a standard
 

@@ -67,8 +67,8 @@ will.
 | — | Caller permissions cover shared jobs | `check-caller-permissions` | gated¹ |
 
 ¹ Gated in every repo whose `ci.yml` calls `job-ci-conformance`, which runs
-these checkers alongside `check-ci-conformance`. Issue #79 tracks the
-per-repo rollout; until a repo adopts the job, these rules are unenforced
+these checkers alongside `check-ci-conformance`. The per-repo rollout is
+tracked in this repository's issues; until a repo adopts the job, these rules are unenforced
 **in that repo** and nothing there will say so. The row claims what the
 mechanism can do, not what every repo has taken up — check the rollout, not
 this table, before believing a given repo is covered.
@@ -143,7 +143,7 @@ agent stopped at the approval gate, is not a fact on disk.
 
 ## Platform standard
 
-Rules from [`platform.md`](platform.md), **proposed (issue #185)** — the
+Rules from [`platform.md`](platform.md) — the
 doctrine the per-capability application standards are written under. The
 per-capability rules themselves register here as each standard lands; these
 rows govern the doctrine.
@@ -166,14 +166,14 @@ that moves its row.
 
 ## Identifiers standard
 
-Rules from [`identifiers.md`](identifiers.md), **proposed (issue #188)** —
+Rules from [`identifiers.md`](identifiers.md) —
 the first per-capability standard under the platform contract, and the first
 `contracts/` tree, so the PC3–PC6 mechanisms above now have something to run
 against.
 
 | # | Rule | Enforced by | Status |
 |---|---|---|---|
-| IP1 | Internal integer keys never leave the service; addressable rows carry a separate opaque public id | schema-level column check, buildable once the data-layer standard (#147) defines a readable schema; until then the stated review question | **review only** |
+| IP1 | Internal integer keys never leave the service; addressable rows carry a separate opaque public id | schema-level column check, buildable once the data-layer standard defines a readable schema; until then the stated review question | **review only** |
 | IP2 | Public ids use an admitted format from the table (UUIDv7, nanoid profile, prefixed handle); UUIDv4-in-an-index needs a written defence | `job-contract-conformance` running `contracts/identifiers/corpus.json` (proposed) | **review only** |
 | IP3 | Ids are opaque — equality only, no parsing meaning out of them | — resists honestly; review question on consumers | **review only** |
 | IP4 | Instants are RFC 3339 UTC `Z` at one pinned fractional precision (default three digits, extendable to six or nine, never fewer); calendar dates are `full-date`; MySQL profile `DATETIME(3)` | corpus validity + canonical cases (proposed, same job) | **review only** |
@@ -182,13 +182,13 @@ against.
 IP2, IP4 and IP5 are exactly what a corpus can hold: their gate is the
 platform contract's own `job-contract-conformance`, and the corpus already
 exists, so promoting them is building the job, not writing the cases. IP1's
-mechanical gate is named but blocked on #147. IP3 resists a checker — what a
+mechanical gate is named but waits on the data-layer standard. IP3 resists a checker — what a
 consumer does with an id after receiving it is not a fact on disk — and the
 document states the review question instead.
 
 ## Observability standard
 
-Rules from [`observability.md`](observability.md), **proposed (issue #187)** —
+Rules from [`observability.md`](observability.md) —
 the propagation and telemetry-transport profile the service baseline's log
 fields and the async envelope both build on.
 
@@ -205,3 +205,22 @@ the identifiers rows wait on, so building that job promotes seven rows at
 once. OC3 splits honestly: config presence is a fact on disk, the wire
 protocol is proven live, and "no vendor exporter in app code" is judgment and
 stays a review question.
+
+## Charter: document conventions
+
+Rules from [`../STANDARDS.md`](../STANDARDS.md)'s "How these documents are
+written". Both are mechanically checkable, and neither has a checker yet.
+
+| # | Rule | Enforced by | Status |
+|---|---|---|---|
+| D1 | No document carries a status header; a merged document is binding | `check-standards-docs` (proposed): no `Status:` line in a standard | **review only** |
+| D2 | Documents reference documents by relative link, never a tracker number | `check-standards-docs` (proposed): no issue or pull-request reference in a standard's prose | **review only** |
+
+These are the cheapest gates in this ledger — a grep each, no false positives —
+and they are the kind of rule that regresses silently, because a status line
+looks like diligence and a tracker reference looks like a citation. The
+checker is worth writing before the next standard lands rather than after.
+One carve-out is unsettled and left visible rather than assumed: the CI
+standard's decisions log cites the change that settled each row, which is
+history rather than a live reference, and whether D2 admits that is a review
+question until someone rules on it.

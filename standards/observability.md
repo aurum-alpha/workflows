@@ -1,15 +1,14 @@
 # Observability transport and context propagation
 
-Status: **proposed 2026-08-31 (issue #187), review only.** One of the Aurum
-Alpha engineering standards, written under the platform contract
-([`platform.md`](platform.md)). Read [`enforcement.md`](enforcement.md) for
-the tier each rule holds. Artifacts:
+One of the Aurum Alpha engineering standards, written under the platform
+contract ([`platform.md`](platform.md)). Read
+[`enforcement.md`](enforcement.md) for the tier each rule holds. Artifacts:
 [`contracts/observability/`](../contracts/observability/). Id and timestamp
 formats referenced here are [`identifiers.md`](identifiers.md)'s.
 
 ## Why this exists
 
-The service baseline (#143) gives every service structured logging with a
+The service baseline standard gives every service structured logging with a
 request id. This standard is what makes those ids mean something *across*
 services: a request that crosses two services, or enters a job queue, must
 not drop its identity at the boundary. Both halves are standard protocols —
@@ -32,7 +31,7 @@ correlation header beside `traceparent` is a second answer to a solved
 question.
 
 The async boundary is not an exception: the job envelope (the async
-messaging standard, #189) carries the same `traceparent`/`tracestate` as
+messaging standard) carries the same `traceparent`/`tracestate` as
 envelope fields, and the worker that dequeues continues the trace that
 enqueued. A background job with no trace identity is unattributable work —
 the exact failure this rule exists to remove.
@@ -75,7 +74,7 @@ unchanged.
 `tenant_id` here is vocabulary, not authority: this standard says the
 field's name, format and presence in telemetry. How tenant context is
 *established* — from authenticated identity, never from a header an
-external caller controls — belongs to the authorization standard (#144).
+external caller controls — belongs to the authorization standard.
 Between internal services it travels with the request so telemetry
 downstream stays attributable, and it is never read as an access-control
 input from anything but the authorization layer's own establishment.
@@ -93,9 +92,9 @@ What sits behind that endpoint — a collector, a vendor, a black hole in
 dev — is the platform's problem, never the application's. **No
 vendor-specific exporter or agent in application code**: the vendor lives
 behind the collector. This is the same shape as the service baseline's rule
-for logs, and logs stay on that rule — **structured lines to stdout, per
-#143; OTLP is not required for logs.** One answer per signal: stdout for
-logs, OTLP for traces and metrics.
+for logs, and logs stay on that rule — **structured lines to stdout, per the
+service baseline standard; OTLP is not required for logs.** One answer per
+signal: stdout for logs, OTLP for traces and metrics.
 
 An OpenTelemetry SDK is an implementation choice, not a fleet dependency:
 the contract is the wire protocol and the config variables, and an
@@ -130,11 +129,11 @@ Per PC3, under [`contracts/observability/`](../contracts/observability/):
 ## Enforcement
 
 Registered in [`enforcement.md`](enforcement.md) under "Observability
-standard". Everything lands review-only. OC1's and OC4's gate is the
-corpus under `job-contract-conformance` — inject a `traceparent`, read the
-emitted lines, black-box in any language — and the issue names the live
-variant: `job-image-starts` already reads startup log lines and can assert
-the vocabulary on them. OC2 is gated by the same corpus (field names and
+standard", every rule review-only today. OC1's and OC4's gate is the corpus
+under `job-contract-conformance` — inject a `traceparent`, read the emitted
+lines, black-box in any language. A live variant is available sooner:
+`job-image-starts` already reads startup log lines and can assert the
+vocabulary on them. OC2 is gated by the same corpus (field names and
 formats are facts on emitted lines). OC3's config half is checkable (the
 OTEL variables present, no vendor exporter config in app code is a review
 question); its wire half is proven wherever the corpus runs against a live
@@ -154,7 +153,8 @@ process.
   tags the JSON, which is the language authors' own answer to wire-vs-code.
 - **`tracestate` forwarded, never logged** (2026-08-31): it is foreign
   vendors' baggage; logging it is logging unknown third-party data.
-- **Logs stay stdout, not OTLP** (2026-08-31): #143 already answered log
+- **Logs stay stdout, not OTLP** (2026-08-31): the service baseline
+  standard already answered log
   transport; a second pipeline for the same signal is the two-answers
   failure. OTLP is the answer for the signals stdout cannot carry.
 - **OTel's own env vars, no fleet spelling** (2026-08-31): the standard

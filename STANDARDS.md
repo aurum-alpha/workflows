@@ -122,6 +122,7 @@ order to describe its state.** Two things are deliberately not covered by that:
 | [`standards/enforcement.md`](standards/enforcement.md) | The ledger: every rule, its gate, its tier | live |
 | [`AGENTS.md`](AGENTS.md) | How coding agents work in an Aurum Alpha repository | agreed; rules 1-5 gated |
 | [`standards/platform.md`](standards/platform.md) | The platform contract: application-layer opinions as protocols and interface specs, never tools | proposed (#185), review only |
+| [`standards/identifiers.md`](standards/identifiers.md) | Identifiers and primitive representations: public vs internal ids, the format table, timestamps, money | proposed (#188), review only |
 
 Standards still to be written are tracked as issues in this repository. Each
 carries the reasoning it was proposed with, so the document can be written from

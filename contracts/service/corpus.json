@@ -235,7 +235,11 @@
         "level": "error",
         "msg": "payment failed",
         "service": "billing",
-        "tenant_id": "ten_8fK2mQ7xW3pLzR"
+        "tenant_id": "ten_8fK2mQ7xW3pLzR",
+        "error": {
+          "type": "GatewayTimeout",
+          "message": "upstream did not respond"
+        }
       },
       "valid": false,
       "note": "a line carrying any request-scoped id carries the floor pair; 'failed for this tenant, in no identifiable request' is not a lead (OC4)"
@@ -273,6 +277,61 @@
         "msg": "listening"
       },
       "valid": false
+    },
+    {
+      "id": "logline-error-requires-reason",
+      "def": "logLine",
+      "value": {
+        "ts": "2026-08-31T14:07:02.417Z",
+        "level": "error",
+        "msg": "mysql connect timeout",
+        "service": "billing"
+      },
+      "valid": false,
+      "note": "an error line without an error object states the fact of failure and not its reason (SC2)"
+    },
+    {
+      "id": "logline-error-with-cause-ok",
+      "def": "logLine",
+      "value": {
+        "ts": "2026-08-31T14:07:02.417Z",
+        "level": "error",
+        "msg": "mysql connect timeout",
+        "service": "billing",
+        "host": "db-primary:3306",
+        "timeout_ms": 5000,
+        "error": {
+          "type": "ETIMEDOUT",
+          "message": "connect ETIMEDOUT 10.0.4.12:3306",
+          "cause": "no route to host"
+        }
+      },
+      "valid": true,
+      "note": "what was attempted, on what, and why — specifics in queryable fields, msg naming the failure mode precisely and stably (SC2)"
+    },
+    {
+      "id": "logline-fatal-requires-reason",
+      "def": "logLine",
+      "value": {
+        "ts": "2026-08-31T14:07:02.417Z",
+        "level": "fatal",
+        "msg": "startup failed",
+        "service": "billing"
+      },
+      "valid": false,
+      "note": "the generic message is exactly the banned shape, and a fatal without a reason is the worst case of it (SC2, SC6)"
+    },
+    {
+      "id": "logline-warn-needs-no-error-object",
+      "def": "logLine",
+      "value": {
+        "ts": "2026-08-31T14:07:02.417Z",
+        "level": "warn",
+        "msg": "search-index unavailable, serving degraded",
+        "service": "billing"
+      },
+      "valid": true,
+      "note": "the requirement is on error and fatal; a warn describing a tolerated condition is not a failure line (SC2)"
     }
   ],
   "lifecycle": [
@@ -396,5 +455,27 @@
       },
       "note": "the one accepted exit and the one accepted crashloop (SC6): a process that cannot bind has no endpoint to report on, so the message is the whole diagnosis. Deterministic and immediate, so restarting hides nothing."
     }
-  ]
+  ],
+  "bannedMessages": {
+    "description": "SC2: msg values that state the fact of failure rather than its reason. A conformance run flags any error or fatal line whose msg matches one of these, case-insensitively, after trimming. Conservative by design — it catches the common shapes, and the general rule stays a review question because no list can enumerate vagueness.",
+    "values": [
+      "error",
+      "error occurred",
+      "an error occurred",
+      "operation failed",
+      "request failed",
+      "failed",
+      "failure",
+      "invalid input",
+      "invalid request",
+      "something went wrong",
+      "internal error",
+      "unexpected error",
+      "unknown error",
+      "startup failed",
+      "exception",
+      "error!",
+      "oops"
+    ]
+  }
 }

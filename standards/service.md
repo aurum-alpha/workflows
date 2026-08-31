@@ -96,6 +96,48 @@ lines that no query will ever join back together.
 A human-readable renderer for local development is fine, and is a rendering
 of the same records, chosen by configuration.
 
+**A failure line states the reason, never the fact of failure.** Every
+`error` and `fatal` line answers three questions, and a line that answers
+fewer is not a log entry, it is a notification that logging happened:
+
+- **What operation** was attempted — specifically. Not "request failed" but
+  the operation the code was performing.
+- **On what**, identified: the connection string's host and port, the
+  configuration key, the public id of the record, the endpoint called, the
+  file path, the queue name. Whatever a person would need in order to go
+  and look at the thing.
+- **Why it failed** — the underlying cause, as received: the errno, the
+  upstream status code and body, the constraint violated, the validation
+  rule that rejected, the timeout that elapsed and its limit. Where the
+  failure wraps another failure, the chain is preserved rather than
+  replaced.
+
+`error occurred`, `operation failed`, `invalid input`, `something went
+wrong`, `internal error`, `unexpected error` and their relatives are
+**not acceptable messages**. Every failure has a specific cause at the
+moment it is logged — the code is holding it — and discarding it there is
+choosing to make the next incident harder in exchange for nothing. An
+error line that cannot be acted on without attaching a debugger is a
+defect in the line, not a fact about the failure.
+
+The specifics live in **fields**, so they can be queried, and `msg` names
+the failure mode precisely enough to be useful on its own while staying
+stable enough to group: `mysql connect timeout`, not `db error` and not
+`mysql connect timeout after 5000ms to db-primary:3306`. The one exception
+is a terminal `fatal` that precedes an exit (SC6): nothing downstream will
+ever query it, a human is reading raw stdout, so `msg` carries the whole
+diagnosis in plain words.
+
+**Specific is not the same as verbose, and it is never an excuse to leak.**
+Name the configuration key, never its value. Reference a record by its
+public id (`identifiers.md` IP1), never by dumping its contents. Name the
+field that failed validation, not the personal data that failed it. A
+secret, a token, a credential, a full connection string with its password,
+or protected personal data appearing in a log line is a defect of its own,
+and the redaction rules belong to the [secrets
+standard](platform.md#the-capability-roster). *What* failed and *why* is
+almost never the sensitive part; the payload is.
+
 ### SC3. Configuration comes from the environment, and absence blocks serving
 
 Config lives in environment variables, per

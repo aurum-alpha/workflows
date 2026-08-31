@@ -55,22 +55,62 @@ jobs:
       # break was scheduled for whenever standard_ref next moved. This is the
       # cheapest possible check for that, and it is here rather than in a
       # checker because it is a question about this repo's own wiring.
+      #
+      # TWO TREES, because a caller reads two. It takes job-ci-conformance.yml
+      # from the tag it pins, and the checkers that file invokes from a SEPARATE
+      # clone at standard_ref. So "the checker exists" has to be true in both,
+      # and the standard_ref half is the half that reaches the fleet.
+      #
+      # Checking only the working tree let exactly that ship twice. v2.2.10
+      # invoked check-exact-pins and v2.2.11 invoked check-overrides, while
+      # neither checker existed at the standard_ref those releases carried:
+      # both were ADDED and WIRED in one pull request, and the rule puts
+      # standard_ref at that pull request's base, which predates the file. Every
+      # release through v2.2.9 was self-consistent because it only ever modified
+      # checkers that already existed. Nothing went red because no repository
+      # had re-pinned yet -- the first one to try would have got exit 127.
+      #
+      # A checker that is new in this pull request therefore cannot be wired in
+      # the same one unless standard_ref moves to a commit that already has it.
       - name: Every checker job-ci-conformance invokes exists
         run: |
           set -euo pipefail
+          # Read standard_ref without a YAML parser: this job has no PyYAML,
+          # and finding it imported by a checker proves nothing, because the
+          # checkers run in job-ci-conformance, not here. standard_ref is the
+          # only 40-hex default in the file, and the count is asserted so this
+          # fails loudly rather than silently picking the wrong one.
+          refs=$(grep -oE '^ +default: [0-9a-f]{40}$' \
+                   .github/workflows/job-ci-conformance.yml | awk '{print $2}')
+          n=$(printf '%s' "$refs" | grep -c . || true)
+          if [ "$n" -ne 1 ]; then
+            echo "::error::expected exactly one 40-hex default (standard_ref)" \
+                 "in job-ci-conformance.yml, found ${n}. Adjust this step."
+            exit 1
+          fi
+          ref="$refs"
+          echo "standard_ref = $ref"
           missing=0
-          grep -oE '\.aurum-standard/tools/[a-z0-9-]+' \
-            .github/workflows/job-ci-conformance.yml | sort -u |
-          while read -r ref; do
-            path="tools/${ref##*/}"
-            if [ ! -x "$path" ]; then
-              echo "::error::job-ci-conformance.yml invokes ${ref}, but ${path}" \
-                   "does not exist or is not executable. A rename that misses this" \
-                   "file breaks every caller the moment standard_ref moves past it."
+          # A pipe would run this loop in a subshell and throw the flag away,
+          # which is how this gate spent its life unable to fail.
+          while read -r invoked; do
+            name="${invoked##*/}"
+            if [ ! -x "tools/$name" ]; then
+              echo "::error::job-ci-conformance.yml invokes ${invoked}, but" \
+                   "tools/${name} does not exist or is not executable."
               missing=1
+            elif ! git cat-file -e "${ref}:tools/${name}" 2>/dev/null; then
+              echo "::error::job-ci-conformance.yml invokes ${invoked}, but" \
+                   "tools/${name} does not exist at standard_ref ${ref}." \
+                   "Callers take the checkers from THAT commit, so every one of" \
+                   "them would fail with 'No such file or directory'. Move" \
+                   "standard_ref to a commit that already carries the checker."
+              missing=1
+            else
+              echo "  ok  tools/${name}"
             fi
-            echo "  ok  ${path}"
-          done
+          done < <(grep -oE '\.aurum-standard/tools/[a-z0-9-]+' \
+                     .github/workflows/job-ci-conformance.yml | sort -u)
           exit $missing
 
       # The catalog's own CI never RUNS the image jobs — they only execute in

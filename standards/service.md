@@ -48,15 +48,29 @@ reports the database's health as the process's.
 Both are **unauthenticated, never cached** (`Cache-Control: no-store`), and
 respond `application/json` in the shape
 [`contracts/service/health.schema.json`](../contracts/service/health.schema.json)
-defines. `/healthz` returns `200` whenever the process is alive. `/readyz`
-returns `200` when every dependency check passes and **`503` when any
-fails** — the status code is the contract, because that is what a load
-balancer reads; the body explains, and is what a human reads.
+defines. `/healthz` returns `200` whenever the process is alive.
 
-Each readiness check names the dependency it probed, its own outcome, and
-how long it took. A readiness endpoint that returns `{"status":"ok"}` while
-checking nothing is worse than no endpoint, because it converts an unknown
-into a wrong answer.
+**Every readiness check declares whether the service can serve without it.**
+That declaration is what makes `/readyz` answer its own question instead of
+an easier one:
+
+| Body `status` | Code | Means |
+|---|---|---|
+| `ok` | `200` | every check passes |
+| `degraded` | `200` | a check the service can serve without is failing — **route to me anyway** |
+| `fail` | `503` | a check the service cannot serve without is failing — stop routing to me |
+
+**The status code is the routing contract and stays binary**, because a load
+balancer has exactly two behaviours; `degraded` is the body telling a human
+and a dashboard that something is wrong while the correct answer is still
+"send me traffic". A service that returns `503` because its optional cache
+is cold has removed itself from rotation over a condition it was built to
+tolerate, which is a self-inflicted outage.
+
+Each readiness check names the dependency it probed, whether it is required,
+its own outcome, and how long it took. A readiness endpoint that returns
+`{"status":"ok"}` while checking nothing is worse than no endpoint, because
+it converts an unknown into a wrong answer.
 
 ### SC2. One structured log line, to stdout
 
@@ -82,18 +96,19 @@ lines that no query will ever join back together.
 A human-readable renderer for local development is fine, and is a rendering
 of the same records, chosen by configuration.
 
-### SC3. Configuration comes from the environment, and absence is fatal
+### SC3. Configuration comes from the environment, and absence blocks serving
 
 Config lives in environment variables, per
 [factor III](https://12factor.net/config). The fleet's additions:
 
 - **Names are `SCREAMING_SNAKE_CASE`**, and describe the thing rather than
   its consumer: `DATABASE_URL`, `OTEL_EXPORTER_OTLP_ENDPOINT`.
-- **A required variable has no default.** A service missing one **fails at
-  startup**, before binding a port, and its message names **every** missing
-  variable at once — not the first one, because discovering a missing
-  configuration one restart at a time is how a ten-minute deploy becomes an
-  hour.
+- **A required variable has no default.** A service missing one, or holding
+  an invalid one, **does not serve traffic** — and per SC6 it still starts
+  its endpoints and says so rather than dying. Its message names **every**
+  missing or invalid variable at once, not the first one, because
+  discovering a broken configuration one restart at a time is how a
+  ten-minute deploy becomes an hour.
 - **An optional variable's default is the safe value**, and the value is
   logged at startup so the running configuration is knowable from the logs.
 - **No environment detection in code.** Nothing branches on `NODE_ENV`,
@@ -148,6 +163,88 @@ only in logs — puts it behind exactly the access an incident responder may
 be waiting on. Where a repository's threat model disagrees, the [security
 baseline standard](platform.md#the-capability-roster) governs endpoint
 exposure, and the startup log line still satisfies this rule.
+
+### SC6. Start fast, degrade rather than block, and never crashloop
+
+**The listener and both endpoints come up as early as the process can bring
+them up.** Everything else — connection pools, cache warming, dependency
+probes, first token fetches — happens after, and concurrently. A service
+that spends thirty seconds proving its world is intact before it will answer
+`/healthz` is a service nobody can diagnose for thirty seconds.
+
+**A dependency is not a startup gate.** The test is simple: *if this
+dependency vanished an hour after startup, would the service have to cope?*
+It would — dependencies fail at runtime, and code that handles that already
+exists or should. A dependency the service must handle gracefully at 3pm is
+not a dependency worth dying over at boot. So the service **assumes its
+dependencies are up**, starts, reports their real state on `/readyz`, and
+handles failures at request time through the same paths it uses in steady
+state. Probing at startup only to refuse to start reimplements the runtime
+error path badly, in a place with no request to fail and nobody to tell.
+
+Two consequences worth stating, because both get built wrong by default:
+
+- A missing **optional** dependency means the service starts `degraded`
+  and serves. That is the mode existing gracefully-degrading code was
+  written for; refusing to start instead throws it away.
+- A missing **required** dependency means the service starts, reports
+  `fail` on `/readyz`, and takes no traffic — which is the same outcome as
+  refusing to start, except it is observable, curl-able, and does not
+  restart in a loop.
+
+**The one exception is a startup migration.** A service that migrates its
+schema at boot and cannot serve correctly against the old schema may block
+on the database for that migration, and its **Conventions** section says so.
+That is a real dependency on a real operation, not a reflexive check.
+
+**Misconfiguration is the one thing that blocks serving** (SC3), and it
+still does not stop the endpoints. A misconfigured service binds its port,
+serves `/healthz` and `/readyz`, reports `fail` with a check named for the
+configuration and a detail naming every broken variable, logs the same at
+`fatal`, and **stays up in that state**. It never serves application
+traffic. Readiness that never passes is how an orchestrator fails a rollout
+and rolls back, and it is strictly more debuggable than the alternative.
+
+**Crashlooping is not a failure mode this fleet accepts.** A process that
+exits and restarts forever destroys the two things an operator needs — a
+live endpoint to interrogate and a log stream that stays put — and converts
+a five-second diagnosis into an archaeology exercise against a scrolling
+restart counter. `exit()` is for the genuinely unrecoverable, which is a
+narrow set: **the process cannot honestly serve its own health endpoints.**
+It could not bind the port, or the runtime itself is failing. Everything
+else — bad config, an unreachable database, an expired credential, a
+missing optional service — is a state to *report*, at length, on an
+endpoint that answers.
+
+The word doing the work is *honestly*. Exiting because a dependency is down
+is not unrecoverability, it is a service declining to hold a state it was
+built to hold.
+
+## Decisions
+
+- **`degraded` exists, and routing stays binary** (2026-08-31): this
+  document first had a binary `ok`/`fail` on the argument that a third
+  value needs a third routing behaviour. It does not: the *status code*
+  carries routing (200 or 503) and the *body* carries the truth, so a
+  service tolerating a failed optional dependency reports `degraded` and
+  keeps taking traffic. Without the distinction, "graceful degradation"
+  has nowhere to be expressed and every failed dependency becomes an
+  outage.
+- **A dependency is never a startup gate** (2026-08-31): if the service
+  must survive losing it at 3pm, refusing to boot on it at 3am is a second,
+  worse implementation of the same error path — one with no request to
+  fail and nobody to tell. The exception is a startup migration, because
+  that is a real operation against a real dependency rather than a
+  reflexive check.
+- **Misconfiguration blocks serving, never observability** (2026-08-31):
+  an earlier draft had it exit before binding a port. That optimises for
+  the wrong reader. A process that stays up reporting `fail` with the
+  broken variables named can be curled, and its logs stay put; one that
+  exits leaves a restart counter and a scrollback race.
+- **Crashlooping is a defect, not a state** (2026-08-31): `exit()` is for
+  the process that cannot honestly serve its own health endpoints — it
+  could not bind, or the runtime is failing. Everything else is a state to
+  report on an endpoint that answers.
 
 ## Out of scope, deliberately
 

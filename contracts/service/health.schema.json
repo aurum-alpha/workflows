@@ -8,8 +8,12 @@
       "const": 1
     },
     "status": {
+      "enum": ["ok", "degraded", "fail"],
+      "description": "The body's answer (SC1). Routing stays binary — 200 for ok and degraded, 503 for fail — because a load balancer has two behaviours; degraded exists so a human and a dashboard can see that something the service tolerates is broken."
+    },
+    "checkStatus": {
       "enum": ["ok", "fail"],
-      "description": "Binary on purpose (SC1): a load balancer reads the status code, a human reads the body; a third value would need a third routing behaviour nobody has defined."
+      "description": "One probe either worked or did not. Degradation is a property of the whole service, derived from which checks failed and whether they were required."
     },
     "provenance": {
       "type": "object",
@@ -45,7 +49,11 @@
           "description": "The dependency probed, e.g. 'mysql', 'keycloak', 'object-store'.",
           "minLength": 1
         },
-        "status": { "$ref": "#/$defs/status" },
+        "status": { "$ref": "#/$defs/checkStatus" },
+        "required": {
+          "type": "boolean",
+          "description": "Whether the service can serve traffic without this dependency (SC1, SC6). Declared per check rather than defaulted, because someone has to decide: a required check failing is 503, an optional one failing is degraded and still 200."
+        },
         "latency_ms": {
           "type": "number",
           "minimum": 0,
@@ -56,7 +64,7 @@
           "description": "Why a failing check failed. Present when status is fail; never carries a secret or a connection string."
         }
       },
-      "required": ["name", "status", "latency_ms"]
+      "required": ["name", "status", "required", "latency_ms"]
     },
     "livenessResponse": {
       "type": "object",
@@ -69,14 +77,14 @@
     },
     "readinessResponse": {
       "type": "object",
-      "description": "GET /readyz — 200 with status ok, or 503 with status fail when any check fails (SC1).",
+      "description": "GET /readyz — 200 with status ok or degraded, 503 with status fail when a required check fails (SC1). A misconfigured service reports fail here with a check named for its configuration and stays up rather than exiting (SC3, SC6).",
       "properties": {
         "status": { "$ref": "#/$defs/status" },
         "checks": {
           "type": "array",
           "items": { "$ref": "#/$defs/check" },
           "minItems": 1,
-          "description": "At least one: a service with no dependencies to check does not need a readiness endpoint distinct from liveness, and one that has them must probe them."
+          "description": "At least one: a service with no dependencies to check does not need a readiness endpoint distinct from liveness, and one that has them must probe them. A service blocked on its own configuration reports that as a check here."
         }
       },
       "required": ["status", "checks"]

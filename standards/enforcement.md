@@ -245,6 +245,15 @@ SC5 need an extension of a job every repository calls, not a new one.
 | SC3 | Config from the environment; a missing required variable fails startup naming all of them; no environment detection in code | `check-service-contract` (proposed) for declared variables; the fail-loud behaviour is a lifecycle corpus case | **review only** |
 | SC4 | SIGTERM flips readiness, drains, then exits; the deadline is stated and what it abandons is logged | lifecycle corpus case under a live harness (proposed) | **review only** |
 | SC5 | The running service reports its service, version, commit and build timestamp | `job-image-starts` asserting the startup line (proposed) | **review only** |
+| SC6 | Endpoints up first; no dependency blocks startup; misconfiguration blocks serving but not observability; never crashloop | `job-image-starts` with every dependency absent — the image must answer `/healthz` and stay running (proposed) | **review only** |
+
+SC6 is gateable by the job the fleet already runs, and cheaply: start the
+image with **no** dependencies reachable — which is exactly what
+`job-image-starts` does today, since it starts a container in isolation — and
+assert that `/healthz` answers and the process is still running. A service
+that refuses to start without its database fails that, by name, in the job it
+already calls. The crashloop half is the same observation over time: a
+container that exits and restarts is not a container that stayed up.
 
 SC1 and SC5 are the cheapest real gates the fleet can build: no new job, no new
 infrastructure, and adoptable per-repository as each grows the endpoint, so

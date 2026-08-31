@@ -327,8 +327,8 @@ state it was built to hold.
 
 ## Out of scope, deliberately
 
-**The error envelope is not here.** It belongs to the [HTTP API
-standard](platform.md#the-capability-roster) with the rest of the
+**The error envelope is not here.** It belongs to the [service interfaces
+standard](http.md) with the rest of the
 request/response contract (RFC 9457, pagination, idempotency), because an
 error shape is an API concern rather than a service-lifecycle one, and
 splitting it across two documents is how two answers to one question get

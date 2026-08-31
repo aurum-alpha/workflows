@@ -241,7 +241,7 @@ SC5 need an extension of a job every repository calls, not a new one.
 | # | Rule | Enforced by | Status |
 |---|---|---|---|
 | SC1 | `/healthz` and `/readyz`: fixed paths, fixed shapes, unauthenticated, uncached; readiness checks dependencies and `503`s when one fails | `job-image-starts` with an `http` probe on `/readyz`, asserting the schema (proposed); `check-service-contract` (proposed) for route registration | **review only** |
-| SC2 | One JSON log line per event to stdout, with the pinned field vocabulary; a failure line states its reason, its subject and its cause, never the fact of failure alone | corpus validity cases against captured stdout, incl. the `error` object required on error and fatal lines and the banned-message denylist (proposed) | **review only** |
+| SC2 | One JSON log line per event to stdout, with the pinned field vocabulary; a failure line states its reason, its subject and its cause, never the fact of failure alone | corpus validity cases against captured stdout, incl. the `error` object required on error and fatal lines and the insufficient-message list (proposed) | **review only** |
 | SC3 | Config from the environment; a missing required variable fails startup naming all of them; no environment detection in code | `check-service-contract` (proposed) for declared variables; the fail-loud behaviour is a lifecycle corpus case | **review only** |
 | SC4 | SIGTERM flips readiness, drains, then exits; the deadline is stated and what it abandons is logged | lifecycle corpus case under a live harness (proposed) | **review only** |
 | SC5 | The running service reports its service, version, commit and build timestamp | `job-image-starts` asserting the startup line (proposed) | **review only** |
@@ -264,12 +264,15 @@ into "it came up, reached its dependencies, and said what it was."
 
 SC2's reason-giving half is enforceable further than it first looks. That a
 failure line carries an `error` object is a schema fact, and the corpus
-carries a **denylist of messages that state the fact of failure rather than
-its reason** — `error occurred`, `operation failed`, `startup failed` and
-their relatives — which a conformance run flags on any error or fatal line.
-The list is deliberately conservative: it catches the shapes people actually
-type, and no list can enumerate vagueness, so "is this message specific
-enough to act on" stays a review question on every diff that logs.
+carries a list of **failure classes that are insufficient as a whole
+message** — `error occurred`, `operation failed`, `invalid input` and their
+relatives. The match is **equality, never containment**: those words are
+fine opening a message and useless as the whole of one, so `invalid input:
+expiry_date must be RFC 3339 full-date` passes and bare `invalid input`
+does not. The list is deliberately conservative — it catches the shapes
+people actually type, and no list can enumerate vagueness, so "does this
+message answer what kind, which operation, which input, and what exactly
+went wrong" stays a review question on every diff that logs.
 
 SC3's "no environment detection in code" half resists a checker honestly: a
 grep for `NODE_ENV` finds the common case and misses a hostname test or a

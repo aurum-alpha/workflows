@@ -319,7 +319,7 @@
         "service": "billing"
       },
       "valid": false,
-      "note": "the generic message is exactly the banned shape, and a fatal without a reason is the worst case of it (SC2, SC6)"
+      "note": "the msg is a bare failure class and the line carries no error object; a fatal without a reason is the worst case of both (SC2, SC6)"
     },
     {
       "id": "logline-warn-needs-no-error-object",
@@ -332,6 +332,58 @@
       },
       "valid": true,
       "note": "the requirement is on error and fatal; a warn describing a tolerated condition is not a failure line (SC2)"
+    },
+    {
+      "id": "logline-rejects-bare-failure-class",
+      "def": "logLine",
+      "value": {
+        "ts": "2026-08-31T14:07:02.417Z",
+        "level": "error",
+        "msg": "invalid input",
+        "service": "billing",
+        "error": {
+          "type": "ValidationError",
+          "message": "invalid input"
+        }
+      },
+      "valid": false,
+      "note": "the class alone, twice over: which input, which rule, what value? A class is not a diagnosis (SC2)"
+    },
+    {
+      "id": "logline-accepts-failure-class-followed-through",
+      "def": "logLine",
+      "value": {
+        "ts": "2026-08-31T14:07:02.417Z",
+        "level": "error",
+        "msg": "invalid input: expiry_date must be RFC 3339 full-date",
+        "service": "billing",
+        "field": "expiry_date",
+        "received": "31/08/2026",
+        "error": {
+          "type": "ValidationError",
+          "message": "expiry_date must be RFC 3339 full-date, got \"31/08/2026\""
+        }
+      },
+      "valid": true,
+      "note": "the same words, followed through: the class opens the message and the specifics finish it. The matcher is equals, never contains, precisely so this passes (SC2)"
+    },
+    {
+      "id": "logline-accepts-internal-error-with-cause",
+      "def": "logLine",
+      "value": {
+        "ts": "2026-08-31T14:07:02.417Z",
+        "level": "error",
+        "msg": "internal error: template render panicked",
+        "service": "billing",
+        "template": "invoice/summary",
+        "error": {
+          "type": "NilPointerDereference",
+          "message": "customer.address was nil",
+          "cause": "customer record loaded without address join"
+        }
+      },
+      "valid": true,
+      "note": "'internal error' is admissible as a class when the line answers what exactly went wrong (SC2)"
     }
   ],
   "lifecycle": [
@@ -456,8 +508,10 @@
       "note": "the one accepted exit and the one accepted crashloop (SC6): a process that cannot bind has no endpoint to report on, so the message is the whole diagnosis. Deterministic and immediate, so restarting hides nothing."
     }
   ],
-  "bannedMessages": {
-    "description": "SC2: msg values that state the fact of failure rather than its reason. A conformance run flags any error or fatal line whose msg matches one of these, case-insensitively, after trimming. Conservative by design — it catches the common shapes, and the general rule stays a review question because no list can enumerate vagueness.",
+  "insufficientMessages": {
+    "description": "SC2: failure classes that are fine as part of a message and insufficient as the whole of one. A conformance run flags an error or fatal line whose msg, normalised (trimmed, lowercased, trailing .!: removed), EQUALS one of these — never one that merely contains it, because 'invalid input: expiry_date must be RFC 3339 full-date' is exactly the right message. Conservative by design: it catches the shapes people actually type, and no list can enumerate vagueness, so 'is this specific enough to act on' stays a review question.",
+    "normalisation": "trim whitespace, lowercase, strip trailing '.', '!' and ':'",
+    "matchRule": "equals, never contains",
     "values": [
       "error",
       "error occurred",
@@ -474,7 +528,6 @@
       "unknown error",
       "startup failed",
       "exception",
-      "error!",
       "oops"
     ]
   }

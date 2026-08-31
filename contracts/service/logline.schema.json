@@ -20,7 +20,7 @@
     },
     "msg": {
       "type": "string",
-      "description": "Names what happened precisely enough to be useful alone, and stably enough that lines about the same event group: 'mysql connect timeout', never 'db error' and never the whole incident inlined. Variable specifics belong in their own fields. The exception is a terminal fatal preceding an exit (SC6), where nothing downstream will query and a human reads raw stdout, so msg carries the whole diagnosis.",
+      "description": "Names what happened precisely enough to be useful alone, and stably enough that lines about the same event group: 'mysql connect timeout', never 'db error' and never the whole incident inlined. A failure class such as 'invalid input' or 'internal error' may open the message but never be the whole of it — the specifics follow. Variable specifics belong in their own fields. The exception is a terminal fatal preceding an exit (SC6), where nothing downstream will query and a human reads raw stdout, so msg carries the whole diagnosis.",
       "minLength": 1
     },
     "service": {

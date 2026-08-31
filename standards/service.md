@@ -113,12 +113,26 @@ fewer is not a log entry, it is a notification that logging happened:
   replaced.
 
 `error occurred`, `operation failed`, `invalid input`, `something went
-wrong`, `internal error`, `unexpected error` and their relatives are
-**not acceptable messages**. Every failure has a specific cause at the
-moment it is logged — the code is holding it — and discarding it there is
-choosing to make the next incident harder in exchange for nothing. An
-error line that cannot be acted on without attaching a debugger is a
-defect in the line, not a fact about the failure.
+wrong`, `internal error`, `unexpected error` — these are **failure
+classes, and a class is not a diagnosis**. They are perfectly good as the
+opening of a message and useless as the whole of one, so the rule is not
+that the words are forbidden but that they must be followed through:
+
+| Not this, alone | This |
+|---|---|
+| `invalid input` | `invalid input: expiry_date must be RFC 3339 full-date, got "31/08/2026"` |
+| `operation failed` | `charge authorisation failed: acquirer returned 402 insufficient_funds` |
+| `internal error` | `internal error: template render panicked on nil customer address` |
+| `something went wrong` | `webhook delivery failed after 5 attempts: connect refused to hooks.example.com:443` |
+
+The test is a question, not a word list: **what kind of error, on which
+operation, with which input, and what exactly went wrong?** A message that
+leaves any of those unanswered when the code was holding the answer is the
+defect. Every failure has a specific cause at the moment it is logged, and
+discarding it there is choosing to make the next incident harder in
+exchange for nothing. An error line that cannot be acted on without
+attaching a debugger is a defect in the line, not a fact about the
+failure.
 
 The specifics live in **fields**, so they can be queried, and `msg` names
 the failure mode precisely enough to be useful on its own while staying

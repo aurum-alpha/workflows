@@ -281,3 +281,42 @@ SC3's "no environment detection in code" half resists a checker honestly: a
 grep for `NODE_ENV` finds the common case and misses a hostname test or a
 path-existence check, and the rule is about the act rather than the spelling.
 It stays a review question on every diff that reads its surroundings.
+
+## Service interfaces standard
+
+Rules from [`http.md`](http.md) — which protocol an interaction uses, and the
+conventions for the default answer.
+
+| # | Rule | Enforced by | Status |
+|---|---|---|---|
+| HA1 | HTTP is the default; gRPC is service-to-service only; SSE before WebSocket unless the client must push; HTTP/2 is a prerequisite for gRPC and for usable SSE and must reach the service, not just the edge; leaving HTTP never leaves the standards | — resists honestly: whether a reason is good is judgment. Two reviewable acts: a repository choosing a non-default protocol states why in its **Conventions**, and one serving gRPC or SSE states there where HTTP/2 terminates and that the backend hop carries it | **review only** |
+| HA2 | A committed OpenAPI document describes the API and matches the running service; 3.1 is the floor, 3.2 where the service serves SSE | static and decidable: the document exists, lints, declares `openapi: 3.1.x` or later, and declares 3.2 if any response is `text/event-stream` (proposed). That it still *matches* resists a checker — see below | **review only** |
+| HA3 | Every error is profiled RFC 9457 problem+json, with `type` stable, `detail` specific, `request_id` present | `job-image-starts` requesting an unroutable path and validating the body against the schema (proposed) | **review only** |
+| HA4 | Collections paginate by opaque cursor; offset only for genuinely static collections, declared | corpus behaviour case under a live harness (proposed) | **review only** |
+| HA5 | One major version in the path; change is additive until it cannot be | — resists honestly: whether a change is breaking is judgment | **review only** |
+| HA6 | Mutating endpoints accept `Idempotency-Key`; a replay returns the original response, a reused key with a changed body is refused | corpus behaviour cases, two requests under a live harness (proposed) | **review only** |
+| HA7 | `429` always carries `Retry-After`; clients retry only idempotent or keyed requests, with backoff and jitter | server half is a corpus behaviour case; the client half resists a checker | **review only** |
+| HA8 | JSON body and query-parameter field names are snake_case; headers keep HTTP convention; the rule binds the wire, never source identifiers | **the one mechanically decidable rule here** — a checker walks the committed OpenAPI document's schema property names and parameter names and fails on any that is not `[a-z][a-z0-9_]*` (proposed `check-wire-naming`); the wire/code split needs no gate because a gate reading source would itself be the violation | **review only** |
+
+HA3 is the cheapest live gate in this ledger after the service standard's own:
+`job-image-starts` already talks to a running service, so one request to a path
+that cannot exist, and one schema validation of what comes back, catches the
+failure the fleet actually has — a framework's default HTML error page escaping
+to clients from the one route nobody wrote a handler for.
+
+**HA8 is the cheapest gate of any kind here**, and static: the committed
+OpenAPI document already lists every field name the API speaks, so checking
+them against one character class needs no running service and has no false
+positives. It is also the rule whose *other* half must never be gated —
+verifying that source identifiers are idiomatic would mean reading the
+implementation, which is exactly what PC4 forbids a gate to do.
+
+Three rules resist a checker and say so. **HA1** is a judgment about fit: a
+checker could detect that a repository opened a WebSocket, and could never
+detect whether it should have. What is reviewable is the stated reason, so the
+rule requires one. **HA2's second half** — that the document still describes
+the service — is the important one: a checker can prove an OpenAPI file parses
+and can never prove it is true, so the honest mechanism is a repository's own
+contract tests and the review question is whether they exist. **HA5** needs to
+know whether a change is breaking, which is a judgment about meaning rather
+than a fact about a diff.

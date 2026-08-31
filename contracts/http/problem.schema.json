@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/http/problem.schema.json",
+  "title": "Aurum Alpha problem+json error envelope",
+  "description": "The RFC 9457 problem details envelope, profiled. Governed by standards/http.md HA2. Every error response from every endpoint uses this shape, served as application/problem+json. schemaVersion 1 — evolves additively per PC6.",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "format": "uri",
+      "description": "A stable URI identifying the error CLASS — clients branch on this, so changing what one means is a breaking change and gets a new type rather than an edit (HA2). Fleet form: https://errors.aurumalpha.dev/<service>/<slug>. RFC 9457 does not require it to resolve; the form is pinned so it can become dereferenceable later without changing a client. 'about:blank' only where the status code is the whole story.",
+      "minLength": 1
+    },
+    "title": {
+      "type": "string",
+      "description": "Human-readable name of the class, identical for every instance of this type so that errors group.",
+      "minLength": 1
+    },
+    "status": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 599,
+      "description": "The HTTP status code, repeated in the body so a logged or forwarded envelope stays complete on its own."
+    },
+    "detail": {
+      "type": "string",
+      "description": "THIS occurrence's specific reason, per the reason-giving rule of service.md SC2: which value, which rule, which limit. Never the bare class restated, never a stack trace, never a secret or a record's contents — this envelope crosses the trust boundary.",
+      "minLength": 1
+    },
+    "instance": {
+      "type": "string",
+      "description": "A URI for this specific occurrence, typically the request path."
+    },
+    "request_id": {
+      "$ref": "https://contracts.aurumalpha.dev/observability/context.schema.json#/$defs/requestId"
+    },
+    "errors": {
+      "type": "array",
+      "description": "One entry per rejected field, on validation failures (HA2). A client highlighting three bad inputs cannot do it from prose.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "description": "The rejected field, named as the request body spells it.",
+            "minLength": 1
+          },
+          "rule": {
+            "type": "string",
+            "description": "The constraint violated, as a stable slug a client can branch on: 'required', 'format', 'max_length', 'not_in_future'.",
+            "minLength": 1
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable specifics. Names the field and what was wrong with it — never echoes a secret or protected personal value back.",
+            "minLength": 1
+          }
+        },
+        "required": ["field", "rule", "message"]
+      }
+    }
+  },
+  "required": ["type", "title", "status", "detail", "request_id"]
+}

@@ -166,7 +166,7 @@ to artifacts as each standard lands; the ledger tracks what is enforced.
 | Health & readiness | Two-endpoint contract, fixed paths and shapes | #143 |
 | Service lifecycle | SIGTERM means drain: readiness flips, in-flight completes, stated timeout | #143 |
 | Runtime provenance | The running service reports the commit and build it is | #143 |
-| Observability & context propagation | OTLP profile; W3C trace context; one id vocabulary across logs, traces, events | #187 |
+| Observability & context propagation | OTLP profile; W3C trace context; one id vocabulary across logs, traces, events | [`observability.md`](observability.md), proposed |
 | HTTP APIs | OpenAPI description; RFC 9457 errors; pagination, versioning, idempotency keys, retry semantics | #186 |
 | Identifiers & primitives | Internal keys never exposed; public-id format table; RFC 3339 UTC; integer minor-unit money | [`identifiers.md`](identifiers.md), proposed |
 | Data layer | Migrations-only schema change; seeding contract; tenancy isolation rules | #147 |

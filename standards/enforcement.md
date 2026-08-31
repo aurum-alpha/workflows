@@ -185,3 +185,23 @@ exists, so promoting them is building the job, not writing the cases. IP1's
 mechanical gate is named but blocked on #147. IP3 resists a checker — what a
 consumer does with an id after receiving it is not a fact on disk — and the
 document states the review question instead.
+
+## Observability standard
+
+Rules from [`observability.md`](observability.md), **proposed (issue #187)** —
+the propagation and telemetry-transport profile the service baseline's log
+fields and the async envelope both build on.
+
+| # | Rule | Enforced by | Status |
+|---|---|---|---|
+| OC1 | W3C trace context on every boundary — HTTP calls and the job envelope; continue valid inbound context, start fresh otherwise; no parallel correlation scheme | propagation corpus under `job-contract-conformance` (proposed) | **review only** |
+| OC2 | One id vocabulary: `trace_id`, `span_id`, `request_id`, `tenant_id` — same snake_case names and formats in every log line and audit event, every language | corpus validity cases (same job, proposed) | **review only** |
+| OC3 | Traces and metrics leave as OTLP to an endpoint from the OTel env vars; no vendor exporter in application code; logs stay stdout per the service baseline | env presence checkable; wire half proven where the corpus runs live; vendor-exporter half a review question | **review only** |
+| OC4 | The context block is present on lines and events emitted within request context | startup-line assertion in `job-image-starts` (proposed) + propagation corpus | **review only** |
+
+OC1, OC2 and OC4 are exactly corpus-shaped: inject a `traceparent`, read
+emitted lines, black-box in any language — the same `job-contract-conformance`
+the identifiers rows wait on, so building that job promotes seven rows at
+once. OC3 splits honestly: config presence is a fact on disk, the wire
+protocol is proven live, and "no vendor exporter in app code" is judgment and
+stays a review question.

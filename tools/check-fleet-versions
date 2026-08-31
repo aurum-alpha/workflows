@@ -124,8 +124,8 @@ def check_section(
     sibling = manifest.get(other, {})
     failures = 0
     # Named in the output rather than passed over in silence. A reader has to
-    # be able to tell "this repo does not use react-query" from "this checker
-    # forgot to look", and only one of those is a fact about the repo.
+    # be able to tell "this unit does not use vitest" from "this checker
+    # forgot to look", and only one of those is a fact about the unit.
     skipped: list[str] = []
 
     for name, version in sorted(want.items()):

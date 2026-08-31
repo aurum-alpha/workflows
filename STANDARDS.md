@@ -95,6 +95,41 @@ describes, arriving one document earlier.
 **The tier describes the rule's enforcement, never the document's standing.** A
 merged document is binding — see the writing conventions below.
 
+## The foundation: twelve-factor
+
+**[The Twelve-Factor App](https://12factor.net/) is the ground these standards
+are built on**, not a reference we consulted. Config in the environment, logs
+as event streams, strict build/release/run separation, disposable processes
+that shut down gracefully — most of what the CI standard and the platform
+contract say about how a service behaves is twelve-factor, applied to this
+fleet with the open choices pinned.
+
+Two consequences for how these documents are written:
+
+- **Where a rule restates a factor, the document cites the factor as its
+  justification.** "Logs go to stdout because we said so" is a preference;
+  "logs go to stdout per [factor XI](https://12factor.net/logs), because the
+  application must not concern itself with routing or storage" is an argument
+  a reader can check against a source older and more tested than we are.
+  Claiming a well-known idea as a house invention also costs credibility with
+  exactly the engineers we want reading these documents.
+- **Where a rule departs from a factor, the document says so, in the rule,
+  with the reason.** A silent departure is worse than a stated one: the next
+  reader assumes we did not know.
+
+What a standard here adds on top of a factor is the part twelve-factor
+deliberately leaves open — the *specific* names, formats and endpoints that
+make a polyglot fleet interoperable. Factor III says config lives in the
+environment; it does not say what the variables are called. That pinning is
+ours, and it is the only part that is.
+
+**Known departures: none today.** One tension is open and unsettled rather
+than assumed: [factor XII](https://12factor.net/admin-processes) says
+admin and management tasks run as one-off processes, while the maintenance
+jobs capability on the platform roster is heading toward a registered Job
+interface inside the service. Whichever way that lands, the maintenance jobs
+standard states the choice against factor XII rather than around it.
+
 ## How these documents are written
 
 Two conventions, because both failures are quiet ones.

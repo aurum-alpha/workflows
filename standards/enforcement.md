@@ -210,17 +210,22 @@ stays a review question.
 ## Charter: document conventions
 
 Rules from [`../STANDARDS.md`](../STANDARDS.md)'s "How these documents are
-written". Both are mechanically checkable, and neither has a checker yet.
+written" and "The foundation: twelve-factor".
 
 | # | Rule | Enforced by | Status |
 |---|---|---|---|
 | D1 | No document carries a status header; a merged document is binding | `check-standards-docs` (proposed): no `Status:` line in a standard | **review only** |
 | D2 | Documents reference documents by working relative link — never a tracker number, never a bare name; a standard not yet written is linked at its roster row | `check-standards-docs` (proposed): no issue or pull-request reference in a standard's prose, and every relative link resolves | **review only** |
+| D3 | A rule restating a twelve-factor factor cites it; a rule departing from one says so, in the rule, with the reason | — resists honestly: whether a citation is apt, or a departure argued, is judgment | **review only** |
 
-These are the cheapest gates in this ledger — a grep each, no false positives —
-and they are the kind of rule that regresses silently, because a status line
-looks like diligence and a tracker reference looks like a citation. The
-checker is worth writing before the next standard lands rather than after.
+D1 and D2 are the cheapest gates in this ledger — a grep each, no false
+positives — and they are the kind of rule that regresses silently, because a
+status line looks like diligence and a tracker reference looks like a
+citation. The checker is worth writing before the next standard lands rather
+than after.
+D3 resists a checker: a grep can find the word "twelve-factor" but not
+whether the citation is apt or the departure argued, so it stays a review
+question, stated in the charter's *The foundation: twelve-factor*.
 One carve-out is unsettled and left visible rather than assumed: the CI
 standard's decisions log cites the change that settled each row, which is
 history rather than a live reference, and whether D2 admits that is a review

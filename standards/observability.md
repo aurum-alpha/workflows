@@ -9,8 +9,7 @@ formats referenced here are [`identifiers.md`](identifiers.md)'s.
 ## Why this exists
 
 The [service baseline standard](platform.md#the-capability-roster) gives
-every service structured logging with a
-request id. This standard is what makes those ids mean something *across*
+every service structured logging with a request id. This standard is what makes those ids mean something *across*
 services: a request that crosses two services, or enters a job queue, must
 not drop its identity at the boundary. Both halves are standard protocols —
 W3C trace context for propagation, OTLP for telemetry transport — so per
@@ -32,8 +31,8 @@ correlation header beside `traceparent` is a second answer to a solved
 question.
 
 The async boundary is not an exception: the job envelope (the [async
-messaging standard](platform.md#the-capability-roster)) carries the same `traceparent`/`tracestate` as
-envelope fields, and the worker that dequeues continues the trace that
+messaging standard](platform.md#the-capability-roster)) carries the same
+`traceparent`/`tracestate` as envelope fields, and the worker that dequeues continues the trace that
 enqueued. A background job with no trace identity is unattributable work —
 the exact failure this rule exists to remove.
 
@@ -65,10 +64,9 @@ emitted line, never the identifier in source: a Go struct writes
 initialisms rule, the tag follows this contract — and a TypeScript DTO maps
 at the serialization boundary the same way. In-code style follows the
 language authors' guides, per the [platform contract](platform.md).
-snake_case is the wire
-choice because these fields flow into underscore-native and
-case-insensitive systems: a Prometheus label admits only
-`[a-zA-Z0-9_]`, an unquoted SQL identifier case-folds (`traceId` becomes
+snake_case is the wire choice because these fields flow into
+underscore-native and case-insensitive systems: a Prometheus label admits
+only `[a-zA-Z0-9_]`, an unquoted SQL identifier case-folds (`traceId` becomes
 `traceid` silently), and a log grep matches raw bytes. camelCase degrades
 at the first case-insensitive hop; snake_case round-trips the whole chain
 unchanged.
@@ -77,8 +75,8 @@ unchanged.
 field's name, format and presence in telemetry. How tenant context is
 *established* — from authenticated identity, never from a header an
 external caller controls — belongs to the [authorization
-standard](platform.md#the-capability-roster).
-Between internal services it travels with the request so telemetry
+standard](platform.md#the-capability-roster). Between internal services it
+travels with the request so telemetry
 downstream stays attributable, and it is never read as an access-control
 input from anything but the authorization layer's own establishment.
 
@@ -88,17 +86,27 @@ Traces and metrics leave the application as **OTLP**. The endpoint and
 protocol come from configuration — the OpenTelemetry standard's own
 environment variables (`OTEL_EXPORTER_OTLP_ENDPOINT` and family), per PC2:
 the standard ships its own config contract, so inventing a fleet spelling
-would be a second answer. The default protocol is `http/protobuf`; gRPC is
-admitted where the platform endpoint offers it.
+would be a second answer, and per [factor III](https://12factor.net/config)
+that config belongs in the environment. The collector behind that endpoint
+is an attached resource in the sense of
+[factor IV](https://12factor.net/backing-services) — swappable per deploy,
+named only by configuration. The default protocol is `http/protobuf`; gRPC
+is admitted where the platform endpoint offers it.
 
 What sits behind that endpoint — a collector, a vendor, a black hole in
 dev — is the platform's problem, never the application's. **No
 vendor-specific exporter or agent in application code**: the vendor lives
-behind the collector. This is the same shape as the service baseline's rule
-for logs, and logs stay on that rule — **structured lines to stdout, per the
-[service baseline standard](platform.md#the-capability-roster); OTLP is not
-required for logs.** One answer per signal: stdout for logs, OTLP for traces
-and metrics.
+behind the collector.
+
+Logs are not part of this rule, and stay where
+[factor XI](https://12factor.net/logs) puts them: **structured lines to
+stdout as an event stream, per the [service baseline
+standard](platform.md#the-capability-roster); OTLP is not required for
+logs.** Factor XI is the justification, not a fleet preference — an
+application that routes or stores its own logs has taken on the execution
+environment's job, and the fleet inherits that rule rather than restating
+it. One answer per signal: stdout for logs, OTLP for the signals stdout
+cannot carry.
 
 An OpenTelemetry SDK is an implementation choice, not a fleet dependency:
 the contract is the wire protocol and the config variables, and an
@@ -157,10 +165,12 @@ process.
   tags the JSON, which is the language authors' own answer to wire-vs-code.
 - **`tracestate` forwarded, never logged** (2026-08-31): it is foreign
   vendors' baggage; logging it is logging unknown third-party data.
-- **Logs stay stdout, not OTLP** (2026-08-31): the [service baseline
-  standard](platform.md#the-capability-roster) already answered log
-  transport; a second pipeline for the same signal is the two-answers
-  failure. OTLP is the answer for the signals stdout cannot carry.
+- **Logs stay stdout, not OTLP** (2026-08-31): [factor
+  XI](https://12factor.net/logs) settled log transport long before we did,
+  and the [service baseline
+  standard](platform.md#the-capability-roster) adopts it; a second pipeline
+  for the same signal is the two-answers failure. OTLP is the answer for the
+  signals stdout cannot carry, where twelve-factor is silent.
 - **OTel's own env vars, no fleet spelling** (2026-08-31): the standard
   ships a config contract; adopting it whole is what PC2 means by
   profile.

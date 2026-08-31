@@ -81,6 +81,13 @@ adopts it, as a **written profile**: the document pins the choices the
 standard leaves open, because "we use OIDC" unpinned is four implementations
 waiting to happen.
 
+This holds for methodologies as much as wire protocols. **The
+[twelve-factor app](https://12factor.net/) is the foundation under most of
+this roster**, and a capability standard that restates a factor cites it and
+pins what the factor leaves open, rather than re-deriving it in house style —
+see the charter's *The foundation: twelve-factor* for the citation rule and
+the one open tension.
+
 An **internal contract** is invented only where no standard suffices, and the
 capability's standard says why — naming the candidate that was evaluated and
 the reason it fell short. An internal contract invented where a standard
@@ -161,18 +168,18 @@ the work is an issue in this repository.
 |---|---|---|
 | Authentication | OIDC profile — the provider authenticates, identity claims only | not yet written |
 | Authorization | Application-owned RBAC as a full interface spec: model, operations, semantics, corpus — never derived from token claims | not yet written |
-| Configuration | 12-factor environment contract: naming, layering, fail-loud on missing, no environment detection in code | not yet written |
+| Configuration | [Factor III](https://12factor.net/config) profile: variable naming, layering, fail-loud on missing, no environment detection in code | not yet written |
 | Secrets | Delivery convention — how a secret reaches a process; never a vendor SDK in application code | not yet written |
-| Logging | Structured log-line schema to stdout; transport is the platform's problem | not yet written |
+| Logging | [Factor XI](https://12factor.net/logs) profile: structured log-line schema to stdout; transport is the platform's problem | not yet written |
 | Health & readiness | Two-endpoint contract, fixed paths and shapes | not yet written |
-| Service lifecycle | SIGTERM means drain: readiness flips, in-flight completes, stated timeout | not yet written |
+| Service lifecycle | [Factor IX](https://12factor.net/disposability) profile: SIGTERM means drain — readiness flips, in-flight completes, stated timeout | not yet written |
 | Runtime provenance | The running service reports the commit and build it is | not yet written |
 | Observability & context propagation | OTLP profile; W3C trace context; one id vocabulary across logs, traces, events | [`observability.md`](observability.md) |
 | HTTP APIs | OpenAPI description; RFC 9457 errors; pagination, versioning, idempotency keys, retry semantics | not yet written |
 | Identifiers & primitives | Internal keys never exposed; public-id format table; RFC 3339 UTC; integer minor-unit money | [`identifiers.md`](identifiers.md) |
 | Data layer | Migrations-only schema change; seeding contract; tenancy isolation rules | not yet written |
 | Async jobs & messaging | Internal envelope contract; at-least-once plus dedupe; signed webhooks | not yet written |
-| Maintenance jobs | The Job interface contract: registration, single-flight, run observability | not yet written |
+| Maintenance jobs | The Job interface contract: registration, single-flight, run observability — and where it lands against [factor XII](https://12factor.net/admin-processes) | not yet written |
 | Audit events | Event schema contract with required context fields | not yet written |
 | Security baseline | Response-header set, scanning, image pinning, secrets doctrine | not yet written |
 | Feature flags | Evaluation contract; standard-first (OpenFeature is the candidate) | not yet written |

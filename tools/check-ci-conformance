@@ -701,12 +701,32 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
                 for k in sorted(required - passed):
                     bad("IN", f"'{job}' omits required input '{k}'")
 
-            # --- WD: workdir names a shape, not a path ---------------------
+            # --- WD: workdir is a real path in this repo -------------------
+            # This used to demand '.' or 'client' and nothing else, matching an
+            # allowlist the six shared jobs enforced at runtime. Both sides of
+            # that pair were relaxed together in workflows#252: the catalog
+            # standardises the toolchain, not the tree, and a repo whose layout
+            # did not fit could not call a catalog job at all -- and so got no
+            # version standardisation either.
+            #
+            # What replaces it is the check the allowlist was standing in for.
+            # A workdir is wrong when it does not point at a pnpm project, and
+            # the tree is right here, so say so HERE rather than let the job
+            # discover it on a runner six steps in. Relative, inside the repo,
+            # and holding a package.json.
             if re.search(r"/job-(build|bundle|lint|test-unit|typecheck)-", uses) or "job-image-docker" in uses:
                 m = re.search(r"^      workdir:\s*(\S+)\s*$", props.get("__with_raw__", ""), re.M)
-                if m and m.group(1).strip("\"'") not in (".", "client"):
-                    bad("WD", f"'{job}' passes workdir: {m.group(1)} — it must be '.' or "
-                              "'client'; the input names a repo shape, not a path")
+                if m:
+                    wd = m.group(1).strip("\"'")
+                    if not wd:
+                        bad("WD", f"'{job}' passes an empty workdir — use '.' for the repo root")
+                    elif wd.startswith("/") or ".." in pathlib.PurePosixPath(wd).parts:
+                        bad("WD", f"'{job}' passes workdir: {wd} — it must be relative to "
+                                  "the repo root and must not escape it")
+                    elif not (repo / wd / "package.json").is_file():
+                        bad("WD", f"'{job}' passes workdir: {wd}, which holds no "
+                                  "package.json — the input names the directory holding "
+                                  "package.json and .node-version")
 
             # --- D8: needs.<id> expressions resolve ------------------------
             # A rename moves job ids and needs: lists; ${{ needs.X.outputs.Y }}

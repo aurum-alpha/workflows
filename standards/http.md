@@ -240,16 +240,27 @@ contract tests, and the review question is whether they exist.
 
 ## Decisions
 
-- **snake_case in request and response bodies** (2026-08-31): the fleet
-  already pins snake_case for log lines, audit events, job envelopes and
-  the id vocabulary, and SQL identifiers case-fold toward it. One
-  convention across every wire format means a field is spelled the same in
-  the database, the log line, the event and the API, and mapping code never
-  has to ask which side of which boundary it is on. The cost is real and
-  accepted: `data.created_at` is not idiomatic TypeScript, so a TypeScript
-  client maps at its DTO boundary — which it already does, and which
-  usefully marks where the wire stops. In-code naming is untouched, per the
-  platform contract: Go writes `CreatedAt` with a `json:"created_at"` tag.
+- **snake_case in request and response bodies** (2026-08-31): this is the
+  fleet convention holding, not a fresh choice. Log lines, audit events,
+  job envelopes and the id vocabulary are already snake_case, and SQL
+  identifiers case-fold toward it, so one spelling covers the database, the
+  log line, the event and the API — and deviating on this one surface is
+  what would need the justification.
+
+  The cost lands on the frontend, not the backends, which is the opposite
+  of how it first reads. Go marshals `CreatedAt` as `"CreatedAt"` unless it
+  is tagged, so `json:"created_at"` and `json:"createdAt"` are the same
+  work — the tag is mandatory either way — while snake_case additionally
+  makes a service's two boundaries agree with each other, since its columns
+  are already snake_case. camelCase would introduce a database-to-API
+  mismatch that does not currently exist.
+
+  What the frontend pays is smaller than it looks, because HA2 requires a
+  committed OpenAPI document: a TypeScript client **generates** its types
+  rather than hand-writing them, so nobody types `created_at`, and a
+  repository wanting camelCase in its own code generates that mapping from
+  the same source. In-code naming is untouched either way, per the platform
+  contract.
 - **OpenAPI 3.1, not 3.0** (2026-08-31): 3.1's dialect is JSON Schema
   2020-12, so the fleet's existing `$defs` are referenceable rather than
   transcribed.

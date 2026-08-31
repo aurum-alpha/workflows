@@ -168,7 +168,7 @@ to artifacts as each standard lands; the ledger tracks what is enforced.
 | Runtime provenance | The running service reports the commit and build it is | #143 |
 | Observability & context propagation | OTLP profile; W3C trace context; one id vocabulary across logs, traces, events | #187 |
 | HTTP APIs | OpenAPI description; RFC 9457 errors; pagination, versioning, idempotency keys, retry semantics | #186 |
-| Identifiers & primitives | Internal keys never exposed; public-id format table; RFC 3339 UTC; integer minor-unit money | #188 |
+| Identifiers & primitives | Internal keys never exposed; public-id format table; RFC 3339 UTC; integer minor-unit money | [`identifiers.md`](identifiers.md), proposed |
 | Data layer | Migrations-only schema change; seeding contract; tenancy isolation rules | #147 |
 | Async jobs & messaging | Internal envelope contract; at-least-once plus dedupe; signed webhooks | #189 |
 | Maintenance jobs | The Job interface contract: registration, single-flight, run observability | #190 |

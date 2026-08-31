@@ -1433,11 +1433,62 @@ and in the repository's own documentation:
 Overrides are pinned exactly, like everything else. A floating override is the
 pinning defect one level down, which is why the scope table above lists it.
 
-**The fleet does not meet this bar today.** Seven Node units force
-`zod-validation-error` to `5.0.0` and nothing records why. It is load-bearing,
-not dead weight: removed, the tree resolves `4.0.2` instead, a full major back.
-So it cannot simply be swept. Its reason has to be recovered, or the override
-removed on purpose.
+`tools/check-overrides` enforces this, per repository, from
+`job-ci-conformance`: the forbidden keys, a reason for every override, and no
+reason left stranded without one.
+
+The reason lives in `pnpm.overrideReasons`, beside the override it explains:
+
+```json
+"pnpm": {
+  "overrides":       { "zod-validation-error": "5.0.0" },
+  "overrideReasons": { "zod-validation-error":
+      "eslint-plugin-react-hooks imports zod-validation-error/v4 but declares
+       ^3.5.0 || ^4.0.0. Retires when the resolved version exports ./v4." }
+}
+```
+
+Beside it, and not in a file of its own, because a reason that lives elsewhere
+drifts away from the thing it explains. pnpm ignores the key — verified, the
+override still applies with it present — so it costs nothing at install time.
+`tools/check-overrides` enforces the pairing, and rejects a reason left behind
+by an override that has been removed.
+
+### What the fleet's own override taught, which is the reason for the rule
+
+The `zod-validation-error` override in seven Node units looked undocumented. It
+was not: the reason was written down in the commit message that introduced it,
+in the eslint 10.8.1 rollout, under the heading REQUIRED OVERRIDE —
+`eslint-plugin-react-hooks` imports `zod-validation-error/v4` while declaring
+`^3.5.0 || ^4.0.0`; pnpm resolved `3.5.4`, which does not export `./v4`, and
+eslint crashed on startup with `ERR_PACKAGE_PATH_NOT_EXPORTED` before linting
+anything.
+
+That is a good reason, accurately recorded. **Two things still went wrong, and
+they are what this whole section is for.**
+
+**A commit message is not documentation.** Nobody reading `package.json` can
+find it. Recovering it took unshallowing seven clones and a `git log -S` — and
+the first attempt got the wrong answer, blaming a later eslint bump, because a
+shallow clone's earliest commit looks exactly like a root commit.
+
+**The reason silently stopped being true.** It named a resolution, `3.5.4`, not
+a condition. The natural resolution has since moved to `4.0.2`, which *does*
+export `./v4`, so the crash it prevents can no longer happen. Measured rather
+than argued: with the override removed, `oxlint` loads the plugin and reports
+an identical tally — same rules, same counts. Nothing marked the day it became
+vestigial, and nothing would have.
+
+Hence the two required parts. **What it routes around** is what a commit
+message already gives you. **What retires it** is the part that was missing,
+and it is the part that turns a permanent workaround into one a reviewer can
+re-test in a minute.
+
+(The consumer changed underneath it too. eslint was retired from the fleet in
+favour of oxlint, but `eslint-plugin-react-hooks` and `eslint-plugin-react-refresh`
+stayed — oxlint loads them through its JS plugin bridge, so they are live
+dependencies of the lint that actually runs, not orphans of the one that
+does not.)
 
 ## Dependency updates — every manifest gets a watcher
 

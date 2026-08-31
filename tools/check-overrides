@@ -1,0 +1,212 @@
+#!/usr/bin/env python3
+"""An override is declared the pnpm way, and it says why it exists.
+
+CI_STANDARD "Dependency overrides — the lever over code you do not own".
+
+An override rewrites what a TRANSITIVE dependency resolves to: a package
+nobody here declared, arriving through somebody else's tree. It is the only
+lever over such a package, which is why the mechanism is allowed at all. It is
+also invisible -- it applies to code no one on the team chose, survives every
+dependency bump, and has no expiry. An override with no stated reason cannot
+be told apart from one that has been wrong for two years.
+
+This checker asserts two things per Node unit.
+
+ONE KEY, AND IT IS THE PNPM ONE. Three override keys are in circulation and
+pnpm's treatment of them is not what their names suggest. Measured directly
+against pnpm 10.34.5 by resolving a manifest carrying each:
+
+    pnpm.overrides   pnpm's own -- APPLIED, and it beats resolutions
+    resolutions      yarn's     -- ALSO APPLIED, quietly
+    overrides        npm's      -- IGNORED, even as the only key present
+
+So the two are forbidden for opposite reasons. `overrides` does nothing and
+cannot be seen to do nothing: a reader finds it in a package.json and has no
+way to know it governs nothing, and a manifest carrying one entry under both
+keys reads as emphasis when it is one live copy and one corpse. `resolutions`
+is forbidden because it WORKS -- two live keys with a silent precedence
+between them is two answers to one question, and this is a pnpm shop.
+
+EVERY OVERRIDE CARRIES ITS REASON. Each key in pnpm.overrides needs a matching
+entry in pnpm.overrideReasons. That sits beside the thing it explains rather
+than in a file that drifts away from it, and pnpm ignores the key -- verified,
+the override still applies with it present.
+
+    "pnpm": {
+      "overrides":       { "zod-validation-error": "5.0.0" },
+      "overrideReasons": { "zod-validation-error":
+          "eslint-plugin-react-hooks imports zod-validation-error/v4 but "
+          "declares ^3.5.0 || ^4.0.0. Retires when the resolved version "
+          "exports ./v4 on its own." }
+    }
+
+WHAT THIS CANNOT PROVE. That the reason is true, that it is still true, or
+that it names a real retirement condition. It checks that somebody wrote one
+and that it is not a placeholder. The rest is a review question, and the
+standard says so rather than implying coverage it lacks. The fleet's own
+zod-validation-error override is the case in point: its reason was recorded in
+a commit message in August, was accurate when written, and had quietly stopped
+being true by the time anyone looked -- the resolution moved into a version
+that exports the subpath. A checker cannot catch that. A stated reason with a
+retirement condition is what gives a reviewer something to re-test.
+
+Run against local clones:  tools/check-overrides --root /workspace
+Run against one repo:      tools/check-overrides --root DIR --repo NAME
+
+Naming a repo with no Node unit is a pass, so every caller can wire this up
+unconditionally.
+"""
+
+import argparse
+import json
+import pathlib
+import sys
+
+# A reason has to say something. These are the shapes that look like a reason
+# and are not one; a length floor catches the rest.
+PLACEHOLDERS = {"", "-", "n/a", "na", "tbd", "todo", "fixme", "?", "xxx",
+                "none", "unknown", "see above", "required", "needed"}
+MIN_REASON = 40
+
+
+def is_placeholder(text: str) -> bool:
+    if not isinstance(text, str):
+        return True
+    stripped = text.strip()
+    if stripped.lower().rstrip(".") in PLACEHOLDERS:
+        return True
+    return len(stripped) < MIN_REASON
+
+
+def override_keys(block, path="pnpm.overrides"):
+    """The names an override targets. They nest two ways, both in the fleet:
+
+        {"drizzle-kit": {"@esbuild-kit/esm-loader": "npm:tsx@4.22.4"}}
+        {"drizzle-kit>@esbuild-kit/esm-loader":     "npm:tsx@4.22.4"}
+
+    A reason is required per TOP-LEVEL key: that is the decision a person
+    made, and splitting one decision across several reasons would invite a
+    reason per leaf that says the same thing.
+    """
+    return sorted(block.keys()) if isinstance(block, dict) else []
+
+
+def check_unit(path: pathlib.Path, label: str) -> int:
+    manifest = json.loads(path.read_text())
+    pnpm = manifest.get("pnpm") or {}
+    findings = 0
+
+    if manifest.get("overrides"):
+        names = ", ".join(sorted(manifest["overrides"]))
+        print(f"{label}: top-level `overrides` is forbidden — pnpm ignores it "
+              f"entirely, so it governs nothing while reading as if it does "
+              f"({names}). Move it to pnpm.overrides, or delete it.")
+        findings += 1
+
+    if manifest.get("resolutions"):
+        names = ", ".join(sorted(manifest["resolutions"]))
+        print(f"{label}: `resolutions` is forbidden — it is yarn's key and "
+              f"pnpm DOES apply it, so it is a second live source of truth "
+              f"beside pnpm.overrides ({names}). This is a pnpm shop; move it.")
+        findings += 1
+
+    overrides = override_keys(pnpm.get("overrides") or {})
+    reasons = pnpm.get("overrideReasons") or {}
+
+    if not isinstance(reasons, dict):
+        print(f"{label}: pnpm.overrideReasons must be an object mapping each "
+              f"override to why it exists.")
+        return findings + 1
+
+    for name in overrides:
+        if name not in reasons:
+            print(f"{label}: pnpm.overrides[{name}] has no entry in "
+                  f"pnpm.overrideReasons. An override rewrites a dependency "
+                  f"nobody declared; say what it routes around and what "
+                  f"retires it.")
+            findings += 1
+        elif is_placeholder(reasons[name]):
+            print(f"{label}: pnpm.overrideReasons[{name}] is a placeholder, "
+                  f"not a reason. Say what it routes around and what retires "
+                  f"it, in at least {MIN_REASON} characters.")
+            findings += 1
+
+    for name in sorted(set(reasons) - set(overrides)):
+        print(f"{label}: pnpm.overrideReasons[{name}] explains an override "
+              f"that no longer exists. Delete it — a reason outliving its "
+              f"override is how the next reader is misled.")
+        findings += 1
+
+    if not findings:
+        n = len(overrides)
+        print(f"{label}: {n} override(s), each declared under pnpm and "
+              f"explained" if n else f"{label}: no overrides")
+    return findings
+
+
+def node_units(root: pathlib.Path, repo: str) -> list[str]:
+    """Same discovery contract as check-exact-pins: read the tree."""
+    base = root / repo
+    if not base.is_dir():
+        return []
+    found: list[str] = []
+
+    def walk(d: pathlib.Path, depth: int) -> None:
+        if (d / "package.json").is_file():
+            rel = d.relative_to(base).as_posix()
+            found.append(rel if rel != "." else ".")
+            return
+        if depth == 2:
+            return
+        for child in sorted(d.iterdir()):
+            if child.is_dir() and not child.name.startswith(".") and child.name not in (
+                    "node_modules", "vendor", "dist", "build", "coverage", "testdata"):
+                walk(child, depth + 1)
+
+    walk(base, 0)
+    return sorted(found)
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--root", default="/workspace", type=pathlib.Path)
+    ap.add_argument("--repo", action="append", help="limit to specific repo(s)")
+    args = ap.parse_args()
+
+    names = args.repo or sorted(
+        p.name for p in args.root.iterdir()
+        if p.is_dir() and not p.name.startswith("."))
+
+    units = [(r, d) for r in names for d in node_units(args.root, r)]
+
+    if args.repo:
+        for r in args.repo:
+            if not node_units(args.root, r):
+                print(f"{r}: no Node unit — nothing to check")
+
+    if not units:
+        print("\nPASS: no Node unit to check")
+        return 0
+
+    total = 0
+    for repo, subdir in units:
+        label = repo if subdir == "." else f"{repo}/{subdir}"
+        total += check_unit(args.root / repo / subdir / "package.json", label)
+
+    if total:
+        print(
+            f"\nFAIL: {total} finding(s) in {len(units)} Node unit(s). An "
+            "override is the one place a version is decided by somebody else, "
+            "so it is declared the pnpm way and it says why it exists. See "
+            "CI_STANDARD 'Dependency overrides — the lever over code you do "
+            "not own'."
+        )
+        return 1
+
+    print(f"\nPASS: {len(units)} Node unit(s), every override sanctioned "
+          f"and explained")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

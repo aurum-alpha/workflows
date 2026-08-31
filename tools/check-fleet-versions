@@ -56,26 +56,69 @@ import json
 import pathlib
 import sys
 
-# Node apps in the fleet, as paths to the directory holding package.json
-# relative to each repo root. Dual-stack repos keep their app in a subdirectory.
-NODE_APPS = {
-    "credit-watch": ".",
-    "expense-splitter": ".",
-    "flight-watch": ".",
-    "hiring-tracker": ".",
-    "jewelry-factory": ".",
-    "wardley-mapper": ".",
-    # client-manager and gofast moved web/ to client/ (F#3, F#23) and this map
-    # was not updated with them, so the check reported "package.json not found"
-    # for both — a FAIL that says the repo is missing a file rather than that
-    # this list is stale. It went unnoticed because nothing ran the checker;
-    # that is the gap issue #79 exists to close.
-    "client-manager": "client",
-    "gofast": "client",
-    # event-manager declares packageManager and was simply never listed, so its
-    # pnpm could have drifted from the fleet without anything saying so.
-    "event-manager": ".",
-}
+# How deep to look for a Node unit, and what never holds one.
+#
+# This was UNIT_DIRS = (".", "client") -- a two-element allowlist, justified by
+# the six shared jobs rejecting any other workdir at runtime. workflows#252
+# relaxed that: a repo may keep its pnpm project anywhere and still call a
+# catalog job, because what the catalog standardises is the toolchain, not the
+# tree. So the allowlist here had to go with it, or a unit at a path the jobs
+# now accept would be invisible to the version check -- the same class of bug
+# as the NODE_APPS map both of these replaced.
+#
+# Depth 2 covers every shape in the fleet with room to spare (`.`, `client`,
+# and anything one level further in) without walking a whole tree to find
+# nothing. PRUNE is the important half: node_modules holds thousands of
+# package.json files, none of them units.
+MAX_DEPTH = 2
+PRUNE = {"node_modules", "vendor", "dist", "build", "coverage", "testdata"}
+
+
+def node_units(root, repo):
+    """Directories under `repo` holding a package.json, nearest first.
+
+    THIS REPLACES A HAND-MAINTAINED MAP, and the map's own comments are the
+    argument for the replacement. It went stale twice. client-manager and
+    gofast moved web/ to client/ and nobody updated it, so the check reported
+    "package.json not found" for both -- a failure that blamed the repo for a
+    missing file when the list was what was wrong. event-manager was simply
+    never added, so its pnpm could drift with nothing to say so.
+
+    Both are the same bug: a fact about a repo, restated somewhere else, left
+    to rot. The fact is already on disk. Read it.
+
+    This is also what makes a mixed-stack repo work without a special case.
+    A repo is not "a Node repo" or "a Go repo" -- its UNITS have stacks.
+    client-manager and gofast each carry go.mod at the root and a Node unit in
+    client/, and both sets of fleet standards apply to their own unit. Nothing
+    here needs to classify the repo, and nothing should: that classification
+    would be a second copy of what the directory tree already says.
+
+    Paths are returned relative to the repo, with "." for the root, and sorted
+    so output ordering does not depend on the filesystem.
+    """
+    base = root / repo
+    if not base.is_dir():
+        return []
+
+    found = []
+
+    def walk(d: pathlib.Path, depth: int) -> None:
+        if (d / "package.json").is_file():
+            rel = d.relative_to(base).as_posix()
+            found.append(rel if rel != "." else ".")
+            # A pnpm project inside a pnpm project is a workspace package, not
+            # a second unit -- its versions come from the root manifest. Stop.
+            return
+        if depth == MAX_DEPTH:
+            return
+        for child in sorted(d.iterdir()):
+            if child.is_dir() and not child.name.startswith(".") \
+                    and child.name not in PRUNE:
+                walk(child, depth + 1)
+
+    walk(base, 0)
+    return sorted(found)
 
 
 def load_expected(
@@ -115,6 +158,10 @@ def check_section(
     declared = manifest.get(section, {})
     sibling = manifest.get(other, {})
     failures = 0
+    # Named in the output rather than passed over in silence. A reader has to
+    # be able to tell "this unit does not use vitest" from "this checker
+    # forgot to look", and only one of those is a fact about the unit.
+    skipped: list[str] = []
 
     for name, version in sorted(want.items()):
         got = declared.get(name)
@@ -125,14 +172,25 @@ def check_section(
                     f"fleet standard has it in {section} at {version}"
                 )
             else:
-                # Absent is a failure, not a skip. Every package listed in
-                # fleet-versions.json is one the whole fleet converged on, so a
-                # Node app that has dropped one has drifted just as surely as
-                # one carrying the wrong version.
-                print(
-                    f"{repo}: {name} is not declared in {section}, "
-                    f"fleet standard is {version}"
-                )
+                # WHERE PRESENT. Absence is not drift, and this used to say the
+                # opposite -- "absent is a failure, not a skip", on the theory
+                # that every listed package was one the whole fleet had
+                # converged on. That theory held only while the list was
+                # exactly the packages all nine apps happened to share, and it
+                # made the list unable to grow: measured across the fleet,
+                # ZERO unasserted packages are present in all nine, so every
+                # candidate for convergence would have failed the repos that
+                # legitimately do not use it. An assertion that cannot be
+                # added is not a standard.
+                #
+                # What enforces PRESENCE is the shared job that invokes the
+                # tool. job-typecheck-ts-tsc runs `pnpm exec tsc`, so a repo
+                # calling it without typescript fails there, in the job whose
+                # name says what broke. This file answers the other question --
+                # IF you declare it, at what version -- and answering exactly
+                # one question is the point.
+                skipped.append(name)
+                continue
             failures += 1
         elif got != version:
             # Names the range case explicitly: "^10.9.1 is not 10.9.1" reads
@@ -143,6 +201,10 @@ def check_section(
                 f"fleet standard is {version}"
             )
             failures += 1
+
+    if skipped:
+        print(f"{repo}: not declared in {section}, so not asserted — "
+              f"{', '.join(skipped)}")
 
     return failures
 
@@ -158,28 +220,46 @@ def main() -> int:
     want = f"pnpm@{expected}"
 
     if args.repo:
-        # A named repo with no Node app has nothing to disagree about. Say so
-        # and pass: the alternative is every non-Node caller needing an `if:`
-        # around the check, which is how checks stop being run at all.
-        selected = {r: NODE_APPS[r] for r in args.repo if r in NODE_APPS}
-        for r in args.repo:
-            if r not in NODE_APPS:
-                print(f"{r}: no Node app in fleet-versions scope — nothing to check")
-        if not selected:
-            print("\nPASS: no Node app to check")
-            return 0
+        names = list(args.repo)
     else:
-        selected = NODE_APPS
+        names = sorted(p.name for p in args.root.iterdir() if p.is_dir()
+                       and not p.name.startswith("."))
+
+    # (repo, subdir) for every Node unit found, discovered rather than listed.
+    # A repo with no package.json in either place contributes none and is
+    # simply absent from the run: lid-firmware and gha-runner-controller carry
+    # no Node unit, and neither needs an `if:` in its caller to say so.
+    selected = [(r, d) for r in names for d in node_units(args.root, r)]
+
+    # An explicitly named repo with no Node unit gets a line. Silence would be
+    # ambiguous in the direction that matters: a reader cannot tell "this repo
+    # has no Node unit" from "the checker never looked at it", and the second
+    # is what a stale scope list used to look like. Only for NAMED repos --
+    # printing this for every directory under --root would bury the findings.
+    if args.repo:
+        for r in args.repo:
+            if not node_units(args.root, r):
+                print(f"{r}: no Node unit (no package.json within "
+                      f"{MAX_DEPTH} level(s)) — nothing to check")
+
+    if not selected:
+        # Not for NAMED repos: the loop above already printed a line for each,
+        # and printing it twice reads like two findings about one repo.
+        if not args.repo:
+            for r in names:
+                print(f"{r}: no Node unit (no package.json within {MAX_DEPTH} "
+                      f"level(s)) — nothing to check")
+        print("\nPASS: no Node unit to check")
+        return 0
 
     failures = 0
-    for repo, subdir in sorted(selected.items()):
+    for repo, subdir in selected:
         pkg = args.root / repo / subdir / "package.json"
-        if not pkg.exists():
-            print(f"{repo}: package.json not found at {pkg}", file=sys.stderr)
-            failures += 1
-            continue
-
         manifest = json.loads(pkg.read_text())
+        # Name the unit, not just the repo. A dual-stack repo has one Node
+        # unit today and could have two tomorrow, and "client-manager: ..."
+        # would not say which one disagreed.
+        repo = repo if subdir == "." else f"{repo}/{subdir}"
 
         declared = manifest.get("packageManager")
         if declared is None:
@@ -207,9 +287,9 @@ def main() -> int:
         return 1
 
     print(
-        f"\nPASS: all {len(selected)} Node app(s) pin {want}, "
-        f"{len(want_dev)} converged devDependencies "
-        f"and {len(want_deps)} converged dependencies"
+        f"\nPASS: all {len(selected)} Node unit(s) pin {want}; "
+        f"{len(want_dev)} devDependencies and {len(want_deps)} dependencies "
+        f"asserted where present"
     )
     return 0
 

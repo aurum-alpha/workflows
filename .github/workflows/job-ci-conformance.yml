@@ -114,8 +114,11 @@ on:
         # precisely why the pin could land ahead of the fleet without turning
         # a single repo red.
         #
-        # v2.2.8, the base of the change that taught check-standard-ref to
-        # demand this bump for checker INPUT and not only for checker code.
+        # The base of wave 7 -- fleet-versions.json asserted WHERE PRESENT,
+        # and Node units discovered from the tree instead of a hand-kept map.
+        # Demanded by the CHECKER_INPUT_FILES rule the previous change added,
+        # which is the first time this bump has been asked for rather than
+        # remembered.
         #
         # This bump used to be the one nothing could force, and that is no
         # longer true -- check-standard-ref now lists fleet-versions.json in
@@ -142,7 +145,7 @@ on:
         # A data change was never exempt from the bump; it was exempt from
         # being REMINDED about it, which is worse, because the reminder is the
         # whole mechanism.
-        default: e6de63647d572ecbab42206b2ed0ce54887f0781
+        default: 6719d19bce9834f7477e27a348ed3440da1277d5
 
 jobs:
   ci-conformance:

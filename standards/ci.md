@@ -1370,9 +1370,13 @@ fix-and-repush on failure; alphabetical repo order; nothing lands red.
 
 ## Standard repository layout
 
-The catalog is opinionated about where code lives. A shared job that takes a
-path input so each repo can keep its own arrangement is not a standard — it is a
-switch statement with the branches spread across eleven repositories.
+The catalog is opinionated about where code lives, and **it does not enforce
+it**. Those are two different things, and this section spent a while conflating
+them.
+
+The layout below is the fleet's answer, and a repo that differs is a repo worth
+fixing. What the shared jobs enforce is narrower: the toolchain. One pnpm, one
+TypeScript, one set of steps in one order — the *runner*, not the tree.
 
 **Three directory names, and they mean the same thing everywhere:**
 
@@ -1406,9 +1410,32 @@ directory's name was never the difference:
 
 A Go repo with a React UI has a second `package.json`, a second lockfile and a
 second `.node-version` under `client/`, and no rename changes that. `workdir`
-distinguishes the two shapes and is legitimate; what is not legitimate is
-treating it as a free-form path so each repo can put its UI wherever. It takes
-`.` or `client`, and nothing else.
+distinguishes the two shapes and is legitimate.
+
+**It is a default, not a restriction, and this is a correction.** Until
+workflows#252 the six shared JS jobs rejected any value but `.` or `client`, on
+the argument above — that a path input is a switch statement spread across
+eleven repositories. The argument does not survive contact with what the
+restriction actually cost. Standardising the path buys uniformity in the one
+dimension where variance is free: no gate, no version, no reproducibility
+property depends on where a `package.json` sits. What it cost was adoption, in
+the dimension where variance is expensive — a repo whose layout did not fit
+could not call a catalog job at all, and therefore got none of the version
+standardisation, none of the pinned actions, and none of the shared steps
+either. The catalog was refusing the repos that needed it most.
+
+So `.` is the default, `client` is the documented second shape, and any other
+relative path is accepted. The job validates that the path is relative, does
+not escape the repository, and holds a `package.json` — failing by name if not,
+after checkout, rather than six steps later inside pnpm.
+`tools/check-ci-conformance` makes the same three checks against a caller's
+stub, and `tools/check-fleet-versions` discovers units by finding
+`package.json` on disk rather than looking in two named places. Those three
+must agree: relax one and a unit becomes invisible to another.
+
+The layout table above still stands as the standard. It is enforced by review,
+which is where a judgement about a repository's shape belongs, and not by a
+job refusing to run.
 
 ### The shape of a TS client+server repo
 

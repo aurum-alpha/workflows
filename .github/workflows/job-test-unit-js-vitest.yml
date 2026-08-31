@@ -14,11 +14,13 @@ on:
     inputs:
       workdir:
         description: >-
-          Directory holding package.json and .node-version. Empty (the repo
-          root) for a repo whose JS project *is* the repo; `client` for a repo
-          where the React app is its own pnpm project inside a Go or PHP tree.
-          Those are two real shapes and this input distinguishes them — it is
-          not a per-repo path setting, and no caller should pass anything else.
+          Directory holding package.json and .node-version, relative to the
+          repo root. Defaults to `.`, the repo root, for a repo whose JS
+          project *is* the repo; `client` is the other common shape, a React
+          app in its own pnpm project inside a Go or PHP tree. Any other path
+          is accepted — the catalog standardises the toolchain, not the tree
+          (workflows#252). It must be relative, must not escape the root, and
+          must contain a package.json; the job fails naming the path if not.
         type: string
         default: "."
       dir:
@@ -53,22 +55,6 @@ jobs:
       # installs 403 (C2 first run).
       packages: read
     steps:
-      # Two repo shapes, and this input distinguishes them: `.` where the JS
-      # project is the repo, `client` where it is its own pnpm project inside a
-      # Go or PHP tree. Anything else is a repo putting its UI somewhere of its
-      # own choosing, which is the variance the catalog exists to remove
-      # (CI_STANDARD "Standard repository layout").
-      - name: Validate workdir
-        env:
-          WD: ${{ inputs.workdir }}
-        run: |
-          set -euo pipefail
-          case "$WD" in
-            .|client) ;;
-            *) echo "::error::workdir must be '.' or 'client'; got '$WD'." \
-                    "See CI_STANDARD 'Standard repository layout'."; exit 1 ;;
-          esac
-
       # The unit is one of three names, fleet-wide (CI_STANDARD "Standard
       # repository layout"). This input says *which* standard unit, never
       # *where a repo happens to keep it* — a free-form path here would make the
@@ -90,6 +76,45 @@ jobs:
           esac
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The workdir is DEFAULTED, not restricted. `.` is the common shape --
+      # the JS project is the repo -- and `client` is the second, its own pnpm
+      # project inside a Go or PHP tree. A repo that keeps its UI anywhere else
+      # passes that path and the job runs there.
+      #
+      # This step used to REJECT anything but those two, on the argument that a
+      # third path was variance the catalog exists to remove. That was the
+      # wrong variance to remove. What the catalog standardises is the RUNNER
+      # -- one pnpm, one TypeScript, one set of steps in one order, so a build
+      # is reproducible and a version bump is one wave instead of eleven -- and
+      # none of that depends on where the code sits. Restricting the path
+      # bought uniformity in the dimension that costs nothing to vary, and cost
+      # adoption in the dimension that matters: a repo whose layout did not fit
+      # could not call the job at all, and therefore got none of the version
+      # standardisation either. The toolchain is dictated; the tree is not.
+      #
+      # What is still checked is that the path is safe and real. It runs AFTER
+      # checkout because the second half needs a tree, and it names the path so
+      # a typo fails here rather than six steps later inside pnpm.
+      - name: Validate workdir
+        env:
+          WD: ${{ inputs.workdir }}
+        run: |
+          set -euo pipefail
+          case "$WD" in
+            "") echo "::error::workdir is empty; use '.' for the repo root."
+                exit 1 ;;
+            /*) echo "::error::workdir must be relative to the repo root;" \
+                     "got '$WD'."; exit 1 ;;
+            ..|../*|*/../*|*/..)
+                echo "::error::workdir must not escape the repo root;" \
+                     "got '$WD'."; exit 1 ;;
+          esac
+          if [ ! -f "$WD/package.json" ]; then
+            echo "::error::no package.json at workdir '$WD'." \
+                 "The workdir names the directory holding package.json and" \
+                 ".node-version, relative to the repo root."
+            exit 1
+          fi
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: ${{ inputs.workdir }}/.node-version

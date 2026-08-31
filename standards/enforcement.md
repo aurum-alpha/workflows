@@ -65,6 +65,9 @@ will.
 | — | Only a version change mints the tag and the GitHub release | `job-version-release` | gated³ |
 | — | Only a version change mints a `v<version>` image tag or package version | — | **review only** |
 | — | Caller permissions cover shared jobs | `check-caller-permissions` | gated¹ |
+| — | Overrides use pnpm's key alone, not npm's or yarn's | `check-overrides` | gated¹ |
+| — | Every override carries a reason, and no reason outlives its override | `check-overrides` | gated¹ |
+| — | The reason is true, still true, and names a real retirement condition | — | **review only** |
 
 ¹ Gated in every repo whose `ci.yml` calls `job-ci-conformance`, which runs
 these checkers alongside `check-ci-conformance`. The per-repo rollout is

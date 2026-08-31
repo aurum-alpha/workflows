@@ -1307,7 +1307,7 @@ Tuesday, recorded nowhere, attributable to nobody.
 | `dependencies` | **yes** | resolves to an install |
 | `devDependencies` | **yes** | resolves to an install |
 | `optionalDependencies` | **yes** | resolves to an install |
-| `overrides`, `pnpm.overrides` | **yes** | rewrites a transitive resolution; a floating override is the same defect one level down |
+| `pnpm.overrides` | **yes** | rewrites a transitive resolution; a floating override is the same defect one level down. The top-level `overrides` and `resolutions` keys are forbidden outright — see **Dependency overrides** below |
 | `engines` | **no** | a compatibility floor, not an install target. Nothing resolves from it, and an exact `node` would reject the next patch for no gain — the real version is pinned by `.node-version` |
 | `peerDependencies` | **no** | a range is CORRECT here: a pinned peer forces one version on every consumer. The fleet has none today, all nine units being applications; a library repository would rely on this row |
 
@@ -1319,6 +1319,176 @@ A pin taken from the manifest's own floor instead would be a silent DOWNGRADE:
 
 `tools/check-exact-pins` enforces this, per repository, from
 `job-ci-conformance`.
+
+## Dependency overrides — the lever over code you do not own
+
+An override forces a version on a **transitive** dependency: a package nobody
+here declared, which arrived because something that was declared depends on it.
+It is the only lever over such a package, and that is the whole reason the
+mechanism exists.
+
+**You cannot edit your dependencies' dependencies.** A direct dependency ships
+its own `package.json`, carrying its own specs, inside a tarball on a registry.
+When one of those specs resolves to something vulnerable, broken or abandoned,
+nothing in this repository governs it. Every alternative is heavier:
+
+| instead of an override | what it costs |
+|---|---|
+| wait for the maintainer | their release schedule, not ours; for an unmaintained package, never |
+| fork the dependency | we own a fork, a publish pipeline and every future merge |
+| `pnpm patch` | a diff maintained against a moving target — right for a code change, heavy for a version |
+| drop the dependency | rarely available |
+
+An override is the cheap form of all four: one line saying that whatever
+anything in this tree asks for, it gets this instead.
+
+### Why a range upstream is correct and a range here is not
+
+The pinning rule above forbids ranges, which reads oddly against an ecosystem
+built on them. The distinction is exactly why overrides are ever needed.
+
+**A range in a published library is load-bearing.** When
+`eslint-plugin-react-hooks` declares `zod-validation-error: ^4`, that range is
+what lets a patch release reach every consumer without its author cutting a new
+version. Were libraries to pin exactly, the way this standard makes our
+applications pin, a single CVE would need a coordinated release from every
+package in the chain before anyone could take the fix.
+
+**A range in an application is rot**, for the reasons the pinning section
+measures. Nothing downstream depends on our flexibility, so the range buys
+nothing and costs fleet-wide drift.
+
+The lockfile is what allows both to be true at once: the library's range says
+what is PERMITTED, the lockfile records what is INSTALLED, and re-resolving is
+a deliberate act.
+
+**An override is for when the library's range is wrong** — capped below the
+fixed version, too tight to dedupe, or naming a package nobody maintains. That,
+and nothing else.
+
+### Three keys, and only one of them belongs here
+
+The Node fleet is pnpm-only. Three override keys are in circulation, and pnpm's
+treatment of them is not what their names suggest. Measured directly, by
+resolving a manifest carrying each and reading what the lockfile did — the
+target package resolves to `2.0.2` when nothing overrides it:
+
+| key | whose | pnpm applies it? | measured |
+|---|---|---|---|
+| `pnpm.overrides` | pnpm | **yes**, and it wins | beats `resolutions` when both name the same package |
+| `resolutions` | yarn | **yes** | applied when no `pnpm.overrides` names that package |
+| `overrides` | npm | **no** | ignored even as the only key present; the target resolved to `2.0.2` |
+
+**`pnpm.overrides` is the only key allowed.** The other two are forbidden, for
+two different reasons that are worth keeping apart:
+
+- **`overrides` is forbidden because it does nothing.** It is worse than
+  absent: a reader who finds it in a `package.json` has no way to see that it
+  governs nothing, and a manifest carrying the same entry under both keys reads
+  as emphasis when it is one live copy and one corpse.
+- **`resolutions` is forbidden because it works.** Two live keys, with a silent
+  precedence between them, is two answers to one question — the failure this
+  standards repository exists to prevent, arriving inside a single file. Which
+  one governs a given package depends on whether the other happens to name it.
+
+Both claims here were settled by experiment rather than from documentation, and
+the experiment corrected two earlier drafts of this section: the first asserted
+that pnpm ignores the top-level key only when `pnpm.overrides` sits alongside it
+(it ignores it unconditionally), and the second listed `resolutions` as equally
+dead (it is not — it resolves, and quietly).
+
+### When an override is allowed
+
+Four cases, and they are the entire list:
+
+1. **A vulnerability upstream has not fixed** — a CVE in a transitive
+   dependency whose parent has not yet bumped.
+2. **A package that has been abandoned**, including redirection to a maintained
+   successor through an alias. `credit-watch` routes `drizzle-kit`'s dependency
+   on the deprecated `@esbuild-kit/esm-loader` to `npm:tsx@4.22.4`, which is
+   that package's own author's replacement for it.
+3. **Deduplication that matters** — two dependencies pulling incompatible
+   majors of one library where a single copy is required to work.
+4. **A broken release** that a dependency's range permits and a newer version
+   fixes.
+
+Anything outside these is not an override. It is a dependency, and it is
+declared as one.
+
+### Every override carries its reason and its exit
+
+An override rewrites the supply chain invisibly. It applies to packages nobody
+on the team chose, survives every dependency bump, and has no expiry. An
+override with no stated reason cannot be told apart from one that has been wrong
+for two years — the `^` failure exactly, one level down: a decision nobody
+revisits.
+
+So each one is introduced carrying two things, in the pull request that adds it
+and in the repository's own documentation:
+
+- **what it routes around** — the CVE, the abandonment, the conflict; and
+- **what retires it** — the upstream release, or the removal of the dependency
+  that needed it.
+
+Overrides are pinned exactly, like everything else. A floating override is the
+pinning defect one level down, which is why the scope table above lists it.
+
+`tools/check-overrides` enforces this, per repository, from
+`job-ci-conformance`: the forbidden keys, a reason for every override, and no
+reason left stranded without one.
+
+The reason lives in `pnpm.overrideReasons`, beside the override it explains:
+
+```json
+"pnpm": {
+  "overrides":       { "zod-validation-error": "5.0.0" },
+  "overrideReasons": { "zod-validation-error":
+      "eslint-plugin-react-hooks imports zod-validation-error/v4 but declares
+       ^3.5.0 || ^4.0.0. Retires when the resolved version exports ./v4." }
+}
+```
+
+Beside it, and not in a file of its own, because a reason that lives elsewhere
+drifts away from the thing it explains. pnpm ignores the key — verified, the
+override still applies with it present — so it costs nothing at install time.
+`tools/check-overrides` enforces the pairing, and rejects a reason left behind
+by an override that has been removed.
+
+### What the fleet's own override taught, which is the reason for the rule
+
+The `zod-validation-error` override in seven Node units looked undocumented. It
+was not: the reason was written down in the commit message that introduced it,
+in the eslint 10.8.1 rollout, under the heading REQUIRED OVERRIDE —
+`eslint-plugin-react-hooks` imports `zod-validation-error/v4` while declaring
+`^3.5.0 || ^4.0.0`; pnpm resolved `3.5.4`, which does not export `./v4`, and
+eslint crashed on startup with `ERR_PACKAGE_PATH_NOT_EXPORTED` before linting
+anything.
+
+That is a good reason, accurately recorded. **Two things still went wrong, and
+they are what this whole section is for.**
+
+**A commit message is not documentation.** Nobody reading `package.json` can
+find it. Recovering it took unshallowing seven clones and a `git log -S` — and
+the first attempt got the wrong answer, blaming a later eslint bump, because a
+shallow clone's earliest commit looks exactly like a root commit.
+
+**The reason silently stopped being true.** It named a resolution, `3.5.4`, not
+a condition. The natural resolution has since moved to `4.0.2`, which *does*
+export `./v4`, so the crash it prevents can no longer happen. Measured rather
+than argued: with the override removed, `oxlint` loads the plugin and reports
+an identical tally — same rules, same counts. Nothing marked the day it became
+vestigial, and nothing would have.
+
+Hence the two required parts. **What it routes around** is what a commit
+message already gives you. **What retires it** is the part that was missing,
+and it is the part that turns a permanent workaround into one a reviewer can
+re-test in a minute.
+
+(The consumer changed underneath it too. eslint was retired from the fleet in
+favour of oxlint, but `eslint-plugin-react-hooks` and `eslint-plugin-react-refresh`
+stayed — oxlint loads them through its JS plugin bridge, so they are live
+dependencies of the lint that actually runs, not orphans of the one that
+does not.)
 
 ## Dependency updates — every manifest gets a watcher
 

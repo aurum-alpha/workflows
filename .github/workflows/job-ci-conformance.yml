@@ -102,20 +102,21 @@ on:
           planned as one rather than discovered by a red caller.
         type: string
         required: false
-        # v2.2.6, the base of the wave that asserted oxlint and oxlint-tsgolint
-        # in fleet-versions.json. That file is checker INPUT, so this is the
-        # case the entry above generalises to, and the lag behaves the way it
-        # describes: a caller pinned at v2.2.6 reads a fleet-versions.json
-        # without the two entries and simply does not assert them. Benign here
-        # only because every repo already carries both at the asserted version
-        # — an ADDITION nobody violates. The wave-A failure was a REMOVAL,
-        # where repos had already dropped what the older tree still demanded.
-        # Addition then removal, same lag, opposite consequence.
+        # The base of the change that deleted job-node-typecheck.yml. That is
+        # a catalog REMOVAL, which is the one direction of this lag that costs
+        # nothing: rule CAT and check-caller-permissions read the catalog
+        # listing from the UNPINNED clone below, so a deleted job disappears
+        # for every caller the moment it lands, whatever they pin here. The
+        # cases that hurt — job-go-build in #97, the wave-A fleet-versions
+        # removal — were the other direction, where the pinned tree still knew
+        # about something the fleet had moved past.
         #
-        # What follows from that: the assertion does not begin gating until a
-        # release carrying it reaches the fleet and the callers re-pin. The
-        # re-pin is the point of the exercise, not an afterthought.
-        default: e6c8e249a1654ca203f107d36698140fd9e197ee
+        # It is moved anyway, because check-standard-ref does not model that
+        # asymmetry and should not have to: the rule it enforces is that a
+        # consumed change gets a bump, and arguing a specific removal is
+        # harmless is exactly the reasoning that goes wrong quietly. Cheaper to
+        # move the pin than to teach the checker which deletions are safe.
+        default: cd9b1183e56742fada61456a36b5ef9ed7bc0b8f
 
 jobs:
   ci-conformance:

@@ -1553,23 +1553,29 @@ of check is in the name.
 | Script | TS | Go (tools/checks or make) | PHP (composer) |
 |---|---|---|---|
 | `build` | bundle ALL production artifacts into `dist/` | one `go build` per binary per arch → `bin/` | asset/app build |
-| `lint` | *(no script — CI runs `eslint`/`oxlint` directly)* | golangci-lint / vet wrapper | phpcs/pint (when adopted) |
+| `lint` | *(no script — CI runs `oxlint` directly)* | golangci-lint / vet wrapper | phpcs/pint (when adopted) |
 | `typecheck` | *(no script — CI runs `tsc -b --noEmit`)* | `go vet ./...` | `phpstan analyse` |
 | `test:unit` | *(no script — CI runs `vitest run --coverage`)* | `go test ./... -cover` | phpunit unit suite |
 | `test:integration` / `test:e2e` | where they exist | `-tags=integration` | phpunit integration / playwright |
 
-Tooling convergence: eslint + vitest are the TS standard.
+Tooling convergence: oxlint + vitest are the TS standard.
 
 **The TS column is deliberately empty, and this table used to lie about it.**
 It read `lint` → `eslint .`, `typecheck` → `tsc --noEmit`, `test:unit` →
 `vitest run --coverage`, as though CI ran those scripts. It does not, and
-**no TS repo in the fleet defines any of them** — checked across
+**almost no TS repo in the fleet defines any of them** — checked across
 wardley-mapper, credit-watch and flight-watch, whose entire `scripts` block is
 `dev`, `dev:client`, `dev:server`, `start`, `db:push`, `test:watch`.
 
-The shared jobs invoke the tool directly: `pnpm exec eslint <dir>
---max-warnings 0`, `pnpm exec oxlint <dir> --deny-warnings`, `pnpm exec tsc -b
---noEmit`, `pnpm exec vitest run`. `job-lint-js-oxlint` says why, and it is the
+**Almost**, because that sweep read three repos and generalised from them.
+client-manager's `client/package.json` does define `lint` and `typecheck`, and
+that is not a curiosity — it is the whole reason a script-based typecheck job
+survived in the catalog until now. A repo that happens to define the script
+can call a job that runs the script, so nothing goes red and the duplicate
+never announces itself. See "One tool, one job" below.
+
+The shared jobs invoke the tool directly: `pnpm exec oxlint <dir> --type-aware
+--deny-warnings`, `pnpm exec tsc -b --noEmit`, `pnpm exec vitest run`. `job-lint-js-oxlint` says why, and it is the
 rule for all of them: *"invoked directly, not via a `lint` script whose only
 content is a path"*. A script that wraps one command adds a name to maintain
 and a place for eleven repos to disagree, which is what Principle 2 exists to
@@ -1581,12 +1587,32 @@ columns still describe real wrappers — `composer run-script typecheck` is a
 genuine phpstan invocation — because those ecosystems have no equivalent of
 `pnpm exec`.
 
-One job still expects a script: `job-node-build` runs `pnpm run build`. No TS
-repo in the fleet defines `build` either, so that job is uncallable as written
-by any current caller — which is why the six TS repos use `job-build-js-vite`
-instead. It is listed here rather than quietly fixed because deciding what
-`job-node-build` is for is a separate question from stopping this table from
-lying.
+#### One tool, one job
+
+Some catalog jobs still expect a script rather than invoking the tool. They are
+the `job-node-*` family, and they are a second answer to capabilities
+Principle 12 gives one answer to:
+
+| script-based job | runs | direct-invocation job it duplicates |
+|---|---|---|
+| `job-node-build` | `pnpm run build` | `job-build-js-vite` |
+| `job-node-lint` | `pnpm run lint` | `job-lint-js-oxlint` |
+| `job-node-test-unit` | *(vitest, with its own artifact names)* | `job-test-unit-js-vitest` |
+| ~~`job-node-typecheck`~~ | ~~`pnpm run typecheck`~~ | `job-typecheck-ts-tsc` — **deleted** |
+
+`job-node-typecheck` is gone: client-manager was its last caller and now calls
+`job-typecheck-ts-tsc`, which runs `tsc -b --noEmit` fixed in the catalog. The
+command did not change, because client-manager's script was already that
+command — which is exactly how a duplicate survives a whole standardisation
+programme. Nothing is red while two files quietly agree.
+
+`job-node-build` and `job-node-lint` have **no callers at all**. Deleting them
+is not free prose — `job-docker-image.yml` points at `job-node-build.yml` for
+the calling contract, and `check-ci-conformance` cites `job-node-lint` in an
+example — so it wants its own change rather than riding this one.
+`job-node-test-unit` still has one caller, client-manager, and converging it
+means matching artifact names (`coverage-node-*` vs `coverage-*`) that
+`job-coverage-upload` globs. That is a behaviour change, not a rename.
 
 ### TS job catalog
 
@@ -1596,7 +1622,7 @@ install (store-cached) → its one script. All SHA-pinned, least-privilege.
 | Job id | needs | Does | Emits |
 |---|---|---|---|
 | `build` | — | frozen install, `run build` | `dist` artifact (1-day) |
-| `lint` | build | `eslint <dir> --max-warnings 0` | — |
+| `lint` | build | `oxlint <dir> --type-aware --deny-warnings` | — |
 | `typecheck` | build | `tsc -b --noEmit` | — |
 | `test-unit` | build | `vitest run --coverage` | `coverage-*` + `testresults-*` artifacts (1-day) |
 | `coverage-upload` | the test-unit jobs | globs those artifacts, one Codecov upload for the run | — |

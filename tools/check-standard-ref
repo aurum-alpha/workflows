@@ -20,6 +20,23 @@ gate prevents is the lag being five commits, or twenty.
 
 A pull request touching neither is not asked to bump anything.
 
+A NEW checker is the one case where base is not enough, and it shipped twice
+before anyone noticed. A caller reads two trees: job-ci-conformance.yml from
+the tag it pins, and the checkers that file invokes from a separate clone at
+standard_ref. Add a checker and wire it in the SAME pull request and the base
+commit predates the file -- so the released workflow invokes a path that does
+not exist in the tree it takes checkers from, and every caller gets exit 127
+the moment it re-pins. v2.2.10 shipped that with check-exact-pins and v2.2.11
+with check-overrides; nothing went red only because no repository had re-pinned
+yet. Releases through v2.2.9 were clean because they only modified checkers
+that already existed.
+
+So: a checker new in a pull request may be wired in that same pull request only
+if standard_ref moves to a commit that ALREADY carries it. Otherwise land the
+checker first and wire it second. The "Every checker job-ci-conformance
+invokes exists" step in this repository's own ci.yml now proves it against both
+trees rather than the working tree alone.
+
 Three surfaces, not two, and the third was missing until it cost a wave. A
 caller consumes `tools/`, `.github/workflows/job-*.yml` AND `setup/` — the
 composite actions a bespoke caller-side job references by SHA. All three reach

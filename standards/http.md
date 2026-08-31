@@ -242,6 +242,49 @@ together retry together, and the retry storm is the second outage.
 calculation. A server that says four seconds knows something the client's
 exponent does not.
 
+### HA8. Wire field names are snake_case, and the rule stops at the wire
+
+Every field name in a JSON request or response body, and every query
+parameter name, is `snake_case`. Headers keep HTTP's own convention
+(`Idempotency-Key`, `Retry-After`), because a header is governed by the
+surrounding standard rather than by this one.
+
+This is the fleet convention holding, not a new choice: the
+[observability standard](observability.md) already fixes snake_case for the
+context vocabulary, and log lines, audit events, job envelopes and SQL
+identifiers are all snake_case already. One spelling therefore covers a
+service's database, its log lines, its events and its API, and it is
+deviating on this one surface that would need the argument.
+
+**The rule binds the bytes, never the identifier in source code.** This is
+the half that gets misread, so it is stated rather than implied, and it
+generalises the wire-names-not-code-names paragraph the observability
+standard already applies to telemetry fields:
+
+- **A Go server writes `CreatedAt string` with `json:"created_at"`**, and
+  `UserID` with `json:"user_id"` — the field follows
+  [go.dev's initialisms rule](https://go.dev/wiki/CodeReviewComments#initialisms),
+  the tag follows this contract. Renaming a Go field to `created_at` to
+  match the wire is the wrong fix and produces un-idiomatic Go for no gain.
+  Note that the tag is mandatory either way: Go marshals `CreatedAt` as
+  `"CreatedAt"` untagged, so `json:"created_at"` and `json:"createdAt"`
+  are identical work, and snake_case additionally makes a service's API
+  agree with its own columns.
+- **A PHP or TypeScript server maps at its serialization boundary** — a
+  DTO, a resource class, a serializer — for the same reason and with the
+  same freedom in its own code.
+- **A TypeScript client generates its types from the OpenAPI document**
+  (HA2), so nobody hand-writes `created_at` anywhere. A repository that
+  wants camelCase in its own code generates that mapping from the same
+  source, in one place, rather than transcribing a parallel type by hand.
+  A hand-maintained interface mirroring the API is the drift HA2 exists to
+  prevent, and it is not made acceptable by casing.
+
+In-code naming is out of scope for this standard entirely, and follows the
+language authors' own guides per the [platform contract](platform.md). A
+repository does not record a **Conventions** entry to use idiomatic naming
+in its own source; that is the default everywhere.
+
 ## The artifacts
 
 Per PC3, under [`contracts/http/`](../contracts/http/):

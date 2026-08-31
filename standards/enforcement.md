@@ -296,12 +296,20 @@ conventions for the default answer.
 | HA5 | One major version in the path; change is additive until it cannot be | — resists honestly: whether a change is breaking is judgment | **review only** |
 | HA6 | Mutating endpoints accept `Idempotency-Key`; a replay returns the original response, a reused key with a changed body is refused | corpus behaviour cases, two requests under a live harness (proposed) | **review only** |
 | HA7 | `429` always carries `Retry-After`; clients retry only idempotent or keyed requests, with backoff and jitter | server half is a corpus behaviour case; the client half resists a checker | **review only** |
+| HA8 | JSON body and query-parameter field names are snake_case; headers keep HTTP convention; the rule binds the wire, never source identifiers | **the one mechanically decidable rule here** — a checker walks the committed OpenAPI document's schema property names and parameter names and fails on any that is not `[a-z][a-z0-9_]*` (proposed `check-wire-naming`); the wire/code split needs no gate because a gate reading source would itself be the violation | **review only** |
 
 HA3 is the cheapest live gate in this ledger after the service standard's own:
 `job-image-starts` already talks to a running service, so one request to a path
 that cannot exist, and one schema validation of what comes back, catches the
 failure the fleet actually has — a framework's default HTML error page escaping
 to clients from the one route nobody wrote a handler for.
+
+**HA8 is the cheapest gate of any kind here**, and static: the committed
+OpenAPI document already lists every field name the API speaks, so checking
+them against one character class needs no running service and has no false
+positives. It is also the rule whose *other* half must never be gated —
+verifying that source identifiers are idiomatic would mean reading the
+implementation, which is exactly what PC4 forbids a gate to do.
 
 Three rules resist a checker and say so. **HA1** is a judgment about fit: a
 checker could detect that a repository opened a WebSocket, and could never

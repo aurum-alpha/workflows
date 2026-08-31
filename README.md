@@ -16,7 +16,7 @@ standard is here, what makes one binding, and indexes the rest.
 | [standards/identifiers.md](standards/identifiers.md) | Identifiers and primitive representations: ids, timestamps, dates, money |
 | [standards/observability.md](standards/observability.md) | Observability transport and context propagation: trace context, id vocabulary, OTLP |
 | [standards/service.md](standards/service.md) | The service contract: health, logging, config, shutdown, provenance |
-| [standards/http.md](standards/http.md) | Service interfaces: protocol selection, OpenAPI, problem+json errors, pagination, idempotency |
+| [standards/http.md](standards/http.md) | Service interfaces: protocol selection, OpenAPI, problem+json errors, pagination, idempotency, wire naming |
 | [standards/enforcement.md](standards/enforcement.md) | Every rule, its gate, and the tier it actually reaches |
 
 Consult the relevant standard before any change it governs, in any repository.

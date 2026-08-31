@@ -42,7 +42,7 @@ those and rebuilding them.
 |---|---|---|
 | Request/response — any public, partner or browser-facing surface | **HTTP/REST + JSON** | The default. Universally consumable, `curl`-debuggable, no codegen for the consumer, and every fleet contract already applies. |
 | Request/response between internal services, high volume or strongly typed | **gRPC** | Binary protobuf, generated clients, real streaming. **Requires HTTP/2 end to end.** Costs: not browser-native (needs a proxy and grpc-web), opaque on the wire to anyone debugging, and a schema pipeline to own. Admitted **service-to-service only**. |
-| Server pushes to client, one direction | **SSE** | Plain HTTP: it inherits authentication, proxies, the error envelope, observability and automatic reconnection for free. **Requires HTTP/2 to survive contact with a real browser** — see below. |
+| Server pushes to client, one direction | **SSE** | Plain HTTP: it inherits authentication, proxies, the error envelope, observability and automatic reconnection for free. **Requires HTTP/2 to survive contact with a real browser** (see below) **and OpenAPI 3.2 to be describable** (HA2). |
 | Both ends push, low latency, genuinely conversational | **WebSocket** | Full duplex. Costs are large and listed below. |
 | Fire-and-forget, durable, retried | **Not a synchronous protocol at all** — the [async messaging standard](platform.md#the-capability-roster)'s envelope. |
 
@@ -121,8 +121,9 @@ envelope defines one in its message schema rather than doing without.
 
 ### HA2. The API is described by a committed OpenAPI document
 
-Every HTTP API carries an **OpenAPI 3.1** document, committed in the
-repository at a stable path, describing every endpoint it serves.
+Every HTTP API carries an OpenAPI document, committed in the repository at a
+stable path, describing every endpoint it serves. **3.1 is the floor, and a
+service that serves SSE uses 3.2.**
 
 3.1 rather than 3.0 for one concrete reason: 3.1's schema dialect *is*
 JSON Schema 2020-12, the dialect every contract under
@@ -130,6 +131,23 @@ JSON Schema 2020-12, the dialect every contract under
 `$defs` — a timestamp, a public id, a money value — referenceable from an
 API description instead of transcribed into it, and a transcribed schema is
 a copy that drifts.
+
+**3.2 where there is a stream, for the same reason HA1 requires HTTP/2
+there.** [OpenAPI 3.2](https://spec.openapis.org/oas/v3.2.0.html) (September
+2025) added sequential media types and `itemSchema`, which is what lets a
+description say *what each event on a `text/event-stream` looks like*. In
+3.1 the best available description of an SSE endpoint is that it returns a
+string, so the events — the actual payload, the part a client must parse —
+go undescribed and ungenerated. A standard that recommends SSE in HA1 and
+then pins the one version that cannot describe it would be recommending an
+undocumented surface.
+
+3.2 is not the blanket default because tooling has not uniformly caught up:
+generator support across the ecosystem is still maturing, and a
+non-streaming API gains nothing from it that is worth that risk. Tying the
+version to the capability that needs it keeps the conservative default
+without leaving a hole. A repository already on 3.2 everywhere is
+conformant and need not justify it; 3.1 is a floor, not a ceiling.
 
 Whether the document is handwritten or generated from code is a per-stack
 choice and belongs in a repository's **Conventions**. What is not a choice:
@@ -343,9 +361,16 @@ contract tests, and the review question is whether they exist.
   repository wanting camelCase in its own code generates that mapping from
   the same source. In-code naming is untouched either way, per the platform
   contract.
-- **OpenAPI 3.1, not 3.0** (2026-08-31): 3.1's dialect is JSON Schema
-  2020-12, so the fleet's existing `$defs` are referenceable rather than
-  transcribed.
+- **OpenAPI 3.1 as the floor, 3.2 where there is a stream** (2026-08-31):
+  3.1's dialect is JSON Schema 2020-12, so the fleet's existing `$defs` are
+  referenceable rather than transcribed. The first draft stopped there and
+  pinned 3.1 outright, which was already eleven months stale — 3.2 shipped
+  in September 2025 — and, worse, incoherent: HA1 recommends SSE and 3.1
+  cannot describe an event stream's payload. Tying the version to the
+  capability rather than raising the floor for everyone keeps the
+  conservative default while closing that hole, and it is the same shape as
+  HA1's HTTP/2 requirement. **OpenAPI 4.0 is not a reason to wait**: the
+  Moonwalk group has no release date and is spending 2026 on LLM clients.
 - **Cursor, not offset** (2026-08-31): offset pagination over a changing
   collection returns well-formed wrong answers, which is the worst failure
   mode available — no error, no signal, missing rows.

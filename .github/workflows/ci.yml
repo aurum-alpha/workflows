@@ -75,11 +75,20 @@ jobs:
       - name: Every checker job-ci-conformance invokes exists
         run: |
           set -euo pipefail
-          ref=$(python3 -c "
-          import yaml
-          d = yaml.safe_load(open('.github/workflows/job-ci-conformance.yml'))
-          print(d[True]['workflow_call']['inputs']['standard_ref']['default'])
-          ")
+          # Read standard_ref without a YAML parser: this job has no PyYAML,
+          # and finding it imported by a checker proves nothing, because the
+          # checkers run in job-ci-conformance, not here. standard_ref is the
+          # only 40-hex default in the file, and the count is asserted so this
+          # fails loudly rather than silently picking the wrong one.
+          refs=$(grep -oE '^ +default: [0-9a-f]{40}$' \
+                   .github/workflows/job-ci-conformance.yml | awk '{print $2}')
+          n=$(printf '%s' "$refs" | grep -c . || true)
+          if [ "$n" -ne 1 ]; then
+            echo "::error::expected exactly one 40-hex default (standard_ref)" \
+                 "in job-ci-conformance.yml, found ${n}. Adjust this step."
+            exit 1
+          fi
+          ref="$refs"
           echo "standard_ref = $ref"
           missing=0
           # A pipe would run this loop in a subshell and throw the flag away,

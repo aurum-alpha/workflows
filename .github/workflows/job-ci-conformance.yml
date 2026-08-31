@@ -145,7 +145,7 @@ on:
         # A data change was never exempt from the bump; it was exempt from
         # being REMINDED about it, which is worse, because the reminder is the
         # whole mechanism.
-        default: 2c39649fed7c45d76d9b1ea349909b53a89c369d
+        default: 0d2be9c864ba7a430bf4e0125df97d3a75a6e749
 
 jobs:
   ci-conformance:
@@ -266,6 +266,19 @@ jobs:
           REPO: ${{ steps.repo.outputs.name }}
           AURUM_CATALOG_ROOT: .aurum-catalog
         run: .aurum-standard/tools/check-exact-pins --root .ci-root --repo "$REPO"
+        continue-on-error: ${{ inputs.warn_only }}
+
+      # An override is the one place a version is still decided by somebody
+      # else, so it is declared the pnpm way and it says why it exists. The
+      # two forbidden keys are forbidden for opposite reasons: npm's
+      # `overrides` does nothing under pnpm, and yarn's `resolutions` DOES
+      # apply -- both measured, not read off the documentation.
+      - name: Every override is sanctioned and explained
+        if: ${{ !cancelled() }}
+        env:
+          REPO: ${{ steps.repo.outputs.name }}
+          AURUM_CATALOG_ROOT: .aurum-catalog
+        run: .aurum-standard/tools/check-overrides --root .ci-root --repo "$REPO"
         continue-on-error: ${{ inputs.warn_only }}
 
       # The shared eslint config says, in its own header, that a byte-identity

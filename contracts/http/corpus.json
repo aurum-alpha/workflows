@@ -14,7 +14,7 @@
         "request_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99"
       },
       "valid": true,
-      "note": "detail names the specific thing looked for, by public id rather than internal key (HA2, IP1)"
+      "note": "detail names the specific thing looked for, by public id rather than internal key (HA3, IP1)"
     },
     {
       "id": "problem-validation-with-field-errors",
@@ -32,7 +32,7 @@
         ]
       },
       "valid": true,
-      "note": "a client highlighting two bad inputs can do it from errors[]; it could not from detail alone (HA2)"
+      "note": "a client highlighting two bad inputs can do it from errors[]; it could not from detail alone (HA3)"
     },
     {
       "id": "problem-about-blank-ok",
@@ -45,7 +45,7 @@
         "request_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99"
       },
       "valid": true,
-      "note": "about:blank is admitted where the status code is the whole story — an unrouted path is exactly that case (HA2)"
+      "note": "about:blank is admitted where the status code is the whole story — an unrouted path is exactly that case (HA3)"
     },
     {
       "id": "problem-rejects-missing-request-id",
@@ -57,7 +57,7 @@
         "detail": "no subscription with public id sub_8fK2mQ7xW3pLzR exists for this tenant"
       },
       "valid": false,
-      "note": "request_id is what turns a screenshot of an error into a log query; without it the envelope is a dead end (HA2, OC2)"
+      "note": "request_id is what turns a screenshot of an error into a log query; without it the envelope is a dead end (HA3, OC2)"
     },
     {
       "id": "problem-rejects-missing-detail",
@@ -69,7 +69,7 @@
         "request_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99"
       },
       "valid": false,
-      "note": "title names the class and detail carries this occurrence's reason; a class without a reason is the SC2 failure on a different surface (HA2)"
+      "note": "title names the class and detail carries this occurrence's reason; a class without a reason is the SC2 failure on a different surface (HA3)"
     },
     {
       "id": "problem-rejects-status-out-of-range",
@@ -95,7 +95,7 @@
         "errors": [{ "field": "plan_id", "message": "plan_id is required" }]
       },
       "valid": false,
-      "note": "rule is the stable slug a client branches on; without it the client is parsing prose (HA2)"
+      "note": "rule is the stable slug a client branches on; without it the client is parsing prose (HA3)"
     },
     {
       "id": "collection-ok",
@@ -111,21 +111,21 @@
       "def": "collection",
       "value": { "data": [{ "id": "sub_8fK2mQ7xW3pLzR" }], "next_cursor": null },
       "valid": true,
-      "note": "null means the end, unambiguously (HA3)"
+      "note": "null means the end, unambiguously (HA4)"
     },
     {
       "id": "collection-empty-page-with-cursor-ok",
       "def": "collection",
       "value": { "data": [], "next_cursor": "eyJvIjoyMDB9" },
       "valid": true,
-      "note": "filtering can empty a page; empty does not mean the end, which is exactly why next_cursor and not data length is the signal (HA3)"
+      "note": "filtering can empty a page; empty does not mean the end, which is exactly why next_cursor and not data length is the signal (HA4)"
     },
     {
       "id": "collection-rejects-missing-next-cursor",
       "def": "collection",
       "value": { "data": [] },
       "valid": false,
-      "note": "an absent next_cursor makes the end of a list a guess (HA3)"
+      "note": "an absent next_cursor makes the end of a list a guess (HA4)"
     }
   ],
   "behaviour": [
@@ -133,7 +133,7 @@
       "id": "unrouted-path-answers-problem-json",
       "stimulus": "GET a path no route matches",
       "expect": { "status_code": 404, "headers.content-type": "application/problem+json", "body": "validates against problem.schema.json" },
-      "note": "the most common failure in the fleet today: a framework's default HTML error page escaping to clients from the one path nobody wrote a handler for (HA2)"
+      "note": "the most common failure in the fleet today: a framework's default HTML error page escaping to clients from the one path nobody wrote a handler for (HA3)"
     },
     {
       "id": "validation-failure-answers-field-errors",
@@ -144,25 +144,25 @@
       "id": "idempotency-key-replays-rather-than-repeats",
       "stimulus": "POST a mutating endpoint twice with the same Idempotency-Key and identical body",
       "expect": { "second_response": "byte-identical status and body to the first", "side_effect": "performed exactly once" },
-      "note": "this is what makes HA6's retries safe by contract rather than by luck (HA5)"
+      "note": "this is what makes HA7's retries safe by contract rather than by luck (HA6)"
     },
     {
       "id": "idempotency-key-reuse-with-different-body-is-refused",
       "stimulus": "POST twice with the same Idempotency-Key and a changed body",
       "expect": { "status_code": 422, "body.type": "names the key conflict" },
-      "note": "silently serving the first response to a second, different request is worse than refusing (HA5)"
+      "note": "silently serving the first response to a second, different request is worse than refusing (HA6)"
     },
     {
       "id": "throttling-carries-retry-after",
       "stimulus": "exceed the endpoint's rate limit",
       "expect": { "status_code": 429, "headers.retry-after": "present", "body": "validates against problem.schema.json" },
-      "note": "a 429 without Retry-After tells a client to back off by an amount it must guess, and every client guesses differently and wrongly (HA6)"
+      "note": "a 429 without Retry-After tells a client to back off by an amount it must guess, and every client guesses differently and wrongly (HA7)"
     },
     {
       "id": "cursor-is-opaque-and-round-trips",
       "stimulus": "page through a collection using only the returned next_cursor",
       "expect": { "every_item": "returned exactly once", "termination": "next_cursor null" },
-      "note": "the property offset pagination cannot hold over a changing collection (HA3)"
+      "note": "the property offset pagination cannot hold over a changing collection (HA4)"
     }
   ]
 }

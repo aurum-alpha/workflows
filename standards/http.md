@@ -1,18 +1,24 @@
-# HTTP API conventions
+# Service interfaces: protocol selection and HTTP conventions
 
 One of the Aurum Alpha engineering standards, written under the platform
 contract ([`platform.md`](platform.md)) — a per-capability standard from its
 roster. Read [`enforcement.md`](enforcement.md) for the tier each rule below
 actually holds. Artifacts: [`contracts/http/`](../contracts/http/).
 
+This document answers two questions in order: **which protocol** a given
+interaction uses (HA1), and — for the default answer, HTTP — **what the
+conventions are** (HA2 onward).
+
 ## Why this exists
 
-Every product exposes an HTTP API, and each one decided its own error shape,
-its own pagination scheme and its own versioning habit. The cost is paid by
-whoever writes the second client: a frontend that handles four error shapes,
-a retry that is safe against one service and duplicates charges against
-another, a pagination loop that silently skips rows when the collection
-changes underneath it.
+Every product exposes an interface, and each one decided independently what
+protocol to speak and then what its error shape, pagination scheme and
+versioning habit would be. The cost is paid by whoever writes the second
+client: a frontend that handles four error shapes, a retry that is safe
+against one service and duplicates charges against another, a pagination
+loop that silently skips rows when the collection changes underneath it —
+and, before any of that, a WebSocket where a plain HTTP request would have
+done, carrying its own auth scheme because it could not use the normal one.
 
 Almost none of this needs inventing. RFC 9457 defines the error envelope,
 OpenAPI describes the surface, and the HTTP specification already settled
@@ -22,7 +28,59 @@ unpinned is four incompatible error shapes that all validate.
 
 ## The rules
 
-### HA1. The API is described by a committed OpenAPI document
+### HA1. The protocol is chosen for the interaction, and HTTP is the default
+
+**HTTP with JSON is the default, and every other choice needs a reason a
+reviewer can hear.** Not because it is fastest — it is not — but because it
+is the only option every consumer, proxy, load balancer, debugger and
+support engineer already understands, and because the rest of the fleet's
+contracts are written against it: the error envelope, the id vocabulary,
+trace propagation, readiness, the audit trail. Leaving HTTP means leaving
+those and rebuilding them.
+
+| Interaction | Protocol | Why, and what it costs |
+|---|---|---|
+| Request/response — any public, partner or browser-facing surface | **HTTP/REST + JSON** | The default. Universally consumable, `curl`-debuggable, no codegen for the consumer, and every fleet contract already applies. |
+| Request/response between internal services, high volume or strongly typed | **gRPC** | Binary protobuf, generated clients, real streaming. Costs: not browser-native (needs a proxy and grpc-web), opaque on the wire to anyone debugging, and a schema pipeline to own. Admitted **service-to-service only**. |
+| Server pushes to client, one direction | **SSE** | Plain HTTP: it inherits authentication, proxies, the error envelope, observability and automatic reconnection for free. |
+| Both ends push, low latency, genuinely conversational | **WebSocket** | Full duplex. Costs are large and listed below. |
+| Fire-and-forget, durable, retried | **Not a synchronous protocol at all** — the [async messaging standard](platform.md#the-capability-roster)'s envelope. |
+
+**HTTP/2 is not on that list, because it is not a choice of interface.** It
+is a transport under HTTP, negotiated between a client and the edge, and
+turning it on changes no application code. A service does not "use HTTP/2
+instead of REST"; it serves REST over whatever version the edge negotiated.
+Treating it as an architectural option is a common and expensive confusion —
+expensive because it usually arrives attached to a proposal to adopt gRPC
+"since we are on HTTP/2 anyway."
+
+**SSE before WebSocket, unless the client genuinely needs to push.** This is
+the choice most often made wrongly, and in one direction: a WebSocket opened
+for a live feed that only ever flows server-to-client. What that discards is
+not small. A WebSocket has no status codes, so the error envelope (HA3) does
+not apply and each application invents its own. It cannot carry an
+`Authorization` header from a browser, so authentication becomes a
+bespoke first-message handshake or a token in a query string — in the URL,
+in the access logs. It is stateful, so horizontal scaling needs sticky
+sessions or a pub/sub backplane. It defeats ordinary HTTP caching and
+observability. Reconnection, which SSE gives you in the browser for free,
+becomes yours to write and yours to get wrong.
+
+None of that means never. It means a WebSocket is justified by the client
+needing to *send* at low latency — a collaborative editor, a terminal, a
+live cursor — and not by the server needing to send, which SSE already does.
+A repository choosing one states the reason in its **Conventions**.
+
+**Leaving HTTP never leaves the standards.** Whatever the protocol, the
+fleet's contracts still bind: trace context propagates
+([`observability.md`](observability.md) OC1) — in gRPC metadata, in the
+WebSocket message envelope, in the SSE request that opened the stream;
+identifiers keep their formats ([`identifiers.md`](identifiers.md));
+failures still state a reason rather than the fact of failure
+([`service.md`](service.md) SC2); and a protocol without a native error
+envelope defines one in its message schema rather than doing without.
+
+### HA2. The API is described by a committed OpenAPI document
 
 Every HTTP API carries an **OpenAPI 3.1** document, committed in the
 repository at a stable path, describing every endpoint it serves.
@@ -40,7 +98,7 @@ it exists, it is committed, and **it matches the running service**. A
 description that has drifted from its implementation is worse than none,
 because clients are generated from it.
 
-### HA2. Errors are RFC 9457 problem+json, profiled
+### HA3. Errors are RFC 9457 problem+json, profiled
 
 Every error response — every one, from every endpoint — is
 `application/problem+json` per [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457),
@@ -68,7 +126,7 @@ envelope crosses the trust boundary: never a secret, never a credential,
 never a record's contents, never an internal hostname, path or stack. **What
 failed and why is almost never the sensitive part.**
 
-### HA3. Collections are paginated by opaque cursor
+### HA4. Collections are paginated by opaque cursor
 
 A collection endpoint returns `{ "data": [...], "next_cursor": string|null }`
 and accepts `?limit=&cursor=`. The cursor is **opaque** — it is generated by
@@ -90,7 +148,7 @@ client receives a well-formed page of wrong data. Where a collection is
 genuinely static — an immutable export, a fixed report — a repository may
 use offsets and says so in its **Conventions**.
 
-### HA4. One major version in the path, and change is additive until it cannot be
+### HA5. One major version in the path, and change is additive until it cannot be
 
 The major version is a path prefix: `/v1/…`. It appears from the first
 endpoint, because retrofitting a version onto an unversioned API means
@@ -107,7 +165,7 @@ Minor and patch versions do not appear in the path. The build's version is
 already reported by [`service.md`](service.md) SC5, which is where "exactly
 which code answered me" belongs.
 
-### HA5. Mutating endpoints accept an idempotency key
+### HA6. Mutating endpoints accept an idempotency key
 
 Every non-idempotent endpoint — `POST` that creates, anything that charges,
 sends, or dispatches — accepts an **`Idempotency-Key`** request header whose
@@ -122,12 +180,12 @@ a client defect and answers `422` with a `type` naming the conflict, because
 silently serving the first response to a second, different request is worse
 than refusing.
 
-This exists so that HA6's retries are safe by contract rather than by luck.
+This exists so that HA7's retries are safe by contract rather than by luck.
 A network timeout tells a client nothing about whether the work happened;
 without a key its only options are to risk a double charge or to abandon a
 request that may well have succeeded.
 
-### HA6. Backpressure is stated, and retries are bounded
+### HA7. Backpressure is stated, and retries are bounded
 
 A service under load answers **`429` with `Retry-After`**, always both: a
 `429` without `Retry-After` tells a client to back off by an amount it must
@@ -136,7 +194,7 @@ temporarily unable answers `503`, with `Retry-After` where the duration is
 knowable.
 
 Clients retry **only** requests that are idempotent by method (`GET`,
-`PUT`, `DELETE`) or carry an idempotency key (HA5), with **exponential
+`PUT`, `DELETE`) or carry an idempotency key (HA6), with **exponential
 backoff plus jitter**, a stated maximum attempt count, and an overall
 deadline. Jitter is not decoration: without it a hundred clients that failed
 together retry together, and the retry storm is the second outage.
@@ -176,7 +234,7 @@ cheap:
   capability standards wait on.
 
 What no checker will prove: that the OpenAPI document still describes the
-service. That is why HA1 states it as a rule with a reason rather than
+service. That is why HA2 states it as a rule with a reason rather than
 implying the gate covers it — the honest gate is a repository's own
 contract tests, and the review question is whether they exist.
 

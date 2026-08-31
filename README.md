@@ -16,7 +16,7 @@ standard is here, what makes one binding, and indexes the rest.
 | [standards/identifiers.md](standards/identifiers.md) | Identifiers and primitive representations: ids, timestamps, dates, money |
 | [standards/observability.md](standards/observability.md) | Observability transport and context propagation: trace context, id vocabulary, OTLP |
 | [standards/service.md](standards/service.md) | The service contract: health, logging, config, shutdown, provenance |
-| [standards/http.md](standards/http.md) | HTTP API conventions: OpenAPI, problem+json errors, pagination, idempotency |
+| [standards/http.md](standards/http.md) | Service interfaces: protocol selection, OpenAPI, problem+json errors, pagination, idempotency |
 | [standards/enforcement.md](standards/enforcement.md) | Every rule, its gate, and the tier it actually reaches |
 
 Consult the relevant standard before any change it governs, in any repository.
@@ -38,7 +38,7 @@ the ledger, not this table, is the register of the rules themselves.
 | IP | [`standards/identifiers.md`](standards/identifiers.md) | Identifiers and primitives: public vs internal ids, id formats, timestamps, dates, money |
 | OC | [`standards/observability.md`](standards/observability.md) | Context propagation and telemetry: W3C trace context, the id vocabulary, OTLP |
 | SC | [`standards/service.md`](standards/service.md) | What a running service exposes: health and readiness, log lines, config, shutdown, provenance |
-| HA | [`standards/http.md`](standards/http.md) | The HTTP surface: description, error envelope, pagination, versioning, idempotency, retries |
+| HA | [`standards/http.md`](standards/http.md) | Service interfaces: which protocol, then the HTTP surface — description, error envelope, pagination, versioning, idempotency, retries |
 
 Each new capability standard from the platform contract's roster adds its own
 prefix here as it lands.

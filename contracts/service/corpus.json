@@ -1,0 +1,58 @@
+{
+  "contract": "service",
+  "schemaVersion": 1,
+  "description": "Conformance corpus for standards/service.md. 'validity': the value must validate (or fail) against the named $def in health.schema.json, or against logline.schema.json where def is 'logLine'. 'lifecycle': black-box cases a running service must satisfy — the harness drives the described stimulus and asserts 'expect'. An implementation passes the whole file or names the case it fails.",
+  "validity": [
+    { "id": "liveness-ok", "def": "livenessResponse", "value": { "status": "ok", "provenance": { "service": "billing", "version": "2.4.1", "commit": "9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c", "built_at": "2026-08-31T14:07:02.417Z" } }, "valid": true },
+    { "id": "liveness-rejects-short-commit", "def": "livenessResponse", "value": { "status": "ok", "provenance": { "service": "billing", "version": "2.4.1", "commit": "9f8e7d6", "built_at": "2026-08-31T14:07:02.417Z" } }, "valid": false, "note": "the full 40-character SHA, never abbreviated (SC5)" },
+    { "id": "liveness-rejects-missing-provenance", "def": "livenessResponse", "value": { "status": "ok" }, "valid": false, "note": "the running service says which build it is (SC5)" },
+    { "id": "liveness-rejects-fail-status", "def": "livenessResponse", "value": { "status": "fail", "provenance": { "service": "billing", "version": "2.4.1", "commit": "9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c", "built_at": "2026-08-31T14:07:02.417Z" } }, "valid": false, "note": "liveness answers 'is the process alive'; a process answering at all is alive (SC1)" },
+    { "id": "readiness-ok", "def": "readinessResponse", "value": { "status": "ok", "checks": [ { "name": "mysql", "status": "ok", "latency_ms": 3.2 }, { "name": "keycloak", "status": "ok", "latency_ms": 41 } ] }, "valid": true },
+    { "id": "readiness-fail-with-detail", "def": "readinessResponse", "value": { "status": "fail", "checks": [ { "name": "mysql", "status": "fail", "latency_ms": 5000, "detail": "connect timeout" } ] }, "valid": true },
+    { "id": "readiness-rejects-empty-checks", "def": "readinessResponse", "value": { "status": "ok", "checks": [] }, "valid": false, "note": "reporting ok while checking nothing converts an unknown into a wrong answer (SC1)" },
+    { "id": "readiness-rejects-missing-latency", "def": "readinessResponse", "value": { "status": "ok", "checks": [ { "name": "mysql", "status": "ok" } ] }, "valid": false, "note": "a check that passes slowly is the earliest warning of one that will fail (SC1)" },
+    { "id": "logline-minimal-ok", "def": "logLine", "value": { "ts": "2026-08-31T14:07:02.417Z", "level": "info", "msg": "listening", "service": "billing" }, "valid": true, "note": "outside request context, the context block is absent and that is correct (OC4)" },
+    { "id": "logline-with-context-ok", "def": "logLine", "value": { "ts": "2026-08-31T14:07:02.417Z", "level": "error", "msg": "payment failed", "service": "billing", "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736", "request_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99", "tenant_id": "ten_8fK2mQ7xW3pLzR", "error": { "type": "GatewayTimeout", "message": "upstream did not respond" } }, "valid": true },
+    { "id": "logline-rejects-partial-context", "def": "logLine", "value": { "ts": "2026-08-31T14:07:02.417Z", "level": "error", "msg": "payment failed", "service": "billing", "tenant_id": "ten_8fK2mQ7xW3pLzR" }, "valid": false, "note": "a line carrying any request-scoped id carries the floor pair; 'failed for this tenant, in no identifiable request' is not a lead (OC4)" },
+    { "id": "logline-rejects-unix-ts", "def": "logLine", "value": { "ts": 1788185222, "level": "info", "msg": "listening", "service": "billing" }, "valid": false, "note": "the timestamp is the identifiers contract's (IP4)" },
+    { "id": "logline-rejects-unknown-level", "def": "logLine", "value": { "ts": "2026-08-31T14:07:02.417Z", "level": "trace", "msg": "x", "service": "billing" }, "valid": false, "note": "five levels (SC2)" },
+    { "id": "logline-rejects-missing-service", "def": "logLine", "value": { "ts": "2026-08-31T14:07:02.417Z", "level": "info", "msg": "listening" }, "valid": false }
+  ],
+  "lifecycle": [
+    {
+      "id": "readiness-503-on-failed-dependency",
+      "stimulus": "a required dependency is unreachable",
+      "expect": { "GET /readyz": { "status_code": 503, "body.status": "fail" }, "GET /healthz": { "status_code": 200 } },
+      "note": "the status code is what a load balancer reads; liveness stays 200 because the process is alive and restarting it fixes nothing (SC1)"
+    },
+    {
+      "id": "readiness-200-when-healthy",
+      "stimulus": "every dependency reachable",
+      "expect": { "GET /readyz": { "status_code": 200, "body.status": "ok" }, "headers.cache-control": "no-store" }
+    },
+    {
+      "id": "startup-fails-naming-every-missing-variable",
+      "stimulus": "two required environment variables absent",
+      "expect": { "exit": "non-zero before binding a port", "stderr_or_log": "names both missing variables, not the first" },
+      "note": "discovering missing configuration one restart at a time turns a ten-minute deploy into an hour (SC3)"
+    },
+    {
+      "id": "startup-emits-provenance",
+      "stimulus": "service starts normally",
+      "expect": { "first_lines": "a log line carrying service, version, commit and built_at" },
+      "note": "unconditional, so CI can assert it without depending on how a repository exposes endpoints (SC5)"
+    },
+    {
+      "id": "sigterm-flips-readiness-before-draining",
+      "stimulus": "SIGTERM while one request is in flight",
+      "expect": { "GET /readyz": { "status_code": 503 }, "in_flight_request": "completes with its normal response", "exit_code": 0 },
+      "note": "the order is the rule: readiness first is what makes a rolling deploy non-lossy (SC4)"
+    },
+    {
+      "id": "drain-deadline-logs-what-was-abandoned",
+      "stimulus": "SIGTERM with work still running at the drain deadline",
+      "expect": { "exit": "occurs at the deadline", "log": "names what was abandoned" },
+      "note": "work lost quietly is work nobody reconciles (SC4)"
+    }
+  ]
+}

@@ -192,6 +192,7 @@ is held mechanically today; the ledger says which rule is which.
 | [`standards/platform.md`](standards/platform.md) | The platform contract: application-layer opinions as protocols and interface specs, never tools | review, gates named |
 | [`standards/identifiers.md`](standards/identifiers.md) | Identifiers and primitive representations: public vs internal ids, the format table, timestamps, money | review, corpus written |
 | [`standards/observability.md`](standards/observability.md) | Observability transport and context propagation: W3C trace context, the id vocabulary, OTLP | review, corpus written |
+| [`standards/service.md`](standards/service.md) | The service contract: health and readiness, structured logging, configuration, graceful shutdown, runtime provenance | review, live gate available |
 
 Standards still to be written are tracked as issues in this repository, and the
 platform contract's capability roster names which capability is waiting on one.

@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/service/health.schema.json",
+  "title": "Aurum Alpha health and readiness responses",
+  "description": "Response shapes for /healthz and /readyz. Governed by standards/service.md SC1 and SC5. schemaVersion 1 — evolves additively per PC6.",
+  "$defs": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "status": {
+      "enum": ["ok", "fail"],
+      "description": "Binary on purpose (SC1): a load balancer reads the status code, a human reads the body; a third value would need a third routing behaviour nobody has defined."
+    },
+    "provenance": {
+      "type": "object",
+      "description": "Which build this running process is (SC5). The same values appear in the startup log line.",
+      "properties": {
+        "service": {
+          "type": "string",
+          "description": "The service's stable name, identical to the log line's service field.",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "description": "The repository version this build was cut from, per the CI standard.",
+          "minLength": 1
+        },
+        "commit": {
+          "type": "string",
+          "description": "Full 40-character git commit SHA — never abbreviated, so it is unambiguous to look up.",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "built_at": {
+          "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp"
+        }
+      },
+      "required": ["service", "version", "commit", "built_at"]
+    },
+    "check": {
+      "type": "object",
+      "description": "One dependency probe performed by /readyz (SC1). A readiness response that reports ok while checking nothing converts an unknown into a wrong answer.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The dependency probed, e.g. 'mysql', 'keycloak', 'object-store'.",
+          "minLength": 1
+        },
+        "status": { "$ref": "#/$defs/status" },
+        "latency_ms": {
+          "type": "number",
+          "minimum": 0,
+          "description": "How long the probe took. A check that passes slowly is the earliest warning of one that will fail."
+        },
+        "detail": {
+          "type": "string",
+          "description": "Why a failing check failed. Present when status is fail; never carries a secret or a connection string."
+        }
+      },
+      "required": ["name", "status", "latency_ms"]
+    },
+    "livenessResponse": {
+      "type": "object",
+      "description": "GET /healthz — 200 whenever the process is alive. Checks nothing (SC1) and carries provenance (SC5).",
+      "properties": {
+        "status": { "const": "ok" },
+        "provenance": { "$ref": "#/$defs/provenance" }
+      },
+      "required": ["status", "provenance"]
+    },
+    "readinessResponse": {
+      "type": "object",
+      "description": "GET /readyz — 200 with status ok, or 503 with status fail when any check fails (SC1).",
+      "properties": {
+        "status": { "$ref": "#/$defs/status" },
+        "checks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/check" },
+          "minItems": 1,
+          "description": "At least one: a service with no dependencies to check does not need a readiness endpoint distinct from liveness, and one that has them must probe them."
+        }
+      },
+      "required": ["status", "checks"]
+    }
+  }
+}

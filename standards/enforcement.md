@@ -230,3 +230,30 @@ One carve-out is unsettled and left visible rather than assumed: the CI
 standard's decisions log cites the change that settled each row, which is
 history rather than a live reference, and whether D2 admits that is a review
 question until someone rules on it.
+
+## Service standard
+
+Rules from [`service.md`](service.md) — what a running service exposes. This
+section carries the ledger's strongest promotion candidate: `job-image-starts`
+already accepts an `http` probe and already reads startup output, so SC1 and
+SC5 need an extension of a job every repository calls, not a new one.
+
+| # | Rule | Enforced by | Status |
+|---|---|---|---|
+| SC1 | `/healthz` and `/readyz`: fixed paths, fixed shapes, unauthenticated, uncached; readiness checks dependencies and `503`s when one fails | `job-image-starts` with an `http` probe on `/readyz`, asserting the schema (proposed); `check-service-contract` (proposed) for route registration | **review only** |
+| SC2 | One JSON log line per event to stdout, with the pinned field vocabulary | corpus validity cases against captured stdout (proposed) | **review only** |
+| SC3 | Config from the environment; a missing required variable fails startup naming all of them; no environment detection in code | `check-service-contract` (proposed) for declared variables; the fail-loud behaviour is a lifecycle corpus case | **review only** |
+| SC4 | SIGTERM flips readiness, drains, then exits; the deadline is stated and what it abandons is logged | lifecycle corpus case under a live harness (proposed) | **review only** |
+| SC5 | The running service reports its service, version, commit and build timestamp | `job-image-starts` asserting the startup line (proposed) | **review only** |
+
+SC1 and SC5 are the cheapest real gates the fleet can build: no new job, no new
+infrastructure, and adoptable per-repository as each grows the endpoint, so
+there is no flag day. Today `job-image-starts` can claim only that a process
+did not exit within its timeout — a service that starts, fails to reach its
+database and answers nothing passes. These two rows are what turn that claim
+into "it came up, reached its dependencies, and said what it was."
+
+SC3's "no environment detection in code" half resists a checker honestly: a
+grep for `NODE_ENV` finds the common case and misses a hostname test or a
+path-existence check, and the rule is about the act rather than the spelling.
+It stays a review question on every diff that reads its surroundings.

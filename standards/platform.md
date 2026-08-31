@@ -168,12 +168,12 @@ the work is an issue in this repository.
 |---|---|---|
 | Authentication | OIDC profile — the provider authenticates, identity claims only | not yet written |
 | Authorization | Application-owned RBAC as a full interface spec: model, operations, semantics, corpus — never derived from token claims | not yet written |
-| Configuration | [Factor III](https://12factor.net/config) profile: variable naming, layering, fail-loud on missing, no environment detection in code | not yet written |
+| Configuration | [Factor III](https://12factor.net/config) profile: variable naming, fail-loud on missing, no environment detection in code | [`service.md`](service.md) SC3 |
 | Secrets | Delivery convention — how a secret reaches a process; never a vendor SDK in application code | not yet written |
-| Logging | [Factor XI](https://12factor.net/logs) profile: structured log-line schema to stdout; transport is the platform's problem | not yet written |
-| Health & readiness | Two-endpoint contract, fixed paths and shapes | not yet written |
-| Service lifecycle | [Factor IX](https://12factor.net/disposability) profile: SIGTERM means drain — readiness flips, in-flight completes, stated timeout | not yet written |
-| Runtime provenance | The running service reports the commit and build it is | not yet written |
+| Logging | [Factor XI](https://12factor.net/logs) profile: structured log-line schema to stdout; transport is the platform's problem | [`service.md`](service.md) SC2 |
+| Health & readiness | Two-endpoint contract, fixed paths and shapes | [`service.md`](service.md) SC1 |
+| Service lifecycle | [Factor IX](https://12factor.net/disposability) profile: SIGTERM means drain — readiness flips, in-flight completes, stated timeout | [`service.md`](service.md) SC4 |
+| Runtime provenance | The running service reports the commit and build it is | [`service.md`](service.md) SC5 |
 | Observability & context propagation | OTLP profile; W3C trace context; one id vocabulary across logs, traces, events | [`observability.md`](observability.md) |
 | HTTP APIs | OpenAPI description; RFC 9457 errors; pagination, versioning, idempotency keys, retry semantics | not yet written |
 | Identifiers & primitives | Internal keys never exposed; public-id format table; RFC 3339 UTC; integer minor-unit money | [`identifiers.md`](identifiers.md) |

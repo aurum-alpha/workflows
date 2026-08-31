@@ -15,6 +15,7 @@ standard is here, what makes one binding, and indexes the rest.
 | [standards/platform.md](standards/platform.md) | The platform contract: application-layer opinions as protocols and interface specs |
 | [standards/identifiers.md](standards/identifiers.md) | Identifiers and primitive representations: ids, timestamps, dates, money |
 | [standards/observability.md](standards/observability.md) | Observability transport and context propagation: trace context, id vocabulary, OTLP |
+| [standards/service.md](standards/service.md) | The service contract: health, logging, config, shutdown, provenance |
 | [standards/enforcement.md](standards/enforcement.md) | Every rule, its gate, and the tier it actually reaches |
 
 Consult the relevant standard before any change it governs, in any repository.
@@ -35,6 +36,7 @@ the ledger, not this table, is the register of the rules themselves.
 | PC | [`standards/platform.md`](standards/platform.md) | The platform contract doctrine: opinions as protocols and interface specs, never tools |
 | IP | [`standards/identifiers.md`](standards/identifiers.md) | Identifiers and primitives: public vs internal ids, id formats, timestamps, dates, money |
 | OC | [`standards/observability.md`](standards/observability.md) | Context propagation and telemetry: W3C trace context, the id vocabulary, OTLP |
+| SC | [`standards/service.md`](standards/service.md) | What a running service exposes: health and readiness, log lines, config, shutdown, provenance |
 
 Each new capability standard from the platform contract's roster adds its own
 prefix here as it lands.

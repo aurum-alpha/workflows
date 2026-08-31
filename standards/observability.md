@@ -59,6 +59,19 @@ service's logs, and is echoed to the caller in the `x-request-id` response
 header — it is the value a person reads off an error page and pastes into
 a support ticket, which a trace id sampled away cannot be.
 
+These are **wire names, not code names**. The rule binds the bytes on an
+emitted line, never the identifier in source: a Go struct writes
+`TraceID string` with a `json:"trace_id"` tag — the field follows Go's own
+initialisms rule, the tag follows this contract — and a TypeScript DTO maps
+at the serialization boundary the same way. In-code style follows the
+language authors' guides, per the platform doctrine. snake_case is the wire
+choice because these fields flow into underscore-native and
+case-insensitive systems: a Prometheus label admits only
+`[a-zA-Z0-9_]`, an unquoted SQL identifier case-folds (`traceId` becomes
+`traceid` silently), and a log grep matches raw bytes. camelCase degrades
+at the first case-insensitive hop; snake_case round-trips the whole chain
+unchanged.
+
 `tenant_id` here is vocabulary, not authority: this standard says the
 field's name, format and presence in telemetry. How tenant context is
 *established* — from authenticated identity, never from a header an
@@ -133,6 +146,12 @@ process.
   are sampled, spans are tracing-backend citizens; the support-ticket
   value has to exist for every request and live in the service's own
   logs. UUIDv7 per the identifiers standard, echoed as `x-request-id`.
+- **snake_case on the wire, language-native in code** (2026-08-31): the
+  vocabulary's fields land in Prometheus labels, SQL columns and raw log
+  greps, where camelCase either is illegal or silently case-folds;
+  snake_case survives every hop. In-code names are out of this standard's
+  scope entirely — Go writes `TraceID` per go.dev's CodeReviewComments and
+  tags the JSON, which is the language authors' own answer to wire-vs-code.
 - **`tracestate` forwarded, never logged** (2026-08-31): it is foreign
   vendors' baggage; logging it is logging unknown third-party data.
 - **Logs stay stdout, not OTLP** (2026-08-31): #143 already answered log

@@ -102,21 +102,28 @@ on:
           planned as one rather than discovered by a red caller.
         type: string
         required: false
-        # The base of the change that deleted job-node-typecheck.yml. That is
-        # a catalog REMOVAL, which is the one direction of this lag that costs
-        # nothing: rule CAT and check-caller-permissions read the catalog
-        # listing from the UNPINNED clone below, so a deleted job disappears
-        # for every caller the moment it lands, whatever they pin here. The
-        # cases that hurt — job-go-build in #97, the wave-A fleet-versions
-        # removal — were the other direction, where the pinned tree still knew
-        # about something the fleet had moved past.
+        # The commit that set typescript to 7.0.2 in fleet-versions.json
+        # (wave 6, #247). Moving this is what makes that assertion real: until
+        # now every caller read a pinned tree still saying 6.0.3, which is
+        # precisely why the pin could land ahead of the fleet without turning
+        # a single repo red.
         #
-        # It is moved anyway, because check-standard-ref does not model that
-        # asymmetry and should not have to: the rule it enforces is that a
-        # consumed change gets a bump, and arguing a specific removal is
-        # harmless is exactly the reasoning that goes wrong quietly. Cheaper to
-        # move the pin than to teach the checker which deletions are safe.
-        default: cd9b1183e56742fada61456a36b5ef9ed7bc0b8f
+        # THIS BUMP IS THE ONE NOTHING CAN FORCE. check-standard-ref demands a
+        # move when a CONSUMED file changes -- tools/, job-*.yml, setup/ --
+        # and fleet-versions.json is none of those. It is checker INPUT: read
+        # by the checkers out of this clone, never referenced by a caller. So
+        # on #247 the checker printed "nothing a caller consumes changed" and
+        # passed, exactly as designed, while the change it was passing needed
+        # this follow-up to have any effect at all.
+        #
+        # That is the shape of the wave-A failure stated forward instead of
+        # backward. There, fleet-versions.json lost four packages and this
+        # default stayed behind, so repos that had already dropped them were
+        # failed for not declaring what the fleet had retired. Same file, same
+        # silent checker, opposite direction. A data change is not exempt from
+        # the bump; it is exempt from being REMINDED about the bump, which is
+        # worse, and is why it gets planned rather than discovered.
+        default: 107c4043457aa811ecd9ebca9fe85c586c0f8652
 
 jobs:
   ci-conformance:

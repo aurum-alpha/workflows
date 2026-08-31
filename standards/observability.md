@@ -8,7 +8,8 @@ formats referenced here are [`identifiers.md`](identifiers.md)'s.
 
 ## Why this exists
 
-The service baseline standard gives every service structured logging with a
+The [service baseline standard](platform.md#the-capability-roster) gives
+every service structured logging with a
 request id. This standard is what makes those ids mean something *across*
 services: a request that crosses two services, or enters a job queue, must
 not drop its identity at the boundary. Both halves are standard protocols —
@@ -30,8 +31,8 @@ trace at its edge. No parallel correlation scheme is invented — a bespoke
 correlation header beside `traceparent` is a second answer to a solved
 question.
 
-The async boundary is not an exception: the job envelope (the async
-messaging standard) carries the same `traceparent`/`tracestate` as
+The async boundary is not an exception: the job envelope (the [async
+messaging standard](platform.md#the-capability-roster)) carries the same `traceparent`/`tracestate` as
 envelope fields, and the worker that dequeues continues the trace that
 enqueued. A background job with no trace identity is unattributable work —
 the exact failure this rule exists to remove.
@@ -63,7 +64,8 @@ emitted line, never the identifier in source: a Go struct writes
 `TraceID string` with a `json:"trace_id"` tag — the field follows Go's own
 initialisms rule, the tag follows this contract — and a TypeScript DTO maps
 at the serialization boundary the same way. In-code style follows the
-language authors' guides, per the platform doctrine. snake_case is the wire
+language authors' guides, per the [platform contract](platform.md).
+snake_case is the wire
 choice because these fields flow into underscore-native and
 case-insensitive systems: a Prometheus label admits only
 `[a-zA-Z0-9_]`, an unquoted SQL identifier case-folds (`traceId` becomes
@@ -74,7 +76,8 @@ unchanged.
 `tenant_id` here is vocabulary, not authority: this standard says the
 field's name, format and presence in telemetry. How tenant context is
 *established* — from authenticated identity, never from a header an
-external caller controls — belongs to the authorization standard.
+external caller controls — belongs to the [authorization
+standard](platform.md#the-capability-roster).
 Between internal services it travels with the request so telemetry
 downstream stays attributable, and it is never read as an access-control
 input from anything but the authorization layer's own establishment.
@@ -93,8 +96,9 @@ dev — is the platform's problem, never the application's. **No
 vendor-specific exporter or agent in application code**: the vendor lives
 behind the collector. This is the same shape as the service baseline's rule
 for logs, and logs stay on that rule — **structured lines to stdout, per the
-service baseline standard; OTLP is not required for logs.** One answer per
-signal: stdout for logs, OTLP for traces and metrics.
+[service baseline standard](platform.md#the-capability-roster); OTLP is not
+required for logs.** One answer per signal: stdout for logs, OTLP for traces
+and metrics.
 
 An OpenTelemetry SDK is an implementation choice, not a fleet dependency:
 the contract is the wire protocol and the config variables, and an
@@ -153,8 +157,8 @@ process.
   tags the JSON, which is the language authors' own answer to wire-vs-code.
 - **`tracestate` forwarded, never logged** (2026-08-31): it is foreign
   vendors' baggage; logging it is logging unknown third-party data.
-- **Logs stay stdout, not OTLP** (2026-08-31): the service baseline
-  standard already answered log
+- **Logs stay stdout, not OTLP** (2026-08-31): the [service baseline
+  standard](platform.md#the-capability-roster) already answered log
   transport; a second pipeline for the same signal is the two-answers
   failure. OTLP is the answer for the signals stdout cannot carry.
 - **OTel's own env vars, no fleet spelling** (2026-08-31): the standard

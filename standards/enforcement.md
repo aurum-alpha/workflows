@@ -173,7 +173,7 @@ against.
 
 | # | Rule | Enforced by | Status |
 |---|---|---|---|
-| IP1 | Internal integer keys never leave the service; addressable rows carry a separate opaque public id | schema-level column check, buildable once the data-layer standard defines a readable schema; until then the stated review question | **review only** |
+| IP1 | Internal integer keys never leave the service; addressable rows carry a separate opaque public id | schema-level column check, buildable once the [data-layer standard](platform.md#the-capability-roster) defines a readable schema; until then the stated review question | **review only** |
 | IP2 | Public ids use an admitted format from the table (UUIDv7, nanoid profile, prefixed handle); UUIDv4-in-an-index needs a written defence | `job-contract-conformance` running `contracts/identifiers/corpus.json` (proposed) | **review only** |
 | IP3 | Ids are opaque — equality only, no parsing meaning out of them | — resists honestly; review question on consumers | **review only** |
 | IP4 | Instants are RFC 3339 UTC `Z` at one pinned fractional precision (default three digits, extendable to six or nine, never fewer); calendar dates are `full-date`; MySQL profile `DATETIME(3)` | corpus validity + canonical cases (proposed, same job) | **review only** |
@@ -182,7 +182,8 @@ against.
 IP2, IP4 and IP5 are exactly what a corpus can hold: their gate is the
 platform contract's own `job-contract-conformance`, and the corpus already
 exists, so promoting them is building the job, not writing the cases. IP1's
-mechanical gate is named but waits on the data-layer standard. IP3 resists a checker — what a
+mechanical gate is named but waits on the [data-layer
+standard](platform.md#the-capability-roster). IP3 resists a checker — what a
 consumer does with an id after receiving it is not a fact on disk — and the
 document states the review question instead.
 
@@ -214,7 +215,7 @@ written". Both are mechanically checkable, and neither has a checker yet.
 | # | Rule | Enforced by | Status |
 |---|---|---|---|
 | D1 | No document carries a status header; a merged document is binding | `check-standards-docs` (proposed): no `Status:` line in a standard | **review only** |
-| D2 | Documents reference documents by relative link, never a tracker number | `check-standards-docs` (proposed): no issue or pull-request reference in a standard's prose | **review only** |
+| D2 | Documents reference documents by working relative link — never a tracker number, never a bare name; a standard not yet written is linked at its roster row | `check-standards-docs` (proposed): no issue or pull-request reference in a standard's prose, and every relative link resolves | **review only** |
 
 These are the cheapest gates in this ledger — a grep each, no false positives —
 and they are the kind of rule that regresses silently, because a status line

@@ -107,14 +107,20 @@ which every merged document is). What varies per rule is how it is *enforced*,
 and that lives in one place: the ledger.
 
 **A document references other documents, never a tracker.** Relative markdown
-links between `.md` files, always. An issue or pull request number in doctrine
-is a citation to something a reader outside this repository cannot open, that
-says nothing once merged, and that ages into a dead reference — a document
-citing its own paperwork. Where a rule depends on a standard not yet written,
-name that standard in prose ("the data-layer standard") and let the platform
-contract's capability roster be the one place that tracks what exists and what
-does not. Pending work is still tracked as issues here; the documents just do
-not cite them.
+links between `.md` files, always — a reference a reader can click and open,
+not a name they have to go hunting for. An issue or pull request number in
+doctrine is a citation to something a reader outside this repository cannot
+open, that says nothing once merged, and that ages into a dead reference — a
+document citing its own paperwork.
+
+Where a rule depends on a standard **not yet written**, the reference still
+has to be a working link, so it points at the row that tracks it:
+`[the data-layer standard](standards/platform.md#the-capability-roster)`.
+That link resolves today, lands the reader on a row that says "not yet
+written", and becomes a direct link to the document when one lands. A bare
+name is not a reference and a link to a file that does not exist is a 404;
+this is the form that is neither. Pending work is still tracked as issues
+here; the documents just do not cite them.
 
 ## Non-compliance is tracked where the code is
 

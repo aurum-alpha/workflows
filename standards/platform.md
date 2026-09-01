@@ -167,7 +167,7 @@ the work is an issue in this repository.
 | Capability | The fleet answer takes the form of | Standard |
 |---|---|---|
 | Authentication | OIDC profile: a proxy is the relying party, one signed identity token crosses to the backend, the application is never in the authentication chain | [`auth.md`](auth.md) |
-| Authorization | Application-owned RBAC as a full interface spec: model, operations, semantics, corpus — never derived from token claims | not yet written |
+| Authorization | Application-owned RBAC as a full interface spec: model, operations, semantics, corpus — never derived from token claims | [`rbac.md`](rbac.md) |
 | Identity provisioning | The application originates the user and creates the identity; four operations over SCIM or an admin API | [`auth.md`](auth.md) AU4 |
 | Session lifecycle | Idle and absolute limits, invisible refresh, back-channel logout with a short-token backstop | [`auth.md`](auth.md) AU5 |
 | Configuration | [Factor III](https://12factor.net/config) profile: variable naming, fail-loud on missing, no environment detection in code | [`service.md`](service.md) SC3 |

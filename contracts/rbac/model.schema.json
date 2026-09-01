@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/rbac/model.schema.json",
+  "title": "Aurum Alpha RBAC model",
+  "description": "The shapes of standards/rbac.md: permission, scope, role and grant. This file fixes the model; contracts/rbac/decisions.json fixes the behaviour. schemaVersion 1 — evolves additively per PC6.",
+  "$defs": {
+    "permission": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+      "description": "resource.action, lowercase, snake_case within segments, exactly two segments (RB2). The dot is reserved for permissions and the colon for scopes so no identifier is ambiguous. Three segments are forbidden: system.dashboard.view is system_dashboard.view, which keeps the check an equality rather than a prefix question."
+    },
+    "scope": {
+      "type": "string",
+      "pattern": "^(global|[a-z][a-z0-9_]*:[A-Za-z0-9_-]+)$",
+      "description": "Either the literal 'global' or a type:id pair such as tenant:acme (RB4). The application declares which scope types exist and how they contain one another; this contract fixes the shape and leaves the hierarchy to the application, because a standard naming the levels would fit no two products."
+    },
+    "role": {
+      "type": "object",
+      "description": "A named set of permissions (RB3). Roles do not nest and do not inherit — a role that should have what another has lists the same permissions, so that what a person can do stays readable from the role's own definition.",
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "Stable identifier. Display names are the application's own concern." },
+        "permissions": {
+          "type": "array",
+          "description": "Every entry MUST be in the application's declared permission set (RB1), validated at write time. A stored role carrying a typo grants nothing and says nothing.",
+          "items": { "$ref": "#/$defs/permission" }
+        }
+      },
+      "required": ["name", "permissions"],
+      "additionalProperties": false
+    },
+    "grant": {
+      "type": "object",
+      "description": "Binds a subject to a role within a scope (RB4). Grants are additive and there are no negative grants: a subject's permissions at a scope are the union of every grant that applies there.",
+      "properties": {
+        "subject": { "type": "string", "minLength": 1, "description": "The application's own user or service-account id, per IP1. Never the identity provider's subject." },
+        "role": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "scope": { "$ref": "#/$defs/scope" }
+      },
+      "required": ["subject", "role", "scope"],
+      "additionalProperties": false
+    },
+    "decision": {
+      "type": "object",
+      "description": "What check() returns (RB7). Never a bare boolean: a denial that cannot say why is the SC2 reason-giving failure on the surface where it matters most. The reason is logged and shown to an administrator; it never reaches an unauthorised caller, whose response is the HA3 envelope.",
+      "properties": {
+        "allowed": { "type": "boolean" },
+        "reason": {
+          "type": "object",
+          "description": "Which grant satisfied the check. Absent when allowed is false — there is no satisfying grant to name, and 'no grant applies' is the whole reason.",
+          "properties": {
+            "role": { "type": "string" },
+            "scope": { "$ref": "#/$defs/scope" }
+          },
+          "required": ["role", "scope"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["allowed"],
+      "additionalProperties": false
+    }
+  }
+}

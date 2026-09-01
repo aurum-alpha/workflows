@@ -8,7 +8,7 @@ actually holds. Artifacts: [`contracts/auth/`](../contracts/auth/).
 This document governs how a person comes to be authenticated, what identity
 reaches an application as a result, how that identity is created in the first
 place, and how a session ends. **It does not define the authorization model** —
-who may do what is the [RBAC standard](platform.md#the-capability-roster)'s, and
+who may do what is the [RBAC standard](rbac.md)'s, and
 the boundary between the two is AU6.
 
 ## Why this exists
@@ -337,7 +337,7 @@ correct answer is **`403` plus session termination**.
 #### The boundary with authorization
 
 Everything past *known subject* belongs to the
-[RBAC standard](platform.md#the-capability-roster): the permission model, the
+[RBAC standard](rbac.md): the permission model, the
 grant semantics, the check operation and its corpus. This document stops at
 producing a trustworthy subject and refusing an unknown one.
 

@@ -18,6 +18,7 @@ standard is here, what makes one binding, and indexes the rest.
 | [standards/service.md](standards/service.md) | The service contract: health, logging, config, shutdown, provenance |
 | [standards/http.md](standards/http.md) | Service interfaces: protocol selection, OpenAPI, problem+json errors, pagination, idempotency, wire naming |
 | [standards/auth.md](standards/auth.md) | Authentication: identity tier, identity token, linkage, provisioning, sessions, topologies |
+| [standards/rbac.md](standards/rbac.md) | Authorization: permissions, roles, grants, scope containment, the check operation |
 | [standards/web-client.md](standards/web-client.md) | The web client: browser auth, runtime config, the API client, presentation and i18n, error reports |
 | [standards/enforcement.md](standards/enforcement.md) | Every rule, its gate, and the tier it actually reaches |
 
@@ -42,6 +43,7 @@ the ledger, not this table, is the register of the rules themselves.
 | SC | [`standards/service.md`](standards/service.md) | What a running service exposes: health and readiness, log lines, config, shutdown, provenance |
 | HA | [`standards/http.md`](standards/http.md) | Service interfaces: which protocol, then the HTTP surface — description, error envelope, pagination, versioning, idempotency, retries |
 | AU | [`standards/auth.md`](standards/auth.md) | Authentication: which process is the OAuth client, what identity crosses to a backend, how a user is created and how a session ends |
+| RB | [`standards/rbac.md`](standards/rbac.md) | Authorization: what a permission is, how a grant is scoped, and what `check` must decide |
 | WC | [`standards/web-client.md`](standards/web-client.md) | Code running in a browser: authentication pattern, runtime configuration, the API client module, presentation and i18n, error reporting |
 
 Each new capability standard from the platform contract's roster adds its own

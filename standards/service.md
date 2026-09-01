@@ -7,7 +7,7 @@ actually holds. Artifacts: [`contracts/service/`](../contracts/service/).
 
 ## Why this exists
 
-The fleet standardizes how a service is built, tested, packaged and shipped.
+These standards cover how a service is built, tested, packaged and shipped.
 It said nothing about what the running thing must **expose**, so every
 product answered the same operational questions independently, and several
 answered them by not answering. Across the six TypeScript SaaS products at
@@ -20,11 +20,11 @@ exists to prove a built image actually runs, and with no endpoint to hit,
 the strongest claim it can make is that the process did not exit within the
 timeout. **A service that starts, fails to reach its database, and sits
 there answering nothing passes that check today.** Giving every service a
-readiness endpoint turns a shared job the fleet already runs from a liveness
+readiness endpoint turns a shared job already in the catalog from a liveness
 guess into a real gate — no new job, no new infrastructure.
 
 Most of what follows is [twelve-factor](https://12factor.net/) applied to
-this fleet, and each rule cites the factor it rests on. What this document
+these applications, and each rule cites the factor it rests on. What this document
 adds is the part twelve-factor deliberately leaves open: the actual paths,
 field names and response shapes, without which six conformant services are
 still six different services to operate.
@@ -79,7 +79,7 @@ Logs go to stdout as an event stream, per
 rotates, or stores its own logs, because that is the execution
 environment's job. This rule is inherited, not invented.
 
-What the fleet pins is the line itself: **one JSON object per line**,
+What this standard pins is the line itself: **one JSON object per line**,
 carrying `ts` (an instant per [`identifiers.md`](identifiers.md) IP4),
 `level`, `msg`, `service`, and — whenever request context exists — the
 context block from [`observability.md`](observability.md) OC2 and OC4.
@@ -155,7 +155,7 @@ almost never the sensitive part; the payload is.
 ### SC3. Configuration comes from the environment, and absence blocks serving
 
 Config lives in environment variables, per
-[factor III](https://12factor.net/config). The fleet's additions:
+[factor III](https://12factor.net/config). This standard's additions:
 
 - **Names are `SCREAMING_SNAKE_CASE`**, and describe the thing rather than
   its consumer: `DATABASE_URL`, `OTEL_EXPORTER_OTLP_ENDPOINT`.
@@ -371,5 +371,5 @@ standard is the strongest promotion candidate in the ledger:
 
 That live check is the one that matters, because it exercises the running
 artifact rather than the source that claims to produce it — and it upgrades
-the fleet's existing "the process did not exit" claim into "the service came
+the existing "the process did not exit" claim into "the service came
 up, reached its dependencies, and said what it was."

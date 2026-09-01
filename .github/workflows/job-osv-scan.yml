@@ -1,4 +1,4 @@
-# Fleet capability: lockfile vulnerability scanning (CI_STANDARD Principle 12 —
+# Portfolio capability: lockfile vulnerability scanning (CI_STANDARD Principle 12 —
 # one way per capability).
 #
 # This wrapper exists for ONE reason: upstream ships two workflows and the
@@ -8,7 +8,7 @@
 #                                 the change INTRODUCES
 #   osv-scanner-reusable.yml      scans the tree and reports EVERYTHING
 #
-# Calling the second one on pull requests — which every repo in this fleet did
+# Calling the second one on pull requests — which every repo in this portfolio did
 # until now — judges a pull request against the whole backlog. The only way to
 # stop that blocking unrelated work is `fail-on-vuln: false`, which also stops
 # it blocking a vulnerability the pull request just added. One knob, two
@@ -46,8 +46,8 @@ on:
         required: true
       runner:
         description: >-
-          Override runs-on. Leave empty for the fleet default. Set to a
-          GitHub-hosted label where a repo must not build on the fleet
+          Override runs-on. Leave empty for the standard default. Set to a
+          GitHub-hosted label where a repo must not build on the portfolio
           (CI_STANDARD Principle 4).
         type: string
         default: ""

@@ -6,7 +6,7 @@ and [`enforcement.md`](enforcement.md) for the tier each rule below actually
 holds.
 
 This document states the doctrine every application-layer standard is written
-under: what form a fleet opinion about a platform capability is allowed to
+under: what form an opinion about a platform capability is allowed to
 take. The capabilities themselves — authentication, logging, jobs, audit, and
 the rest — each get their own standard, tracked in this repository's issues
 and indexed in the roster below. This document is the constitution those
@@ -22,9 +22,15 @@ re-derives them per product ships worse versions of all of them. A framework
 answers each once and hands you the answer. That instinct — an opinion for
 everything, decided once — is correct, and this standard exists to keep it.
 
+These capabilities are exactly the arbitrary decisions the charter's *What this
+is for* describes: every application must decide them, and no application's
+domain has an opinion about how. This document says what form our answer to one
+of them is allowed to take. **Each capability's own answer belongs to its
+standard, in the roster below — never here.**
+
 What a framework gets wrong, for us, is the delivery vehicle. The answers
 arrive as a CLI, a runtime library, and a deploy tool. Three consequences,
-each fatal at fleet scale:
+each fatal at this scale:
 
 - **The library is a dependency the application can never leave.** Every
   generated app imports the framework's auth, jobs and observability at
@@ -34,9 +40,9 @@ each fatal at fleet scale:
   code is owned by the app and immediately starts diverging from the framework
   that emitted it, while still depending on its runtime — locked in *and*
   diverged, so upgrades become archaeology.
-- **The framework's language decides the fleet's.** This fleet is Go,
-  TypeScript, PHP and embedded C++. A library was never available as the
-  fleet-wide answer to anything.
+- **The framework's language decides ours.** We build in Go, TypeScript, PHP
+  and embedded C++. A library was never available as the single answer to
+  anything.
 
 The charter already names the failure in the abstract: *a standard that only
 works while a particular repository is reachable is not a standard, it is a
@@ -58,25 +64,25 @@ which is the charter's law, applied to the application layer.
 
 ### PC1. An opinion is a contract, never a tool
 
-A fleet answer to a platform capability is a **protocol** (behaviour stated at
+The answer to a platform capability is a **protocol** (behaviour stated at
 a boundary: an endpoint, a message, a log line, an environment variable) or an
 **interface specification** (a data model and operations with defined
 semantics, implementable in any language). It is never a CLI an application's
 lifecycle depends on, never a framework, never a shared runtime library an
 application must import, never a deploy tool.
 
-The corollary for what this repository may ship: **fleet tooling verifies, or
+The corollary for what this repository may ship: **shared tooling verifies, or
 copies once.** A checker that fails a build, a conformance suite that runs a
 corpus, a template that is copied at a repository's birth and never consulted
 again — all allowed. A generator that stays attached to the application, a
-tool that owns deploy, a runtime the fleet imports — not allowed, whoever
+tool that owns deploy, a runtime every application imports — not allowed, whoever
 writes it. Building the framework in-house does not fix the framework problem;
 it relocates it to a vendor we have to staff.
 
 ### PC2. Standard protocol first, profile second, internal contract last
 
 Where an industry standard suffices — OIDC for identity, OTLP for telemetry,
-W3C trace context for propagation, RFC 9457 for HTTP errors — the fleet
+W3C trace context for propagation, RFC 9457 for HTTP errors — the standard
 adopts it, as a **written profile**: the document pins the choices the
 standard leaves open, because "we use OIDC" unpinned is four implementations
 waiting to happen.
@@ -133,14 +139,14 @@ the spec first, in its own change, and the package follows.
 
 - **One package per capability contract.** No `aurum-common`. A grab-bag
   package is the framework re-forming by accretion.
-- **No fleet package depends on another fleet package.** The moment they
+- **No shared package depends on another shared package.** The moment they
   stack, importing one means importing the pile, and the pile is a framework.
 - **Every package release passes the contract's own corpus** — the same gate
   a bespoke implementation faces, because per PC4 the gate cannot tell them
   apart, and per this rule it must not.
 
 A repository may substitute its own implementation of any contract and stay
-green. At handover, a client repository that uses a fleet package vendors it,
+green. At handover, a client repository that uses a shared package vendors it,
 exactly as it vendors the standards documents — which these packages survive
 because each is small, single-capability, and corpus-defined.
 
@@ -150,21 +156,21 @@ Every versioned shape (envelopes, events, log lines) carries a schema-version
 field. Changes are additive — new optional fields, never a removed or
 repurposed one. A breaking change is a new version, and the contract states
 its deprecation window: how long implementations must accept the old version
-while emitting the new. A fleet of specifications without a change discipline
+while emitting the new. A body of specifications without a change discipline
 re-creates the drift problem one level up, with the added indignity that the
 documents were supposed to be the fix.
 
 ## The capability roster
 
-Every platform capability the fleet has an opinion on, or has decided to
-have one. **A capability's absence from this table is a claim that the fleet
-has considered it and declined** — so a reader can distinguish "not yet
+Every platform capability these standards have an opinion on, or has decided to
+have one. **A capability's absence from this table is a claim that we have
+considered it and declined** — so a reader can distinguish "not yet
 written" (a row saying so) from "not considered" (a gap in this table, which
 is a defect in this document). A row gains its link when the standard lands;
 the ledger tracks what is enforced. Where a capability has no document yet,
 the work is an issue in this repository.
 
-| Capability | The fleet answer takes the form of | Standard |
+| Capability | The standard takes the form of | Document |
 |---|---|---|
 | Authentication | OIDC profile: a proxy is the relying party, one signed identity token crosses to the backend, the application is never in the authentication chain | [`auth.md`](auth.md) |
 | Authorization | Application-owned RBAC as a full interface spec: model, operations, semantics, corpus — never derived from token claims | [`rbac.md`](rbac.md) |
@@ -205,7 +211,7 @@ corpus judges all three. When someone asks what "an interface spec, not a
 library" means, the answer is that standard.
 
 **Async messaging** is the model internal contract: no wire standard covers
-it fully (its standard evaluates CloudEvents before inventing), so the fleet
+it fully (its standard evaluates CloudEvents before inventing), so the standard
 defines the envelope — and the discipline PC2 demands is visible right there:
 the invention is scoped to the envelope, while the identity inside it stays
 W3C trace context, per the propagation profile.
@@ -227,7 +233,7 @@ Every rule here is review-only today, honestly, with the gates named per rule in
   per-capability as corpora land. This is the gate that matters — the one
   that fails the implementation that drifted.
 - **PC5 gates in the package repositories**: every release runs the corpus,
-  and a manifest check asserts no fleet package depends on another.
+  and a manifest check asserts no shared package depends on another.
 - **PC6 gets `check-contract-evolution`**: a schema diff on every change to
   `contracts/` — removed or retyped fields fail; a version bump with a
   stated window passes.

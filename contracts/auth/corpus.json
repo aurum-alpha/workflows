@@ -183,7 +183,7 @@
       "expect": {
         "status_code": 401
       },
-      "note": "without this check the fleet's services are interchangeable to an attacker holding any one token (AU2)"
+      "note": "without this check the portfolio's services are interchangeable to an attacker holding any one token (AU2)"
     },
     {
       "id": "unknown-subject-is-403-and-logged-out",

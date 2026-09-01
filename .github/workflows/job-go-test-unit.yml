@@ -1,4 +1,4 @@
-# Fleet capability: test-unit, Go (CI_STANDARD Principle 12 — one way per
+# Portfolio capability: test-unit, Go (CI_STANDARD Principle 12 — one way per
 # capability). Single-job reusable workflow: the caller owns the job id and
 # needs: wiring; this file owns the entire job body. Callers pass
 # secrets: inherit; vars.RUNNER resolves in the caller's context.
@@ -9,7 +9,7 @@
 # three repos disagreed on two axes — client-manager and gofast wrote the
 # coverage profile but skipped -race; the controller ran -race but produced
 # no profile. Taking the union is the standardization: race detection is the
-# highest-value Go test flag and coverage is fleet policy (Phase B2), so a
+# highest-value Go test flag and coverage is standard policy (Phase B2), so a
 # repo whose tests fail under -race has a real bug to fix, not a reason to
 # fork the job.
 name: job-go-test-unit
@@ -23,8 +23,8 @@ on:
         default: "."
       runner:
         description: >-
-          Override runs-on. Leave empty for the fleet default. Set to a
-          GitHub-hosted label where a repo must not build on the fleet
+          Override runs-on. Leave empty for the standard default. Set to a
+          GitHub-hosted label where a repo must not build on the portfolio
           (CI_STANDARD Principle 4 — e.g. the runner controller itself).
         type: string
         default: ""
@@ -111,7 +111,7 @@ jobs:
       - name: Unit tests
         working-directory: ${{ inputs.workdir }}
         env:
-          # -race is implemented in C and refuses to run without cgo. The fleet
+          # -race is implemented in C and refuses to run without cgo. The portfolio
           # runners default CGO_ENABLED=0 (the repos ship static binaries), so
           # this must be set for the test run or every -race invocation dies
           # with "go: -race requires cgo". Set here rather than left to the

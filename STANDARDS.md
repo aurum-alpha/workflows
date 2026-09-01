@@ -17,9 +17,42 @@ the reasoning, a catalog that implements it once, and a checker that fails the
 build when a repo drifts. The scope is now every layer of a product, not just
 its pipeline.
 
-**Two repos solving the same problem two ways is not diversity, it is the fleet
-having no opinion — and an organisation with no opinion re-litigates the same
+**Two repos solving the same problem two ways is not diversity, it is the absence
+of an opinion — and an organisation with no opinion re-litigates the same
 decision every time someone starts a service.**
+
+## What this is for
+
+Every application faces two kinds of decision, and only one of them is its own.
+
+Which pagination style, which error envelope, which identifier format, where
+the session lives, what an audit row contains: real decisions, decided badly
+more often than not, and **not decisions any particular product's problem has
+an opinion about**. An invoicing system is not better or worse at invoicing for
+having picked cursor pagination over offset. The choice still has to be made,
+so each repository makes it alone, differently, and at the cost of an argument
+that has already been had elsewhere.
+
+The other kind is the domain: what an invoice *is* here, when it may be voided,
+who is allowed to. That is the part a client is paying for and the only part
+where a repository's own judgment is the right input.
+
+So the purpose, in three steps:
+
+1. **Remove the arbitrary decision from every repository, wherever the decision
+   is not material to that application's purpose or domain.** Not to make the
+   choices uniform for its own sake, but because a decision that could go
+   either way should go one way once, here, with the reasoning written down.
+2. **Which leaves each repository spending its judgment on business logic** —
+   the domain, the workflow, the thing that is actually specific to it.
+3. **Which is why this makes development faster, not slower.** A standards
+   effort is assumed to be a tax. This one is the opposite: the decisions it
+   removes were never free, they were being paid for repeatedly, in argument
+   and in divergence, by people who had something better to think about.
+
+That is also why the standards are written as contracts with conformance tests
+rather than as advice. An arbitrary decision is only genuinely removed once
+nobody has to remember it.
 
 ## Scope: internal and client work alike
 
@@ -41,7 +74,7 @@ Three consequences, and they constrain how every document here is written:
 2. **Every standard must be satisfiable without this repo.** Where a rule is
    normally met by calling a shared workflow, the document says what the
    workflow does in terms a person could reimplement.
-3. **Handover is a copy, not a link.** A repository leaving the fleet vendors the
+3. **Handover is a copy, not a link.** A repository leaving the portfolio vendors the
    standards it was built to, so the rules travel with the code. What it loses is
    the updates, which is correct — it is no longer ours.
 
@@ -101,8 +134,8 @@ merged document is binding — see the writing conventions below.
 are built on**, not a reference we consulted. Config in the environment, logs
 as event streams, strict build/release/run separation, disposable processes
 that shut down gracefully — most of what the CI standard and the platform
-contract say about how a service behaves is twelve-factor, applied to this
-fleet with the open choices pinned.
+contract say about how a service behaves is twelve-factor, applied here
+with the open choices pinned.
 
 Two consequences for how these documents are written:
 
@@ -119,7 +152,7 @@ Two consequences for how these documents are written:
 
 What a standard here adds on top of a factor is the part twelve-factor
 deliberately leaves open — the *specific* names, formats and endpoints that
-make a polyglot fleet interoperable. Factor III says config lives in the
+let four languages interoperate. Factor III says config lives in the
 environment; it does not say what the variables are called. That pinning is
 ours, and it is the only part that is.
 

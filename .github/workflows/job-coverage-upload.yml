@@ -1,4 +1,4 @@
-# Fleet capability: send this run's coverage and test results to Codecov, once,
+# Portfolio capability: send this run's coverage and test results to Codecov, once,
 # from one job (CI_STANDARD Principle 12 — one way per capability).
 #
 # It exists because the upload used to live inside each test-unit job, and a
@@ -47,7 +47,7 @@ on:
     inputs:
       coverage_pattern:
         description: >-
-          Artifact-name glob for coverage reports. The default is the fleet
+          Artifact-name glob for coverage reports. The default is the portfolio
           convention and no caller should need to change it; it is an input
           only so a repo introducing a new producer can be tested without
           editing the catalog first.
@@ -59,7 +59,7 @@ on:
         default: testresults-*
       runner:
         description: >-
-          Override runs-on. Leave empty for the fleet default (Principle 4
+          Override runs-on. Leave empty for the standard default (Principle 4
           escape hatch).
         type: string
         default: ""

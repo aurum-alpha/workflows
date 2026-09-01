@@ -377,7 +377,7 @@
           "scope": "tenant:acme"
         }
       },
-      "note": "both prior fleet implementations grew checkAny and checkAll independently, which is good evidence that a codebase without them writes the loop by hand and gets it wrong somewhere"
+      "note": "both prior portfolio implementations grew checkAny and checkAll independently, which is good evidence that a codebase without them writes the loop by hand and gets it wrong somewhere"
     }
   ],
   "rejections": [

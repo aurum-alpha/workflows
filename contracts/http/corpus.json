@@ -133,7 +133,7 @@
       "id": "unrouted-path-answers-problem-json",
       "stimulus": "GET a path no route matches",
       "expect": { "status_code": 404, "headers.content-type": "application/problem+json", "body": "validates against problem.schema.json" },
-      "note": "the most common failure in the fleet today: a framework's default HTML error page escaping to clients from the one path nobody wrote a handler for (HA3)"
+      "note": "the most common failure in the portfolio today: a framework's default HTML error page escaping to clients from the one path nobody wrote a handler for (HA3)"
     },
     {
       "id": "validation-failure-answers-field-errors",

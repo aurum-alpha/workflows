@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify every Node app in the fleet pins the same toolchain versions.
+"""Verify every Node app in the portfolio pins the same toolchain versions.
 
 The version each repo actually uses comes from package.json's packageManager
 field — that is what corepack activates locally and what pnpm/action-setup
@@ -21,7 +21,7 @@ unconditionally without first knowing whether it is a Node repo.
 
 It checks THREE things, for the same reason and against the same file:
 
-  packageManager   one pnpm across the fleet
+  packageManager   one pnpm across the portfolio
   devDependencies  one version of each converged build-time package
   dependencies     one version of each converged RUNTIME package
 
@@ -35,7 +35,7 @@ snapshot, not a standard.
 
 The two dependency blocks are separate rather than one merged lookup, and the
 section a package sits in is part of what is asserted. For a year this checker
-read devDependencies alone, which meant the fleet could converge on a runtime
+read devDependencies alone, which meant the portfolio could converge on a runtime
 package -- react, say -- and have no way to say so: react and react-dom are
 `dependencies` in all nine Node apps, correctly, and were therefore invisible
 here. Merging the two sections into one lookup would have fixed that and lost
@@ -47,7 +47,7 @@ accepted either section would have called both of those fine.
 
 Versions are compared EXACTLY. A caret or tilde fails: `^7.3.0` in two repos
 can resolve to different versions on different days, so a range is not a pin
-and cannot be a fleet standard. That is also why a package mid-wave is absent
+and cannot be a Aurum Alpha standard. That is also why a package mid-wave is absent
 from dependency-versions.json rather than listed with a target -- listing it
 would fail every repo whose turn has not come, and a check that is expected to
 fail is a check nobody reads.
@@ -68,7 +68,7 @@ import sys
 # now accept would be invisible to the version check -- the same class of bug
 # as the NODE_APPS map both of these replaced.
 #
-# Depth 2 covers every shape in the fleet with room to spare (`.`, `client`,
+# Depth 2 covers every shape in the portfolio with room to spare (`.`, `client`,
 # and anything one level further in) without walking a whole tree to find
 # nothing. PRUNE is the important half: node_modules holds thousands of
 # package.json files, none of them units.
@@ -92,7 +92,7 @@ def node_units(root, repo):
     This is also what makes a mixed-stack repo work without a special case.
     A repo is not "a Node repo" or "a Go repo" -- its UNITS have stacks.
     client-manager and gofast each carry go.mod at the root and a Node unit in
-    client/, and both sets of fleet standards apply to their own unit. Nothing
+    client/, and both sets of portfolio standards apply to their own unit. Nothing
     here needs to classify the repo, and nothing should: that classification
     would be a second copy of what the directory tree already says.
 
@@ -149,7 +149,7 @@ def check_section(
     section: str,
     other: str,
 ) -> int:
-    """Compare one manifest section against the fleet standard for it.
+    """Compare one manifest section against the Aurum Alpha standard for it.
 
     `section` is where the packages must be declared; `other` is the sibling
     section, checked only so a misplaced package is reported as misplaced
@@ -171,15 +171,15 @@ def check_section(
             if name in sibling:
                 print(
                     f"{repo}: {name} is declared in {other}, "
-                    f"fleet standard has it in {section} at {version}"
+                    f"Aurum Alpha standard has it in {section} at {version}"
                 )
             else:
                 # WHERE PRESENT. Absence is not drift, and this used to say the
                 # opposite -- "absent is a failure, not a skip", on the theory
-                # that every listed package was one the whole fleet had
+                # that every listed package was one the whole portfolio had
                 # converged on. That theory held only while the list was
                 # exactly the packages all nine apps happened to share, and it
-                # made the list unable to grow: measured across the fleet,
+                # made the list unable to grow: measured across the portfolio,
                 # ZERO unasserted packages are present in all nine, so every
                 # candidate for convergence would have failed the repos that
                 # legitimately do not use it. An assertion that cannot be
@@ -200,7 +200,7 @@ def check_section(
             hint = " (a range, not a pin)" if got[:1] in "^~><=" else ""
             print(
                 f"{repo}: {name} is {got}{hint} in {section}, "
-                f"fleet standard is {version}"
+                f"Aurum Alpha standard is {version}"
             )
             failures += 1
 
@@ -268,7 +268,7 @@ def main() -> int:
             print(f"{repo}: no packageManager field — must declare {want}")
             failures += 1
         elif declared != want:
-            print(f"{repo}: packageManager is {declared}, fleet standard is {want}")
+            print(f"{repo}: packageManager is {declared}, Aurum Alpha standard is {want}")
             failures += 1
         else:
             print(f"{repo}: {declared}")

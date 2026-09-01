@@ -11,7 +11,7 @@
     },
     "ts": {
       "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp",
-      "description": "When the failure happened, in the fleet's canonical instant form (IP4) — not a locale-formatted string, per WC4."
+      "description": "When the failure happened, in the portfolio's canonical instant form (IP4) — not a locale-formatted string, per WC4."
     },
     "kind": {
       "type": "string",

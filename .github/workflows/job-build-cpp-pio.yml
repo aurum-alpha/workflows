@@ -1,4 +1,4 @@
-# Fleet capability: build for a PlatformIO C/C++ firmware unit (CI_STANDARD
+# Portfolio capability: build for a PlatformIO C/C++ firmware unit (CI_STANDARD
 # Principle 12 — one way per capability). Tool tier: `pio` is PlatformIO's CLI,
 # not one board's or one framework's, so this job serves any PlatformIO project
 # — the caller says which environments to build.
@@ -143,7 +143,7 @@ jobs:
           # It is duplicated rather than extracted because a reusable workflow runs in
           # the CALLER's checkout: it cannot reference a catalog composite without its
           # own SHA pin, which makes every change a two-commit dance. setup/node-pnpm's
-          # header records the fleet making the same trade for the same reason. The
+          # header records the portfolio making the same trade for the same reason. The
           # checker is what makes the duplicate safe.
           def resolve_version_stamp(version_file, version, commit):
               """Did THIS commit cut a release, and what should the build stamp?

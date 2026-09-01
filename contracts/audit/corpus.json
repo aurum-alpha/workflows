@@ -7,7 +7,7 @@
     {
       "case": "a-complete-grant-names-both-people",
       "valid": true,
-      "why": "AE2's central shape. actor is the admin who granted, target is the person who received. The fleet's one pre-existing audit table has a single user_id here and therefore cannot answer who granted anyone access - this case is that defect written as a passing example.",
+      "why": "AE2's central shape. actor is the admin who granted, target is the person who received. The portfolio's one pre-existing audit table has a single user_id here and therefore cannot answer who granted anyone access - this case is that defect written as a passing example.",
       "event": {
         "schema_version": 1,
         "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
@@ -93,7 +93,7 @@
     {
       "case": "a-three-segment-action-is-rejected",
       "valid": false,
-      "why": "AE3, inherited from RB2. 'system.dashboard.view' is a shape that exists in the fleet today; admitting it here would fork the action vocabulary from the permission vocabulary, which is exactly what AE3 refuses to allow.",
+      "why": "AE3, inherited from RB2. 'system.dashboard.view' is a shape that exists in the portfolio today; admitting it here would fork the action vocabulary from the permission vocabulary, which is exactly what AE3 refuses to allow.",
       "event": {
         "schema_version": 1,
         "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0b05",

@@ -16,11 +16,11 @@ subject and refuses an unknown one; this one decides what a known subject may do
 This is the platform contract's worked example of *an interface specification,
 not a library*. Three languages implement it; one corpus judges all three.
 
-It is also not being invented from nothing. Two products in the fleet have
+It is also not being invented from nothing. Two products in the portfolio have
 built substantial RBAC systems independently, and **they agree on more than they
 differ**: permissions as a closed set of `resource`-plus-`action` strings
 declared in code, roles as named bundles of those permissions, grants scoped to
-an organisational unit. That agreement is the fleet answer, and most of this
+an organisational unit. That agreement is the standard answer, and most of this
 document is it, written down.
 
 What they differ on is where the standard earns its keep. One keeps roles as a
@@ -48,7 +48,7 @@ property it buys is that *what can be granted* is answerable from the
 repository, reviewable in a diff, and impossible to typo into existence.
 
 The distinction that matters and is easy to lose: **the set of permissions is
-fleet-standard in its shape and application-specific in its contents.** An
+standard in its shape and application-specific in its contents.** An
 invoicing product has `invoice.approve` and a recruiting product does not. What
 this standard fixes is the shape, the semantics and the operations — not the
 vocabulary.

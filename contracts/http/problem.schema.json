@@ -8,7 +8,7 @@
     "type": {
       "type": "string",
       "format": "uri",
-      "description": "A stable URI identifying the error CLASS — clients branch on this, so changing what one means is a breaking change and gets a new type rather than an edit (HA2). Fleet form: https://errors.aurumalpha.dev/<service>/<slug>. RFC 9457 does not require it to resolve; the form is pinned so it can become dereferenceable later without changing a client. 'about:blank' only where the status code is the whole story.",
+      "description": "A stable URI identifying the error CLASS — clients branch on this, so changing what one means is a breaking change and gets a new type rather than an edit (HA2). Portfolio form: https://errors.aurumalpha.dev/<service>/<slug>. RFC 9457 does not require it to resolve; the form is pinned so it can become dereferenceable later without changing a client. 'about:blank' only where the status code is the whole story.",
       "minLength": 1
     },
     "title": {

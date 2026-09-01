@@ -20,10 +20,10 @@ permissions:
   contents: read
 
 jobs:
-  # This repo is the fleet's CI definition, so its gate is workflow
+  # This repo is the portfolio's CI definition, so its gate is workflow
   # correctness: actionlint over every workflow file, including the shared
   # job-*.yml bodies every caller runs. The image tag is pinned for the same
-  # reason the fleet pins action SHAs; bump it deliberately, not implicitly.
+  # reason the portfolio pins action SHAs; bump it deliberately, not implicitly.
   lint:
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
     steps:
@@ -59,7 +59,7 @@ jobs:
       # TWO TREES, because a caller reads two. It takes job-ci-conformance.yml
       # from the tag it pins, and the checkers that file invokes from a SEPARATE
       # clone at standard_ref. So "the checker exists" has to be true in both,
-      # and the standard_ref half is the half that reaches the fleet.
+      # and the standard_ref half is the half that reaches the portfolio.
       #
       # Checking only the working tree let exactly that ship twice. v2.2.10
       # invoked check-exact-pins and v2.2.11 invoked check-overrides, while
@@ -114,7 +114,7 @@ jobs:
           exit $missing
 
       # The catalog's own CI never RUNS the image jobs — they only execute in
-      # caller repos — so a bug in one of their shell loops reaches the fleet
+      # caller repos — so a bug in one of their shell loops reaches the portfolio
       # unexamined. This is the one class of that bug cheap enough to check
       # statically: a newline-separated input read without both guards.
       - name: Check the catalog's input loops
@@ -122,7 +122,7 @@ jobs:
 
       # Same species as the loop check, and here for the same reason: it
       # inspects this repo's own shared jobs, which never run in this repo's
-      # CI, so a divergence between them would otherwise reach the fleet
+      # CI, so a divergence between them would otherwise reach the portfolio
       # unexamined. Two build systems answering "what version is this build"
       # differently is not a cosmetic drift.
       - name: Check the shared version-stamp block agrees across jobs
@@ -158,9 +158,9 @@ jobs:
   # a human and machine index created after the fact, which is the direction
   # Principle 14 requires: file -> build -> tag, never tag -> build.
   #
-  # This exists because the fleet had no way to say "adopt the current
+  # This exists because the portfolio had no way to say "adopt the current
   # catalog". Callers SHA-pin, correctly, but Dependabot cannot compute what is
-  # newer than a bare SHA — so nothing ever proposed a re-pin and the fleet
+  # newer than a bare SHA — so nothing ever proposed a re-pin and the portfolio
   # drifted onto nine different commits without one instrument noticing. A real
   # tag gives Dependabot something to resolve, and the re-pin PRs then arrive
   # by themselves in every repo whose dependabot.yml already covers
@@ -263,7 +263,7 @@ jobs:
           echo "tagged ${tag} at ${GITHUB_SHA}"
           { echo "### Released \`${tag}\`"
             echo
-            echo "Dependabot will open re-pin pull requests across the fleet."
+            echo "Dependabot will open re-pin pull requests across the portfolio."
           } >> "$GITHUB_STEP_SUMMARY"
 
   ci-ok:

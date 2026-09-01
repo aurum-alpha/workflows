@@ -53,11 +53,11 @@ in that repository, and reference the copy. What it loses is future updates,
 which is correct: it is no longer ours.
 
 Nothing here depends on reaching this repository at runtime. Every rule below is
-stated so a reader outside the fleet can follow it.
+stated so a reader outside Aurum Alpha can follow it.
 
 ## The six required sections
 
-A repository's `AGENTS.md` answers all six. Where the fleet answer is right, say
+A repository's `AGENTS.md` answers all six. Where the standard answer is right, say
 so in a line and move on — the section still has to be present, because a reader
 cannot distinguish "the default applies" from "nobody considered it" by absence.
 
@@ -68,7 +68,7 @@ cannot distinguish "the default applies" from "nobody considered it" by absence.
 | **Commands** | How to build, test, lint and run this thing, verbatim |
 | **Quality gates** | What must pass before a commit, and before a push |
 | **Approval** | What an agent may do unattended, and where it stops |
-| **Conventions** | What this repository does differently from the fleet |
+| **Conventions** | What this repository does differently from the standard |
 
 ## The rules
 
@@ -236,7 +236,7 @@ that does what the first one nearly does is how a codebase acquires two answers
 to one question — the same failure this whole standards repository exists to
 prevent, at a smaller scale.
 
-### 7. Fleet standards apply to agent-written code
+### 7. These standards apply to agent-written code
 
 An agent working in an Aurum Alpha repository is bound by the same standards a
 person is. The CI standard in particular is not advisory background: it governs
@@ -250,7 +250,7 @@ vendored copy, in a handed-over repository — before changing anything under
 `tools/check-agent-docs` is the gate, running from `job-ci-conformance.yml`
 alongside the existing checkers — so adopting it is a checker change, not twelve
 workflow changes. What it proves mechanically: that `AGENTS.md` exists, that the
-six sections are present, that the fleet standard is referenced or vendored,
+six sections are present, that the Aurum Alpha standard is referenced or vendored,
 that no unsupported rule tree exists, and that `CLAUDE.md` opens by importing
 `AGENTS.md`.
 

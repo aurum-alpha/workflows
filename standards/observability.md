@@ -85,7 +85,7 @@ input from anything but the authorization layer's own establishment.
 Traces and metrics leave the application as **OTLP**. The endpoint and
 protocol come from configuration — the OpenTelemetry standard's own
 environment variables (`OTEL_EXPORTER_OTLP_ENDPOINT` and family), per PC2:
-the standard ships its own config contract, so inventing a fleet spelling
+the standard ships its own config contract, so inventing a house spelling
 would be a second answer, and per [factor III](https://12factor.net/config)
 that config belongs in the environment. The collector behind that endpoint
 is an attached resource in the sense of
@@ -102,16 +102,16 @@ Logs are not part of this rule, and stay where
 [factor XI](https://12factor.net/logs) puts them: **structured lines to
 stdout as an event stream, per the [service baseline
 standard](service.md); OTLP is not required for
-logs.** Factor XI is the justification, not a fleet preference — an
+logs.** Factor XI is the justification, not a house preference — an
 application that routes or stores its own logs has taken on the execution
-environment's job, and the fleet inherits that rule rather than restating
+environment's job, and these standards inherit it rather than restating
 it. One answer per signal: stdout for logs, OTLP for the signals stdout
 cannot carry.
 
-An OpenTelemetry SDK is an implementation choice, not a fleet dependency:
+An OpenTelemetry SDK is an implementation choice, not a shared dependency:
 the contract is the wire protocol and the config variables, and an
 implementation that emits conformant OTLP without the SDK is conformant
-(PC4). The corollary per PC1: no fleet wrapper library around the SDK.
+(PC4). The corollary per PC1: no shared wrapper library around the SDK.
 
 ### OC4. The context block is required, not decorative
 
@@ -171,6 +171,6 @@ process.
   standard](service.md) adopts it; a second pipeline
   for the same signal is the two-answers failure. OTLP is the answer for the
   signals stdout cannot carry, where twelve-factor is silent.
-- **OTel's own env vars, no fleet spelling** (2026-08-31): the standard
+- **OTel's own env vars, no house spelling** (2026-08-31): the standard
   ships a config contract; adopting it whole is what PC2 means by
   profile.

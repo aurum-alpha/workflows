@@ -18,7 +18,7 @@
         "auth.session_revoked",
         "auth.access_denied"
       ],
-      "description": "AE3's reserved namespace, for auditable acts that happen before or outside authorization and so have no permission behind them. The auth.* namespace belongs to the fleet; a product does not extend it, and everything else it audits is one of its own declared permissions."
+      "description": "AE3's reserved namespace, for auditable acts that happen before or outside authorization and so have no permission behind them. The auth.* namespace belongs to this standard; a product does not extend it, and everything else it audits is one of its own declared permissions."
     },
     "principal": {
       "type": "object",
@@ -104,7 +104,7 @@
     },
     "actor": {
       "$ref": "#/$defs/principal",
-      "description": "AE2. WHO DID IT. Separate from target and not optional: the fleet's one pre-existing audit table fused the two into a single user_id and consequently cannot answer who granted anyone access."
+      "description": "AE2. WHO DID IT. Separate from target and not optional: the portfolio's one pre-existing audit table fused the two into a single user_id and consequently cannot answer who granted anyone access."
     },
     "target": {
       "$ref": "#/$defs/principal",

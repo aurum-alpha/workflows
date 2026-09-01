@@ -17,7 +17,7 @@ because conflating them is the failure this standard mostly exists to stop.
 ## Why this exists
 
 When a client asks *who changed this, and when*, whether an answer exists
-currently depends on which product they bought. Most of the fleet has no audit
+currently depends on which product they bought. Most of the portfolio has no audit
 trail at all. One product has one, and it is worth looking at closely, because
 every way it goes wrong is a way the next one will go wrong by default.
 
@@ -51,7 +51,7 @@ Four things are wrong with it beyond being empty, and each is instructive:
   of the request that produced it.
 
 None of this is carelessness; it is what happens when each product invents the
-table. The gap is not that the fleet lacks an audit library. It is that nobody
+table. The gap is not that we lack an audit library. It is that nobody
 has said what an audit event *is*, so each product answers structurally and each
 answers differently — the failure this whole repository exists to prevent, on a
 capability where the cost lands on a client rather than on us.
@@ -86,7 +86,7 @@ with the OpenID Shared Signals Framework and CAEP is the second, and it is
 solving a genuinely different problem: statements of fact from one issuer to
 another *cooperating peer* about a security subject — session revoked,
 credential changed — so the receiver can react. It is a signalling protocol
-between domains, not a record kept within one. The fleet already meets it in the
+between domains, not a record kept within one. These standards already meet it in the
 right place: [`auth.md`](auth.md) AU5 adopts OIDC Back-Channel Logout, which is
 that family. It is not an audit trail and does not claim to be.
 
@@ -95,7 +95,7 @@ candidate the async messaging capability evaluates. Where a product ships audit
 events onto a bus, it is the envelope and AE2 is the payload; that is
 composition, not competition.
 
-The invention is therefore scoped the way PC2 requires: the fleet defines the
+The invention is therefore scoped the way PC2 requires: this standard defines the
 **event's content**, and everything around it stays standard — trace context is
 W3C, ids and timestamps are the identifiers contract's, transport is the async
 envelope's, export is OCSF's.
@@ -145,7 +145,7 @@ not store its own data, which is the opposite of what it says.
 
 ### AE2. One event shape, and actor is not target
 
-Every audit event in the fleet is the same object, whatever produced it:
+Every audit event is the same object, whatever produced it:
 
 | Field | Meaning |
 |---|---|
@@ -226,7 +226,7 @@ standard owns, so that every product spells them identically:
 | `auth.session_revoked` | The session was ended by something other than the user — back-channel logout, an administrator, an expiry. |
 | `auth.access_denied` | An authenticated subject was refused, including [`auth.md`](auth.md) AU6's unknown-subject refusal. |
 
-A product does not add to this namespace; `auth.*` is the fleet's. Everything
+A product does not add to this namespace; `auth.*` is this standard's. Everything
 else a product audits is one of its own declared permissions.
 
 ### AE4. An audit event is self-contained, immutable, and outlives its subject
@@ -291,7 +291,7 @@ those words: **this route destroys something — where is the audit event?**
 ### AE6. Append-only discipline is required; hash chaining is not
 
 The integrity question deserves a decision rather than whatever a framework
-ships, so: **the fleet requires append-only storage discipline, and does not
+ships, so: **this standard requires append-only storage discipline, and does not
 require tamper-evidence.**
 
 Append-only discipline means the writes are the only writes: the application's
@@ -368,7 +368,7 @@ event.
 
 **Where the change and the audit event share a datastore, they share a
 transaction.** Both land or neither does. This is cheap, it is available in every
-engine the fleet runs, and it converts the audit trail from a best-effort
+engine we run, and it converts the audit trail from a best-effort
 side-channel into a property of the write.
 
 Where they genuinely cannot — the change is in an external system, or the audit
@@ -446,10 +446,10 @@ commitments.
 - **OCSF is the export target, not the record** (2026-09-01): the strongest
   candidate and the one worth the most words, because rejecting it outright
   would be wrong and adopting it whole would deform every product's own history
-  screen into SIEM shape. Its taxonomy is closed and security-shaped; a fleet
+  screen into SIEM shape. Its taxonomy is closed and security-shaped; an
   event carries domain meaning OCSF has no class for. Mapping at the SIEM
   boundary keeps both — which is what PC2 means by scoping an invention.
-- **Actor and target are two required fields** (2026-09-01): the fleet's one
+- **Actor and target are two required fields** (2026-09-01): the portfolio's one
   existing audit table fused them and cannot answer who granted access. This is
   the single most consequential field-level decision in the document, and it was
   made by reading a table rather than by reasoning from first principles.

@@ -33,14 +33,14 @@ unpinned is four incompatible error shapes that all validate.
 **HTTP with JSON is the default, and every other choice needs a reason a
 reviewer can hear.** Not because it is fastest — it is not — but because it
 is the only option every consumer, proxy, load balancer, debugger and
-support engineer already understands, and because the rest of the fleet's
+support engineer already understands, and because the rest of the portfolio's
 contracts are written against it: the error envelope, the id vocabulary,
 trace propagation, readiness, the audit trail. Leaving HTTP means leaving
 those and rebuilding them.
 
 | Interaction | Protocol | Why, and what it costs |
 |---|---|---|
-| Request/response — any public, partner or browser-facing surface | **HTTP/REST + JSON** | The default. Universally consumable, `curl`-debuggable, no codegen for the consumer, and every fleet contract already applies. |
+| Request/response — any public, partner or browser-facing surface | **HTTP/REST + JSON** | The default. Universally consumable, `curl`-debuggable, no codegen for the consumer, and every portfolio contract already applies. |
 | Request/response between internal services, high volume or strongly typed | **gRPC** | Binary protobuf, generated clients, real streaming. **Requires HTTP/2 end to end.** Costs: not browser-native (needs a proxy and grpc-web), opaque on the wire to anyone debugging, and a schema pipeline to own. Admitted **service-to-service only**. |
 | Server pushes to client, one direction | **SSE** | Plain HTTP: it inherits authentication, proxies, the error envelope, observability and automatic reconnection for free. **Requires HTTP/2 to survive contact with a real browser** (see below) **and OpenAPI 3.2 to be describable** (HA2). |
 | Both ends push, low latency, genuinely conversational | **WebSocket** | Full duplex. Costs are large and listed below. |
@@ -111,7 +111,7 @@ live cursor — and not by the server needing to send, which SSE already does.
 A repository choosing one states the reason in its **Conventions**.
 
 **Leaving HTTP never leaves the standards.** Whatever the protocol, the
-fleet's contracts still bind: trace context propagates
+portfolio's contracts still bind: trace context propagates
 ([`observability.md`](observability.md) OC1) — in gRPC metadata, in the
 WebSocket message envelope, in the SSE request that opened the stream;
 identifiers keep their formats ([`identifiers.md`](identifiers.md));
@@ -127,7 +127,7 @@ service that serves SSE uses 3.2.**
 
 3.1 rather than 3.0 for one concrete reason: 3.1's schema dialect *is*
 JSON Schema 2020-12, the dialect every contract under
-[`contracts/`](../contracts/) already speaks. That makes the fleet's shared
+[`contracts/`](../contracts/) already speaks. That makes the portfolio's shared
 `$defs` — a timestamp, a public id, a money value — referenceable from an
 API description instead of transcribed into it, and a transcribed schema is
 a copy that drifts.
@@ -163,9 +163,9 @@ in the shape
 [`contracts/http/problem.schema.json`](../contracts/http/problem.schema.json)
 defines. The profile:
 
-| Member | Required | The fleet's pinning |
+| Member | Required | What this standard pins |
 |---|---|---|
-| `type` | yes | A **stable URI identifying the error class**, `https://errors.aurumalpha.dev/<service>/<slug>`. RFC 9457 does not require it to resolve, and the fleet does not host it today; the form is pinned so it *can* become dereferenceable without changing any client. `about:blank` is admitted only where the status code alone is the whole story. |
+| `type` | yes | A **stable URI identifying the error class**, `https://errors.aurumalpha.dev/<service>/<slug>`. RFC 9457 does not require it to resolve, and this standard does not host it today; the form is pinned so it *can* become dereferenceable without changing any client. `about:blank` is admitted only where the status code alone is the whole story. |
 | `title` | yes | Stable, human-readable, the same string for every instance of that `type` — it names the class, so it groups. |
 | `status` | yes | The HTTP status code, repeated in the body so a logged or forwarded envelope stays complete. |
 | `detail` | yes | **This instance's specific reason**, following the reason-giving rule of [`service.md`](service.md) SC2: which value, which rule, which limit. Never the bare class again, never a stack trace. |
@@ -267,7 +267,7 @@ parameter name, is `snake_case`. Headers keep HTTP's own convention
 (`Idempotency-Key`, `Retry-After`), because a header is governed by the
 surrounding standard rather than by this one.
 
-This is the fleet convention holding, not a new choice: the
+This is the house convention holding, not a new choice: the
 [observability standard](observability.md) already fixes snake_case for the
 context vocabulary, and log lines, audit events, job envelopes and SQL
 identifiers are all snake_case already. One spelling therefore covers a
@@ -326,7 +326,7 @@ cheap:
 - **The error envelope is real** — `job-image-starts` already talks to a
   running service, so requesting a route that cannot exist and asserting
   problem+json against the schema is one more poll. That single case catches
-  the most common failure in the fleet today: a framework's default HTML
+  the most common failure in the portfolio today: a framework's default HTML
   error page escaping to clients from the one path nobody wrote a handler
   for.
 - **Idempotency and backpressure** need a live harness driving two requests
@@ -341,7 +341,7 @@ contract tests, and the review question is whether they exist.
 ## Decisions
 
 - **snake_case in request and response bodies** (2026-08-31): this is the
-  fleet convention holding, not a fresh choice. Log lines, audit events,
+  house convention holding, not a fresh choice. Log lines, audit events,
   job envelopes and the id vocabulary are already snake_case, and SQL
   identifiers case-fold toward it, so one spelling covers the database, the
   log line, the event and the API — and deviating on this one surface is
@@ -362,7 +362,7 @@ contract tests, and the review question is whether they exist.
   the same source. In-code naming is untouched either way, per the platform
   contract.
 - **OpenAPI 3.1 as the floor, 3.2 where there is a stream** (2026-08-31):
-  3.1's dialect is JSON Schema 2020-12, so the fleet's existing `$defs` are
+  3.1's dialect is JSON Schema 2020-12, so the existing `$defs` under `contracts/` are
   referenceable rather than transcribed. The first draft stopped there and
   pinned 3.1 outright, which was already eleven months stale — 3.2 shipped
   in September 2025 — and, worse, incoherent: HA1 recommends SSE and 3.1

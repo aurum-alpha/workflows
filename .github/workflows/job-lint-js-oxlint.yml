@@ -1,4 +1,4 @@
-# Fleet capability: lint for one deployable unit's JS/TS source, oxlint flavour
+# Portfolio capability: lint for one deployable unit's JS/TS source, oxlint flavour
 # (CI_STANDARD Principle 12 — one way per capability, and this is the second
 # way, deliberately).
 #
@@ -6,17 +6,17 @@
 # changed. oxlint is Rust and runs the syntactic rules in about a second; with
 # `--type-aware` (oxlint-tsgolint, typescript-go) it also runs the rules that
 # need the type checker, and with the JS plugin bridge it runs the eslint
-# plugins it has not ported. Measured against the fleet eslint config on
+# plugins it has not ported. Measured against the portfolio eslint config on
 # gofast's client, it reports every finding eslint reports and eight more. It
 # is not a subset any more.
 #
-# It is the fleet's only JS linter now; the eslint job it ran beside is gone.
+# It is the portfolio's only JS linter now; the eslint job it ran beside is gone.
 #
 # Callers are warn_only, and the reason is DEBT rather than the tool. That
 # distinction used to be the other way round and the old wording is worth not
 # repeating: this comment justified warn_only by calling the JS plugin API
 # alpha, which made a stabilization window read as distrust of the linter. The
-# fleet has run oxlint across every repo for releases and has its own evidence
+# portfolio has run oxlint across every repo for releases and has its own evidence
 # — every rule the eslint config configured, matched finding for finding,
 # type-aware rules included, and more besides. What holds the gate open is the
 # roughly 870 errors and 3,700 warnings already in the tree, which is exactly

@@ -1,4 +1,4 @@
-# Fleet capability: test-unit for one deployable unit's TypeScript source
+# Portfolio capability: test-unit for one deployable unit's TypeScript source
 # (CI_STANDARD Principle 12 — one way per capability). Language tier: vitest is
 # TypeScript tooling, not a framework's, so this one job serves a React client
 # and an Express server alike — the caller says which by passing `dir`.
@@ -6,7 +6,7 @@
 # The caller owns the job id and needs: wiring (Phase F1); this file owns the
 # body. It invokes vitest directly rather than a per-repo `test:unit` script,
 # because a script that only forwards a path is repo-specific machinery the
-# fleet should not be carrying (Phase F2).
+# portfolio should not be carrying (Phase F2).
 name: job-test-unit-js-vitest
 
 on:
@@ -26,7 +26,7 @@ on:
       dir:
         description: >-
           Which standard unit to act on: `client`, `server` or `shared`. Not a
-          path — the layout is fixed fleet-wide, and any other value fails.
+          path — the layout is fixed portfolio-wide, and any other value fails.
         type: string
         required: true
       flag:
@@ -55,7 +55,7 @@ jobs:
       # installs 403 (C2 first run).
       packages: read
     steps:
-      # The unit is one of three names, fleet-wide (CI_STANDARD "Standard
+      # The unit is one of three names, portfolio-wide (CI_STANDARD "Standard
       # repository layout"). This input says *which* standard unit, never
       # *where a repo happens to keep it* — a free-form path here would make the
       # catalog accommodate variance instead of removing it.

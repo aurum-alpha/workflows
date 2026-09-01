@@ -17,7 +17,7 @@ six copies agreeing by luck.
 
 It covered two files and now covers one. `.oxlintrc.json` arrived alongside
 `eslint.config.mjs` with the same claim in its own header and the same way of
-failing: oxlint's config was one repo's local file, and the argument the fleet
+failing: oxlint's config was one repo's local file, and the argument the portfolio
 had been having about oxlint's coverage turned out to be an argument with that
 file rather than with the tool. A second shared config enforced the same way
 was one checker with a longer list, not a second checker -- the rule is about
@@ -42,7 +42,7 @@ which is what the first attempt at this change did to gofast. The rename waits
 until a main exists that already carries both names. Until then this file
 checks every shared lint config, whatever its name says.
 
-ADDING a shared config is safe; EDITING one is a fleet-wide event. The
+ADDING a shared config is safe; EDITING one is a portfolio-wide event. The
 canonical copy is read from the catalog's default branch, not from the caller's
 pinned standard_ref (see AURUM_CATALOG_ROOT below), so the moment an edit lands
 on main every repo still carrying the old bytes fails -- including repos that
@@ -73,7 +73,7 @@ import sys
 # described above, which is what exit-127'd gofast.
 #
 # The condition that released the file was "a standard_ref carrying this list
-# has reached the fleet", and it was checked rather than assumed: all nine JS
+# has reached the portfolio", and it was checked rather than assumed: all nine JS
 # repos pin job-ci-conformance at v2.2.5, whose standard_ref default is the
 # v2.2.4 commit, which contains the wave that shortened this tuple. So every
 # caller was already running the one-entry list before the file was removed.
@@ -106,7 +106,7 @@ def main() -> int:
     # Same override as check-ci-conformance's catalog_roots: a caller's
     # conformance run takes its RULES from a pinned standard_ref, which is
     # right, but "what is the current canonical config" is a question about the
-    # catalog as it is now. Pinning that answer would report a config the fleet
+    # catalog as it is now. Pinning that answer would report a config the portfolio
     # has already moved past.
     here = pathlib.Path(os.environ.get("AURUM_CATALOG_ROOT")
                         or pathlib.Path(__file__).resolve().parent.parent)
@@ -150,7 +150,7 @@ def main() -> int:
     if failures:
         print(
             f"\nFAIL: {failures} shared config(s) edited locally. Change the "
-            "file in config/ and roll the whole fleet, or if the change is "
+            "file in config/ and roll the whole portfolio, or if the change is "
             "genuinely repo-specific, say so out loud — these files are shared "
             "on the claim that no repo needs its own."
         )

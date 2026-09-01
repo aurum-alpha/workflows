@@ -1,4 +1,4 @@
-# Fleet capability: build the container and stage it in the registry
+# Portfolio capability: build the container and stage it in the registry
 # (CI_STANDARD Principle 12). First of three — build, starts, publish.
 #
 # job-image-docker did all three in one job: downloaded artifacts, built,
@@ -6,7 +6,7 @@
 # check, and when it went red the checks list said "image" and nothing else.
 # Worse, the three have different permission needs and different triggers, so
 # the single job took the union: packages: write for a step that only runs on
-# main, on every pull request in the fleet.
+# main, on every pull request in the portfolio.
 #
 # What this job claims, and only this: the Dockerfile in the repo assembles,
 # from artifacts earlier jobs already built. Nothing here runs the image and
@@ -27,7 +27,7 @@ on:
       dockerfile:
         description: >-
           Path to the Dockerfile, relative to the repo root. The image is the
-          Dockerfile in the repo, run as-is — every deployable in this fleet
+          Dockerfile in the repo, run as-is — every deployable in this portfolio
           copies artifacts that earlier jobs already built, so there is nothing
           for this job to decide beyond which file and which stage.
         type: string
@@ -77,7 +77,7 @@ on:
           supply) onto a repo that just wants arm64 was the worse trade.
 
           Prefer the RUN-free shape where it is natural — it is materially
-          faster and it is why the fleet's distroless images cost nothing on
+          faster and it is why the portfolio's distroless images cost nothing on
           arm64. Reach for `RUN` where the alternative is contorting an image
           around the build system.
 
@@ -124,8 +124,8 @@ on:
         default: ""
       runner:
         description: >-
-          Override runs-on. Leave empty for the fleet default. Set to a
-          GitHub-hosted label where a repo must not build on the fleet
+          Override runs-on. Leave empty for the standard default. Set to a
+          GitHub-hosted label where a repo must not build on the portfolio
           (CI_STANDARD Principle 4 — e.g. the runner controller itself, whose
           image jobs would otherwise build the runner image on runners created
           from the previous runner image).
@@ -224,7 +224,7 @@ jobs:
           # or a brace would change what the alternation means, and a glob
           # metacharacter would let one mapping entry match an artifact the
           # caller never named — both silent, and both worse than a mapping
-          # that refuses to run. Every artifact name in the fleet is already
+          # that refuses to run. Every artifact name in the portfolio is already
           # within this set, so the whitelist costs nothing and does not have
           # to be right about which characters minimatch treats as special.
           names=()

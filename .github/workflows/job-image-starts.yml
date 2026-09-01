@@ -1,8 +1,8 @@
-# Fleet capability: prove the staged image boots (CI_STANDARD Principle 12,
+# Portfolio capability: prove the staged image boots (CI_STANDARD Principle 12,
 # "Standard job DAG" step 5). Second of three — build, starts, publish.
 #
 # Building an image proves it assembles. Starting it proves it runs, and those
-# are different claims: three repos in this fleet shipped images that could not
+# are different claims: three repos in this portfolio shipped images that could not
 # start for months, green throughout, because nothing ever started them.
 #
 # It pulls from the registry rather than loading a local tarball, which is a
@@ -12,7 +12,7 @@
 #
 # Deliberately not a health check by default: no endpoint, no readiness
 # contract, nothing an application has to opt into. It boots, it listens, it is
-# still alive. That is the floor every image in the fleet can meet. A repo whose
+# still alive. That is the floor every image in the portfolio can meet. A repo whose
 # Dockerfile declares its own HEALTHCHECK says so with `probe: health` and gets
 # the stronger claim it already wrote down.
 name: job-image-starts
@@ -106,8 +106,8 @@ on:
         default: ""
       runner:
         description: >-
-          Override runs-on. Leave empty for the fleet default. Set to a
-          GitHub-hosted label where a repo must not build on the fleet
+          Override runs-on. Leave empty for the standard default. Set to a
+          GitHub-hosted label where a repo must not build on the portfolio
           (CI_STANDARD Principle 4 — e.g. the runner controller itself, whose
           image jobs would otherwise build the runner image on runners created
           from the previous runner image).
@@ -121,7 +121,7 @@ jobs:
     permissions:
       contents: read
       # Read, not write. The old combined job took packages: write on every
-      # pull request in the fleet because one main-only step inside it needed
+      # pull request in the portfolio because one main-only step inside it needed
       # write; splitting the job is what makes least privilege expressible.
       packages: read
     steps:

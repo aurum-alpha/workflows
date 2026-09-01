@@ -2,7 +2,7 @@
 
 Owner: Jared (host side). Status: spec 2026-08-16, from the event-manager
 timing analysis — every job runs on a fresh ephemeral dind sidecar
-(deliberate, Principle 5), so image pulls repeat on every job, fleet-wide.
+(deliberate, Principle 5), so image pulls repeat on every job, portfolio-wide.
 Measured cost: ~3m25s "Initialize containers" on tier-2 jobs, plus pull
 time inside every compose-based test stack, on every run.
 
@@ -19,8 +19,8 @@ docker run -d --name registry-mirror --restart=always \
 ```
 
 - Optional but recommended: set REGISTRY_PROXY_USERNAME/PASSWORD to a
-  Docker Hub account — raises the anonymous pull rate limit the whole
-  fleet currently shares per-IP.
+  Docker Hub account — raises the anonymous pull rate limit every runner
+  currently shares per-IP.
 - Cached blobs default to a 168h TTL; add a weekly
   `registry garbage-collect /etc/docker/registry/config.yml` cron (or
   size-cap the volume) so /var/lib/registry-mirror doesn't grow unbounded.
@@ -45,7 +45,7 @@ is required because the mirror speaks plain HTTP on the LAN.
 
 - `docker info` inside any dind shows the mirror under "Registry Mirrors".
 - "Initialize containers" on event-manager tier-2 jobs drops from ~3m25s
-  to seconds on warm cache; second pull of any Hub image fleet-wide is
+  to seconds on warm cache; second pull of any Hub image portfolio-wide is
   LAN-speed.
 
 ## Known limits (phase 2 if wanted)

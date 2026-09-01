@@ -1,4 +1,4 @@
-# Fleet capability: mint the version-named emission — the git tag and the
+# Portfolio capability: mint the version-named emission — the git tag and the
 # GitHub release — for the one commit that changed the version file
 # (CI_STANDARD Principle 12, one way per capability; Principle 14, a version is
 # a commit, not a tag). Single-job reusable workflow: the caller owns the job id
@@ -21,7 +21,7 @@
 # subtly wrong: unquoted in a regex the dot matches any character, so a file
 # named `aversion` mints a release nobody asked for. A rule with three
 # handwritten implementations is a rule with three chances to be wrong, and the
-# fleet found two of them.
+# portfolio found two of them.
 #
 # SO THIS JOB NEVER DECIDES. `version_changed` and `version` are inputs, read
 # from job-go-build or job-build-cpp-pio, which carry the byte-identical shared
@@ -58,7 +58,7 @@
 #
 # Note what is NOT in that `if:`: the push/main condition. This job applies it
 # per-step, so the caller must not gate the job to main — doing so is rule D5,
-# and it is what put the untested-until-merge failure above into the fleet.
+# and it is what put the untested-until-merge failure above into the portfolio.
 name: job-version-release
 
 on:
@@ -99,7 +99,7 @@ on:
         type: string
         default: ""
       tag_prefix:
-        description: Prefix for the tag name. The fleet uses `v`.
+        description: Prefix for the tag name. The portfolio uses `v`.
         type: string
         default: "v"
       generate_notes:
@@ -108,8 +108,8 @@ on:
         default: true
       runner:
         description: >-
-          Override runs-on. Leave empty for the fleet default. Set to a
-          GitHub-hosted label where a repo must not build on the fleet
+          Override runs-on. Leave empty for the standard default. Set to a
+          GitHub-hosted label where a repo must not build on the portfolio
           (CI_STANDARD Principle 4).
         type: string
         default: ""
@@ -119,7 +119,7 @@ jobs:
     runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-26.04' }}
     timeout-minutes: 20
     permissions:
-      # Escalated above the read-only fleet floor: creating a tag and a release
+      # Escalated above the read-only portfolio floor: creating a tag and a release
       # writes to the repository. Nothing else this job does needs it, and the
       # write is reached only on the main-push path below.
       contents: write
@@ -225,11 +225,11 @@ jobs:
           echo "Release inputs for \`${{ steps.decide.outputs.tag }}\` verified." >> "$GITHUB_STEP_SUMMARY"
         shell: bash
 
-      # gh is on the GitHub-hosted images and not on the fleet's: the
+      # gh is on the GitHub-hosted images and not on the portfolio's: the
       # actions-runner base installs curl, unzip, sudo, jq and git, and the
       # runner image adds only libatomic1, gcc and libc6-dev. Publishing is rare
       # enough that gh is not a tier-1 dependency — putting it on the image
-      # would make every repository in the fleet carry it so that this job could
+      # would make every repository in the portfolio carry it so that this job could
       # run a few times a month.
       #
       # Gated exactly like the publish below rather than run unconditionally: an
@@ -238,7 +238,7 @@ jobs:
       # having at all because of how it fails without it — `gh release create`
       # exits 127 on a main merge, after ci-ok has gone green, on the one run
       # that was cutting the release.
-      - name: gh, which the fleet runner image does not carry
+      - name: gh, which the portfolio runner image does not carry
         if: >-
           steps.decide.outputs.release == 'true'
           && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')

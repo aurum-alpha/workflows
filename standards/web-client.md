@@ -19,13 +19,13 @@ carries only what is true *because* the client is a browser.
 ## Why this exists
 
 Every other standard in this repository governs a server process. That was
-defensible while the fleet's standards were about services, and it stopped
+defensible while these standards were about services, and it stopped
 being defensible the moment a browser client had to claim compliance with
-them — because a frontend that "follows the fleet standards" was following
+them — because a frontend that "follows the standards" was following
 nothing written about it.
 
 The roster's own rule makes this sharper than an omission. *A capability's
-absence from that table is a claim that the fleet has considered it and
+absence from that table is a claim that we have considered it and
 declined.* Five browser-side decisions were sitting in that gap, each one
 real, each one otherwise made independently by whoever started a frontend
 first: what the page may hold as a credential, how a bundle learns which
@@ -130,7 +130,7 @@ makes the split-origin topology work without a special case.
 It reads like one, and stating it as an exception would be wrong. Factor III
 requires configuration to live in the environment rather than in the code,
 and here it does — in the serving process's environment, exactly where the
-rest of this fleet keeps it. What changes is only that the browser reads it
+rest of this portfolio keeps it. What changes is only that the browser reads it
 one hop away, over HTTP, because a browser has no environment of its own to
 read. The naive translation of the factor — *put it in the bundle at build
 time* — is what actually violates it, twice over: config becomes code, and

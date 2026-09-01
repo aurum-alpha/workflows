@@ -45,7 +45,7 @@ on:
           with debt either adopts the job and blocks every merge until the debt
           is paid, or does not adopt it and nobody sees the debt at all —
           which is how event-manager and client-manager, the two most
-          complicated pipelines in the fleet, ended up being the two nobody
+          complicated pipelines in the portfolio, ended up being the two nobody
           checked.
 
           Findings stay in the step log and the step is marked
@@ -90,7 +90,7 @@ on:
           was that every repo pinned at v2.2.4 ran check-dependency-versions against
           a tree where those four were still mandatory — so the first repo to
           actually drop them, flight-watch#51, was failed for not declaring
-          packages the fleet had already retired. Same shape as the gofast
+          packages the portfolio had already retired. Same shape as the gofast
           case: the tree was right and the instrument was looking at an older
           one.
 
@@ -111,7 +111,7 @@ on:
         # The commit that set typescript to 7.0.2 in dependency-versions.json
         # (wave 6, #247). Moving this is what makes that assertion real: until
         # now every caller read a pinned tree still saying 6.0.3, which is
-        # precisely why the pin could land ahead of the fleet without turning
+        # precisely why the pin could land ahead of the portfolio without turning
         # a single repo red.
         #
         # The base of wave 7 -- dependency-versions.json asserted WHERE PRESENT,
@@ -140,22 +140,22 @@ on:
         # That was the wave-A failure stated forward instead of backward.
         # There, dependency-versions.json lost four packages and this default
         # stayed behind, so repos that had already dropped them were failed
-        # for not declaring what the fleet had retired. Same file, same silent
+        # for not declaring what the portfolio had retired. Same file, same silent
         # checker, opposite direction: a false red then, a false green in #247.
         # A data change was never exempt from the bump; it was exempt from
         # being REMINDED about it, which is worse, because the reminder is the
         # whole mechanism.
         #
         # The rename landed in two commits, and this is the second. First
-        # fleet-versions.json became dependency-versions.json and
-        # check-fleet-versions became check-dependency-versions -- a change
+        # portfolio-versions.json became dependency-versions.json and
+        # check-portfolio-versions became check-dependency-versions -- a change
         # CHECKER_INPUT_FILES demands this bump for exactly as a content
         # change would, because a rename is still a change to the file every
         # caller reads out of this clone. But the INVOCATION could not move
         # in that same commit: this default is the pull request's base, and
         # that base predated the new path, so pointing at it would have
         # pinned callers to a tree with no such file. That is precisely how
-        # v2.2.10 and v2.2.11 shipped exit 127. tools/check-fleet-versions
+        # v2.2.10 and v2.2.11 shipped exit 127. tools/check-portfolio-versions
         # stood in as a bridge for one commit.
         #
         # This commit is the second step. The invocation below now names
@@ -186,7 +186,7 @@ jobs:
 
       # aurum-alpha/workflows is public, so this needs no token — which is the
       # whole reason the check can live inside each repo instead of in a
-      # fleet-wide sweep that only ever ran when someone remembered to run it.
+      # portfolio-wide sweep that only ever ran when someone remembered to run it.
       - name: Checkout the standard
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -257,7 +257,7 @@ jobs:
         run: .aurum-standard/tools/check-caller-permissions --root .ci-root --repo "$REPO"
         continue-on-error: ${{ inputs.warn_only }}
 
-      - name: Toolchain versions match the fleet
+      - name: Toolchain versions match the portfolio
         if: ${{ !cancelled() }}
         env:
           REPO: ${{ steps.repo.outputs.name }}
@@ -266,7 +266,7 @@ jobs:
         continue-on-error: ${{ inputs.warn_only }}
 
       # The sibling of the check above, and the division is worth stating.
-      # check-dependency-versions asks WHICH VERSION, for the packages the fleet has
+      # check-dependency-versions asks WHICH VERSION, for the packages the portfolio has
       # converged on. This asks a question about every other dependency too:
       # is it a version at all, or merely a range that permits one?
       #
@@ -302,7 +302,7 @@ jobs:
       # six repos matched by luck and the sentence was decoration. This is it.
       #
       # It covers .oxlintrc.json on the same terms. That file made the case for
-      # itself: oxlint's config was one repo's local file, and the fleet spent
+      # itself: oxlint's config was one repo's local file, and the portfolio spent
       # a release arguing about oxlint's coverage when it was arguing with that
       # file. A shared config nothing compares is a shared config in name only.
       - name: The shared lint configs are unedited

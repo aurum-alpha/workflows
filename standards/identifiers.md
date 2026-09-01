@@ -8,7 +8,7 @@ actually holds. Artifacts:
 
 ## Why this exists
 
-Nothing in the fleet says what an identifier is. Internal integer primary
+Nothing in the portfolio says what an identifier is. Internal integer primary
 keys leak into URLs and payloads, or don't, per product; public id formats
 are whatever the first migration picked. The oldest cross-service bugs there
 are — enumerable ids, timezone drift, floating-point money — are each one
@@ -75,7 +75,7 @@ unique index and insert-retry, collision is an engineering non-event.
 
 **Not admitted:** ULID (a second answer to the question UUIDv7 answers, per
 PC2); sequential integers as public ids (IP1); UUIDv1/v3/v5 (MAC leakage,
-name-derivation — no fleet use case).
+name-derivation — no use case here).
 
 ### IP3. Ids are opaque
 
@@ -180,7 +180,7 @@ anything in this payload count rows?*
 
 - **UUIDv7 over ULID** (2026-08-31): identical property (time-ordered,
   128-bit), but UUIDv7 is an RFC with native column types and driver
-  support everywhere the fleet runs; ULID is a spec with libraries. PC2
+  support everywhere the portfolio runs; ULID is a spec with libraries. PC2
   picks the standard.
 - **`Z`, never `+00:00`; pinned fractional precision, default three,
   never fewer** (2026-08-31): one canonical string per instant within an

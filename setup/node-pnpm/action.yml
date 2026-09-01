@@ -1,4 +1,4 @@
-# Fleet Node toolchain setup (CI_STANDARD C3): Node from the workdir's
+# Portfolio Node toolchain setup (CI_STANDARD C3): Node from the workdir's
 # .node-version, org registry for private @aurum-alpha packages, pnpm from
 # packageManager, shared store cache, optional frozen-lockfile install.
 #
@@ -13,13 +13,13 @@
 # a self-reference would need its own SHA pin and every prelude change would
 # take two commits (chicken-and-egg). One definition per audience — but the
 # two definitions must stay step-for-step identical, because the moment they
-# diverge the fleet has two answers to one question and the composite is
+# diverge the portfolio has two answers to one question and the composite is
 # worth less than the inline copy it was meant to retire. They had already
 # diverged when this file was first consumed: #123 re-pinned all ten inline
 # preludes and left this one on pnpm/action-setup v4.3.0 and
 # actions/cache v4.3.0, because nothing watched it (see dependabot.yml).
 name: node-pnpm
-description: Node + pnpm toolchain setup the fleet way
+description: Node + pnpm toolchain setup the portfolio way
 inputs:
   workdir:
     description: Directory containing package.json and .node-version

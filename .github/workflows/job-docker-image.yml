@@ -1,4 +1,4 @@
-# Fleet capability: docker image (CI_STANDARD Principles 7/8 — BUILD ONCE,
+# Portfolio capability: docker image (CI_STANDARD Principles 7/8 — BUILD ONCE,
 # thin runtime image packaging the prebuilt dist artifact). Single-job
 # reusable workflow; see job-node-build.yml header for the calling contract.
 name: job-docker-image

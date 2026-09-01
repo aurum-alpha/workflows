@@ -2,7 +2,7 @@
 
 This document holds the standards and the reasoning that justifies them.
 
-Referred to across the fleet, and in job comments, as **CI_STANDARD** (this
+Referred to across the portfolio, and in job comments, as **CI_STANDARD** (this
 file was `CI_STANDARD.md` at the repository root until the standards were
 indexed under a charter).
 
@@ -27,7 +27,7 @@ standard itself, and on the shared catalog that implements it, is tracked here.
    duplication that should not exist. *Learned the hard way 2026-08-16:
    event-manager's pnpm conversion added `.pnpm-version` beside
    `packageManager` so the builder image had something to read, and the two
-   promptly disagreed (11.22.0 vs the fleet's 10.34.5). Both now come from
+   promptly disagreed (11.22.0 vs the portfolio's 10.34.5). Both now come from
    `packageManager`, and the guard is gone with the duplication.*
    The pin also lives beside what it pins: the node app directory owns its
    `.node-version`, because that is where the shared jobs look
@@ -61,7 +61,7 @@ standard itself, and on the shared catalog that implements it, is tracked here.
    expiry expectation.
 4. **Standard runner line**: `runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}`.
    Exceptions, deliberately hardcoded to GitHub-hosted: release/publish jobs and
-   gha-runner-controller itself (the fleet must not build on the fleet).
+   gha-runner-controller itself (the runner fleet must not build on the runner fleet).
 5. **Ephemeral-runner assumptions + provisioning tiers.** No workspace-hygiene steps.
    Where a dependency lives is decided by tier:
    - **Tier 1 — runner image** (gha-runner-controller): universal, host-level only —
@@ -144,18 +144,18 @@ standard itself, and on the shared catalog that implements it, is tracked here.
     setup-node's built-in problem matchers (inline annotations for free), plus
     optional `$GITHUB_STEP_SUMMARY` totals. No custom PR-comment machinery —
     reply-able review-thread annotations are a possible future improvement,
-    fleet-wide or not at all.
+    portfolio-wide or not at all.
 11. **Registry auth lives in user-level npmrc, never project `.npmrc`.**
     pnpm 10+ deliberately ignores auth settings in project npmrc (supply-chain
     hardening) — a project-level `_authToken` line is silently dead. CI gets it
     via setup-node's `registry-url`; Docker builds and compose commands write
     `~/.npmrc` before install; hosts via dev-init. (Learned the hard way:
-    client-manager#22.) Fleet pnpm version: **10.34.5** via `packageManager`,
+    client-manager#22.) Standard pnpm version: **10.34.5** via `packageManager`,
     confirmed across all pnpm repos including client-manager.
 
 12. **One way per capability.** The unit of CI consistency is the
     *capability*, not the repo: a repo that has a React frontend builds,
-    artifacts, and tests it the ONE fleet way; a TS codebase is eslinted
+    artifacts, and tests it the ONE standard way; a TS codebase is eslinted
     the ONE way; a Go backend is built/vetted/tested the ONE way; PHP
     likewise. Repos differ only in *which* capabilities they compose and
     in the `needs:` wiring between them — never in how a capability is
@@ -166,7 +166,7 @@ standard itself, and on the shared catalog that implements it, is tracked here.
     are baked into every artifact at build time and surfaced by the software
     itself: `-ldflags` for Go, a generated file at a fixed path in `dist/`
     read through one helper for TS and PHP. This is not a version — it is
-    metadata, it needs no scheme and no bookkeeping, and it is why the fleet
+    metadata, it needs no scheme and no bookkeeping, and it is why the portfolio
     does not use CalVer. "How old is this?" and "what commit is this?" are
     questions a timestamp and a SHA answer exactly, for free, on every build.
     A date-shaped version number answers them worse, and demands increment
@@ -258,8 +258,8 @@ standard itself, and on the shared catalog that implements it, is tracked here.
     allow-list; an entry there is a debt with a name, not a permission.
 
     *This is what makes the difference between a standard and a suggestion. Two
-    repos solving the same problem two ways is not diversity, it is the fleet
-    having no opinion — and an organisation with no opinion re-litigates the
+    repos solving the same problem two ways is not diversity, it is the absence
+    of an opinion — and an organisation with no opinion re-litigates the
     same decision every time someone starts a service.*
 
 20. **Production is the default; a job id marks the exception.** The point of
@@ -385,7 +385,7 @@ telling you what else is wrong.
 - `ci-ok` (`if: always()`, fails on any failure/cancel in needs) is the single
   required check, so adding/removing gates never touches branch protection.
   The check reports under the job id `ci-ok` (no display-name override) —
-  that exact string is what branch protection requires, fleet-wide.
+  that exact string is what branch protection requires, portfolio-wide.
 - **`always()` and not `!cancelled()`, deliberately.** A push that supersedes an
   in-flight run cancels its jobs, and `ci-ok` then runs, sees `cancelled`, and
   goes red — so every quick follow-up push leaves a red check behind on a run
@@ -482,7 +482,7 @@ api-build ───► api-lint ──────────┤          (conv
   lid-firmware, where `publish-firmware` needed `build` alone: firmware
   published from main without unit tests ever having passed.*
 
-## Releasing the catalog, and how the fleet adopts it
+## Releasing the catalog, and how the portfolio adopts it
 
 Callers SHA-pin the catalog. That is Principle 14 applied to ourselves: a tag
 is a mutable pointer, and trusting our own is the same bet as trusting a third
@@ -491,7 +491,7 @@ party's with the same downside. Nothing here changes that.
 What pinning lacked was a way to say *adopt the current catalog*. Dependabot
 already updates every repo's actions — `github-actions` is enabled in all
 eleven `dependabot.yml` files — but it cannot compute what is newer than a bare
-SHA. So nothing ever proposed a re-pin, nobody did it by hand, and the fleet
+SHA. So nothing ever proposed a re-pin, nobody did it by hand, and the portfolio
 drifted: **eight of ten repos ended up pinning between two and four different
 catalog commits, six of them four**, which meant a repo's conformance checkers
 came from one commit and the jobs they gate from three others. Nothing broke,
@@ -517,7 +517,7 @@ The fix is a real release, cut by CI, so Dependabot has something to resolve:
   Each one is proved by that repo's own CI before it lands, so adoption keeps
   the canary property — the thing a floating `@main` or `@latest` would throw
   away along with reproducibility of old runs and any hope of a blast radius
-  smaller than the fleet.
+  smaller than the portfolio.
 
 This is also the first time a version of this repo satisfies **Principle 16**.
 Until now nothing consumed the version string — the `# vX.Y.Z` comments in
@@ -550,7 +550,7 @@ Two files have caused this. A new catalog job (`job-go-build.yml`, #97) made
 gofast fail rule CAT for calling a job the checker's older listing did not
 contain. `dependency-versions.json` (wave A, `0521448`) removed four eslint
 packages and made flight-watch fail `check-dependency-versions` for not
-declaring packages the fleet had already retired.
+declaring packages the portfolio had already retired.
 
 So the rule is: **a wave that changes any file the checkers read — a catalog
 job, a checker, `dependency-versions.json` — must be followed by a commit
@@ -568,7 +568,7 @@ read the current catalog and are immune to this by construction.
 
 That enforcement was added after the rule had failed in **both** directions on
 the same file. Wave A removed four packages and the pin stayed behind, so repos
-that had already dropped them were failed for not declaring what the fleet had
+that had already dropped them were failed for not declaring what the portfolio had
 retired — a false red. Wave 6 changed the typescript pin to 7.0.2 and the
 checker reported *"nothing a caller consumes changed"* and passed, while the
 change asserted nothing against anybody until a follow-up moved the pin onto
@@ -631,7 +631,7 @@ nothing — no tag was created, so nothing ever consumed it.
 
 **A repository does not decide its own versioning semantics.** When a release
 is cut, how a build between releases names itself, and what may be emitted are
-fleet rules, stated here and nowhere else. A repo's `AGENTS.md` points at this
+standard rules, stated here and nowhere else. A repo's `AGENTS.md` points at this
 section; it does not restate it, because a restatement is a second copy that
 nothing keeps honest — the failure the agent standard's Rule 1 describes,
 applied to versions.
@@ -971,7 +971,7 @@ Rule `D7` accepts it **only because it is non-empty** — an empty string is
 reported as a violation, because a flag would say "this image is exempt" without
 ever saying why or until when. A sentence names the blocker, which makes the
 waiver visibly stale the moment the blocker is gone, and makes it greppable
-across the fleet when someone asks which images nothing starts.
+across the portfolio when someone asks which images nothing starts.
 
 This is the same choice as the govulncheck `allow:` list and the eslint severity
 tiers: the honest middle is not "disable the rule" and not "block everything",
@@ -1065,7 +1065,7 @@ in the log, and the review has to be someone's job rather than the run's. A repo
 that cannot commit to that review is a repo that should be in stage 3 already,
 carrying an `osv-scanner.toml` instead.
 
-**It is a phase, not a setting.** Standardising a fleet has an order to it, and
+**It is a phase, not a setting.** Standardising a portfolio has an order to it, and
 trying to do the parts at once is how none of them land:
 
 1. **Get the job everywhere it belongs**, running and reporting. A repo that
@@ -1279,7 +1279,7 @@ they answer different questions — the mistake is reading the first as if it
 answered the second. They drift apart the moment anyone runs an install, and
 nothing announces it.
 
-Measured across the fleet before this rule landed, four repositories declared
+Measured across the portfolio before this rule landed, four repositories declared
 `autoprefixer: ^10.4.20` — same range, same registry — and installed **four
 different versions between them**, one a full minor ahead. Nothing was red.
 Each repository was internally consistent and perfectly reproducible; the
@@ -1292,7 +1292,7 @@ CI runs `--frozen-lockfile` so a build is reproducible today. What it cannot
 do is hold two repositories to the same version, or stop the pin from moving
 the next time somebody installs something unrelated.
 `tools/check-dependency-versions` compares MANIFESTS for exactly that reason —
-a fleet-wide claim has to live somewhere a fleet-wide checker can read — and a
+a portfolio-wide claim has to live somewhere a portfolio-wide checker can read — and a
 range gives it nothing to assert, since one range is compatible with many
 installed versions.
 
@@ -1310,7 +1310,7 @@ Tuesday, recorded nowhere, attributable to nobody.
 | `optionalDependencies` | **yes** | resolves to an install |
 | `pnpm.overrides` | **yes** | rewrites a transitive resolution; a floating override is the same defect one level down. The top-level `overrides` and `resolutions` keys are forbidden outright — see **Dependency overrides** below |
 | `engines` | **no** | a compatibility floor, not an install target. Nothing resolves from it, and an exact `node` would reject the next patch for no gain — the real version is pinned by `.node-version` |
-| `peerDependencies` | **no** | a range is CORRECT here: a pinned peer forces one version on every consumer. The fleet has none today, all nine units being applications; a library repository would rely on this row |
+| `peerDependencies` | **no** | a range is CORRECT here: a pinned peer forces one version on every consumer. The portfolio has none today, all nine units being applications; a library repository would rely on this row |
 
 **Adopting it is a no-op by construction.** Pin to the version the lockfile has
 already resolved and nothing about the install changes — the proof is a lockfile
@@ -1357,7 +1357,7 @@ package in the chain before anyone could take the fix.
 
 **A range in an application is rot**, for the reasons the pinning section
 measures. Nothing downstream depends on our flexibility, so the range buys
-nothing and costs fleet-wide drift.
+nothing and costs portfolio-wide drift.
 
 The lockfile is what allows both to be true at once: the library's range says
 what is PERMITTED, the lockfile records what is INSTALLED, and re-resolving is
@@ -1369,7 +1369,7 @@ and nothing else.
 
 ### Three keys, and only one of them belongs here
 
-The Node fleet is pnpm-only. Three override keys are in circulation, and pnpm's
+Node repositories are pnpm-only. Three override keys are in circulation, and pnpm's
 treatment of them is not what their names suggest. Measured directly, by
 resolving a manifest carrying each and reading what the lockfile did — the
 target package resolves to `2.0.2` when nothing overrides it:
@@ -1455,7 +1455,7 @@ override still applies with it present — so it costs nothing at install time.
 `tools/check-overrides` enforces the pairing, and rejects a reason left behind
 by an override that has been removed.
 
-### What the fleet's own override taught, which is the reason for the rule
+### What this repository's own override taught, which is the reason for the rule
 
 The `zod-validation-error` override in seven Node units looked undocumented. It
 was not: the reason was written down in the commit message that introduced it,
@@ -1485,7 +1485,7 @@ message already gives you. **What retires it** is the part that was missing,
 and it is the part that turns a permanent workaround into one a reviewer can
 re-test in a minute.
 
-(The consumer changed underneath it too. eslint was retired from the fleet in
+(The consumer changed underneath it too. eslint was retired from the portfolio in
 favour of oxlint, but `eslint-plugin-react-hooks` and `eslint-plugin-react-refresh`
 stayed — oxlint loads them through its JS plugin bridge, so they are live
 dependencies of the lint that actually runs, not orphans of the one that
@@ -1522,14 +1522,14 @@ Minor and patch arrive as one pull request per run. **Majors stay ungrouped** �
 a major bump is where breakage lives, so it gets its own review and its own
 revert. **Security updates stay ungrouped too**, because `applies-to` defaults to
 `version-updates`, so a fix still lands alone and immediately. Weekly is the
-fleet cadence; this repository is the exception at `daily`, because the catalog's
-own pins are the fleet's pins and a bump here propagates to every consumer.
+portfolio cadence; this repository is the exception at `daily`, because the catalog's
+own pins are the portfolio's pins and a bump here propagates to every consumer.
 
 **Dependabot can only bump a reference that carries a comparable version.**
 `node:26-alpine` it can advance; `debian:bookworm-slim` is a codename with
 nothing to compare, and a bare `busybox` has no tag at all. Version-pin before
 adding the watcher, or the entry is a watcher that finds nothing —
-aurum-alpha/workflows#178 tracks the fleet's unpinned compose images.
+aurum-alpha/workflows#178 tracks the portfolio's unpinned compose images.
 
 **The two container ecosystems read different files and neither one watches what
 you build.** `docker` reads `FROM` in Dockerfiles; `docker-compose` reads
@@ -1538,7 +1538,7 @@ Dependabot's business. A repository whose base images are pinned in a Dockerfile
 and whose service images are pinned in compose needs **both** entries — one does
 not reach the other's file.
 
-**Where the fleet stands (2026-08-25).** `github-actions` everywhere; `gomod` on
+**Where the portfolio stands (2026-08-25).** `github-actions` everywhere; `gomod` on
 all three Go repositories; `composer` on event-manager's two trees; `docker` and
 `docker-compose` where the images are pinned well enough to advance. `npm` is
 held on aurum-alpha/workflows#177 until the Node cohorts converge
@@ -1549,7 +1549,7 @@ has no `platformio` ecosystem, so those pins stay manual.
 
 ## Shared infrastructure — aurum-alpha/workflows
 
-**Created 2026-08-14, public** (NOT gha-runner-controller — the fleet controller
+**Created 2026-08-14, public** (NOT gha-runner-controller — the runner-fleet controller
 consumes shared workflows; hosting them there mixes concerns). Update
 2026-08-15: gofast has moved into the org (**aurum-alpha/gofast**), so the
 cross-org consumption rationale no longer applies to it and gofast runs on
@@ -1566,7 +1566,7 @@ the aj78-docker runners under the standard runner line.
 ### One-box before the wave — and why it is not a canary
 
 A change to a shared job reaches every consumer at once. So one repo re-pins
-first, its CI is watched end to end, and only then does the fleet follow. This
+first, its CI is watched end to end, and only then does the portfolio follow. This
 is the **one-box stage**: deploy to a single instance, watch it, proceed.
 
 **It is not a canary.** A canary is ongoing synthetic automation running against
@@ -1579,13 +1579,13 @@ artifact, on one instance, once.
 Two consequences that follow from stating it correctly:
 
 - **A one-box repo must be drawn for representativeness, not for ease.** It
-  generalises to the fleet only on the axes it shares with the fleet. Pick the
+  generalises to the portfolio only on the axes it shares with the portfolio. Pick the
   repo carrying the work the others carry; where no single repo covers every
   axis, the one-box stage is a *set*, not a repo. client-manager is the
   precedent: two
   shared-job bugs surfaced only on the one repo exercising private packages,
   because it was the only repo that could surface them.
-- **The fleet has no canary at all.** No repo here runs synthetic checks against
+- **The portfolio has no canary at all.** No repo here runs synthetic checks against
   a deployed system. That is a real gap, and it is outside this document's
   scope — CI proves an artifact is sound, not that a running system is.
 
@@ -1598,7 +1598,7 @@ The catalog is opinionated about where code lives, and **it does not enforce
 it**. Those are two different things, and this section spent a while conflating
 them.
 
-The layout below is the fleet's answer, and a repo that differs is a repo worth
+The layout below is the standard answer, and a repo that differs is a repo worth
 fixing. What the shared jobs enforce is narrower: the toolchain. One pnpm, one
 TypeScript, one set of steps in one order — the *runner*, not the tree.
 
@@ -1713,7 +1713,7 @@ around whatever each one already exposes.
 Set **`strictPort: true`**. Vite's default is to increment silently when its
 port is taken — during Phase F testing that put it on +11 and left the proxy
 pointing at itself, which looks like a backend bug and is not one. The middleware-mode arrangement — Express hosting
-vite in-process, branching on `NODE_ENV` — is retired fleet-wide.
+vite in-process, branching on `NODE_ENV` — is retired portfolio-wide.
 
 That arrangement looked convenient (one process, one port, no CORS) and it cost
 six broken production images: `server/index.ts` imported `./vite`, the bundler
@@ -1835,7 +1835,7 @@ Tooling convergence: oxlint + vitest are the TS standard.
 **The TS column is deliberately empty, and this table used to lie about it.**
 It read `lint` → `eslint .`, `typecheck` → `tsc --noEmit`, `test:unit` →
 `vitest run --coverage`, as though CI ran those scripts. It does not, and
-**almost no TS repo in the fleet defines any of them** — checked across
+**almost no TS repo in the portfolio defines any of them** — checked across
 wardley-mapper, credit-watch and flight-watch, whose entire `scripts` block is
 `dev`, `dev:client`, `dev:server`, `start`, `db:push`, `test:watch`.
 
@@ -1962,7 +1962,7 @@ govulncheck is Go-only and call-graph aware: it reports an advisory only when
 the code actually reaches the vulnerable symbol, so it is precise and narrow.
 osv-scanner is lockfile-based and cross-ecosystem: broader, with no
 reachability filter, so noisier. Drop govulncheck and the "is it reachable"
-answer goes; drop osv-scanner and every pnpm lockfile in the fleet is
+answer goes; drop osv-scanner and every pnpm lockfile in the portfolio is
 unscanned, which was the state until this gate existed.
 
 #### The catalog wraps it, and only because the event decides the workflow
@@ -2026,9 +2026,9 @@ tab — triaged, dated, assignable — rather than in a job log nobody opens. Tw
 things keep that honest. A license is org-wide but **enablement is per
 repository**, so acceptance is not guaranteed by billing alone; and an upload
 that is refused fails the step and takes the scan's verdict with it, so a wrong
-assumption here turns every osv job in the fleet red at once. It is therefore
+assumption here turns every osv job in the portfolio red at once. It is therefore
 rolled out one repo at a time, canary first, on the same pattern as every other
-fleet-wide flip — the caller-side lever is `upload_sarif: false` with the reason
+portfolio-wide flip — the caller-side lever is `upload_sarif: false` with the reason
 at the call site.
 
 **What it costs, stated.** A third-party pin now sits one level of indirection
@@ -2131,7 +2131,7 @@ React gates hang off it. `build` consumes its artifact.
 
 **The gates hang off `build`, across both stacks.** They read source rather
 than build output, so the edge is ordering rather than data — the same shape as
-the fleet's JS lint job, which needs `build` and lints source. Fail-fast was
+the portfolio's JS lint job, which needs `build` and lints source. Fail-fast was
 never a claim that gates consume build output; it is a refusal to spend gate
 time on a commit that cannot ship. Here that couples the stacks: PHP gates wait
 on the React compile. That is deliberate and it is why this repo can do it —
@@ -2156,7 +2156,7 @@ embedded repo exists.
 pushed. When it went red the checks list said `image` and nothing else, and a
 reader had to open the log to learn which of four claims had failed. Worse, the
 four have different permission needs and different triggers, so the single job
-took the union — `packages: write`, on every pull request in the fleet, because
+took the union — `packages: write`, on every pull request in the portfolio, because
 one main-only step inside it needed to push.
 
 Split along the claims:
@@ -2197,7 +2197,7 @@ same as being correct, and the run where someone can still see it is this one.
 operation. There is no second build that could differ from the gated one, which
 is Principle 17 stated in bytes instead of intent.
 
-**The Dockerfile in the repo, run as-is.** Every deployable in this fleet copies
+**The Dockerfile in the repo, run as-is.** Every deployable in this portfolio copies
 artifacts earlier jobs already built, so `job-image-build` decides nothing
 beyond which file, which stage, and where the artifacts go — that last one the
 `artifacts:` input, `client-dist=dist/public`, same `name=value` idiom as
@@ -2233,7 +2233,7 @@ none of them wrong, all of them different.
 
 Split it where the seam actually is. The **`needs:` list is the repo's own
 DAG** and cannot be shared — that is the whole content of the job. The
-**verdict logic** is fleet-wide and had no business differing.
+**verdict logic** is portfolio-wide and had no business differing.
 
 So the body moves to `aurum-alpha/workflows/.github/actions/ci-ok`, and the
 caller keeps what is genuinely its own:
@@ -2315,7 +2315,7 @@ A repo's pipeline is shared jobs plus, where Principle 19 applies, a handful of
 local job bodies that are policy about *that* codebase and belong nowhere else —
 client-manager's prettier, golden-corpus and Go/TypeScript contract gates. Those
 bodies are legitimately local. **Their Node setup is not.** Reaching a working
-`pnpm` is the same eight steps in every repo in the fleet, and a bespoke job
+`pnpm` is the same eight steps in every repo in the portfolio, and a bespoke job
 that spells them out again is a second answer to a question the catalog already
 answers.
 
@@ -2411,7 +2411,7 @@ absence marks the convergence and rollup jobs.
 *This supersedes two earlier attempts, and the way each failed is the lesson.
 The first asked for a stack prefix "only where a collision forces them" — keyed on a
 **collision** rather than on the code, so the prefix vanished in any repo with
-one stack and the fleet grew four names for one capability. The replacement
+one stack and the portfolio grew four names for one capability. The replacement
 keyed on the **shared job being called**, which proves only which toolchain
 runs, not which source it touches: six repos whose single `build` compiles a
 React client and an Express server were renamed `react-build`, and
@@ -2442,7 +2442,7 @@ test family however much it feels adjacent.
 
 ### One linter, after two on purpose
 
-`job-lint-js-oxlint` is the fleet's JS linter. `job-lint-js-eslint` is gone, and
+`job-lint-js-oxlint` is the standard JS linter. `job-lint-js-eslint` is gone, and
 so is `config/eslint.config.mjs`. The two ran side by side for a release as a
 deliberate exception to "one way per capability"; this section records why that
 exception existed and why it closed, because a retired arrangement explains the
@@ -2453,13 +2453,13 @@ This section used to say oxlint had "no type-aware linting at all" and that a
 repo on oxlint got *less* checking than one on eslint. Neither survived being
 measured. oxlint runs the type-aware rules through `--type-aware`
 (oxlint-tsgolint, built on typescript-go), and runs the eslint plugins it has
-not ported through a JS plugin bridge. Against the fleet eslint config on
+not ported through a JS plugin bridge. Against the portfolio eslint config on
 gofast's client it reports **every finding eslint reports, and eight more**, in
 roughly half the time. What made oxlint look like a subset was one repo's
 `.oxlintrc.json` enabling two rules and a default category — a config, not a
-tool. The fleet spent a release arguing with that file.
+tool. The portfolio spent a release arguing with that file.
 
-`config/.oxlintrc.json` is byte-identical fleet-wide and `check-eslint-config`
+`config/.oxlintrc.json` is byte-identical portfolio-wide and `check-eslint-config`
 fails the build if a repo edits it. **It was written as a translation of the
 eslint config** — same rules, same severity tiers, same ignores — because that
 is the only arrangement in which running both was worth anything. Two linters
@@ -2473,13 +2473,13 @@ was mechanical: in all nine repositories, oxlint's `--type-aware` counts were
 identical before and after the removal.
 
 **What eslint's departure unblocks is TypeScript 7.** `typescript-eslint` was
-the only thing in the fleet importing the `typescript` package as a *library*,
+the only thing in the portfolio importing the `typescript` package as a *library*,
 and TS 7 is the native Go port whose default export is just `version` and
 `versionMajorMinor` — no `createProgram`, no `TypeChecker`. oxlint does not
 care: `oxlint-tsgolint` ships its own typescript-go binary and has no
 dependency on the `typescript` package at all. For the same reason, do not
 adopt `ts-node`, `ts-jest`, `typedoc`, `ts-morph` or `tsup` — each re-imports
-that API and would re-pin the fleet to TypeScript 6.
+that API and would re-pin the portfolio to TypeScript 6.
 
 **`eslint-plugin-react-hooks` and `eslint-plugin-react-refresh` stayed**, and
 their names are misleading about why: oxlint consumes both through its JS
@@ -2489,7 +2489,7 @@ plugin bridge, so they are oxlint dependencies now whatever their prefix says.
 and no longer run anywhere. That residue is the price of those 14 rules.
 
 **oxlint is in `dependency-versions.json`.** That file asserts packages the
-fleet has *converged* on, and oxlint was held out of it while it was
+portfolio has *converged* on, and oxlint was held out of it while it was
 mid-wave — listing a package before every repo carries the value fails every
 repo whose turn has not come, and a check expected to fail is a check nobody
 reads. The
@@ -2506,12 +2506,12 @@ eslint was the measurement above, every configured rule matching finding for
 finding with the type-aware rules included, which made the second linter's
 output a duplicate rather than a cross-check.
 
-The deeper error was writing an **upstream label** into a fleet standard as
+The deeper error was writing an **upstream label** into a Aurum Alpha standard as
 though it were evidence. This document used "alpha" to justify a gate setting,
-and kept using it after the fleet had run oxlint across every repository for
+and kept using it after the portfolio had run oxlint across every repository for
 releases and accumulated its own evidence. A version number someone else
 assigns is not a fact about whether a tool works here; the measurements are,
-and they said the opposite. **oxlint is production software in this fleet and
+and they said the opposite. **oxlint is production software in this portfolio and
 this document treats it as such.** Where a maturity claim appeared, the reason
 underneath it has been stated instead.
 
@@ -2519,7 +2519,7 @@ underneath it has been stated instead.
 caller is `warn_only`, and the reason is the roughly 870 errors and 3,700
 warnings already in the tree — exactly the stabilization window Principle 3
 describes: findings visible, gate open, flipped when the count comes down. The
-cost is real and worth naming: with eslint gone, the fleet's only JS lint job
+cost is real and worth naming: with eslint gone, the only JS lint job
 blocks nothing, so a regression lands silently. That is a deliberate position
 with a gap in it, and burning the debt down is what closes it.
 
@@ -2596,10 +2596,10 @@ green the entire time.
 
 `tools/check-ci-conformance` is the something. It runs two ways from one
 source — `--repo-root` inside a repo's own CI via `job-ci-conformance.yml`, and
-`--fleet` for sweeps — because an audit and a gate that can disagree eventually
+`--portfolio` for sweeps — because an audit and a gate that can disagree eventually
 will.
 
-**Which principle is gated, and by what, is recorded in the fleet enforcement
+**Which principle is gated, and by what, is recorded in the enforcement
 ledger: [`enforcement.md`](enforcement.md).** It lives there rather than here
 because the question spans every standard, and a table per document answers it
 once per document — the duplication Principle 1 exists to prevent, applied to

@@ -1,4 +1,4 @@
-# Fleet capability: sweep staged manifests the registry no longer needs.
+# Portfolio capability: sweep staged manifests the registry no longer needs.
 # Fourth of the image jobs, and the only one that is not part of the pipeline.
 #
 # job-image-build stages every build in the registry by digest with no tag, so
@@ -10,7 +10,7 @@
 # NOT A GATE, on purpose. It runs downstream of ci-ok rather than inside it:
 # housekeeping that fails says nothing about the commit, and a merge blocked on
 # a registry API hiccup is a worse outcome than a week of extra blobs. It is the
-# one job in the fleet deliberately outside the rollup, and the conformance
+# one job in the portfolio deliberately outside the rollup, and the conformance
 # checker names it explicitly rather than inferring the exemption.
 name: job-image-prune
 
@@ -36,8 +36,8 @@ on:
         default: false
       runner:
         description: >-
-          Override runs-on. Leave empty for the fleet default. Set to a
-          GitHub-hosted label where a repo must not build on the fleet
+          Override runs-on. Leave empty for the standard default. Set to a
+          GitHub-hosted label where a repo must not build on the portfolio
           (CI_STANDARD Principle 4 — e.g. the runner controller itself, whose
           image jobs would otherwise build the runner image on runners created
           from the previous runner image).
@@ -81,7 +81,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       # `shell: python3 {0}`, not `shell: python`. The built-in `python` shell
-      # invokes an executable of that name, and the fleet's self-hosted runners
+      # invokes an executable of that name, and the portfolio's self-hosted runners
       # have python3 without the `python` alias that GitHub-hosted images
       # provide. The first main-branch run of this job died on
       # `python: command not found` before reading a single package version.

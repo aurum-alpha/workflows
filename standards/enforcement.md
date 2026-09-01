@@ -21,7 +21,7 @@ taken up. Adoption is tracked in each repository's own issue tracker.
 
 Rules from [`ci.md`](ci.md). `tools/check-ci-conformance` runs two ways from one
 source — `--repo-root` inside a repo's own CI via `job-ci-conformance.yml`, and
-`--fleet` for sweeps — because an audit and a gate that can disagree eventually
+`--portfolio` for sweeps — because an audit and a gate that can disagree eventually
 will.
 
 | # | Principle | Enforced by | Status |
@@ -55,7 +55,7 @@ will.
 | — | `ci-ok` is the only required check | branch protection | gated |
 | — | Branches up to date before merging | branch protection | gated |
 | — | The `ci-ok` body is the one the pull request ships | — | **review only** |
-| — | Fleet pnpm version | `check-dependency-versions` | gated¹ |
+| — | Standard pnpm version | `check-dependency-versions` | gated¹ |
 | — | Shared lint config unedited (`.oxlintrc.json`) | `check-eslint-config` | gated¹ |
 | — | Caller `with:` matches the shared job's inputs | `check-ci-conformance` IN | gated |
 | — | One shared `ci-ok` rollup, not eleven copies | `check-ci-conformance` RU | gated |
@@ -121,7 +121,7 @@ it was a checker change rather than twelve workflow changes.
 |---|---|---|---|
 | A1 | Every repository has an `AGENTS.md` at its root | `check-agent-docs` A1 | gated¹ |
 | A2 | It answers all six required sections | `check-agent-docs` A2 | gated¹ |
-| A3 | It references the fleet standard, or vendors it | `check-agent-docs` A3 | gated¹ |
+| A3 | It references the Aurum Alpha standard, or vendors it | `check-agent-docs` A3 | gated¹ |
 | A4 | No rule tree outside the two supported tools | `check-agent-docs` A4 | gated¹ |
 | A5 | `CLAUDE.md` opens by importing `AGENTS.md` | `check-agent-docs` A5 | gated¹ |
 | A6 | The named work queue is the only work queue | — | **review only** |
@@ -157,7 +157,7 @@ rows govern the doctrine.
 | PC2 | Standard protocol first, profile second, internal contract last | — resists honestly | **review only** |
 | PC3 | An agreed contract carries its artifacts (schemas, corpus) | `check-contract-artifacts` (proposed) | **review only** |
 | PC4 | Gates run the corpus at the boundary, never check the implementation | `job-contract-conformance` (proposed) | **review only** |
-| PC5 | A package conforms to the spec, never the reverse; no fleet package depends on another | corpus run + manifest check in package CI (proposed) | **review only** |
+| PC5 | A package conforms to the spec, never the reverse; no shared package depends on another | corpus run + manifest check in package CI (proposed) | **review only** |
 | PC6 | Contracts evolve additively, versioned, with deprecation windows | `check-contract-evolution` (proposed) | **review only** |
 
 PC1 and PC2 are judgment — what "a tool the lifecycle depends on" or "a
@@ -250,7 +250,7 @@ SC5 need an extension of a job every repository calls, not a new one.
 | SC5 | The running service reports its service, version, commit and build timestamp | `job-image-starts` asserting the startup line (proposed) | **review only** |
 | SC6 | Endpoints up first; no dependency blocks startup; misconfiguration blocks serving but not observability; never crashloop | `job-image-starts` with every dependency absent — the image must answer `/healthz` and stay running (proposed) | **review only** |
 
-SC6 is gateable by the job the fleet already runs, and cheaply: start the
+SC6 is gateable by the job already in the catalog, and cheaply: start the
 image with **no** dependencies reachable — which is exactly what
 `job-image-starts` does today, since it starts a container in isolation — and
 assert that `/healthz` answers and the process is still running. A service
@@ -258,7 +258,7 @@ that refuses to start without its database fails that, by name, in the job it
 already calls. The crashloop half is the same observation over time: a
 container that exits and restarts is not a container that stayed up.
 
-SC1 and SC5 are the cheapest real gates the fleet can build: no new job, no new
+SC1 and SC5 are the cheapest real gates here: no new job, no new
 infrastructure, and adoptable per-repository as each grows the endpoint, so
 there is no flag day. Today `job-image-starts` can claim only that a process
 did not exit within its timeout — a service that starts, fails to reach its
@@ -301,7 +301,7 @@ conventions for the default answer.
 HA3 is the cheapest live gate in this ledger after the service standard's own:
 `job-image-starts` already talks to a running service, so one request to a path
 that cannot exist, and one schema validation of what comes back, catches the
-failure the fleet actually has — a framework's default HTML error page escaping
+failure the portfolio actually has — a framework's default HTML error page escaping
 to clients from the one route nobody wrote a handler for.
 
 **HA8 is the cheapest gate of any kind here**, and static: the committed
@@ -343,7 +343,7 @@ preference until something enforces it.
 
 This is the least gateable standard here so far, and the reason is structural
 rather than an admission of laziness: its subject runs on someone else's
-machine, under a browser the fleet does not control, in a bundle that has been
+machine, under a browser we do not control, in a bundle that has been
 minified. Two of the five rules have a genuinely observable boundary — the
 cookie attributes of WC1 and the build output of WC2 — and those are where the
 gates go. For the rest, the boundary a gate could legitimately check is the
@@ -403,7 +403,7 @@ seventeen checks, and either reproduces every decision or names the one it
 failed. No running service, no browser, no network — which is what PC3 promised
 a corpus would buy and the first place it fully pays.
 
-The corpus is also the fleet's first real answer to *one contract judging three
+The corpus is also the first real answer to *one contract judging three
 languages*. A Go, a TypeScript and a PHP implementation each pass it or each
 name their failure, and none of them can pass by importing anything.
 
@@ -433,8 +433,8 @@ audit event fails those contracts' rules too, from this file's schema.
 | # | Rule | Enforced by | Status |
 |---|---|---|---|
 | AE1 | An audit event is application data in the product's own durable, queryable, tenant-scoped store — never a log line, and the log stream is never the system of record | resists a checker honestly: whether a store is the system of record or a convenience is intent, not shape. The review question is whether a history screen could be built from it | **review only** |
-| AE2 | One event shape, and **actor and target are separate required objects** — the failure the fleet's one existing audit table demonstrates, plus `outcome`, an `impersonator` where one acted, and public ids never internal keys | **schema-decided** — `event.schema.json` under `job-contract-conformance`; sixteen validity cases already reach their stated verdict against it | **review only** |
-| AE3 | `action` is `resource.verb`, and where a permission authorized the act the action string **is** that permission; `auth.*` is the fleet's reserved namespace for acts with no permission behind them | the format half is schema-decided. The identity half gets **a static check worth writing early**: read the product's declared permission set, assert every emitted action is one of them or a reserved `auth.*` action (proposed `check-audit-actions`) | **review only** |
+| AE2 | One event shape, and **actor and target are separate required objects** — the failure the portfolio's one existing audit table demonstrates, plus `outcome`, an `impersonator` where one acted, and public ids never internal keys | **schema-decided** — `event.schema.json` under `job-contract-conformance`; sixteen validity cases already reach their stated verdict against it | **review only** |
+| AE3 | `action` is `resource.verb`, and where a permission authorized the act the action string **is** that permission; `auth.*` is this standard's reserved namespace for acts with no permission behind them | the format half is schema-decided. The identity half gets **a static check worth writing early**: read the product's declared permission set, assert every emitted action is one of them or a reserved `auth.*` action (proposed `check-audit-actions`) | **review only** |
 | AE4 | An event is self-contained, immutable and outlives its subject: display denormalized at write time, append-only, no cascade from the target's deletion, values not references, never a credential | the shape half is schema-decided. That the store is genuinely append-only and uncascaded is a schema fact once the [data-layer standard](platform.md#the-capability-roster) gives a checker a schema to read; that no credential reaches `changes` is SC2's judgment again | **review only** |
 | AE5 | The floor of what must emit: authentication and session lifecycle, authorization changes, identity lifecycle, destructive writes, security-posture configuration, bulk personal-data export — and reads otherwise **not** audited | **the generative gate, and the one worth the most here** — enumerate the routes guarded by a destructive permission, exercise each, assert an event carrying that permission as its action. Fourteen `floor` cases in the corpus describe the acts; two of them are negative | **review only** |
 | AE6 | Append-only discipline is required — `INSERT` and `SELECT`, retention deletion under a separate credential. Hash chaining is **not** required; tamper-evidence needs an anchor outside the writer's reach | the grant is a schema fact, readable once the data-layer standard lands. That the request path holds no update is a review question | **review only** |
@@ -462,7 +462,7 @@ subject's in place. It was checked against exactly that broken implementation
 before landing.
 
 **AE5's generative gate is the one to build.** A list of routes that must audit
-rots the day someone adds a route, which is how the fleet's existing audit table
+rots the day someone adds a route, which is how the portfolio's existing audit table
 came to be a well-designed table nothing writes to. An enumeration over the
 permission set cannot rot that way, and AE3's identity rule — the action string
 *is* the permission string — exists largely to make that enumeration possible.

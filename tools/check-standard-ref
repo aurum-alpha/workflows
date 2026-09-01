@@ -58,7 +58,7 @@ That omission has now failed in both directions on the same file:
 
   - wave A REMOVED four packages from dependency-versions.json and left this
     default behind, so repos that had already dropped them were failed for not
-    declaring what the fleet had retired;
+    declaring what the portfolio had retired;
   - wave 6 MODIFIED the typescript pin to 7.0.2 and this checker printed
     "nothing a caller consumes changed" and passed, correctly by its own rule,
     while the change it was passing asserted nothing against anybody until a
@@ -79,7 +79,7 @@ had decided to release.
 
 What is lost with it is a forcing function, and pretending otherwise would be
 the failure this repository exists to name. Nothing now makes a catalog change
-reach the fleet on the day it lands. What replaces it is visibility rather
+reach the portfolio on the day it lands. What replaces it is visibility rather
 than a gate: every run prints how many consumed changes are sitting on main
 unreleased, and the oldest one's age. A release pull request is then something
 someone opens on purpose. If that backlog is still being ignored a month from
@@ -193,7 +193,7 @@ def report_backlog(root, base) -> None:
           f"unreleased; the oldest landed {when}:")
     print(f"  {oldest[:7]} {subject[:72]}")
     print("Open a release pull request — .version and prose only — to mint "
-          "them and let Dependabot re-pin the fleet.")
+          "them and let Dependabot re-pin the portfolio.")
 
 
 def main() -> int:
@@ -227,7 +227,7 @@ def main() -> int:
     checkers = sorted(f for f in touched if CHECKERS.match(f))
 
     # Printed on every pull request, not only the ones that add to it: the
-    # backlog is a fleet-wide state, and the person most likely to act on it is
+    # backlog is a portfolio-wide state, and the person most likely to act on it is
     # whoever is looking at CI right now.
     report_backlog(root, args.base)
 

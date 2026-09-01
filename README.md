@@ -54,7 +54,7 @@ prefix here as it lands.
 - `.github/workflows/job-*.yml` — the shared job catalog. One reusable workflow
   per capability, consumed by every repository that has that capability.
 - `tools/check-*` — the conformance checkers. Each runs both inside a
-  repository's own CI and as a fleet sweep, from one source.
+  repository's own CI and as a portfolio-wide sweep, from one source.
 - `config/`, `setup/` — shared configuration and composite actions.
 - `dependency-versions.json` — the package versions every adopting repository
   is held to: the package manager, the dev/build toolchain, and the handful of

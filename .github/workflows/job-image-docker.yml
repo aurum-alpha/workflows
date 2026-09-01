@@ -1,4 +1,4 @@
-# Fleet capability: build and publish the container (CI_STANDARD Principle 12).
+# Portfolio capability: build and publish the container (CI_STANDARD Principle 12).
 # System tier — docker is neither a language nor a framework.
 #
 # Replaces job-docker-image, which downloaded a single artifact named `dist`.
@@ -195,7 +195,7 @@ jobs:
 
       # Step 5 of the standard DAG: something must run the image. Everything
       # above proves it *builds*, and those are different claims — three repos
-      # in this fleet shipped images that could not start for months, green
+      # in this portfolio shipped images that could not start for months, green
       # throughout, because nothing ever started them.
       #
       # This is the weaker of the two ways to satisfy that. A repo whose e2e
@@ -204,7 +204,7 @@ jobs:
       #
       # Deliberately not a health check: no endpoint, no readiness contract,
       # nothing an application has to opt into. It boots, it listens, it is
-      # still alive. That is the floor, and every image in the fleet can meet
+      # still alive. That is the floor, and every image in the portfolio can meet
       # it.
       - name: Start check waived
         if: ${{ inputs.start_blocked_by != '' }}

@@ -1,4 +1,4 @@
-# Fleet capability: promote the staged image to its published tags
+# Portfolio capability: promote the staged image to its published tags
 # (CI_STANDARD Principle 17). Third of three — build, starts, publish.
 #
 # Release is promotion, not production. This job builds nothing. It takes the
@@ -32,7 +32,7 @@ on:
       extra_tags:
         description: >-
           Newline-separated additional docker/metadata-action tag rules, on top
-          of the fleet defaults (`latest` on the default branch, `sha-<short>`,
+          of the portfolio defaults (`latest` on the default branch, `sha-<short>`,
           and the branch name). For a repo that publishes a version from a file
           or a build number.
 
@@ -45,8 +45,8 @@ on:
         default: ""
       runner:
         description: >-
-          Override runs-on. Leave empty for the fleet default. Set to a
-          GitHub-hosted label where a repo must not build on the fleet
+          Override runs-on. Leave empty for the standard default. Set to a
+          GitHub-hosted label where a repo must not build on the portfolio
           (CI_STANDARD Principle 4 — e.g. the runner controller itself, whose
           image jobs would otherwise build the runner image on runners created
           from the previous runner image).

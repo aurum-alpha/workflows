@@ -45,9 +45,10 @@ unreleased backlog below.
 
 The third surface is checker INPUT: data the checkers read out of the SAME
 pinned clone they are themselves taken from, listed in CHECKER_INPUT_FILES.
-Today that is fleet-versions.json alone, and check-fleet-versions says so in
-its own words — "read from the checker's OWN repo root, so in CI both it and
-this file come from the same .aurum-standard checkout pinned at standard_ref."
+Today that is dependency-versions.json alone, and the checker that reads it
+says so in its own words — "read from the checker's OWN repo root, so in CI
+both it and this file come from the same .aurum-standard checkout pinned at
+standard_ref."
 
 It is selected by standard_ref exactly as tools/ is, so it goes stale exactly
 as tools/ does. What it does NOT look like is code, which is why it sat
@@ -55,7 +56,7 @@ outside both regexes while every other pinned-clone file sat inside them.
 
 That omission has now failed in both directions on the same file:
 
-  - wave A REMOVED four packages from fleet-versions.json and left this
+  - wave A REMOVED four packages from dependency-versions.json and left this
     default behind, so repos that had already dropped them were failed for not
     declaring what the fleet had retired;
   - wave 6 MODIFIED the typescript pin to 7.0.2 and this checker printed
@@ -97,8 +98,9 @@ import sys
 # Data a checker reads out of the pinned clone rather than out of the repo
 # under test or the unpinned catalog. Membership is decided by ONE question:
 # does the checker resolve the path relative to its own __file__ with no
-# AURUM_CATALOG_ROOT escape? fleet-versions.json is the only file in this repo
-# that does, verified by reading every checker rather than by assumption --
+# AURUM_CATALOG_ROOT escape? dependency-versions.json is the only file in
+# this repo that does, verified by reading every checker rather than by
+# assumption --
 # check-caller-permissions, check-eslint-config and check-ci-conformance all
 # take the override, so in CI they read the CURRENT catalog and are immune to
 # this staleness by construction.
@@ -106,13 +108,13 @@ import sys
 # A tuple and not a regex, because it is a LIST OF REAL FILES and gets checked
 # against the filesystem below. A regex naming a file that has been renamed
 # matches nothing, fails nothing, and reopens this gate in silence.
-CHECKER_INPUT_FILES = ("fleet-versions.json",)
+CHECKER_INPUT_FILES = ("dependency-versions.json",)
 
 _SHARED = ["tools/", r"\.github/workflows/job-[\w.-]+\.yml$"]
 _INPUTS = [re.escape(f) + "$" for f in CHECKER_INPUT_FILES]
 
 # Changes a caller consumes, and so cannot reach one without a tag. Checker
-# input belongs here too: a caller only sees a new fleet-versions.json by
+# input belongs here too: a caller only sees a new dependency-versions.json by
 # re-pinning to a tag that carries the standard_ref bump pointing at it.
 CONSUMED = re.compile("^(" + "|".join(_SHARED + ["setup/"] + _INPUTS) + ")")
 # Of those, the ones standard_ref actually selects -- checker code AND the

@@ -16,9 +16,9 @@ repositories.
 WHY THE LOCKFILE IS NOT THE ANSWER. It pins within a repo, and CI runs
 --frozen-lockfile, so today's build is reproducible. What it cannot do is hold
 two repos to one version, or stop the pin moving the next time somebody
-installs something unrelated. check-fleet-versions compares MANIFESTS for that
-reason, and a range gives it nothing to assert -- one range is compatible with
-many installed versions.
+installs something unrelated. check-dependency-versions compares MANIFESTS for
+that reason, and a range gives it nothing to assert -- one range is compatible
+with many installed versions.
 
 Run against local clones:  tools/check-exact-pins --root /workspace
 Run against one repo:      tools/check-exact-pins --root DIR --repo NAME
@@ -95,7 +95,7 @@ def check_unit(path: pathlib.Path, label: str) -> int:
 
 
 def node_units(root: pathlib.Path, repo: str) -> list[str]:
-    """Same discovery contract as check-fleet-versions: read the tree."""
+    """Same discovery contract as check-dependency-versions: read the tree."""
     base = root / repo
     if not base.is_dir():
         return []

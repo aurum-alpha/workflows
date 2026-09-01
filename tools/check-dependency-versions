@@ -1,0 +1,300 @@
+#!/usr/bin/env python3
+"""Verify every Node app in the fleet pins the same toolchain versions.
+
+The version each repo actually uses comes from package.json's packageManager
+field — that is what corepack activates locally and what pnpm/action-setup
+reads in the shared jobs, so CI and a developer's machine can never disagree
+with each other. What that field cannot do is agree ACROSS repos: nothing stops
+one repo drifting to a different pnpm. This check closes that gap by comparing
+every repo against dependency-versions.json.
+
+Run against local clones:
+    tools/check-dependency-versions --root /workspace
+Run against one repo:
+    tools/check-dependency-versions --root DIR --repo NAME
+
+The --repo form is what job-ci-conformance uses: a repo's own CI has only its
+own clone, so a checker that can only run over all eleven at once is a checker
+that only runs when someone remembers to run it from a workstation. Naming a
+repo with no Node app is a pass, not an error, so every caller can wire this up
+unconditionally without first knowing whether it is a Node repo.
+
+It checks THREE things, for the same reason and against the same file:
+
+  packageManager   one pnpm across the fleet
+  devDependencies  one version of each converged build-time package
+  dependencies     one version of each converged RUNTIME package
+
+The second half exists because the first was the whole check while eight
+packages were converged by hand across nine repos and NOTHING held them there.
+aurum-alpha/workflows#169 moved @types/node and the eslint six to a single
+exact version in every Node app; a week later any `pnpm up` in any repo could
+have undone that silently, because the only thing that would have noticed was
+somebody re-reading nine manifests. Convergence that is not asserted is a
+snapshot, not a standard.
+
+The two dependency blocks are separate rather than one merged lookup, and the
+section a package sits in is part of what is asserted. For a year this checker
+read devDependencies alone, which meant the fleet could converge on a runtime
+package -- react, say -- and have no way to say so: react and react-dom are
+`dependencies` in all nine Node apps, correctly, and were therefore invisible
+here. Merging the two sections into one lookup would have fixed that and lost
+something worth keeping, because placement is itself a real defect class. A
+runtime package parked in devDependencies breaks `--prod` installs; a types
+package parked in dependencies ships nothing but noise, and jewelry-factory
+carried exactly that until aurum-alpha/jewelry-factory#52. A checker that
+accepted either section would have called both of those fine.
+
+Versions are compared EXACTLY. A caret or tilde fails: `^7.3.0` in two repos
+can resolve to different versions on different days, so a range is not a pin
+and cannot be a fleet standard. That is also why a package mid-wave is absent
+from dependency-versions.json rather than listed with a target -- listing it
+would fail every repo whose turn has not come, and a check that is expected to
+fail is a check nobody reads.
+"""
+
+import argparse
+import json
+import pathlib
+import sys
+
+# How deep to look for a Node unit, and what never holds one.
+#
+# This was UNIT_DIRS = (".", "client") -- a two-element allowlist, justified by
+# the six shared jobs rejecting any other workdir at runtime. workflows#252
+# relaxed that: a repo may keep its pnpm project anywhere and still call a
+# catalog job, because what the catalog standardises is the toolchain, not the
+# tree. So the allowlist here had to go with it, or a unit at a path the jobs
+# now accept would be invisible to the version check -- the same class of bug
+# as the NODE_APPS map both of these replaced.
+#
+# Depth 2 covers every shape in the fleet with room to spare (`.`, `client`,
+# and anything one level further in) without walking a whole tree to find
+# nothing. PRUNE is the important half: node_modules holds thousands of
+# package.json files, none of them units.
+MAX_DEPTH = 2
+PRUNE = {"node_modules", "vendor", "dist", "build", "coverage", "testdata"}
+
+
+def node_units(root, repo):
+    """Directories under `repo` holding a package.json, nearest first.
+
+    THIS REPLACES A HAND-MAINTAINED MAP, and the map's own comments are the
+    argument for the replacement. It went stale twice. client-manager and
+    gofast moved web/ to client/ and nobody updated it, so the check reported
+    "package.json not found" for both -- a failure that blamed the repo for a
+    missing file when the list was what was wrong. event-manager was simply
+    never added, so its pnpm could drift with nothing to say so.
+
+    Both are the same bug: a fact about a repo, restated somewhere else, left
+    to rot. The fact is already on disk. Read it.
+
+    This is also what makes a mixed-stack repo work without a special case.
+    A repo is not "a Node repo" or "a Go repo" -- its UNITS have stacks.
+    client-manager and gofast each carry go.mod at the root and a Node unit in
+    client/, and both sets of fleet standards apply to their own unit. Nothing
+    here needs to classify the repo, and nothing should: that classification
+    would be a second copy of what the directory tree already says.
+
+    Paths are returned relative to the repo, with "." for the root, and sorted
+    so output ordering does not depend on the filesystem.
+    """
+    base = root / repo
+    if not base.is_dir():
+        return []
+
+    found = []
+
+    def walk(d: pathlib.Path, depth: int) -> None:
+        if (d / "package.json").is_file():
+            rel = d.relative_to(base).as_posix()
+            found.append(rel if rel != "." else ".")
+            # A pnpm project inside a pnpm project is a workspace package, not
+            # a second unit -- its versions come from the root manifest. Stop.
+            return
+        if depth == MAX_DEPTH:
+            return
+        for child in sorted(d.iterdir()):
+            if child.is_dir() and not child.name.startswith(".") \
+                    and child.name not in PRUNE:
+                walk(child, depth + 1)
+
+    walk(base, 0)
+    return sorted(found)
+
+
+def load_expected(
+    repo_root: pathlib.Path,
+) -> tuple[str, dict[str, str], dict[str, str]]:
+    data = json.loads((repo_root / "dependency-versions.json").read_text())
+    # Both dependency blocks are optional. This is defensive rather than a
+    # rollout mechanism, and it is worth being exact about which:
+    # dependency-versions.json is read from the checker's OWN repo root, so
+    # in CI both it and this file come from the same .aurum-standard checkout
+    # pinned at standard_ref. They move together, always. A new block cannot
+    # reach a caller ahead of the code that reads it, and the .get() defaults
+    # buy compatibility only for someone running this checker against a
+    # hand-assembled tree.
+    return (
+        data["pnpm"],
+        data.get("devDependencies", {}),
+        data.get("dependencies", {}),
+    )
+
+
+def check_section(
+    repo: str,
+    manifest: dict,
+    want: dict[str, str],
+    section: str,
+    other: str,
+) -> int:
+    """Compare one manifest section against the fleet standard for it.
+
+    `section` is where the packages must be declared; `other` is the sibling
+    section, checked only so a misplaced package is reported as misplaced
+    rather than as missing. "react is not declared" sends a reader looking for
+    an absent package; "react is declared in devDependencies" sends them to
+    the line that is actually wrong.
+    """
+    declared = manifest.get(section, {})
+    sibling = manifest.get(other, {})
+    failures = 0
+    # Named in the output rather than passed over in silence. A reader has to
+    # be able to tell "this unit does not use vitest" from "this checker
+    # forgot to look", and only one of those is a fact about the unit.
+    skipped: list[str] = []
+
+    for name, version in sorted(want.items()):
+        got = declared.get(name)
+        if got is None:
+            if name in sibling:
+                print(
+                    f"{repo}: {name} is declared in {other}, "
+                    f"fleet standard has it in {section} at {version}"
+                )
+            else:
+                # WHERE PRESENT. Absence is not drift, and this used to say the
+                # opposite -- "absent is a failure, not a skip", on the theory
+                # that every listed package was one the whole fleet had
+                # converged on. That theory held only while the list was
+                # exactly the packages all nine apps happened to share, and it
+                # made the list unable to grow: measured across the fleet,
+                # ZERO unasserted packages are present in all nine, so every
+                # candidate for convergence would have failed the repos that
+                # legitimately do not use it. An assertion that cannot be
+                # added is not a standard.
+                #
+                # What enforces PRESENCE is the shared job that invokes the
+                # tool. job-typecheck-ts-tsc runs `pnpm exec tsc`, so a repo
+                # calling it without typescript fails there, in the job whose
+                # name says what broke. This file answers the other question --
+                # IF you declare it, at what version -- and answering exactly
+                # one question is the point.
+                skipped.append(name)
+                continue
+            failures += 1
+        elif got != version:
+            # Names the range case explicitly: "^10.9.1 is not 10.9.1" reads
+            # like a checker being pedantic unless it says why.
+            hint = " (a range, not a pin)" if got[:1] in "^~><=" else ""
+            print(
+                f"{repo}: {name} is {got}{hint} in {section}, "
+                f"fleet standard is {version}"
+            )
+            failures += 1
+
+    if skipped:
+        print(f"{repo}: not declared in {section}, so not asserted — "
+              f"{', '.join(skipped)}")
+
+    return failures
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--root", default="/workspace", type=pathlib.Path)
+    ap.add_argument("--repo", action="append", help="limit to specific repo(s)")
+    args = ap.parse_args()
+
+    here = pathlib.Path(__file__).resolve().parent.parent
+    expected, want_dev, want_deps = load_expected(here)
+    want = f"pnpm@{expected}"
+
+    if args.repo:
+        names = list(args.repo)
+    else:
+        names = sorted(p.name for p in args.root.iterdir() if p.is_dir()
+                       and not p.name.startswith("."))
+
+    # (repo, subdir) for every Node unit found, discovered rather than listed.
+    # A repo with no package.json in either place contributes none and is
+    # simply absent from the run: lid-firmware and gha-runner-controller carry
+    # no Node unit, and neither needs an `if:` in its caller to say so.
+    selected = [(r, d) for r in names for d in node_units(args.root, r)]
+
+    # An explicitly named repo with no Node unit gets a line. Silence would be
+    # ambiguous in the direction that matters: a reader cannot tell "this repo
+    # has no Node unit" from "the checker never looked at it", and the second
+    # is what a stale scope list used to look like. Only for NAMED repos --
+    # printing this for every directory under --root would bury the findings.
+    if args.repo:
+        for r in args.repo:
+            if not node_units(args.root, r):
+                print(f"{r}: no Node unit (no package.json within "
+                      f"{MAX_DEPTH} level(s)) — nothing to check")
+
+    if not selected:
+        # Not for NAMED repos: the loop above already printed a line for each,
+        # and printing it twice reads like two findings about one repo.
+        if not args.repo:
+            for r in names:
+                print(f"{r}: no Node unit (no package.json within {MAX_DEPTH} "
+                      f"level(s)) — nothing to check")
+        print("\nPASS: no Node unit to check")
+        return 0
+
+    failures = 0
+    for repo, subdir in selected:
+        pkg = args.root / repo / subdir / "package.json"
+        manifest = json.loads(pkg.read_text())
+        # Name the unit, not just the repo. A dual-stack repo has one Node
+        # unit today and could have two tomorrow, and "client-manager: ..."
+        # would not say which one disagreed.
+        repo = repo if subdir == "." else f"{repo}/{subdir}"
+
+        declared = manifest.get("packageManager")
+        if declared is None:
+            print(f"{repo}: no packageManager field — must declare {want}")
+            failures += 1
+        elif declared != want:
+            print(f"{repo}: packageManager is {declared}, fleet standard is {want}")
+            failures += 1
+        else:
+            print(f"{repo}: {declared}")
+
+        failures += check_section(
+            repo, manifest, want_dev, "devDependencies", "dependencies"
+        )
+        failures += check_section(
+            repo, manifest, want_deps, "dependencies", "devDependencies"
+        )
+
+    if failures:
+        print(
+            f"\nFAIL: {failures} repo(s) disagree with "
+            "dependency-versions.json. Either bring the repo to the standard "
+            "version, or bump dependency-versions.json and roll every repo."
+        )
+        return 1
+
+    print(
+        f"\nPASS: all {len(selected)} Node unit(s) pin {want}; "
+        f"{len(want_dev)} devDependencies and {len(want_deps)} dependencies "
+        f"asserted where present"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

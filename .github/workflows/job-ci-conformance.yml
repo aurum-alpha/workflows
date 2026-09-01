@@ -145,7 +145,19 @@ on:
         # A data change was never exempt from the bump; it was exempt from
         # being REMINDED about it, which is worse, because the reminder is the
         # whole mechanism.
-        default: 915aefa35749935c0eccef7a3de5c0d759c2f35e
+        #
+        # The base of the rename: fleet-versions.json became
+        # dependency-versions.json, and the checker that reads it became
+        # check-dependency-versions. Demanded by CHECKER_INPUT_FILES exactly
+        # as a content change would be -- a rename is a change to the file
+        # every caller reads out of this clone. The INVOCATION below still
+        # names the old path on purpose: this commit is the pull request's
+        # base, so it predates the new checker, and pointing at a path absent
+        # from the pinned tree is precisely how v2.2.10 and v2.2.11 shipped
+        # exit 127. tools/check-fleet-versions is a bridge that forwards to
+        # the new name; the follow-up flips the invocation, moves this default
+        # onto the commit carrying the new checker, and deletes the bridge.
+        default: 18d96cbf8b834282da4299d525d5c9f7ff3d4457
 
 jobs:
   ci-conformance:

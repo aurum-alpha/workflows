@@ -548,18 +548,18 @@ For a change to something the checkers *read*, it is not harmless, and the
 failure looks like the tree being wrong rather than the instrument being stale.
 Two files have caused this. A new catalog job (`job-go-build.yml`, #97) made
 gofast fail rule CAT for calling a job the checker's older listing did not
-contain. `fleet-versions.json` (wave A, `0521448`) removed four eslint packages
-and made flight-watch fail `check-fleet-versions` for not declaring packages
-the fleet had already retired.
+contain. `dependency-versions.json` (wave A, `0521448`) removed four eslint
+packages and made flight-watch fail `check-dependency-versions` for not
+declaring packages the fleet had already retired.
 
 So the rule is: **a wave that changes any file the checkers read — a catalog
-job, a checker, `fleet-versions.json` — must be followed by a commit moving the
-`standard_ref` default onto it.** Because the wave cannot name its own commit,
-that bump is a follow-up, and it has to be planned as one.
+job, a checker, `dependency-versions.json` — must be followed by a commit
+moving the `standard_ref` default onto it.** Because the wave cannot name its
+own commit, that bump is a follow-up, and it has to be planned as one.
 
 **`check-standard-ref` enforces this for data, not only for code.** It carries
-a `CHECKER_INPUT_FILES` list — `fleet-versions.json` today — and treats a
-change to one exactly as it treats a change to `tools/`. Membership is decided
+a `CHECKER_INPUT_FILES` list — `dependency-versions.json` today — and treats
+a change to one exactly as it treats a change to `tools/`. Membership is decided
 by a single question: *does a checker resolve that path relative to its own
 `__file__`, with no `AURUM_CATALOG_ROOT` escape?* If yes, the file arrives from
 the pinned clone and goes stale with it. `check-caller-permissions`,
@@ -1290,10 +1290,11 @@ while all six ran `9.2.4`.
 **The lockfile is not a sufficient answer.** It pins within a repository, and
 CI runs `--frozen-lockfile` so a build is reproducible today. What it cannot
 do is hold two repositories to the same version, or stop the pin from moving
-the next time somebody installs something unrelated. `tools/check-fleet-versions`
-compares MANIFESTS for exactly that reason — a fleet-wide claim has to live
-somewhere a fleet-wide checker can read — and a range gives it nothing to
-assert, since one range is compatible with many installed versions.
+the next time somebody installs something unrelated.
+`tools/check-dependency-versions` compares MANIFESTS for exactly that reason —
+a fleet-wide claim has to live somewhere a fleet-wide checker can read — and a
+range gives it nothing to assert, since one range is compatible with many
+installed versions.
 
 **What this buys.** An upgrade becomes an event: a Dependabot pull request
 with a diff, a CI run and a reviewer. What it replaces is an upgrade as a side
@@ -1652,7 +1653,7 @@ relative path is accepted. The job validates that the path is relative, does
 not escape the repository, and holds a `package.json` — failing by name if not,
 after checkout, rather than six steps later inside pnpm.
 `tools/check-ci-conformance` makes the same three checks against a caller's
-stub, and `tools/check-fleet-versions` discovers units by finding
+stub, and `tools/check-dependency-versions` discovers units by finding
 `package.json` on disk rather than looking in two named places. Those three
 must agree: relax one and a unit becomes invisible to another.
 
@@ -2487,10 +2488,11 @@ plugin bridge, so they are oxlint dependencies now whatever their prefix says.
 `eslint` remains in every lockfile transitively — no longer a direct dependency
 and no longer run anywhere. That residue is the price of those 14 rules.
 
-**oxlint is in `fleet-versions.json`.** That file asserts packages the fleet
-has *converged* on, and oxlint was held out of it while it was mid-wave —
-listing a package before every repo carries the value fails every repo whose
-turn has not come, and a check expected to fail is a check nobody reads. The
+**oxlint is in `dependency-versions.json`.** That file asserts packages the
+fleet has *converged* on, and oxlint was held out of it while it was
+mid-wave — listing a package before every repo carries the value fails every
+repo whose turn has not come, and a check expected to fail is a check nobody
+reads. The
 condition was "the day the last repo adopts the shared config", and that day
 passed: all nine Node apps carry `oxlint` and `oxlint-tsgolint` at one version
 each, verified against each `package.json` rather than assumed. Both are
@@ -2612,9 +2614,9 @@ Two things those rows depend on, which belong here with their reasoning:
   covered.
 - **Audit-only is not weaker enforcement — it is a checker quietly rotting.**
   Four rows now marked `gated¹` spent months at that tier, and the cost was
-  exact: nobody ran `check-fleet-versions` after two repos moved their Node app
-  out of `web/`, so it reported "package.json not found" for both and no one saw
-  it.
+  exact: nobody ran `check-dependency-versions` after two repos moved their
+  Node app out of `web/`, so it reported "package.json not found" for both and
+  no one saw it.
 
 Rules that resist a checker get the next best thing — a review question someone
 has to answer, not a line someone has to remember. In this document those are

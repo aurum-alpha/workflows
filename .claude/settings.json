@@ -7,7 +7,7 @@
       "Bash(tools/check-catalog-loops:*)",
       "Bash(tools/check-standard-ref:*)",
       "Bash(tools/check-eslint-config:*)",
-      "Bash(tools/check-fleet-versions:*)",
+      "Bash(tools/check-dependency-versions:*)",
       "mcp__Claude_Code_Remote__get_session",
       "mcp__Claude_Code_Remote__list_triggers",
       "mcp__Claude_Code_Remote__list_repos"

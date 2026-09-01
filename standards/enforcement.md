@@ -55,7 +55,7 @@ will.
 | — | `ci-ok` is the only required check | branch protection | gated |
 | — | Branches up to date before merging | branch protection | gated |
 | — | The `ci-ok` body is the one the pull request ships | — | **review only** |
-| — | Fleet pnpm version | `check-fleet-versions` | gated¹ |
+| — | Fleet pnpm version | `check-dependency-versions` | gated¹ |
 | — | Shared lint config unedited (`.oxlintrc.json`) | `check-eslint-config` | gated¹ |
 | — | Caller `with:` matches the shared job's inputs | `check-ci-conformance` IN | gated |
 | — | One shared `ci-ok` rollup, not eleven copies | `check-ci-conformance` RU | gated |

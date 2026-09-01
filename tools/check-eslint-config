@@ -52,7 +52,7 @@ with one pilot repo; a change to an existing one ships with all of them or not
 at all, which is what its "DO NOT EDIT IN ONE REPO" header has always meant.
 
 Naming a repo with no such config is a pass, not an error, for the same
-reason check-fleet-versions passes a repo with no Node app: a checker that
+reason check-dependency-versions passes a repo with no Node app: a checker that
 only runs when someone remembers to exclude the right repos is a checker that
 stops being run.
 """

@@ -52,7 +52,9 @@ prefix here as it lands.
 - `tools/check-*` — the conformance checkers. Each runs both inside a
   repository's own CI and as a fleet sweep, from one source.
 - `config/`, `setup/` — shared configuration and composite actions.
-- `fleet-versions.json` — toolchain versions the fleet standardizes on.
+- `dependency-versions.json` — the package versions every adopting repository
+  is held to: the package manager, the dev/build toolchain, and the handful of
+  runtime packages that have converged. It names versions, never repositories.
 
 ## Where work is tracked
 

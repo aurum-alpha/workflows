@@ -6,10 +6,12 @@ field — that is what corepack activates locally and what pnpm/action-setup
 reads in the shared jobs, so CI and a developer's machine can never disagree
 with each other. What that field cannot do is agree ACROSS repos: nothing stops
 one repo drifting to a different pnpm. This check closes that gap by comparing
-every repo against fleet-versions.json.
+every repo against dependency-versions.json.
 
-Run against local clones:  tools/check-fleet-versions --root /workspace
-Run against one repo:      tools/check-fleet-versions --root DIR --repo NAME
+Run against local clones:
+    tools/check-dependency-versions --root /workspace
+Run against one repo:
+    tools/check-dependency-versions --root DIR --repo NAME
 
 The --repo form is what job-ci-conformance uses: a repo's own CI has only its
 own clone, so a checker that can only run over all eleven at once is a checker
@@ -46,9 +48,9 @@ accepted either section would have called both of those fine.
 Versions are compared EXACTLY. A caret or tilde fails: `^7.3.0` in two repos
 can resolve to different versions on different days, so a range is not a pin
 and cannot be a fleet standard. That is also why a package mid-wave is absent
-from fleet-versions.json rather than listed with a target -- listing it would
-fail every repo whose turn has not come, and a check that is expected to fail
-is a check nobody reads.
+from dependency-versions.json rather than listed with a target -- listing it
+would fail every repo whose turn has not come, and a check that is expected to
+fail is a check nobody reads.
 """
 
 import argparse
@@ -124,12 +126,12 @@ def node_units(root, repo):
 def load_expected(
     repo_root: pathlib.Path,
 ) -> tuple[str, dict[str, str], dict[str, str]]:
-    data = json.loads((repo_root / "fleet-versions.json").read_text())
+    data = json.loads((repo_root / "dependency-versions.json").read_text())
     # Both dependency blocks are optional. This is defensive rather than a
-    # rollout mechanism, and it is worth being exact about which: fleet-
-    # versions.json is read from the checker's OWN repo root, so in CI both it
-    # and this file come from the same .aurum-standard checkout pinned at
-    # standard_ref. They move together, always. A new block therefore cannot
+    # rollout mechanism, and it is worth being exact about which:
+    # dependency-versions.json is read from the checker's OWN repo root, so
+    # in CI both it and this file come from the same .aurum-standard checkout
+    # pinned at standard_ref. They move together, always. A new block cannot
     # reach a caller ahead of the code that reads it, and the .get() defaults
     # buy compatibility only for someone running this checker against a
     # hand-assembled tree.
@@ -280,9 +282,9 @@ def main() -> int:
 
     if failures:
         print(
-            f"\nFAIL: {failures} repo(s) disagree with fleet-versions.json. "
-            "Either bring the repo to the fleet version, or bump "
-            "fleet-versions.json and roll the whole fleet."
+            f"\nFAIL: {failures} repo(s) disagree with "
+            "dependency-versions.json. Either bring the repo to the standard "
+            "version, or bump dependency-versions.json and roll every repo."
         )
         return 1
 

@@ -1,14 +1,20 @@
-# The web client: browser authentication, configuration and the API boundary
+# The web client: what a browser holds, fetches, sends and reports
 
 One of the Aurum Alpha engineering standards, written under the platform
 contract ([`platform.md`](platform.md)) — a per-capability standard from its
 roster. Read [`enforcement.md`](enforcement.md) for the tier each rule below
 actually holds. Artifacts: [`contracts/web-client/`](../contracts/web-client/).
 
-This document governs code that runs in a browser: how it authenticates
-(WC1), where its configuration comes from (WC2), how it talks to an Aurum
-Alpha service (WC3), what it does with the values that service sends (WC4),
-and what it reports when something breaks (WC5).
+This document governs code that runs in a browser: what it may hold as a
+credential (WC1), where its configuration comes from (WC2), how it talks to
+an Aurum Alpha service (WC3), what it does with the values that service
+sends (WC4), and what it reports when something breaks (WC5).
+
+**It does not decide how authentication works.** That belongs to the
+[authentication and authorization standard](platform.md#the-capability-roster),
+and the boundary is drawn deliberately: a rule that is equally true of a
+server-rendered application with no JavaScript is not a browser rule. WC1
+carries only what is true *because* the client is a browser.
 
 ## Why this exists
 
@@ -22,14 +28,15 @@ The roster's own rule makes this sharper than an omission. *A capability's
 absence from that table is a claim that the fleet has considered it and
 declined.* Five browser-side decisions were sitting in that gap, each one
 real, each one otherwise made independently by whoever started a frontend
-first: where an access token lives, how a bundle learns which API to call,
-who parses the error envelope, whose time zone a timestamp renders in, and
-what a client-side crash report contains.
+first: what the page may hold as a credential, how a bundle learns which
+API to call, who parses the error envelope, whose time zone a timestamp
+renders in, and what a client-side crash report contains.
 
 Two of those are not merely unowned but actively hazardous to get wrong.
-**Token storage is a security decision**, and the industry answer changed —
-the guidance that produced a generation of SPAs holding tokens in
-`localStorage` has been superseded. **Client configuration collides with
+**What the page holds is a security decision**, and the industry answer
+changed — the guidance that produced a generation of single-page apps
+keeping tokens in `localStorage` has been superseded. **Client
+configuration collides with
 [factor III](https://12factor.net/config)** in a way no server does, because
 a browser bundle is built once and served to many, so there is no process
 environment to read at start. A product that discovers that on its own
@@ -37,59 +44,56 @@ usually resolves it by baking the API URL into the bundle at build time,
 which quietly breaks build-once — and nothing fails when it does.
 
 One document rather than five, deliberately. These decisions are entangled:
-the authentication pattern determines whether the API client sends a cookie
-or a header, which determines what the runtime config document must carry,
-which determines what a browser may be told at all. Split across five
-standards each would be mostly cross-reference. This follows the shape of
-the [service contract](service.md), which bundles health, logging, config,
+what the page may hold determines how the API client presents itself, which
+determines what the runtime configuration document has to carry, which
+determines what a browser may be told at all. Split across five standards
+each would be mostly cross-reference. This follows the shape of the
+[service contract](service.md), which bundles health, logging, config,
 shutdown and provenance for the same reason — they are one process's
 obligations, and these are one client's.
 
 ## The rules
 
-### WC1. The browser is not a confidential client, and the default is a Backend-For-Frontend
+### WC1. The browser holds no tokens, and is not part of the authentication exchange
 
 A browser cannot keep a secret. Everything the bundle contains is readable
 by anyone who opens developer tools, and any script running in the page —
 including one that arrived through a compromised dependency — runs with the
-application's full authority.
+application's full authority. Every rule here follows from that one fact.
 
-**The fleet default is the Backend-For-Frontend (BFF) pattern**: a
-server-side component is the OAuth client, holds the tokens, and proxies the
-browser's API calls. The browser's credential is a session cookie, and no
-access or refresh token ever reaches JavaScript.
+**The browser's only credential is a session cookie it cannot read.** No
+access token, no refresh token, no ID token is ever held by JavaScript, and
+the page never talks to the identity provider directly. Authentication
+happens entirely in front of the application, and the browser's part in it
+is to be redirected and to come back holding a cookie.
 
-This follows [RFC 10017 / BCP 212](https://www.rfc-editor.org/rfc/rfc10017.html),
-*OAuth 2.0 for Browser-Based Applications*, which defines three patterns —
-BFF, token-mediating backend, and browser-based OAuth client — and says of
-the BFF that it is **"strongly recommended for business applications,
-sensitive applications, and applications that handle personal data."** That
-is a description of essentially everything this organisation builds, so
-adopting it as the default is the profile PC2 asks for rather than a
-preference.
+Three consequences, and they are the whole of this rule:
 
-The session cookie is `HttpOnly`, `Secure`, `SameSite=Lax`, and carries the
-`__Host-` prefix. Each of those is load-bearing: `HttpOnly` is what puts the
-credential out of reach of injected script, `__Host-` pins the cookie to
-exactly one origin with no `Domain` attribute so a sibling subdomain cannot
-set or read it, and **`Lax` rather than `Strict` because the OIDC provider
-returns the user by a top-level navigation** — `Strict` withholds the cookie
-on exactly that hop and produces a login loop that looks like a provider
-fault.
+- **Nothing is stored in `localStorage`, `sessionStorage` or IndexedDB.**
+  All three are readable by any script in the origin, so one cross-site
+  scripting flaw anywhere in the page — or in anything the page imports —
+  is a credential exfiltration. A short expiry does not redeem it: a stolen
+  token is used immediately.
+- **No credential that authenticates to the identity provider is compiled
+  into the bundle.** No client secret, no provider credential, nothing that
+  would let the page complete an exchange on its own. WC2 already forbids
+  environment values in the bundle for a different reason; this is the
+  security reason, and it is the harder of the two.
+- **On a `401`, the client navigates to the login path from its runtime
+  configuration** (WC2) and does nothing else. It never attempts a token
+  exchange, never refreshes a token, never parses one. A client that finds
+  itself needing to do any of those has been given a token, which is the
+  thing this rule prevents.
 
-The other two patterns are admitted where a repository states the reason in
-its **Conventions**, and the reason has to survive the question *what does
-this product do with personal data*. Where a browser-based client is used
-anyway, two things are not optional, because the RFC states them as
-requirements: **refresh tokens are rotated on each use or sender-constrained**,
-and they carry a bounded maximum lifetime.
-
-**Tokens are never written to `localStorage` or `sessionStorage`.** Both are
-readable by any script in the origin, which means one cross-site scripting
-flaw anywhere in the page — or in anything the page imports — is a token
-exfiltration. This is the specific practice the current guidance exists to
-end, and it is not made acceptable by a short expiry: a stolen token is used
-immediately.
+**Everything else about authentication belongs to the [authentication and
+authorization standard](platform.md#the-capability-roster), not here** —
+which component is the identity provider's client, the session cookie's
+attributes and lifetime, refresh and revocation, and what identity crosses
+from that component to the backend. Those decisions are not browser
+decisions: they apply identically to a server-rendered application with no
+JavaScript at all, and a rule that is true of a non-browser case does not
+belong in this document. What survives here is only what is true *because*
+the client is a browser.
 
 ### WC2. Configuration is fetched at load, never baked into the bundle
 
@@ -122,8 +126,8 @@ That is the browser's half of the runtime provenance rule
 
 **Nothing secret goes in the runtime config document.** It is served to
 every anonymous visitor who loads the page, so it is public by construction.
-A value that must not be public belongs behind the BFF, where the browser
-can use its effect without ever seeing it.
+A value that must not be public belongs behind the server, where the
+browser can use its effect without ever seeing it.
 
 ### WC3. One API client module, generated, owning the boundary rules
 
@@ -148,9 +152,10 @@ forty places for one of them to be missing:
   when present, wins over the client's own backoff.
 - **Collections are paged by the returned `next_cursor` until it is null**
   (HA4), never by constructing an offset.
-- **Credentials mode matches WC1**: with a BFF, requests are same-origin
-  and send the session cookie; the client attaches no `Authorization`
-  header, because under WC1 it has nothing to put in one.
+- **The client sends the session cookie and attaches no `Authorization`
+  header** — under WC1 it has nothing to put in one. Which means requests
+  go to an origin the cookie is scoped to, so the client never needs
+  cross-origin credential handling.
 
 A repository may generate this module, hand-write it, or wrap a generated
 core. What it may not do is spread these six obligations across a component
@@ -259,15 +264,16 @@ someone else's machine.
   no browser and no running service.
 - **The config document validates**, as an ordinary schema check against a
   running server, in the shape `job-image-starts` already provides.
-- **WC1's cookie attributes are observable from outside**: a login response's
-  `Set-Cookie` either carries `HttpOnly; Secure; SameSite=Lax` and the
-  `__Host-` prefix or it does not. That is a live gate, and the more valuable
-  half of WC1.
+- **WC1's storage half is observable**: the corpus reads `localStorage`,
+  `sessionStorage` and IndexedDB after a login and asserts nothing
+  credential-shaped is there. The cookie's own attributes are a live gate
+  too, but they belong to the [authentication and authorization
+  standard](platform.md#the-capability-roster), which sets them.
 - **WC1's central claim resists a checker entirely.** Proving no token
   reaches JavaScript means proving a negative about a program's runtime, and
   a gate that tried would be reading the implementation, which PC4 forbids.
-  The review question is stated instead: *where does this application's
-  access token live, and who can read it.*
+  The review question is stated instead: *what credential does this page
+  hold, and what could read it.*
 - **WC3 and WC4 stay review questions.** A checker cannot tell a generated
   client from a hand-written one that happens to be correct, and per PC4 it
   should not try; a checker that failed a build for calling `fetch` directly
@@ -275,13 +281,20 @@ someone else's machine.
 
 ## Decisions
 
-- **BFF as the default, not one option among three** (2026-08-31): the
-  alternative was to describe all three RFC 10017 patterns neutrally and let
-  each product choose. That is what "we use OIDC" unpinned looks like, and
-  PC2 exists to stop it. The RFC's own recommendation language settles which
-  one is the default for the kind of software this organisation writes.
+- **WC1 carries the browser's half only; the architecture is the
+  authentication standard's** (2026-09-01): the first draft of this rule
+  chose the Backend-For-Frontend pattern, pinned the session cookie's
+  attributes, and required refresh-token rotation. Every one of those is a
+  decision the [authentication and authorization
+  standard](platform.md#the-capability-roster) states as its own — and each
+  is equally true of a server-rendered application with no JavaScript,
+  which is the test that shows they are not browser rules. Deciding them
+  here would have been this repository's own two-answers failure, committed
+  in the standard written to close a gap. What is left is the part that
+  survives that test: web storage holds nothing, no provider credential is
+  in the bundle, and a `401` is answered by navigating, not by exchanging.
 - **One document, five rules, five roster rows** (2026-08-31): the
-  capabilities are entangled through the authentication choice, so five
+  capabilities are entangled through what the page may hold, so five
   standards would each be mostly a link to the others. The roster still
   gains a row per capability, so the table keeps its property that absence
   means declined.

@@ -186,7 +186,7 @@ the work is an issue in this repository.
 | Notifications | Message contract over the async envelope; provider at the boundary | not yet written |
 | Blob storage | S3 API as the storage protocol; reference, tenancy and upload rules | not yet written |
 | Data subject rights | Export and erasure as endpoint contracts | not yet written |
-| Browser authentication | Backend-For-Frontend profile of RFC 10017 / BCP 212: the browser is not a confidential client, tokens never reach JavaScript, the credential is an `HttpOnly` cookie | [`web-client.md`](web-client.md) WC1 |
+| What a browser may hold | Session cookie only: no token in JavaScript or web storage, no provider credential in the bundle, a `401` answered by navigating. The authentication architecture itself is the authentication row's | [`web-client.md`](web-client.md) WC1 |
 | Client configuration | Fetched from the server at load, never compiled into the bundle — [factor III](https://12factor.net/config) honoured through the server's environment, and build-once preserved | [`web-client.md`](web-client.md) WC2 |
 | API client contract | One generated client module owning problem+json parsing, idempotency keys, bounded retries and cursor paging at the boundary | [`web-client.md`](web-client.md) WC3 |
 | Presentation, formatting & i18n | The other half of the base-representation rule: viewer's locale and zone, `Intl` formatting, currency exponents | [`web-client.md`](web-client.md) WC4 |

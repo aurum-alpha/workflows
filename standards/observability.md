@@ -8,7 +8,7 @@ formats referenced here are [`identifiers.md`](identifiers.md)'s.
 
 ## Why this exists
 
-The [service baseline standard](platform.md#the-capability-roster) gives
+The [service baseline standard](service.md) gives
 every service structured logging with a request id. This standard is what makes those ids mean something *across*
 services: a request that crosses two services, or enters a job queue, must
 not drop its identity at the boundary. Both halves are standard protocols —
@@ -75,7 +75,7 @@ unchanged.
 field's name, format and presence in telemetry. How tenant context is
 *established* — from authenticated identity, never from a header an
 external caller controls — belongs to the [authorization
-standard](platform.md#the-capability-roster). Between internal services it
+standard](rbac.md). Between internal services it
 travels with the request so telemetry
 downstream stays attributable, and it is never read as an access-control
 input from anything but the authorization layer's own establishment.
@@ -101,7 +101,7 @@ behind the collector.
 Logs are not part of this rule, and stay where
 [factor XI](https://12factor.net/logs) puts them: **structured lines to
 stdout as an event stream, per the [service baseline
-standard](platform.md#the-capability-roster); OTLP is not required for
+standard](service.md); OTLP is not required for
 logs.** Factor XI is the justification, not a fleet preference — an
 application that routes or stores its own logs has taken on the execution
 environment's job, and the fleet inherits that rule rather than restating
@@ -168,7 +168,7 @@ process.
 - **Logs stay stdout, not OTLP** (2026-08-31): [factor
   XI](https://12factor.net/logs) settled log transport long before we did,
   and the [service baseline
-  standard](platform.md#the-capability-roster) adopts it; a second pipeline
+  standard](service.md) adopts it; a second pipeline
   for the same signal is the two-answers failure. OTLP is the answer for the
   signals stdout cannot carry, where twelve-factor is silent.
 - **OTel's own env vars, no fleet spelling** (2026-08-31): the standard

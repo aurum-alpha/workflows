@@ -1,7 +1,7 @@
 {
   "contract": "http",
   "schemaVersion": 1,
-  "description": "Conformance corpus for standards/http.md. 'validity': the value must validate (or fail) against the named $def — 'problem' for problem.schema.json's root, or a $def name in pagination.schema.json. 'behaviour': black-box cases a live service must satisfy; the harness drives the stimulus and asserts 'expect'. An implementation passes the whole file or names the case it fails.",
+  "description": "Conformance corpus for standards/050-http.md. 'validity': the value must validate (or fail) against the named $def — 'problem' for problem.schema.json's root, or a $def name in pagination.schema.json. 'behaviour': black-box cases a live service must satisfy; the harness drives the stimulus and asserts 'expect'. An implementation passes the whole file or names the case it fails.",
   "validity": [
     {
       "id": "problem-minimal-ok",
@@ -133,7 +133,7 @@
       "id": "unrouted-path-answers-problem-json",
       "stimulus": "GET a path no route matches",
       "expect": { "status_code": 404, "headers.content-type": "application/problem+json", "body": "validates against problem.schema.json" },
-      "note": "the most common failure in the fleet today: a framework's default HTML error page escaping to clients from the one path nobody wrote a handler for (HA3)"
+      "note": "the most common failure in the portfolio today: a framework's default HTML error page escaping to clients from the one path nobody wrote a handler for (HA3)"
     },
     {
       "id": "validation-failure-answers-field-errors",

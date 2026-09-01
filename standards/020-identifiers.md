@@ -1,14 +1,14 @@
 # Identifiers and primitive representations
 
 One of the Aurum Alpha engineering standards, written under the platform
-contract ([`platform.md`](platform.md)) — a per-capability standard from its
-roster. Read [`enforcement.md`](enforcement.md) for the tier each rule below
+contract ([`000-platform.md`](000-platform.md)) — a per-capability standard from its
+roster. Read [`999-enforcement.md`](999-enforcement.md) for the tier each rule below
 actually holds. Artifacts:
 [`contracts/identifiers/`](../contracts/identifiers/).
 
 ## Why this exists
 
-Nothing in the fleet says what an identifier is. Internal integer primary
+Nothing in the portfolio says what an identifier is. Internal integer primary
 keys leak into URLs and payloads, or don't, per product; public id formats
 are whatever the first migration picked. The oldest cross-service bugs there
 are — enumerable ids, timezone drift, floating-point money — are each one
@@ -75,7 +75,7 @@ unique index and insert-retry, collision is an engineering non-event.
 
 **Not admitted:** ULID (a second answer to the question UUIDv7 answers, per
 PC2); sequential integers as public ids (IP1); UUIDv1/v3/v5 (MAC leakage,
-name-derivation — no fleet use case).
+name-derivation — no use case here).
 
 ### IP3. Ids are opaque
 
@@ -124,7 +124,7 @@ Storage profile: MySQL columns are `DATETIME(3)` holding UTC — `DATETIME(6)`
 where the repository pins six digits — and never `TIMESTAMP`, whose 2038
 ceiling and session-zone conversion are both traps; `DATE` for calendar
 dates. Other engines state their profile in the [data-layer
-standard](platform.md#the-capability-roster) as they are admitted.
+standard](000-platform.md#the-capability-roster) as they are admitted.
 
 ### IP5. Money is integer minor units plus an explicit currency
 
@@ -164,7 +164,7 @@ Per PC3, the contract lives under
 
 ## Enforcement
 
-Registered in [`enforcement.md`](enforcement.md) under "Identifiers
+Registered in [`999-enforcement.md`](999-enforcement.md) under "Identifiers
 standard". Honestly: everything lands review-only, and the gates it is
 getting are the platform contract's own mechanisms —
 `check-contract-artifacts` proves the tree above stays present and parsing;
@@ -172,7 +172,7 @@ getting are the platform contract's own mechanisms —
 once that shared job exists. IP1 is the one rule with a capability-specific
 gate to name: a schema-level check that externally addressable tables carry
 a public id column in an admitted format, buildable once the [data-layer
-standard](platform.md#the-capability-roster) gives a checker a schema to
+standard](000-platform.md#the-capability-roster) gives a checker a schema to
 read. Until then IP1 is the review question on every API-shaped diff: *does
 anything in this payload count rows?*
 
@@ -180,7 +180,7 @@ anything in this payload count rows?*
 
 - **UUIDv7 over ULID** (2026-08-31): identical property (time-ordered,
   128-bit), but UUIDv7 is an RFC with native column types and driver
-  support everywhere the fleet runs; ULID is a spec with libraries. PC2
+  support everywhere the portfolio runs; ULID is a spec with libraries. PC2
   picks the standard.
 - **`Z`, never `+00:00`; pinned fractional precision, default three,
   never fewer** (2026-08-31): one canonical string per instant within an

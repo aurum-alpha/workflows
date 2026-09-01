@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.aurumalpha.dev/web-client/error-report.schema.json",
   "title": "Aurum Alpha browser error report",
-  "description": "What a browser client sends when something fails in the page. Governed by standards/web-client.md WC5. An error reporter is a pipe to a third party and a report is written from the one context that holds everything the user typed, so what this shape EXCLUDES is as load-bearing as what it requires: no session cookie, no token, no personal data. schemaVersion 1 — evolves additively per PC6.",
+  "description": "What a browser client sends when something fails in the page. Governed by standards/090-web-client.md WC5. An error reporter is a pipe to a third party and a report is written from the one context that holds everything the user typed, so what this shape EXCLUDES is as load-bearing as what it requires: no session cookie, no token, no personal data. schemaVersion 1 — evolves additively per PC6.",
   "type": "object",
   "properties": {
     "schema_version": {
@@ -11,7 +11,7 @@
     },
     "ts": {
       "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp",
-      "description": "When the failure happened, in the fleet's canonical instant form (IP4) — not a locale-formatted string, per WC4."
+      "description": "When the failure happened, in the portfolio's canonical instant form (IP4) — not a locale-formatted string, per WC4."
     },
     "kind": {
       "type": "string",
@@ -25,7 +25,7 @@
     },
     "request_id": {
       "$ref": "https://contracts.aurumalpha.dev/observability/context.schema.json#/$defs/requestId",
-      "description": "The id the server returned, from the problem+json envelope (http.md HA3). REQUIRED when kind is api_error — it is the whole correlation mechanism, and a report of a failed API call without it is a dead end. The browser does not originate the server's trace (WC5), so this, not a traceparent, is the handle."
+      "description": "The id the server returned, from the problem+json envelope (050-http.md HA3). REQUIRED when kind is api_error — it is the whole correlation mechanism, and a report of a failed API call without it is a dead end. The browser does not originate the server's trace (WC5), so this, not a traceparent, is the handle."
     },
     "build": {
       "type": "object",

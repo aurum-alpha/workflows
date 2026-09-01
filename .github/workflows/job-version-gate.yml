@@ -1,4 +1,4 @@
-# Fleet capability: enforce version discipline on a pull request
+# Portfolio capability: enforce version discipline on a pull request
 # (CI_STANDARD Principle 12 — one way per capability). Single-job reusable
 # workflow: the caller owns the job id and needs: wiring; this file owns the
 # entire job body.
@@ -80,8 +80,8 @@ on:
         default: ".version"
       runner:
         description: >-
-          Override runs-on. Leave empty for the fleet default. Set to a
-          GitHub-hosted label where a repo must not build on the fleet
+          Override runs-on. Leave empty for the standard default. Set to a
+          GitHub-hosted label where a repo must not build on the runner fleet
           (CI_STANDARD Principle 4).
         type: string
         default: ""
@@ -96,7 +96,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-      # Escalated above the read-only fleet floor: this job writes one comment
+      # Escalated above the read-only portfolio floor: this job writes one comment
       # on a release pull request. Nothing else in the workflow needs it.
       pull-requests: write
     steps:
@@ -171,7 +171,7 @@ jobs:
 
           if not SEMVER.fullmatch(after):
               fail(f"{vf} reads {after!r}; expected MAJOR.MINOR.PATCH.",
-                   "SemVer is the only version scheme in the fleet "
+                   "SemVer is the only version scheme in the portfolio "
                    "(CI_STANDARD, Publishing).")
 
           # A first version has nothing to be ahead of, so the comparison is

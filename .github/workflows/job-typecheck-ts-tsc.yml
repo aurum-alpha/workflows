@@ -1,4 +1,4 @@
-# Fleet capability: typecheck (CI_STANDARD Principle 12).
+# Portfolio capability: typecheck (CI_STANDARD Principle 12).
 # `ts` rather than `js`, because tsc exists only for TypeScript.
 #
 # Deliberately takes no `dir`. These repos have ONE tsconfig.json covering every

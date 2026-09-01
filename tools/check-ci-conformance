@@ -10,8 +10,8 @@ It is deliberately built to run TWO ways from ONE source:
 
   * `--repo-root .`  — inside a repo's own CI, via job-ci-conformance.yml, so a
     repo cannot drift without its own ci-ok going red. This is the enforcement.
-  * `--fleet DIR`    — across every clone under DIR, for sweeps from a
-    workstation. This is the audit.
+  * `--portfolio DIR`  — across every clone under DIR, for sweeps from a
+    workstation. This is the audit. `--fleet` is a deprecated alias for it.
 
 Rules, each naming the principle it enforces and the incident that proved the
 principle needed enforcing:
@@ -133,7 +133,7 @@ def is_library(path: pathlib.Path) -> bool:
     workflow has no trigger of its own — it only ever runs as a job inside the
     caller's pipeline, gated by the caller's ci-ok. The shared job catalog in
     this very repo is thirteen such files, so a filename allowlist would have
-    called the standard's own home the worst offender in the fleet.
+    called the standard's own home the worst offender in the portfolio.
     """
     lines = path.read_text().splitlines()
     try:
@@ -231,7 +231,7 @@ CALLEE_NEEDS = {
     "job-image-cached": {"packages": "write"},
     # The split: build stages a digest on every run, publish promotes on main,
     # prune deletes. Only starts is read-only, which is the point of splitting —
-    # the combined job took write on every pull request in the fleet so that one
+    # the combined job took write on every pull request in the portfolio so that one
     # main-only step inside it could push.
     "job-image-build": {"packages": "write"},
     "job-image-starts": {"packages": "read"},
@@ -515,7 +515,7 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
     # That is not hypothetical. On 2026-08-29 the quota was exhausted and
     # reddened osv-scanner on expense-splitter#48 and image-build plus
     # coverage-upload on wardley-mapper#39, none of which had a defect. The
-    # catalog's own twelve uploads all set 1 day; the one upload in the fleet
+    # catalog's own twelve uploads all set 1 day; the one upload in the portfolio
     # that set nothing was a .deb that lives for the minutes between packaging
     # and `gh release create`, kept for ninety days.
     #
@@ -660,7 +660,7 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
             # --- CAT: the shared workflow file actually exists --------------
             # A pin naming a file that is not there is a startup failure: GitHub
             # rejects the WHOLE workflow, so there are no jobs, no logs, and
-            # nothing else in this file runs. Cheap to check, and the fleet
+            # nothing else in this file runs. Cheap to check, and the portfolio
             # re-pin proved it is not hypothetical — bumping every sha without
             # checking the filenames still resolved left one caller pointing at
             # job-go-gofmt.yml, which had been renamed to job-go-fmt.yml.
@@ -689,7 +689,7 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
 
             # --- IN: the caller's `with:` matches the callee's schema -------
             # Only checkable when the catalog is on disk next to the repos,
-            # which is the case for a fleet run and for anyone with the
+            # which is the case for a portfolio run and for anyone with the
             # workflows clone. Silent when it is not — an unenforceable rule
             # should be visibly absent, not faked.
             schema = catalog_inputs(uses)
@@ -1093,11 +1093,15 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     g = ap.add_mutually_exclusive_group()
     g.add_argument("--repo-root", type=pathlib.Path, help="check one repo (default: cwd)")
-    g.add_argument("--fleet", type=pathlib.Path, help="check every clone under DIR")
+    # --fleet is the old spelling, kept as an alias so a sweep in someone's
+    # shell history does not start failing on a vocabulary change. argparse
+    # takes the dest from the first long option, so args.portfolio covers both.
+    g.add_argument("--portfolio", "--fleet", type=pathlib.Path,
+                   help="check every clone under DIR (--fleet: deprecated alias)")
     args = ap.parse_args()
 
-    if args.fleet:
-        repos = sorted(p for p in args.fleet.iterdir() if (p / ".github/workflows").is_dir())
+    if args.portfolio:
+        repos = sorted(p for p in args.portfolio.iterdir() if (p / ".github/workflows").is_dir())
     else:
         repos = [args.repo_root or pathlib.Path.cwd()]
 
@@ -1107,7 +1111,7 @@ def main() -> int:
         repo = repo.resolve()
         problems, ci_path = check(repo)
         if ci_path is None:
-            if args.fleet:
+            if args.portfolio:
                 continue
             print(f"no ci.yml under {repo}/.github/workflows", file=sys.stderr)
             return 2
@@ -1190,7 +1194,7 @@ LOCAL_ALLOWLIST = {
     # repo's tools/package_firmware_artifact.py to lay out the field and dev
     # packages. Nothing in either step generalises to a second firmware
     # product, and inventing inputs to pretend otherwise would put this repo's
-    # header format and packaging script into the fleet's catalog.
+    # header format and packaging script into the portfolio's catalog.
     #
     # The gap this names: the catalog models building and testing firmware,
     # not releasing it. When a second C/C++ product needs packaging, the shape
@@ -1219,7 +1223,7 @@ LOCAL_ALLOWLIST = {
         # source, so no shared job models it.
         "runner-image",
     },
-    # The only PHP repo in the fleet, and the catalog has no PHP job at all:
+    # The only PHP repo in the portfolio, and the catalog has no PHP job at all:
     # there is no job-php-*.yml to call, so these five cannot be stubs of
     # anything. CI_STANDARD's "PHP job catalog (event-manager)" section says
     # so directly — the ids are standard, the bodies "stay repo-local until a
@@ -1234,7 +1238,7 @@ LOCAL_ALLOWLIST = {
     # composer vendor tree and the downloaded React bundle into dist-php via
     # `make all`, which runs `pnpm exec grunt vendor`. Grunt, that Makefile and
     # that directory layout are one repo's, and generalising them would put
-    # them in the fleet's catalog. `test-e2e` brings up the docker-compose
+    # them in the portfolio's catalog. `test-e2e` brings up the docker-compose
     # stack and drives it with Playwright; it is also currently `if: false`,
     # so what is allow-listed here is a body that does not run.
     #
@@ -1299,7 +1303,7 @@ USES_RE = re.compile(
 # input and a Go toolchain installed in six repos that have no Go, and every
 # one of those existed to reach a scan the upstream workflow already performs.
 #
-# What an entry here costs is that the fleet can no longer re-pin in one place:
+# What an entry here costs is that the portfolio can no longer re-pin in one place:
 # bumping osv-scanner is now a sweep over the callers rather than an edit here.
 # That is the trade, and it is only worth taking where the upstream is a better
 # maintainer of the job than we are. Hence a named table and not a pattern —

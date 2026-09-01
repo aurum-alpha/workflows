@@ -1,4 +1,4 @@
-# Fleet capability: the DAG rollup (CI_STANDARD Principle 12 — one way per
+# Portfolio capability: the DAG rollup (CI_STANDARD Principle 12 — one way per
 # capability). Every repo ends its DAG with a `ci-ok` job that fails if any
 # dependency did; this is that job's body, defined once.
 #

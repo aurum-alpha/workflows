@@ -6,7 +6,7 @@ because the question "is this rule real?" has to have one answer and one place
 to look it up.
 
 The tiers — **gated**, **audit only**, **review only** — and the law they serve
-are defined in [`../STANDARDS.md`](../STANDARDS.md). Read that first; this
+are defined in [`../README.md`](../README.md). Read that first; this
 document is the register, not the argument.
 
 **Proposed gate** is a commitment, not a wish. A rule landing review-only names
@@ -19,9 +19,9 @@ taken up. Adoption is tracked in each repository's own issue tracker.
 
 ## CI standard
 
-Rules from [`ci.md`](ci.md). `tools/check-ci-conformance` runs two ways from one
+Rules from [`010-ci.md`](010-ci.md). `tools/check-ci-conformance` runs two ways from one
 source — `--repo-root` inside a repo's own CI via `job-ci-conformance.yml`, and
-`--fleet` for sweeps — because an audit and a gate that can disagree eventually
+`--portfolio` for sweeps — because an audit and a gate that can disagree eventually
 will.
 
 | # | Principle | Enforced by | Status |
@@ -55,7 +55,7 @@ will.
 | — | `ci-ok` is the only required check | branch protection | gated |
 | — | Branches up to date before merging | branch protection | gated |
 | — | The `ci-ok` body is the one the pull request ships | — | **review only** |
-| — | Fleet pnpm version | `check-dependency-versions` | gated¹ |
+| — | Standard pnpm version | `check-dependency-versions` | gated¹ |
 | — | Shared lint config unedited (`.oxlintrc.json`) | `check-eslint-config` | gated¹ |
 | — | Caller `with:` matches the shared job's inputs | `check-ci-conformance` IN | gated |
 | — | One shared `ci-ok` rollup, not eleven copies | `check-ci-conformance` RU | gated |
@@ -106,7 +106,7 @@ ninety is correct for firmware that has no other durable home, and no checker
 can tell those apart. Whether a long retention is earned stays a review
 question, and so does whether the deliverable should have a release instead.
 
-Where a CI rule reads **review only** above, `ci.md` explains why: BUILD ONCE
+Where a CI rule reads **review only** above, `010-ci.md` explains why: BUILD ONCE
 needs to know what an artifact is, and the per-stack DAG needs to know which
 stack a job belongs to. Those resist a checker honestly. The rest are candidates
 for the gate.
@@ -121,7 +121,7 @@ it was a checker change rather than twelve workflow changes.
 |---|---|---|---|
 | A1 | Every repository has an `AGENTS.md` at its root | `check-agent-docs` A1 | gated¹ |
 | A2 | It answers all six required sections | `check-agent-docs` A2 | gated¹ |
-| A3 | It references the fleet standard, or vendors it | `check-agent-docs` A3 | gated¹ |
+| A3 | It references the Aurum Alpha standard, or vendors it | `check-agent-docs` A3 | gated¹ |
 | A4 | No rule tree outside the two supported tools | `check-agent-docs` A4 | gated¹ |
 | A5 | `CLAUDE.md` opens by importing `AGENTS.md` | `check-agent-docs` A5 | gated¹ |
 | A6 | The named work queue is the only work queue | — | **review only** |
@@ -146,7 +146,7 @@ agent stopped at the approval gate, is not a fact on disk.
 
 ## Platform standard
 
-Rules from [`platform.md`](platform.md) — the
+Rules from [`000-platform.md`](000-platform.md) — the
 doctrine the per-capability application standards are written under. The
 per-capability rules themselves register here as each standard lands; these
 rows govern the doctrine.
@@ -157,7 +157,7 @@ rows govern the doctrine.
 | PC2 | Standard protocol first, profile second, internal contract last | — resists honestly | **review only** |
 | PC3 | An agreed contract carries its artifacts (schemas, corpus) | `check-contract-artifacts` (proposed) | **review only** |
 | PC4 | Gates run the corpus at the boundary, never check the implementation | `job-contract-conformance` (proposed) | **review only** |
-| PC5 | A package conforms to the spec, never the reverse; no fleet package depends on another | corpus run + manifest check in package CI (proposed) | **review only** |
+| PC5 | A package conforms to the spec, never the reverse; no shared package depends on another | corpus run + manifest check in package CI (proposed) | **review only** |
 | PC6 | Contracts evolve additively, versioned, with deprecation windows | `check-contract-evolution` (proposed) | **review only** |
 
 PC1 and PC2 are judgment — what "a tool the lifecycle depends on" or "a
@@ -169,14 +169,14 @@ that moves its row.
 
 ## Identifiers standard
 
-Rules from [`identifiers.md`](identifiers.md) —
+Rules from [`020-identifiers.md`](020-identifiers.md) —
 the first per-capability standard under the platform contract, and the first
 `contracts/` tree, so the PC3–PC6 mechanisms above now have something to run
 against.
 
 | # | Rule | Enforced by | Status |
 |---|---|---|---|
-| IP1 | Internal integer keys never leave the service; addressable rows carry a separate opaque public id | schema-level column check, buildable once the [data-layer standard](platform.md#the-capability-roster) defines a readable schema; until then the stated review question | **review only** |
+| IP1 | Internal integer keys never leave the service; addressable rows carry a separate opaque public id | schema-level column check, buildable once the [data-layer standard](000-platform.md#the-capability-roster) defines a readable schema; until then the stated review question | **review only** |
 | IP2 | Public ids use an admitted format from the table (UUIDv7, nanoid profile, prefixed handle); UUIDv4-in-an-index needs a written defence | `job-contract-conformance` running `contracts/identifiers/corpus.json` (proposed) | **review only** |
 | IP3 | Ids are opaque — equality only, no parsing meaning out of them | — resists honestly; review question on consumers | **review only** |
 | IP4 | Instants are RFC 3339 UTC `Z` at one pinned fractional precision (default three digits, extendable to six or nine, never fewer); calendar dates are `full-date`; MySQL profile `DATETIME(3)` | corpus validity + canonical cases (proposed, same job) | **review only** |
@@ -186,13 +186,13 @@ IP2, IP4 and IP5 are exactly what a corpus can hold: their gate is the
 platform contract's own `job-contract-conformance`, and the corpus already
 exists, so promoting them is building the job, not writing the cases. IP1's
 mechanical gate is named but waits on the [data-layer
-standard](platform.md#the-capability-roster). IP3 resists a checker — what a
+standard](000-platform.md#the-capability-roster). IP3 resists a checker — what a
 consumer does with an id after receiving it is not a fact on disk — and the
 document states the review question instead.
 
 ## Observability standard
 
-Rules from [`observability.md`](observability.md) —
+Rules from [`040-observability.md`](040-observability.md) —
 the propagation and telemetry-transport profile the service baseline's log
 fields and the async envelope both build on.
 
@@ -212,7 +212,7 @@ stays a review question.
 
 ## Charter: document conventions
 
-Rules from [`../STANDARDS.md`](../STANDARDS.md)'s "How these documents are
+Rules from [`../README.md`](../README.md)'s "How these documents are
 written" and "The foundation: twelve-factor".
 
 | # | Rule | Enforced by | Status |
@@ -236,7 +236,7 @@ question until someone rules on it.
 
 ## Service standard
 
-Rules from [`service.md`](service.md) — what a running service exposes. This
+Rules from [`030-service.md`](030-service.md) — what a running service exposes. This
 section carries the ledger's strongest promotion candidate: `job-image-starts`
 already accepts an `http` probe and already reads startup output, so SC1 and
 SC5 need an extension of a job every repository calls, not a new one.
@@ -250,7 +250,7 @@ SC5 need an extension of a job every repository calls, not a new one.
 | SC5 | The running service reports its service, version, commit and build timestamp | `job-image-starts` asserting the startup line (proposed) | **review only** |
 | SC6 | Endpoints up first; no dependency blocks startup; misconfiguration blocks serving but not observability; never crashloop | `job-image-starts` with every dependency absent — the image must answer `/healthz` and stay running (proposed) | **review only** |
 
-SC6 is gateable by the job the fleet already runs, and cheaply: start the
+SC6 is gateable by the job already in the catalog, and cheaply: start the
 image with **no** dependencies reachable — which is exactly what
 `job-image-starts` does today, since it starts a container in isolation — and
 assert that `/healthz` answers and the process is still running. A service
@@ -258,7 +258,7 @@ that refuses to start without its database fails that, by name, in the job it
 already calls. The crashloop half is the same observation over time: a
 container that exits and restarts is not a container that stayed up.
 
-SC1 and SC5 are the cheapest real gates the fleet can build: no new job, no new
+SC1 and SC5 are the cheapest real gates here: no new job, no new
 infrastructure, and adoptable per-repository as each grows the endpoint, so
 there is no flag day. Today `job-image-starts` can claim only that a process
 did not exit within its timeout — a service that starts, fails to reach its
@@ -284,7 +284,7 @@ It stays a review question on every diff that reads its surroundings.
 
 ## Service interfaces standard
 
-Rules from [`http.md`](http.md) — which protocol an interaction uses, and the
+Rules from [`050-http.md`](050-http.md) — which protocol an interaction uses, and the
 conventions for the default answer.
 
 | # | Rule | Enforced by | Status |
@@ -301,7 +301,7 @@ conventions for the default answer.
 HA3 is the cheapest live gate in this ledger after the service standard's own:
 `job-image-starts` already talks to a running service, so one request to a path
 that cannot exist, and one schema validation of what comes back, catches the
-failure the fleet actually has — a framework's default HTML error page escaping
+failure the portfolio actually has — a framework's default HTML error page escaping
 to clients from the one route nobody wrote a handler for.
 
 **HA8 is the cheapest gate of any kind here**, and static: the committed
@@ -323,7 +323,7 @@ than a fact about a diff.
 
 ## Web client standard
 
-Rules from [`web-client.md`](web-client.md) — the obligations of code running
+Rules from [`090-web-client.md`](090-web-client.md) — the obligations of code running
 in a browser.
 
 | # | Rule | Enforced by | Status |
@@ -337,13 +337,13 @@ in a browser.
 **WC2 is the one to build first**, and it is unusual in this repository for
 being both cheap and high-value: the failure it catches — an API origin baked
 into the bundle at build time — produces one artifact per environment, breaks
-the build-once separation the [CI standard](ci.md) requires, and **nothing
+the build-once separation the [CI standard](010-ci.md) requires, and **nothing
 fails today when it happens**. That is the exact profile of a rule that is a
 preference until something enforces it.
 
 This is the least gateable standard here so far, and the reason is structural
 rather than an admission of laziness: its subject runs on someone else's
-machine, under a browser the fleet does not control, in a bundle that has been
+machine, under a browser we do not control, in a bundle that has been
 minified. Two of the five rules have a genuinely observable boundary — the
 cookie attributes of WC1 and the build output of WC2 — and those are where the
 gates go. For the rest, the boundary a gate could legitimately check is the
@@ -352,9 +352,9 @@ wire, and the wire here is the two contracts under
 
 ## Authentication standard
 
-Rules from [`auth.md`](auth.md) — how a person is authenticated, what identity
+Rules from [`060-auth.md`](060-auth.md) — how a person is authenticated, what identity
 reaches an application, and how a session ends. The authorization model is the
-[RBAC standard](rbac.md)'s.
+[RBAC standard](070-rbac.md)'s.
 
 | # | Rule | Enforced by | Status |
 |---|---|---|---|
@@ -381,8 +381,8 @@ unenforced.
 
 ## Authorization standard
 
-Rules from [`rbac.md`](rbac.md) — the model, its operations and its decision
-corpus. Authentication is [`auth.md`](auth.md)'s; AU6 is the boundary.
+Rules from [`070-rbac.md`](070-rbac.md) — the model, its operations and its decision
+corpus. Authentication is [`060-auth.md`](060-auth.md)'s; AU6 is the boundary.
 
 | # | Rule | Enforced by | Status |
 |---|---|---|---|
@@ -403,7 +403,7 @@ seventeen checks, and either reproduces every decision or names the one it
 failed. No running service, no browser, no network — which is what PC3 promised
 a corpus would buy and the first place it fully pays.
 
-The corpus is also the fleet's first real answer to *one contract judging three
+The corpus is also the first real answer to *one contract judging three
 languages*. A Go, a TypeScript and a PHP implementation each pass it or each
 name their failure, and none of them can pass by importing anything.
 
@@ -422,3 +422,47 @@ than imagined.
 implementation that gates on a role name refuses a subject the permission model
 plainly allows, and fails only this case out of eighteen. It is the mechanical
 detector for RB4, which is otherwise the easiest rule here to break by accident.
+
+## Audit standard
+
+Rules from [`080-audit.md`](080-audit.md) — the record of consequential acts. The event
+reuses the identifiers contract's ids and timestamps and the observability
+contract's correlation fields, so a violation of IP1, IP4, OC2 or OC4 inside an
+audit event fails those contracts' rules too, from this file's schema.
+
+| # | Rule | Enforced by | Status |
+|---|---|---|---|
+| AE1 | An audit event is application data in the product's own durable, queryable, tenant-scoped store — never a log line, and the log stream is never the system of record | resists a checker honestly: whether a store is the system of record or a convenience is intent, not shape. The review question is whether a history screen could be built from it | **review only** |
+| AE2 | One event shape, and **actor and target are separate required objects** — the failure the portfolio's one existing audit table demonstrates, plus `outcome`, an `impersonator` where one acted, and public ids never internal keys | **schema-decided** — `event.schema.json` under `job-contract-conformance`; sixteen validity cases already reach their stated verdict against it | **review only** |
+| AE3 | `action` is `resource.verb`, and where a permission authorized the act the action string **is** that permission; `auth.*` is this standard's reserved namespace for acts with no permission behind them | the format half is schema-decided. The identity half gets **a static check worth writing early**: read the product's declared permission set, assert every emitted action is one of them or a reserved `auth.*` action (proposed `check-audit-actions`) | **review only** |
+| AE4 | An event is self-contained, immutable and outlives its subject: display denormalized at write time, append-only, no cascade from the target's deletion, values not references, never a credential | the shape half is schema-decided. That the store is genuinely append-only and uncascaded is a schema fact once the [data-layer standard](000-platform.md#the-capability-roster) gives a checker a schema to read; that no credential reaches `changes` is SC2's judgment again | **review only** |
+| AE5 | The floor of what must emit: authentication and session lifecycle, authorization changes, identity lifecycle, destructive writes, security-posture configuration, bulk personal-data export — and reads otherwise **not** audited | **the generative gate, and the one worth the most here** — enumerate the routes guarded by a destructive permission, exercise each, assert an event carrying that permission as its action. Fourteen `floor` cases in the corpus describe the acts; two of them are negative | **review only** |
+| AE6 | Append-only discipline is required — `INSERT` and `SELECT`, retention deletion under a separate credential. Hash chaining is **not** required; tamper-evidence needs an anchor outside the writer's reach | the grant is a schema fact, readable once the data-layer standard lands. That the request path holds no update is a review question | **review only** |
+| AE7 | Retention has a floor of one year and a stated ceiling; audit rows are tenant-scoped data; erasure **redacts the event rather than deleting it**, keeping the act and losing the identification | the erasure half is corpus-decided by `redaction` cases; `erased_at` and `erased_subjects` travelling together is schema-decided. That a retention period was chosen rather than defaulted is a judgment | **review only** |
+| AE8 | The event is written in the change's own transaction where they share a store; otherwise after the change, with a failed write logged at `error` with the payload inline, and never fire-and-forget | **resists a checker at the rule's own level** — whether a write shares a transaction is a fact about a call graph, and a gate reading source for it is the PC4 violation. The corpus reaches the observable half: a failed change produces no event, a successful one produces exactly one | **review only** |
+
+The interesting split here is between what the schema decides and what it
+cannot, and the corpus says which is which in the case rather than leaving a
+reader to assume coverage.
+
+**Two cases are recorded as passing precisely because the schema cannot catch
+them.** `invoice.voided` is a well-formed event whose only defect is that the
+product declares `invoice.void` — a second vocabulary, one action at a time,
+which is what `check-audit-actions` is for. A credential change carrying the new
+password would validate too; AE4 forbids it in prose and this ledger keeps it a
+review question rather than claiming a gate.
+
+**One redaction case is a verified detector**, in the pattern the authorization
+corpus established. Erasure targets a *subject*, not a position: in the second
+case the erased person is the target and the administrator who acted is a living
+third party whose name must survive. An implementation that redacts by position —
+"the actor is the person, redact the actor" — passes the first case and fails the
+second twice over, stripping a living person's identity while leaving the erased
+subject's in place. It was checked against exactly that broken implementation
+before landing.
+
+**AE5's generative gate is the one to build.** A list of routes that must audit
+rots the day someone adds a route, which is how the portfolio's existing audit table
+came to be a well-designed table nothing writes to. An enumeration over the
+permission set cannot rot that way, and AE3's identity rule — the action string
+*is* the permission string — exists largely to make that enumeration possible.

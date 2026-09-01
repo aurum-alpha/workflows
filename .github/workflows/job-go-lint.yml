@@ -1,4 +1,4 @@
-# Fleet capability: one Go linter, one job (CI_STANDARD Principle 12 — one
+# Portfolio capability: one Go linter, one job (CI_STANDARD Principle 12 — one
 # way per capability). Single-job reusable workflow: the caller owns the job
 # id and needs: wiring; this file owns the entire job body. Callers pass
 # secrets: inherit; vars.RUNNER resolves in the caller's context.
@@ -9,7 +9,7 @@
 # opaque "lint" job whose failure could be any of several tools.
 #
 # WHY go install RATHER THAN THE OFFICIAL ACTION: golangci-lint's published
-# release binaries are built with an older Go than the fleet targets, and it
+# release binaries are built with an older Go than the portfolio targets, and it
 # refuses to analyze a module whose Go version is newer than its own build
 # ("the Go language version used to build golangci-lint is lower than the
 # targeted Go version"). Building from source with the repo's own toolchain
@@ -33,8 +33,8 @@ on:
         default: "."
       runner:
         description: >-
-          Override runs-on. Leave empty for the fleet default. Set to a
-          GitHub-hosted label where a repo must not build on the fleet
+          Override runs-on. Leave empty for the standard default. Set to a
+          GitHub-hosted label where a repo must not build on the runner fleet
           (CI_STANDARD Principle 4 — e.g. the runner controller itself).
         type: string
         default: ""

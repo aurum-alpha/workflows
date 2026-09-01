@@ -1,8 +1,8 @@
 # Service interfaces: protocol selection and HTTP conventions
 
 One of the Aurum Alpha engineering standards, written under the platform
-contract ([`platform.md`](platform.md)) — a per-capability standard from its
-roster. Read [`enforcement.md`](enforcement.md) for the tier each rule below
+contract ([`000-platform.md`](000-platform.md)) — a per-capability standard from its
+roster. Read [`999-enforcement.md`](999-enforcement.md) for the tier each rule below
 actually holds. Artifacts: [`contracts/http/`](../contracts/http/).
 
 This document answers two questions in order: **which protocol** a given
@@ -33,18 +33,18 @@ unpinned is four incompatible error shapes that all validate.
 **HTTP with JSON is the default, and every other choice needs a reason a
 reviewer can hear.** Not because it is fastest — it is not — but because it
 is the only option every consumer, proxy, load balancer, debugger and
-support engineer already understands, and because the rest of the fleet's
+support engineer already understands, and because the rest of the portfolio's
 contracts are written against it: the error envelope, the id vocabulary,
 trace propagation, readiness, the audit trail. Leaving HTTP means leaving
 those and rebuilding them.
 
 | Interaction | Protocol | Why, and what it costs |
 |---|---|---|
-| Request/response — any public, partner or browser-facing surface | **HTTP/REST + JSON** | The default. Universally consumable, `curl`-debuggable, no codegen for the consumer, and every fleet contract already applies. |
+| Request/response — any public, partner or browser-facing surface | **HTTP/REST + JSON** | The default. Universally consumable, `curl`-debuggable, no codegen for the consumer, and every portfolio contract already applies. |
 | Request/response between internal services, high volume or strongly typed | **gRPC** | Binary protobuf, generated clients, real streaming. **Requires HTTP/2 end to end.** Costs: not browser-native (needs a proxy and grpc-web), opaque on the wire to anyone debugging, and a schema pipeline to own. Admitted **service-to-service only**. |
 | Server pushes to client, one direction | **SSE** | Plain HTTP: it inherits authentication, proxies, the error envelope, observability and automatic reconnection for free. **Requires HTTP/2 to survive contact with a real browser** (see below) **and OpenAPI 3.2 to be describable** (HA2). |
 | Both ends push, low latency, genuinely conversational | **WebSocket** | Full duplex. Costs are large and listed below. |
-| Fire-and-forget, durable, retried | **Not a synchronous protocol at all** — the [async messaging standard](platform.md#the-capability-roster)'s envelope. |
+| Fire-and-forget, durable, retried | **Not a synchronous protocol at all** — the [async messaging standard](000-platform.md#the-capability-roster)'s envelope. |
 
 **HTTP/2 is not on that list because it is not an interface — but it is a
 prerequisite for two things on it, and that is the part to get right.** You
@@ -111,12 +111,12 @@ live cursor — and not by the server needing to send, which SSE already does.
 A repository choosing one states the reason in its **Conventions**.
 
 **Leaving HTTP never leaves the standards.** Whatever the protocol, the
-fleet's contracts still bind: trace context propagates
-([`observability.md`](observability.md) OC1) — in gRPC metadata, in the
+portfolio's contracts still bind: trace context propagates
+([`040-observability.md`](040-observability.md) OC1) — in gRPC metadata, in the
 WebSocket message envelope, in the SSE request that opened the stream;
-identifiers keep their formats ([`identifiers.md`](identifiers.md));
+identifiers keep their formats ([`020-identifiers.md`](020-identifiers.md));
 failures still state a reason rather than the fact of failure
-([`service.md`](service.md) SC2); and a protocol without a native error
+([`030-service.md`](030-service.md) SC2); and a protocol without a native error
 envelope defines one in its message schema rather than doing without.
 
 ### HA2. The API is described by a committed OpenAPI document
@@ -127,7 +127,7 @@ service that serves SSE uses 3.2.**
 
 3.1 rather than 3.0 for one concrete reason: 3.1's schema dialect *is*
 JSON Schema 2020-12, the dialect every contract under
-[`contracts/`](../contracts/) already speaks. That makes the fleet's shared
+[`contracts/`](../contracts/) already speaks. That makes the portfolio's shared
 `$defs` — a timestamp, a public id, a money value — referenceable from an
 API description instead of transcribed into it, and a transcribed schema is
 a copy that drifts.
@@ -163,14 +163,14 @@ in the shape
 [`contracts/http/problem.schema.json`](../contracts/http/problem.schema.json)
 defines. The profile:
 
-| Member | Required | The fleet's pinning |
+| Member | Required | What this standard pins |
 |---|---|---|
-| `type` | yes | A **stable URI identifying the error class**, `https://errors.aurumalpha.dev/<service>/<slug>`. RFC 9457 does not require it to resolve, and the fleet does not host it today; the form is pinned so it *can* become dereferenceable without changing any client. `about:blank` is admitted only where the status code alone is the whole story. |
+| `type` | yes | A **stable URI identifying the error class**, `https://errors.aurumalpha.dev/<service>/<slug>`. RFC 9457 does not require it to resolve, and this standard does not host it today; the form is pinned so it *can* become dereferenceable without changing any client. `about:blank` is admitted only where the status code alone is the whole story. |
 | `title` | yes | Stable, human-readable, the same string for every instance of that `type` — it names the class, so it groups. |
 | `status` | yes | The HTTP status code, repeated in the body so a logged or forwarded envelope stays complete. |
-| `detail` | yes | **This instance's specific reason**, following the reason-giving rule of [`service.md`](service.md) SC2: which value, which rule, which limit. Never the bare class again, never a stack trace. |
+| `detail` | yes | **This instance's specific reason**, following the reason-giving rule of [`030-service.md`](030-service.md) SC2: which value, which rule, which limit. Never the bare class again, never a stack trace. |
 | `instance` | where one exists | A URI for the specific occurrence — typically the request path. |
-| `request_id` | yes | Extension member, the `request_id` from [`observability.md`](observability.md) OC2. It is what turns a screenshot of an error into a log query. |
+| `request_id` | yes | Extension member, the `request_id` from [`040-observability.md`](040-observability.md) OC2. It is what turns a screenshot of an error into a log query. |
 | `errors` | for validation failures | Extension array, one entry per rejected field: `field`, `rule`, `message`. A client that must highlight three bad inputs cannot do it from prose. |
 
 **`type` is a contract, `detail` is a courtesy.** Clients branch on `type`
@@ -188,7 +188,7 @@ failed and why is almost never the sensitive part.**
 A collection endpoint returns `{ "data": [...], "next_cursor": string|null }`
 and accepts `?limit=&cursor=`. The cursor is **opaque** — it is generated by
 the server, echoed by the client, and never parsed by anyone, exactly as an
-identifier is opaque under [`identifiers.md`](identifiers.md) IP3. A client
+identifier is opaque under [`020-identifiers.md`](020-identifiers.md) IP3. A client
 that decodes a cursor has coupled itself to a query plan.
 
 `next_cursor: null` means the end, unambiguously. An empty `data` array with
@@ -219,7 +219,7 @@ required request field is breaking, and breaking means `/v2/` alongside
 before `/v1/` stops answering.
 
 Minor and patch versions do not appear in the path. The build's version is
-already reported by [`service.md`](service.md) SC5, which is where "exactly
+already reported by [`030-service.md`](030-service.md) SC5, which is where "exactly
 which code answered me" belongs.
 
 ### HA6. Mutating endpoints accept an idempotency key
@@ -227,7 +227,7 @@ which code answered me" belongs.
 Every non-idempotent endpoint — `POST` that creates, anything that charges,
 sends, or dispatches — accepts an **`Idempotency-Key`** request header whose
 value is a client-generated identifier in an admitted format
-([`identifiers.md`](identifiers.md) IP2).
+([`020-identifiers.md`](020-identifiers.md) IP2).
 
 The server stores the key against the outcome for a **stated window**, named
 in the endpoint's documentation. A repeat within that window **returns the
@@ -267,8 +267,8 @@ parameter name, is `snake_case`. Headers keep HTTP's own convention
 (`Idempotency-Key`, `Retry-After`), because a header is governed by the
 surrounding standard rather than by this one.
 
-This is the fleet convention holding, not a new choice: the
-[observability standard](observability.md) already fixes snake_case for the
+This is the house convention holding, not a new choice: the
+[observability standard](040-observability.md) already fixes snake_case for the
 context vocabulary, and log lines, audit events, job envelopes and SQL
 identifiers are all snake_case already. One spelling therefore covers a
 service's database, its log lines, its events and its API, and it is
@@ -299,7 +299,7 @@ standard already applies to telemetry fields:
   prevent, and it is not made acceptable by casing.
 
 In-code naming is out of scope for this standard entirely, and follows the
-language authors' own guides per the [platform contract](platform.md). A
+language authors' own guides per the [platform contract](000-platform.md). A
 repository does not record a **Conventions** entry to use idiomatic naming
 in its own source; that is the default everywhere.
 
@@ -317,7 +317,7 @@ Per PC3, under [`contracts/http/`](../contracts/http/):
 
 ## Enforcement
 
-Registered in [`enforcement.md`](enforcement.md) under "HTTP API standard",
+Registered in [`999-enforcement.md`](999-enforcement.md) under "HTTP API standard",
 every rule review-only today. The mechanisms, in the order they become
 cheap:
 
@@ -326,7 +326,7 @@ cheap:
 - **The error envelope is real** — `job-image-starts` already talks to a
   running service, so requesting a route that cannot exist and asserting
   problem+json against the schema is one more poll. That single case catches
-  the most common failure in the fleet today: a framework's default HTML
+  the most common failure in the portfolio today: a framework's default HTML
   error page escaping to clients from the one path nobody wrote a handler
   for.
 - **Idempotency and backpressure** need a live harness driving two requests
@@ -341,7 +341,7 @@ contract tests, and the review question is whether they exist.
 ## Decisions
 
 - **snake_case in request and response bodies** (2026-08-31): this is the
-  fleet convention holding, not a fresh choice. Log lines, audit events,
+  house convention holding, not a fresh choice. Log lines, audit events,
   job envelopes and the id vocabulary are already snake_case, and SQL
   identifiers case-fold toward it, so one spelling covers the database, the
   log line, the event and the API — and deviating on this one surface is
@@ -362,7 +362,7 @@ contract tests, and the review question is whether they exist.
   the same source. In-code naming is untouched either way, per the platform
   contract.
 - **OpenAPI 3.1 as the floor, 3.2 where there is a stream** (2026-08-31):
-  3.1's dialect is JSON Schema 2020-12, so the fleet's existing `$defs` are
+  3.1's dialect is JSON Schema 2020-12, so the existing `$defs` under `contracts/` are
   referenceable rather than transcribed. The first draft stopped there and
   pinned 3.1 outright, which was already eleven months stale — 3.2 shipped
   in September 2025 — and, worse, incoherent: HA1 recommends SSE and 3.1

@@ -1,14 +1,14 @@
 # Observability transport and context propagation
 
 One of the Aurum Alpha engineering standards, written under the platform
-contract ([`platform.md`](platform.md)). Read
-[`enforcement.md`](enforcement.md) for the tier each rule holds. Artifacts:
+contract ([`000-platform.md`](000-platform.md)). Read
+[`999-enforcement.md`](999-enforcement.md) for the tier each rule holds. Artifacts:
 [`contracts/observability/`](../contracts/observability/). Id and timestamp
-formats referenced here are [`identifiers.md`](identifiers.md)'s.
+formats referenced here are [`020-identifiers.md`](020-identifiers.md)'s.
 
 ## Why this exists
 
-The [service baseline standard](service.md) gives
+The [service baseline standard](030-service.md) gives
 every service structured logging with a request id. This standard is what makes those ids mean something *across*
 services: a request that crosses two services, or enters a job queue, must
 not drop its identity at the boundary. Both halves are standard protocols —
@@ -31,7 +31,7 @@ correlation header beside `traceparent` is a second answer to a solved
 question.
 
 The async boundary is not an exception: the job envelope (the [async
-messaging standard](platform.md#the-capability-roster)) carries the same
+messaging standard](000-platform.md#the-capability-roster)) carries the same
 `traceparent`/`tracestate` as envelope fields, and the worker that dequeues continues the trace that
 enqueued. A background job with no trace identity is unattributable work —
 the exact failure this rule exists to remove.
@@ -48,7 +48,7 @@ log line and every audit event, in every language:
 |---|---|---|
 | `trace_id` | 32 lowercase hex (W3C) | from `traceparent`; minted by the first service in the chain |
 | `span_id` | 16 lowercase hex (W3C) | the current span, where the service traces; omitted where it does not |
-| `request_id` | UUIDv7 ([`identifiers.md`](identifiers.md) IP2) | minted by the receiving service at its edge, one per inbound request |
+| `request_id` | UUIDv7 ([`020-identifiers.md`](020-identifiers.md) IP2) | minted by the receiving service at its edge, one per inbound request |
 | `tenant_id` | a public id, per the identifiers standard | the authenticated tenant context, where one exists |
 
 `trace_id` and `request_id` answer different questions and both exist on
@@ -63,7 +63,7 @@ emitted line, never the identifier in source: a Go struct writes
 `TraceID string` with a `json:"trace_id"` tag — the field follows Go's own
 initialisms rule, the tag follows this contract — and a TypeScript DTO maps
 at the serialization boundary the same way. In-code style follows the
-language authors' guides, per the [platform contract](platform.md).
+language authors' guides, per the [platform contract](000-platform.md).
 snake_case is the wire choice because these fields flow into
 underscore-native and case-insensitive systems: a Prometheus label admits
 only `[a-zA-Z0-9_]`, an unquoted SQL identifier case-folds (`traceId` becomes
@@ -75,7 +75,7 @@ unchanged.
 field's name, format and presence in telemetry. How tenant context is
 *established* — from authenticated identity, never from a header an
 external caller controls — belongs to the [authorization
-standard](rbac.md). Between internal services it
+standard](070-rbac.md). Between internal services it
 travels with the request so telemetry
 downstream stays attributable, and it is never read as an access-control
 input from anything but the authorization layer's own establishment.
@@ -85,7 +85,7 @@ input from anything but the authorization layer's own establishment.
 Traces and metrics leave the application as **OTLP**. The endpoint and
 protocol come from configuration — the OpenTelemetry standard's own
 environment variables (`OTEL_EXPORTER_OTLP_ENDPOINT` and family), per PC2:
-the standard ships its own config contract, so inventing a fleet spelling
+the standard ships its own config contract, so inventing a house spelling
 would be a second answer, and per [factor III](https://12factor.net/config)
 that config belongs in the environment. The collector behind that endpoint
 is an attached resource in the sense of
@@ -101,17 +101,17 @@ behind the collector.
 Logs are not part of this rule, and stay where
 [factor XI](https://12factor.net/logs) puts them: **structured lines to
 stdout as an event stream, per the [service baseline
-standard](service.md); OTLP is not required for
-logs.** Factor XI is the justification, not a fleet preference — an
+standard](030-service.md); OTLP is not required for
+logs.** Factor XI is the justification, not a house preference — an
 application that routes or stores its own logs has taken on the execution
-environment's job, and the fleet inherits that rule rather than restating
+environment's job, and these standards inherit it rather than restating
 it. One answer per signal: stdout for logs, OTLP for the signals stdout
 cannot carry.
 
-An OpenTelemetry SDK is an implementation choice, not a fleet dependency:
+An OpenTelemetry SDK is an implementation choice, not a shared dependency:
 the contract is the wire protocol and the config variables, and an
 implementation that emits conformant OTLP without the SDK is conformant
-(PC4). The corollary per PC1: no fleet wrapper library around the SDK.
+(PC4). The corollary per PC1: no shared wrapper library around the SDK.
 
 ### OC4. The context block is required, not decorative
 
@@ -140,7 +140,7 @@ Per PC3, under [`contracts/observability/`](../contracts/observability/):
 
 ## Enforcement
 
-Registered in [`enforcement.md`](enforcement.md) under "Observability
+Registered in [`999-enforcement.md`](999-enforcement.md) under "Observability
 standard", every rule review-only today. OC1's and OC4's gate is the corpus
 under `job-contract-conformance` — inject a `traceparent`, read the emitted
 lines, black-box in any language. A live variant is available sooner:
@@ -168,9 +168,9 @@ process.
 - **Logs stay stdout, not OTLP** (2026-08-31): [factor
   XI](https://12factor.net/logs) settled log transport long before we did,
   and the [service baseline
-  standard](service.md) adopts it; a second pipeline
+  standard](030-service.md) adopts it; a second pipeline
   for the same signal is the two-answers failure. OTLP is the answer for the
   signals stdout cannot carry, where twelve-factor is silent.
-- **OTel's own env vars, no fleet spelling** (2026-08-31): the standard
+- **OTel's own env vars, no house spelling** (2026-08-31): the standard
   ships a config contract; adopting it whole is what PC2 means by
   profile.

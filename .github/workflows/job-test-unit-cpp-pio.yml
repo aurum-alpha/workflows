@@ -1,4 +1,4 @@
-# Fleet capability: test-unit for a PlatformIO C/C++ firmware unit
+# Portfolio capability: test-unit for a PlatformIO C/C++ firmware unit
 # (CI_STANDARD Principle 12 — one way per capability).
 #
 # What this asserts, and what it does not. A hosted runner has no board

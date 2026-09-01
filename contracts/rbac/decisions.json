@@ -1,7 +1,7 @@
 {
   "contract": "rbac",
   "schemaVersion": 1,
-  "description": "The decision corpus for standards/rbac.md \u2014 the artifact that makes a polyglot authorization standard enforceable from one source. An implementation loads 'roles', 'scopeContainment' and 'grants', then evaluates every case in 'checks' and either reproduces each expected decision or names the case it failed. No running service and no network: the corpus is data and check() is a pure function of its arguments, which is what RB7 requires and why it requires it.",
+  "description": "The decision corpus for standards/070-rbac.md \u2014 the artifact that makes a polyglot authorization standard enforceable from one source. An implementation loads 'roles', 'scopeContainment' and 'grants', then evaluates every case in 'checks' and either reproduces each expected decision or names the case it failed. No running service and no network: the corpus is data and check() is a pure function of its arguments, which is what RB7 requires and why it requires it.",
   "fixture": {
     "permissions": [
       "invoice.read",
@@ -313,7 +313,7 @@
       "expect": {
         "allowed": false
       },
-      "note": "a subject with no grants at all. Distinct from auth.md AU6's unknown subject, which never reaches a check"
+      "note": "a subject with no grants at all. Distinct from 060-auth.md AU6's unknown subject, which never reaches a check"
     },
     {
       "id": "permissionsFor-enumerates-the-true-set",
@@ -329,7 +329,7 @@
           "report.read"
         ]
       },
-      "note": "the union of viewer and approver, sorted, complete. This is what feeds the /me document of auth.md AU6, and it is why RB6 forbids a wildcard surviving into the check: a subject holding one would have every permission while this list enumerated none of them, and the interface would render the wrong screen"
+      "note": "the union of viewer and approver, sorted, complete. This is what feeds the /me document of 060-auth.md AU6, and it is why RB6 forbids a wildcard surviving into the check: a subject holding one would have every permission while this list enumerated none of them, and the interface would render the wrong screen"
     },
     {
       "id": "permissionsFor-is-scope-sensitive",
@@ -377,7 +377,7 @@
           "scope": "tenant:acme"
         }
       },
-      "note": "both prior fleet implementations grew checkAny and checkAll independently, which is good evidence that a codebase without them writes the loop by hand and gets it wrong somewhere"
+      "note": "both prior portfolio implementations grew checkAny and checkAll independently, which is good evidence that a codebase without them writes the loop by hand and gets it wrong somewhere"
     }
   ],
   "rejections": [

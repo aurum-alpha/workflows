@@ -1,19 +1,19 @@
 # Authentication: the identity tier, the token, and the session
 
 One of the Aurum Alpha engineering standards, written under the platform
-contract ([`platform.md`](platform.md)) — a per-capability standard from its
-roster. Read [`enforcement.md`](enforcement.md) for the tier each rule below
+contract ([`000-platform.md`](000-platform.md)) — a per-capability standard from its
+roster. Read [`999-enforcement.md`](999-enforcement.md) for the tier each rule below
 actually holds. Artifacts: [`contracts/auth/`](../contracts/auth/).
 
 This document governs how a person comes to be authenticated, what identity
 reaches an application as a result, how that identity is created in the first
 place, and how a session ends. **It does not define the authorization model** —
-who may do what is the [RBAC standard](rbac.md)'s, and
+who may do what is the [RBAC standard](070-rbac.md)'s, and
 the boundary between the two is AU6.
 
 ## Why this exists
 
-Seven products in the fleet authenticate users and they do it four different
+Seven products in the portfolio authenticate users and they do it four different
 ways: `passport` with `express-session` in five, a prototyping platform's hosted
 OIDC still wired into production in two, Keycloak in one, bespoke JWT in one.
 
@@ -27,7 +27,7 @@ Two of those four are also *leased* — they authenticate against the identity
 provider of a development platform the product was prototyped on, which is a
 live third-party dependency in the login path of software we operate.
 
-The governing idea already existed in the fleet, correctly argued, sitting in
+The governing idea already existed, correctly argued, sitting in
 one legacy application's rules directory: **the identity provider authenticates
 and the application authorizes.** This document lifts it out, generalises it,
 and states what follows.
@@ -51,11 +51,11 @@ preference.
 
 **The proxy is strongly preferred and application code is not forbidden.** RFC
 10017 does not require the BFF to be a proxy, and a Node or Go process doing the
-job is a legitimate reading of the pattern. The fleet prefers the proxy for
+job is a legitimate reading of the pattern. This standard prefers the proxy for
 reasons that hold across every product: the backend stays smaller, authentication
 is a tier the application never links against, and the whole capability arrives
-as configuration rather than as a runtime the fleet must maintain — which is what
-PC1 asks of every fleet opinion. `lua-resty-openidc` on nginx and
+as configuration rather than as a runtime we must maintain — which is what
+PC1 asks of every opinion here. `lua-resty-openidc` on nginx and
 `mod_auth_openidc` on Apache both satisfy it with no first-party code at all.
 
 An application-code BFF is admitted where a repository states the reason in its
@@ -169,10 +169,10 @@ Each field is a decision:
 
 **One convention conflict, stated rather than left silent.** Registered JWT and
 OIDC claims keep their RFC spelling and NumericDate encoding — `exp`, `iat`,
-`auth_time`, `amr` — even though [`identifiers.md`](identifiers.md) IP4
+`auth_time`, `amr` — even though [`020-identifiers.md`](020-identifiers.md) IP4
 otherwise minimises Unix-epoch timestamps. Adopting a standard whole is what PC2
 asks, and renaming half a registered claim set breaks every library that reads
-it. Fleet-added claims follow the fleet: snake_case, RFC 3339 where they carry a
+it. Locally added claims follow the same conventions: snake_case, RFC 3339 where they carry a
 time.
 
 ### AU3. An application stores a reference to the subject, never adopts it as a key
@@ -212,7 +212,7 @@ Two consequences worth stating so nobody helpfully undoes them:
 **Pin the subject identifier type to `public`.** OIDC defines two. Under
 `pairwise` the provider issues *a different subject to each client for the same
 human*, so two applications cannot tell they are looking at the same person.
-A fleet of applications behind one provider that expects identity to line up
+A portfolio of applications behind one provider that expects identity to line up
 requires `public`, and it is exactly the provider setting someone changes
 without knowing what it costs.
 
@@ -248,7 +248,7 @@ reconcile and no matching bug waiting to happen.
 
 Stated language-neutrally; an adapter implements them over SCIM, the provider's
 admin API, or anything else that satisfies the semantics. **Both are admitted,
-because the fleet standard is the interface and not the transport** — and a gate
+because the Aurum Alpha standard is the interface and not the transport** — and a gate
 that checked which was used would be testing the implementation rather than the
 boundary, which PC4 forbids. SCIM alone would not suffice regardless: its user
 schema covers the account and none of the first-login actions, the invitation, or
@@ -337,7 +337,7 @@ correct answer is **`403` plus session termination**.
 #### The boundary with authorization
 
 Everything past *known subject* belongs to the
-[RBAC standard](rbac.md): the permission model, the
+[RBAC standard](070-rbac.md): the permission model, the
 grant semantics, the check operation and its corpus. This document stops at
 producing a trustworthy subject and refusing an unknown one.
 
@@ -366,7 +366,7 @@ No standard covers this shape and two were checked, per PC2. **OIDC's UserInfo**
 returns identity claims only, carries nothing about application authorization,
 and belongs to the provider — which the browser cannot reach. **SCIM's `/Me`**
 returns a directory resource, with the same gap. The envelope is therefore a
-fleet contract, and the identity fields inside it reuse OIDC's registered claim
+portfolio contract, and the identity fields inside it reuse OIDC's registered claim
 names rather than inventing parallel spellings.
 
 ### AU7. The topology is one of three, and each states its cookie and CORS posture
@@ -407,7 +407,7 @@ sequenceDiagram
   failure surfaces as an opaque CORS error rather than a `401`.
 - **Response headers stop being readable.** Script reads only a small safelist
   unless the server names others in `Access-Control-Expose-Headers`. **This
-  silently breaks [`http.md`](http.md) HA7**: the client cannot see `Retry-After`,
+  silently breaks [`050-http.md`](050-http.md) HA7**: the client cannot see `Retry-After`,
   so the rule that it wins over the client's own backoff quietly stops applying,
   in this topology only.
 
@@ -459,7 +459,7 @@ flowchart TB
 | An OIDC library as a runtime dependency | none | one, per language |
 | **Adding a second backend** | **covered by the same proxy** | **implemented again, in the other language** |
 
-The last row is what decides it for a polyglot fleet. Under B1 one proxy
+The last row is what decides it for applications in four languages. Under B1 one proxy
 configuration covers a Go backend and a TypeScript backend against one identity.
 Under B2 it is the same authentication logic written twice, with two libraries on
 two upgrade schedules, and the second copy is where behaviour quietly diverges.
@@ -482,7 +482,7 @@ Per PC3, under [`contracts/auth/`](../contracts/auth/):
 ## Enforcement
 
 Every rule is review-only today, with gates named per rule in
-[`enforcement.md`](enforcement.md). The honest summary: **the parts with a wire
+[`999-enforcement.md`](999-enforcement.md). The honest summary: **the parts with a wire
 are gateable and the parts that are architecture are not.**
 
 - **AU2 is the strongest available gate.** The identity token is a wire shape, so
@@ -517,14 +517,14 @@ are gateable and the parts that are architecture are not.**
   regardless of provider. (a) keeps the backend a real OAuth resource server and
   is admitted; (c) is discouraged because it converts a network assumption into
   the sole authentication control.
-- **A fleet-wide user directory in the proxy was considered and rejected**
-  (2026-09-01): resolving to a fleet user id before minting would hide the
+- **A shared user directory in the proxy was considered and rejected**
+  (2026-09-01): resolving to a shared user id before minting would hide the
   provider from applications entirely, and requires the proxy to own a user
   directory — a great deal more than a proxy, and the beginning of the framework
   PC1 forbids.
 - **Eight hours idle, seven days absolute** (2026-09-01): chosen for a working
   day rather than derived from a threat model. A repository with a sharper threat
-  model sets its own and says why; the value of a fleet default is that products
+  model sets its own and says why; the value of a standard default is that products
   without one stop inventing.
 - **Multi-tenancy is out of scope** (2026-09-01): Auth0 Organizations, a Keycloak
   realm per customer, and a single realm with groups solve the same problem in

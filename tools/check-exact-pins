@@ -40,7 +40,7 @@ import sys
 #   and the version actually used is pinned by .node-version.
 #
 #   peerDependencies SHOULD be a range. Pinning one forces a single version on
-#   every consumer, which is a defect rather than rigour. The fleet has none
+#   every consumer, which is a defect rather than rigour. The portfolio has none
 #   today -- all nine units are applications -- but a library repository would
 #   depend on this exclusion.
 PINNED_SECTIONS = ("dependencies", "devDependencies", "optionalDependencies")

@@ -1,0 +1,188 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/audit/event.schema.json",
+  "title": "Aurum Alpha audit event",
+  "description": "The record of one consequential act. Governed by standards/080-audit.md AE2-AE4. Ids and timestamps come from the identifiers contract and the correlation fields from the observability contract, referenced rather than restated. This is application DATA (AE1), not a log line: the shape below is what is stored and queried, whatever else it is also emitted to. schema_version 1 - evolves additively per PC6.",
+  "type": "object",
+  "$defs": {
+    "action": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+      "description": "AE3. resource.verb, the same pattern standards/070-rbac.md RB2 pins for permissions, because where an act was authorized by a permission the action string IS that permission - the same bytes, not a past-tense rendering of them. That identity is what makes 'show me everything done under invoice.void' one query and what makes AE5's floor mechanically checkable."
+    },
+    "reservedAction": {
+      "enum": [
+        "auth.login",
+        "auth.login_failed",
+        "auth.logout",
+        "auth.session_revoked",
+        "auth.access_denied"
+      ],
+      "description": "AE3's reserved namespace, for auditable acts that happen before or outside authorization and so have no permission behind them. The auth.* namespace belongs to this standard; a product does not extend it, and everything else it audits is one of its own declared permissions."
+    },
+    "principal": {
+      "type": "object",
+      "description": "AE2. The shape of both actor and target - deliberately the same shape, because the thing acted upon is as often a principal as not (granting a role to a user) and two near-identical shapes is how they drift apart.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "minLength": 1,
+          "description": "For an actor: user, service, system (a scheduled job with no human behind it) or anonymous (a failed login, where no authenticated actor exists yet). For a target: the entity type as the product names it - invoice, user, role - one stable string per type."
+        },
+        "id": {
+          "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/publicId",
+          "description": "The APPLICATION's own public id, per IP1. Never an internal integer key: an audit row outlives the row it points at, so a storage key degrades to a number that once meant something. Absent only where type is anonymous."
+        },
+        "display": {
+          "type": "string",
+          "minLength": 1,
+          "description": "AE4. Denormalized AT WRITE TIME - the value as it was then, never a foreign key resolved at read time. Carried alongside the id and never instead of it: the id is the durable identity, this is what makes the row legible years later when the user is deleted and the record renamed. Replaced with a tombstone by AE7 erasure."
+        },
+        "ip": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Where the principal is a person acting over HTTP. Personal data: removed by AE7 erasure."
+        },
+        "user_agent": {
+          "type": "string",
+          "description": "Where the principal is a person acting over HTTP. Personal data: removed by AE7 erasure."
+        },
+        "impersonator": {
+          "$ref": "#/$defs/principal",
+          "description": "AE2. Required on the actor wherever a support or admin feature let one person act as another. The act is recorded as the impersonated user because that is what happened; this records who is accountable for it. An impersonation feature whose audit rows cannot distinguish the two is an accountability hole."
+        }
+      },
+      "required": ["type"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "description": "AE2/IP1: every principal but an anonymous one is identified. 'anonymous' exists for the failed-login case, where by definition no authenticated actor exists yet.",
+          "if": {
+            "not": { "properties": { "type": { "const": "anonymous" } }, "required": ["type"] }
+          },
+          "then": { "required": ["id"] }
+        }
+      ]
+    },
+    "change": {
+      "type": "object",
+      "description": "AE4. One field the act altered, as VALUES rather than references, so the row still says what changed after the code that produced it has been rewritten twice. Never carries a secret, a credential or a raw authentication factor: a changed password is audited as the password changed, with no value on either side.",
+      "properties": {
+        "field": { "type": "string", "minLength": 1 },
+        "before": {
+          "description": "Absent on creation. Null is a value, not an absence - a field set to null has before: null, a field that did not exist omits the key."
+        },
+        "after": { "description": "Absent on deletion." },
+        "redacted": {
+          "type": "boolean",
+          "description": "True where the values are deliberately withheld rather than unchanged: a secret (never recorded at all) or personal data removed by AE7 erasure. Distinguishes 'we are not telling you' from 'nothing was there'."
+        }
+      },
+      "required": ["field"],
+      "additionalProperties": false
+    }
+  },
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "event_id": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/uuidv7",
+      "description": "The event's own public id. What a support ticket quotes, and what makes a replayed delivery deduplicable where events are shipped over the async envelope."
+    },
+    "occurred_at": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp",
+      "description": "AE2. When the ACT happened, from a clock. Not when the row was written: those differ for queued and retried work, and the difference is the interesting one."
+    },
+    "action": {
+      "anyOf": [
+        { "$ref": "#/$defs/reservedAction" },
+        { "$ref": "#/$defs/action" }
+      ]
+    },
+    "outcome": {
+      "enum": ["success", "failure"],
+      "description": "AE2. A refused act is auditable and is usually the more interesting row - auth.login_failed and auth.access_denied exist for exactly that reason."
+    },
+    "actor": {
+      "$ref": "#/$defs/principal",
+      "description": "AE2. WHO DID IT. Separate from target and not optional: the portfolio's one pre-existing audit table fused the two into a single user_id and consequently cannot answer who granted anyone access."
+    },
+    "target": {
+      "$ref": "#/$defs/principal",
+      "description": "AE2. WHAT IT WAS DONE TO."
+    },
+    "tenant_id": {
+      "$ref": "https://contracts.aurumalpha.dev/observability/context.schema.json#/$defs/tenantId"
+    },
+    "trace_id": {
+      "$ref": "https://contracts.aurumalpha.dev/observability/context.schema.json#/$defs/traceId"
+    },
+    "span_id": {
+      "$ref": "https://contracts.aurumalpha.dev/observability/context.schema.json#/$defs/spanId"
+    },
+    "request_id": {
+      "$ref": "https://contracts.aurumalpha.dev/observability/context.schema.json#/$defs/requestId"
+    },
+    "changes": {
+      "type": "array",
+      "description": "Optional. What the act altered, per field.",
+      "items": { "$ref": "#/$defs/change" }
+    },
+    "reason": {
+      "type": "string",
+      "description": "Optional free text: the justification an administrator typed, or the decision reason from standards/070-rbac.md RB8 on a refusal. RB8's reason belongs here and in the log, never in the response to the refused caller."
+    },
+    "erased_at": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp",
+      "description": "AE7. Set when a data-subject erasure removed identifying content from this event. Its presence is what distinguishes a redacted row from one that never carried a display value, and this pair is the only modification permitted against AE4's append-only rule."
+    },
+    "erased_subjects": {
+      "type": "array",
+      "minItems": 1,
+      "description": "AE7. WHOSE identification was removed - the public ids the erasure covered. Required with erased_at, because erasure targets a subject and not a position: an event where the erased person is the target still carries the living administrator who acted, with their display intact. Recording the ids is what makes the erasure checkable after the fact - for each id here, no principal in this event bearing that id may carry display, ip or user_agent. JSON Schema cannot express that cross-reference, so it is checked by the corpus runner against corpus.json's 'redaction' cases rather than claimed here.",
+      "items": {
+        "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/publicId"
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "event_id",
+    "occurred_at",
+    "action",
+    "outcome",
+    "actor",
+    "target"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "description": "AE2: an anonymous ACTOR is admitted only on the two actions where the application has no local record to name - a refused authentication, and AU6's authenticated-but-unknown subject. Anywhere else it is an implementation that failed to resolve the actor and wrote a placeholder, which is the audit trail losing its point quietly. An anonymous TARGET carries no such restriction: a failed login naming an account that does not exist has a real target the application cannot identify.",
+      "if": {
+        "properties": { "actor": { "properties": { "type": { "const": "anonymous" } }, "required": ["type"] } },
+        "required": ["actor"]
+      },
+      "then": {
+        "properties": { "action": { "enum": ["auth.login_failed", "auth.access_denied"] } }
+      }
+    },
+    {
+      "description": "OC4: an event emitted within request context carries the context block. An event carrying any request-scoped id carries the floor pair - the same rule the log-line schema applies, because an audit row that cannot be joined to the logs of its own request is half a record.",
+      "if": {
+        "anyOf": [
+          { "required": ["trace_id"] },
+          { "required": ["span_id"] },
+          { "required": ["request_id"] }
+        ]
+      },
+      "then": { "required": ["trace_id", "request_id"] }
+    },
+    {
+      "description": "AE7: the erasure marker and its subjects travel together, in both directions. A timestamp without the ids says an erasure happened and not whose, which cannot be verified; ids without a timestamp says whose and not when. The act, the ids, the time and the sequence survive an erasure - the display strings and the network identifiers of the named subjects do not, and that part is judged by corpus.json's 'redaction' cases because it is a cross-reference JSON Schema cannot express.",
+      "if": { "required": ["erased_at"] },
+      "then": { "required": ["erased_subjects"] },
+      "else": {
+        "not": { "required": ["erased_subjects"] }
+      }
+    }
+  ]
+}

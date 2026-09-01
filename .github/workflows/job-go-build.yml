@@ -1,4 +1,4 @@
-# Fleet capability: build for a Go deployable unit (CI_STANDARD Principle 12 —
+# Portfolio capability: build for a Go deployable unit (CI_STANDARD Principle 12 —
 # one way per capability). The catalog had job-go-mod, fmt, vet, lint,
 # test-unit and govulncheck but no build, so the one job the standard insists
 # comes FIRST was the one every Go repo hand-rolled: gofast behind
@@ -11,11 +11,11 @@
 # no commit or timestamp into their binaries at all, and the third could only
 # get one by keeping its CI coupled to its Makefile.
 #
-# WHERE it stamps is not configurable. Every Go repo in the fleet exposes
+# WHERE it stamps is not configurable. Every Go repo in the portfolio exposes
 # `<module>/internal/version` with Version, Build, Commit and BuiltAt, and the
 # module path comes from go.mod, so there is nothing for a caller to pass and
 # nothing for two repos to disagree about. Which package a Go program keeps its
-# build identity in has no operational consequence whatsoever, and a fleet
+# build identity in has no operational consequence whatsoever, and a portfolio
 # standard that lets it vary is decorating a preference as a decision.
 name: job-go-build
 
@@ -32,7 +32,7 @@ on:
           ./cmd/<name> — e.g. '["fastgen","fastproxy"]' — or an OBJECT naming
           its own path, '[{"name":"gen-headers","path":"./tools/gen-headers"}]'.
 
-          ./cmd/<name> is the fleet convention and every deployable follows it
+          ./cmd/<name> is the house convention and every deployable follows it
           today, but that is a fact about today and it was hardcoded as though
           it were a property. client-manager already keeps real commands in
           ./tools, so the first repo that needs one built would have had to go
@@ -104,8 +104,8 @@ on:
         default: ""
       runner:
         description: >-
-          Override runs-on. Leave empty for the fleet default. Set to a
-          GitHub-hosted label where a repo must not build on the fleet
+          Override runs-on. Leave empty for the standard default. Set to a
+          GitHub-hosted label where a repo must not build on the runner fleet
           (CI_STANDARD Principle 4 — e.g. the runner controller itself).
         type: string
         default: ""
@@ -282,7 +282,7 @@ jobs:
           goos, goarch = os.environ["GOOS_IN"].strip(), os.environ["GOARCH_IN"].strip()
 
           # The stamp target is derived, never passed: go.mod names the module,
-          # and the fleet standard puts build identity in internal/version.
+          # and the Aurum Alpha standard puts build identity in internal/version.
           module = None
           for line in pathlib.Path("go.mod").read_text().splitlines():
               m = re.match(r"\s*module\s+(\S+)", line)
@@ -302,7 +302,7 @@ jobs:
           if names:
               if not pkgdir.is_dir():
                   sys.exit(
-                      "internal/version/ not found. Every Go repo in the fleet "
+                      "internal/version/ not found. Every Go repo in the portfolio "
                       "stamps build identity there (CI_STANDARD Principle 13); "
                       "the linker ignores -X for a package that does not exist, "
                       "so this fails loudly rather than shipping an unstamped "
@@ -317,7 +317,7 @@ jobs:
               if missing:
                   sys.exit(
                       f"internal/version declares no {', '.join(missing)} — "
-                      "-X would be silently ignored for each. The fleet stamps "
+                      "-X would be silently ignored for each. The portfolio stamps "
                       f"{', '.join(STAMPED)}; add the missing var(s) as a "
                       "package-level string.")
 
@@ -340,7 +340,7 @@ jobs:
           # It is duplicated rather than extracted because a reusable workflow runs in
           # the CALLER's checkout: it cannot reference a catalog composite without its
           # own SHA pin, which makes every change a two-commit dance. setup/node-pnpm's
-          # header records the fleet making the same trade for the same reason. The
+          # header records the portfolio making the same trade for the same reason. The
           # checker is what makes the duplicate safe.
           def resolve_version_stamp(version_file, version, commit):
               """Did THIS commit cut a release, and what should the build stamp?
@@ -460,7 +460,7 @@ jobs:
       # refuses a duplicate name, so without it two matrix legs would race and
       # the second would fail; with it, one `artifact_name: server-go-bin`
       # yields server-go-bin-amd64 and server-go-bin-arm64 and every repo in
-      # the fleet names the same thing the same way.
+      # the portfolio names the same thing the same way.
       - name: Upload binaries
         if: inputs.artifact_name != '' && inputs.binaries != '[]'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

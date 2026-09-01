@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.aurumalpha.dev/web-client/runtime-config.schema.json",
   "title": "Aurum Alpha browser bootstrap document",
-  "description": "What the origin that served the bundle tells the client, rendered from THAT origin's environment. Governed by standards/web-client.md WC2. Deliberately minimal: it exists to solve the ordering problem that the client cannot ask the API where the API is. Everything the backend knows about itself belongs on GET /api/config, and the frontend's own build provenance is compiled into the bundle \u2014 no server can supply it, because under a split origin the backend has no idea which frontend build a given browser is running. Served to every anonymous visitor and therefore PUBLIC BY CONSTRUCTION. schemaVersion 2 \u2014 see the schema_version note.",
+  "description": "What the origin that served the bundle tells the client, rendered from THAT origin's environment. Governed by standards/090-web-client.md WC2. Deliberately minimal: it exists to solve the ordering problem that the client cannot ask the API where the API is. Everything the backend knows about itself belongs on GET /api/config, and the frontend's own build provenance is compiled into the bundle \u2014 no server can supply it, because under a split origin the backend has no idea which frontend build a given browser is running. Served to every anonymous visitor and therefore PUBLIC BY CONSTRUCTION. schemaVersion 2 \u2014 see the schema_version note.",
   "type": "object",
   "properties": {
     "schema_version": {

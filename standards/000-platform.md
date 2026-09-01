@@ -1,17 +1,17 @@
 # The platform contract
 
 One of the Aurum Alpha engineering standards — read
-[`../STANDARDS.md`](../STANDARDS.md) for the charter this is written under,
-and [`enforcement.md`](enforcement.md) for the tier each rule below actually
+[`../README.md`](../README.md) for the charter this is written under,
+and [`999-enforcement.md`](999-enforcement.md) for the tier each rule below actually
 holds.
 
 This document states the doctrine every application-layer standard is written
-under: what form a fleet opinion about a platform capability is allowed to
+under: what form an opinion about a platform capability is allowed to
 take. The capabilities themselves — authentication, logging, jobs, audit, and
 the rest — each get their own standard, tracked in this repository's issues
-and indexed in the roster below. This document is the constitution those
-standards are drafted against, the same way the charter is the constitution
-for this one.
+and indexed in the roster below. The charter says what a standard is; this
+document says what form one about a platform capability may take, and nothing
+more than that.
 
 ## Why this exists
 
@@ -22,9 +22,15 @@ re-derives them per product ships worse versions of all of them. A framework
 answers each once and hands you the answer. That instinct — an opinion for
 everything, decided once — is correct, and this standard exists to keep it.
 
+These capabilities are exactly the arbitrary decisions the charter's *What this
+is for* describes: every application must decide them, and no application's
+domain has an opinion about how. This document says what form our answer to one
+of them is allowed to take. **Each capability's own answer belongs to its
+standard, in the roster below — never here.**
+
 What a framework gets wrong, for us, is the delivery vehicle. The answers
 arrive as a CLI, a runtime library, and a deploy tool. Three consequences,
-each fatal at fleet scale:
+each fatal at this scale:
 
 - **The library is a dependency the application can never leave.** Every
   generated app imports the framework's auth, jobs and observability at
@@ -34,9 +40,9 @@ each fatal at fleet scale:
   code is owned by the app and immediately starts diverging from the framework
   that emitted it, while still depending on its runtime — locked in *and*
   diverged, so upgrades become archaeology.
-- **The framework's language decides the fleet's.** This fleet is Go,
-  TypeScript, PHP and embedded C++. A library was never available as the
-  fleet-wide answer to anything.
+- **The framework's language decides ours.** We build in Go, TypeScript, PHP
+  and embedded C++. A library was never available as the single answer to
+  anything.
 
 The charter already names the failure in the abstract: *a standard that only
 works while a particular repository is reachable is not a standard, it is a
@@ -58,25 +64,25 @@ which is the charter's law, applied to the application layer.
 
 ### PC1. An opinion is a contract, never a tool
 
-A fleet answer to a platform capability is a **protocol** (behaviour stated at
+The answer to a platform capability is a **protocol** (behaviour stated at
 a boundary: an endpoint, a message, a log line, an environment variable) or an
 **interface specification** (a data model and operations with defined
 semantics, implementable in any language). It is never a CLI an application's
 lifecycle depends on, never a framework, never a shared runtime library an
 application must import, never a deploy tool.
 
-The corollary for what this repository may ship: **fleet tooling verifies, or
+The corollary for what this repository may ship: **shared tooling verifies, or
 copies once.** A checker that fails a build, a conformance suite that runs a
 corpus, a template that is copied at a repository's birth and never consulted
 again — all allowed. A generator that stays attached to the application, a
-tool that owns deploy, a runtime the fleet imports — not allowed, whoever
+tool that owns deploy, a runtime every application imports — not allowed, whoever
 writes it. Building the framework in-house does not fix the framework problem;
 it relocates it to a vendor we have to staff.
 
 ### PC2. Standard protocol first, profile second, internal contract last
 
 Where an industry standard suffices — OIDC for identity, OTLP for telemetry,
-W3C trace context for propagation, RFC 9457 for HTTP errors — the fleet
+W3C trace context for propagation, RFC 9457 for HTTP errors — the standard
 adopts it, as a **written profile**: the document pins the choices the
 standard leaves open, because "we use OIDC" unpinned is four implementations
 waiting to happen.
@@ -133,14 +139,14 @@ the spec first, in its own change, and the package follows.
 
 - **One package per capability contract.** No `aurum-common`. A grab-bag
   package is the framework re-forming by accretion.
-- **No fleet package depends on another fleet package.** The moment they
+- **No shared package depends on another shared package.** The moment they
   stack, importing one means importing the pile, and the pile is a framework.
 - **Every package release passes the contract's own corpus** — the same gate
   a bespoke implementation faces, because per PC4 the gate cannot tell them
   apart, and per this rule it must not.
 
 A repository may substitute its own implementation of any contract and stay
-green. At handover, a client repository that uses a fleet package vendors it,
+green. At handover, a client repository that uses a shared package vendors it,
 exactly as it vendors the standards documents — which these packages survive
 because each is small, single-capability, and corpus-defined.
 
@@ -150,49 +156,49 @@ Every versioned shape (envelopes, events, log lines) carries a schema-version
 field. Changes are additive — new optional fields, never a removed or
 repurposed one. A breaking change is a new version, and the contract states
 its deprecation window: how long implementations must accept the old version
-while emitting the new. A fleet of specifications without a change discipline
+while emitting the new. A body of specifications without a change discipline
 re-creates the drift problem one level up, with the added indignity that the
 documents were supposed to be the fix.
 
 ## The capability roster
 
-Every platform capability the fleet has an opinion on, or has decided to
-have one. **A capability's absence from this table is a claim that the fleet
-has considered it and declined** — so a reader can distinguish "not yet
+Every platform capability these standards have an opinion on, or has decided to
+have one. **A capability's absence from this table is a claim that we have
+considered it and declined** — so a reader can distinguish "not yet
 written" (a row saying so) from "not considered" (a gap in this table, which
 is a defect in this document). A row gains its link when the standard lands;
 the ledger tracks what is enforced. Where a capability has no document yet,
 the work is an issue in this repository.
 
-| Capability | The fleet answer takes the form of | Standard |
+| Capability | The standard takes the form of | Document |
 |---|---|---|
-| Authentication | OIDC profile: a proxy is the relying party, one signed identity token crosses to the backend, the application is never in the authentication chain | [`auth.md`](auth.md) |
-| Authorization | Application-owned RBAC as a full interface spec: model, operations, semantics, corpus — never derived from token claims | [`rbac.md`](rbac.md) |
-| Identity provisioning | The application originates the user and creates the identity; four operations over SCIM or an admin API | [`auth.md`](auth.md) AU4 |
-| Session lifecycle | Idle and absolute limits, invisible refresh, back-channel logout with a short-token backstop | [`auth.md`](auth.md) AU5 |
-| Configuration | [Factor III](https://12factor.net/config) profile: variable naming, fail-loud on missing, no environment detection in code | [`service.md`](service.md) SC3 |
+| Authentication | OIDC profile: a proxy is the relying party, one signed identity token crosses to the backend, the application is never in the authentication chain | [`060-auth.md`](060-auth.md) |
+| Authorization | Application-owned RBAC as a full interface spec: model, operations, semantics, corpus — never derived from token claims | [`070-rbac.md`](070-rbac.md) |
+| Identity provisioning | The application originates the user and creates the identity; four operations over SCIM or an admin API | [`060-auth.md`](060-auth.md) AU4 |
+| Session lifecycle | Idle and absolute limits, invisible refresh, back-channel logout with a short-token backstop | [`060-auth.md`](060-auth.md) AU5 |
+| Configuration | [Factor III](https://12factor.net/config) profile: variable naming, fail-loud on missing, no environment detection in code | [`030-service.md`](030-service.md) SC3 |
 | Secrets | Delivery convention — how a secret reaches a process; never a vendor SDK in application code | not yet written |
-| Logging | [Factor XI](https://12factor.net/logs) profile: structured log-line schema to stdout; transport is the platform's problem | [`service.md`](service.md) SC2 |
-| Health & readiness | Two-endpoint contract, fixed paths and shapes | [`service.md`](service.md) SC1 |
-| Service lifecycle | [Factor IX](https://12factor.net/disposability) profile: SIGTERM means drain — readiness flips, in-flight completes, stated timeout | [`service.md`](service.md) SC4 |
-| Runtime provenance | The running service reports the commit and build it is | [`service.md`](service.md) SC5 |
-| Observability & context propagation | OTLP profile; W3C trace context; one id vocabulary across logs, traces, events | [`observability.md`](observability.md) |
-| Service interfaces & HTTP APIs | Protocol selection (HTTP default, gRPC internal-only, SSE before WebSocket); OpenAPI description; RFC 9457 errors; pagination, versioning, idempotency keys, retry semantics; snake_case wire naming | [`http.md`](http.md) |
-| Identifiers & primitives | Internal keys never exposed; public-id format table; RFC 3339 UTC; integer minor-unit money | [`identifiers.md`](identifiers.md) |
+| Logging | [Factor XI](https://12factor.net/logs) profile: structured log-line schema to stdout; transport is the platform's problem | [`030-service.md`](030-service.md) SC2 |
+| Health & readiness | Two-endpoint contract, fixed paths and shapes | [`030-service.md`](030-service.md) SC1 |
+| Service lifecycle | [Factor IX](https://12factor.net/disposability) profile: SIGTERM means drain — readiness flips, in-flight completes, stated timeout | [`030-service.md`](030-service.md) SC4 |
+| Runtime provenance | The running service reports the commit and build it is | [`030-service.md`](030-service.md) SC5 |
+| Observability & context propagation | OTLP profile; W3C trace context; one id vocabulary across logs, traces, events | [`040-observability.md`](040-observability.md) |
+| Service interfaces & HTTP APIs | Protocol selection (HTTP default, gRPC internal-only, SSE before WebSocket); OpenAPI description; RFC 9457 errors; pagination, versioning, idempotency keys, retry semantics; snake_case wire naming | [`050-http.md`](050-http.md) |
+| Identifiers & primitives | Internal keys never exposed; public-id format table; RFC 3339 UTC; integer minor-unit money | [`020-identifiers.md`](020-identifiers.md) |
 | Data layer | Migrations-only schema change; seeding contract; tenancy isolation rules | not yet written |
 | Async jobs & messaging | Internal envelope contract; at-least-once plus dedupe; signed webhooks | not yet written |
 | Maintenance jobs | The Job interface contract: registration, single-flight, run observability — and where it lands against [factor XII](https://12factor.net/admin-processes) | not yet written |
-| Audit events | Event schema contract with required context fields | not yet written |
+| Audit events | Internal event contract: application data and not a log line; actor separate from target; the action string is the permission string; a stated floor of what must emit; OCSF at the export boundary rather than as the record | [`080-audit.md`](080-audit.md) |
 | Security baseline | Response-header set, scanning, image pinning, secrets doctrine | not yet written |
 | Feature flags | Evaluation contract; standard-first (OpenFeature is the candidate) | not yet written |
 | Notifications | Message contract over the async envelope; provider at the boundary | not yet written |
 | Blob storage | S3 API as the storage protocol; reference, tenancy and upload rules | not yet written |
 | Data subject rights | Export and erasure as endpoint contracts | not yet written |
-| What a browser may hold | Session cookie only: no token in JavaScript or web storage, no provider credential in the bundle, a `401` answered by navigating. The authentication architecture itself is the authentication row's | [`web-client.md`](web-client.md) WC1 |
-| Client configuration | Fetched from the server at load, never compiled into the bundle — [factor III](https://12factor.net/config) honoured through the server's environment, and build-once preserved | [`web-client.md`](web-client.md) WC2 |
-| API client contract | One generated client module owning problem+json parsing, idempotency keys, bounded retries and cursor paging at the boundary | [`web-client.md`](web-client.md) WC3 |
-| Presentation, formatting & i18n | The other half of the base-representation rule: viewer's locale and zone, `Intl` formatting, currency exponents | [`web-client.md`](web-client.md) WC4 |
-| Frontend observability | The browser does not originate the server's trace; correlation by request id; a closed error-report shape | [`web-client.md`](web-client.md) WC5 |
+| What a browser may hold | Session cookie only: no token in JavaScript or web storage, no provider credential in the bundle, a `401` answered by navigating. The authentication architecture itself is the authentication row's | [`090-web-client.md`](090-web-client.md) WC1 |
+| Client configuration | Fetched from the server at load, never compiled into the bundle — [factor III](https://12factor.net/config) honoured through the server's environment, and build-once preserved | [`090-web-client.md`](090-web-client.md) WC2 |
+| API client contract | One generated client module owning problem+json parsing, idempotency keys, bounded retries and cursor paging at the boundary | [`090-web-client.md`](090-web-client.md) WC3 |
+| Presentation, formatting & i18n | The other half of the base-representation rule: viewer's locale and zone, `Intl` formatting, currency exponents | [`090-web-client.md`](090-web-client.md) WC4 |
+| Frontend observability | The browser does not originate the server's trace; correlation by request id; a closed error-report shape | [`090-web-client.md`](090-web-client.md) WC5 |
 
 Two rows deserve a word on why they are the worked examples:
 
@@ -205,32 +211,16 @@ corpus judges all three. When someone asks what "an interface spec, not a
 library" means, the answer is that standard.
 
 **Async messaging** is the model internal contract: no wire standard covers
-it fully (its standard evaluates CloudEvents before inventing), so the fleet
+it fully (its standard evaluates CloudEvents before inventing), so the standard
 defines the envelope — and the discipline PC2 demands is visible right there:
 the invention is scoped to the envelope, while the identity inside it stays
 W3C trace context, per the propagation profile.
 
 ## Enforcement
 
-Every rule here is review-only today, honestly, with the gates named per rule in
-[`enforcement.md`](enforcement.md):
-
-- **PC1 and PC2 resist a checker** and stay review questions: what
-  constitutes "a tool the lifecycle depends on" or "a standard that
-  suffices" is judgment. The review question is stated, which is the honest
-  version of unenforced.
-- **PC3 gets `check-contract-artifacts`**: an agreed capability's
-  `contracts/<capability>/` tree exists, schemas parse, the corpus is
-  non-empty. Cheap, no false positives, promotable early.
-- **PC4 gets `job-contract-conformance`**: a shared job that runs a
-  capability's corpus against a repository's implementation, adopted
-  per-capability as corpora land. This is the gate that matters — the one
-  that fails the implementation that drifted.
-- **PC5 gates in the package repositories**: every release runs the corpus,
-  and a manifest check asserts no fleet package depends on another.
-- **PC6 gets `check-contract-evolution`**: a schema diff on every change to
-  `contracts/` — removed or retyped fields fail; a version bump with a
-  stated window passes.
+Registered in [`999-enforcement.md`](999-enforcement.md) under "Platform
+standard", every rule review-only today with its gate named there — the rows
+are the record, and they are not repeated here.
 
 What no checker will prove: that an opinion was delivered as a contract
 rather than smuggled in as a dependency. That stays a review question on

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.aurumalpha.dev/rbac/model.schema.json",
   "title": "Aurum Alpha RBAC model",
-  "description": "The shapes of standards/rbac.md: permission, scope, role and grant. This file fixes the model; contracts/rbac/decisions.json fixes the behaviour. schemaVersion 1 — evolves additively per PC6.",
+  "description": "The shapes of standards/070-rbac.md: permission, scope, role and grant. This file fixes the model; contracts/rbac/decisions.json fixes the behaviour. schemaVersion 1 — evolves additively per PC6.",
   "$defs": {
     "permission": {
       "type": "string",

@@ -1,4 +1,4 @@
-# Fleet capability: conditionally rebuilt, registry-cached container image
+# Portfolio capability: conditionally rebuilt, registry-cached container image
 # (CI_STANDARD Principle 12 — one way per capability; C6). Generalizes
 # event-manager's create-docker-build-image / create-docker-prod-base-image
 # pair: rebuild ghcr.io/<repo>/<image_name> only when files matching

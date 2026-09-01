@@ -1,7 +1,7 @@
 {
   "contract": "auth",
   "schemaVersion": 1,
-  "description": "Conformance corpus for standards/auth.md. 'validity': the value must validate (or fail) against the named schema root \u2014 'identity-token' or 'me'. 'behaviour': black-box cases a live deployment must satisfy. An implementation passes the whole file or names the case it fails.",
+  "description": "Conformance corpus for standards/060-auth.md. 'validity': the value must validate (or fail) against the named schema root \u2014 'identity-token' or 'me'. 'behaviour': black-box cases a live deployment must satisfy. An implementation passes the whole file or names the case it fails.",
   "validity": [
     {
       "id": "token-minimal-ok",
@@ -183,7 +183,7 @@
       "expect": {
         "status_code": 401
       },
-      "note": "without this check the fleet's services are interchangeable to an attacker holding any one token (AU2)"
+      "note": "without this check the portfolio's services are interchangeable to an attacker holding any one token (AU2)"
     },
     {
       "id": "unknown-subject-is-403-and-logged-out",

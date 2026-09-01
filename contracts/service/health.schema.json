@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.aurumalpha.dev/service/health.schema.json",
   "title": "Aurum Alpha health and readiness responses",
-  "description": "Response shapes for /healthz and /readyz. Governed by standards/service.md SC1 and SC5. schemaVersion 1 — evolves additively per PC6.",
+  "description": "Response shapes for /healthz and /readyz. Governed by standards/030-service.md SC1 and SC5. schemaVersion 1 — evolves additively per PC6.",
   "$defs": {
     "schemaVersion": {
       "const": 1

@@ -24,7 +24,7 @@ Rules, each naming what it can actually prove:
 
   A1  AGENTS.md exists at the repo root
   A2  it answers all six required sections
-  A3  it references the fleet standard, or vendors a copy (client repos cannot
+  A3  it references the Aurum Alpha standard, or vendors a copy (client repos cannot
       reach aurum-alpha/workflows after handover, so a link is not always right)
   A4  no unsupported rule tree exists
   A5  CLAUDE.md opens by importing AGENTS.md
@@ -61,7 +61,7 @@ SECTIONS = [
     "conventions",
 ]
 
-# A3. Either form satisfies the rule. A repo inside the fleet links the
+# A3. Either form satisfies the rule. A repo inside the portfolio links the
 # standard; one built for a client vendors it, because after handover a link to
 # a private repo is worse than nothing — it reads like guidance that exists.
 STANDARD_URL = "aurum-alpha/workflows"
@@ -156,7 +156,7 @@ def _content_findings(repo_dir: pathlib.Path, text: str) -> list[str]:
         if not any(want in h for h in headings):
             findings.append(
                 f"[A2] {SOURCE} has no '{want}' section — a reader cannot tell "
-                "'the fleet default applies' from 'nobody considered it'"
+                "'the standard default applies' from 'nobody considered it'"
             )
 
     vendored = any((repo_dir / v).is_file() for v in VENDORED)

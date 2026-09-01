@@ -1,13 +1,13 @@
 # The service contract
 
 One of the Aurum Alpha engineering standards, written under the platform
-contract ([`platform.md`](platform.md)) — a per-capability standard from its
-roster. Read [`enforcement.md`](enforcement.md) for the tier each rule below
+contract ([`000-platform.md`](000-platform.md)) — a per-capability standard from its
+roster. Read [`999-enforcement.md`](999-enforcement.md) for the tier each rule below
 actually holds. Artifacts: [`contracts/service/`](../contracts/service/).
 
 ## Why this exists
 
-The fleet standardizes how a service is built, tested, packaged and shipped.
+These standards cover how a service is built, tested, packaged and shipped.
 It said nothing about what the running thing must **expose**, so every
 product answered the same operational questions independently, and several
 answered them by not answering. Across the six TypeScript SaaS products at
@@ -20,11 +20,11 @@ exists to prove a built image actually runs, and with no endpoint to hit,
 the strongest claim it can make is that the process did not exit within the
 timeout. **A service that starts, fails to reach its database, and sits
 there answering nothing passes that check today.** Giving every service a
-readiness endpoint turns a shared job the fleet already runs from a liveness
+readiness endpoint turns a shared job already in the catalog from a liveness
 guess into a real gate — no new job, no new infrastructure.
 
 Most of what follows is [twelve-factor](https://12factor.net/) applied to
-this fleet, and each rule cites the factor it rests on. What this document
+these applications, and each rule cites the factor it rests on. What this document
 adds is the part twelve-factor deliberately leaves open: the actual paths,
 field names and response shapes, without which six conformant services are
 still six different services to operate.
@@ -79,10 +79,10 @@ Logs go to stdout as an event stream, per
 rotates, or stores its own logs, because that is the execution
 environment's job. This rule is inherited, not invented.
 
-What the fleet pins is the line itself: **one JSON object per line**,
-carrying `ts` (an instant per [`identifiers.md`](identifiers.md) IP4),
+What this standard pins is the line itself: **one JSON object per line**,
+carrying `ts` (an instant per [`020-identifiers.md`](020-identifiers.md) IP4),
 `level`, `msg`, `service`, and — whenever request context exists — the
-context block from [`observability.md`](observability.md) OC2 and OC4.
+context block from [`040-observability.md`](040-observability.md) OC2 and OC4.
 Schema:
 [`contracts/service/logline.schema.json`](../contracts/service/logline.schema.json).
 
@@ -144,18 +144,18 @@ diagnosis in plain words.
 
 **Specific is not the same as verbose, and it is never an excuse to leak.**
 Name the configuration key, never its value. Reference a record by its
-public id (`identifiers.md` IP1), never by dumping its contents. Name the
+public id (`020-identifiers.md` IP1), never by dumping its contents. Name the
 field that failed validation, not the personal data that failed it. A
 secret, a token, a credential, a full connection string with its password,
 or protected personal data appearing in a log line is a defect of its own,
 and the redaction rules belong to the [secrets
-standard](platform.md#the-capability-roster). *What* failed and *why* is
+standard](000-platform.md#the-capability-roster). *What* failed and *why* is
 almost never the sensitive part; the payload is.
 
 ### SC3. Configuration comes from the environment, and absence blocks serving
 
 Config lives in environment variables, per
-[factor III](https://12factor.net/config). The fleet's additions:
+[factor III](https://12factor.net/config). This standard's additions:
 
 - **Names are `SCREAMING_SNAKE_CASE`**, and describe the thing rather than
   its consumer: `DATABASE_URL`, `OTEL_EXPORTER_OTLP_ENDPOINT`.
@@ -176,7 +176,7 @@ Config lives in environment variables, per
   guessed where it was running has an untestable branch in it.
 
 Secrets arrive the same way and are governed by the [secrets
-standard](platform.md#the-capability-roster); nothing here permits logging
+standard](000-platform.md#the-capability-roster); nothing here permits logging
 one.
 
 ### SC4. SIGTERM means drain
@@ -217,7 +217,7 @@ vulnerabilities to try. It is accepted here because incident response needs
 it more than an attacker does, and because the alternative — provenance
 only in logs — puts it behind exactly the access an incident responder may
 be waiting on. Where a repository's threat model disagrees, the [security
-baseline standard](platform.md#the-capability-roster) governs endpoint
+baseline standard](000-platform.md#the-capability-roster) governs endpoint
 exposure, and the startup log line still satisfies this rule.
 
 ### SC6. Start fast, degrade rather than block, and never crashloop
@@ -328,7 +328,7 @@ state it was built to hold.
 ## Out of scope, deliberately
 
 **The error envelope is not here.** It belongs to the [service interfaces
-standard](http.md) with the rest of the
+standard](050-http.md) with the rest of the
 request/response contract (RFC 9457, pagination, idempotency), because an
 error shape is an API concern rather than a service-lifecycle one, and
 splitting it across two documents is how two answers to one question get
@@ -336,7 +336,7 @@ born. The proposal that raised this standard listed it; this is the
 scope decision, stated rather than silently dropped.
 
 Rate limiting and response headers belong to the [security baseline
-standard](platform.md#the-capability-roster) for the same reason.
+standard](000-platform.md#the-capability-roster) for the same reason.
 
 ## The artifacts
 
@@ -355,7 +355,7 @@ Per PC3, under [`contracts/service/`](../contracts/service/):
 
 ## Enforcement
 
-Registered in [`enforcement.md`](enforcement.md) under "Service standard",
+Registered in [`999-enforcement.md`](999-enforcement.md) under "Service standard",
 every rule review-only today. The split that matters, and the reason this
 standard is the strongest promotion candidate in the ledger:
 
@@ -371,5 +371,5 @@ standard is the strongest promotion candidate in the ledger:
 
 That live check is the one that matters, because it exercises the running
 artifact rather than the source that claims to produce it — and it upgrades
-the fleet's existing "the process did not exit" claim into "the service came
+the existing "the process did not exit" claim into "the service came
 up, reached its dependencies, and said what it was."

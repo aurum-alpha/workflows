@@ -1,4 +1,4 @@
-# Fleet capability: lint (CI_STANDARD Principle 12 — one way per
+# Portfolio capability: lint (CI_STANDARD Principle 12 — one way per
 # capability). Single-job reusable workflow: the caller owns the job id and
 # needs: wiring; this file owns the entire job body. Callers pass
 # secrets: inherit; vars.RUNNER resolves in the caller's context.

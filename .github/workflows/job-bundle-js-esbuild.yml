@@ -1,4 +1,4 @@
-# Fleet capability: bundle a Node server to a single file (CI_STANDARD
+# Portfolio capability: bundle a Node server to a single file (CI_STANDARD
 # Principle 12). LANGUAGE tier, not framework: Express routes requests and owns
 # no bundler, so there is no `job-build-js-express` — ask what command it would
 # run and there is no single answer. esbuild is the tool, so esbuild names it.

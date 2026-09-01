@@ -43,7 +43,7 @@ the override still applies with it present.
 WHAT THIS CANNOT PROVE. That the reason is true, that it is still true, or
 that it names a real retirement condition. It checks that somebody wrote one
 and that it is not a placeholder. The rest is a review question, and the
-standard says so rather than implying coverage it lacks. The fleet's own
+standard says so rather than implying coverage it lacks. The portfolio's own
 zod-validation-error override is the case in point: its reason was recorded in
 a commit message in August, was accurate when written, and had quietly stopped
 being true by the time anyone looked -- the resolution moved into a version
@@ -79,7 +79,7 @@ def is_placeholder(text: str) -> bool:
 
 
 def override_keys(block, path="pnpm.overrides"):
-    """The names an override targets. They nest two ways, both in the fleet:
+    """The names an override targets. They nest two ways, both in the portfolio:
 
         {"drizzle-kit": {"@esbuild-kit/esm-loader": "npm:tsx@4.22.4"}}
         {"drizzle-kit>@esbuild-kit/esm-loader":     "npm:tsx@4.22.4"}

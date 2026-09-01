@@ -1,4 +1,4 @@
-# Fleet capability: gofmt (CI_STANDARD Principle 12 — one way per
+# Portfolio capability: gofmt (CI_STANDARD Principle 12 — one way per
 # capability). Single-job reusable workflow: the caller owns the job id and
 # needs: wiring; this file owns the entire job body. Callers pass
 # secrets: inherit; vars.RUNNER resolves in the caller's context.
@@ -16,8 +16,8 @@ on:
         default: "."
       runner:
         description: >-
-          Override runs-on. Leave empty for the fleet default. Set to a
-          GitHub-hosted label where a repo must not build on the fleet
+          Override runs-on. Leave empty for the standard default. Set to a
+          GitHub-hosted label where a repo must not build on the runner fleet
           (CI_STANDARD Principle 4 — e.g. the runner controller itself).
         type: string
         default: ""

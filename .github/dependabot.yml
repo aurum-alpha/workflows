@@ -1,5 +1,5 @@
 # The shared capability jobs live here, so this repo's action pins ARE the
-# fleet's pins: a bump lands here once and propagates to every consumer as
+# portfolio's pins: a bump lands here once and propagates to every consumer as
 # SHA-bump PRs against their `uses:` references.
 version: 2
 updates:

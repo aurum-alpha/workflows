@@ -7,7 +7,7 @@ name: ci-conformance
 #
 # It runs every caller-side checker in tools/. They were all written to be run
 # from a workstation with eleven clones side by side, which is why none of them
-# had ever run in CI and why check-fleet-versions' repo map could go stale for
+# had ever run in CI and why check-dependency-versions' repo map could go stale for
 # two renames without anything noticing. A check that only runs when someone
 # remembers to run it is not a gate.
 #
@@ -82,12 +82,12 @@ on:
           default in the same wave that adds a catalog file, not the one after.
 
           It is fatal for a DATA change too, and that is the wider rule this
-          entry was missing. The checkers read fleet-versions.json out of this
+          entry was missing. The checkers read dependency-versions.json out of this
           same clone, so the file is an input on exactly the footing of a
           catalog listing. Wave A (0521448) removed eslint, @eslint/js,
           eslint-config-prettier and typescript-eslint from it and set this
           default to the main before itself, as the convention says. The effect
-          was that every repo pinned at v2.2.4 ran check-fleet-versions against
+          was that every repo pinned at v2.2.4 ran check-dependency-versions against
           a tree where those four were still mandatory — so the first repo to
           actually drop them, flight-watch#51, was failed for not declaring
           packages the fleet had already retired. Same shape as the gofast
@@ -95,33 +95,33 @@ on:
           one.
 
           So the rule generalises. A wave that changes ANY file the checkers
-          read — a catalog job, a checker, fleet-versions.json — needs this
+          read — a catalog job, a checker, dependency-versions.json — needs this
           default moved to a commit that contains that change. A wave cannot
           name its own commit, so when the change is to checker INPUT rather
           than checker CODE, the bump is a follow-up commit.
 
           It is now ENFORCED rather than merely written here.
           check-standard-ref carries a CHECKER_INPUT_FILES list and demands the
-          bump for a change to fleet-versions.json exactly as it does for a
+          bump for a change to dependency-versions.json exactly as it does for a
           change to tools/. Until that landed this paragraph was the only thing
           standing between a data change and a silently inert release, which is
           to say nothing was.
         type: string
         required: false
-        # The commit that set typescript to 7.0.2 in fleet-versions.json
+        # The commit that set typescript to 7.0.2 in dependency-versions.json
         # (wave 6, #247). Moving this is what makes that assertion real: until
         # now every caller read a pinned tree still saying 6.0.3, which is
         # precisely why the pin could land ahead of the fleet without turning
         # a single repo red.
         #
-        # The base of wave 7 -- fleet-versions.json asserted WHERE PRESENT,
+        # The base of wave 7 -- dependency-versions.json asserted WHERE PRESENT,
         # and Node units discovered from the tree instead of a hand-kept map.
         # Demanded by the CHECKER_INPUT_FILES rule the previous change added,
         # which is the first time this bump has been asked for rather than
         # remembered.
         #
         # This bump used to be the one nothing could force, and that is no
-        # longer true -- check-standard-ref now lists fleet-versions.json in
+        # longer true -- check-standard-ref now lists dependency-versions.json in
         # CHECKER_INPUT_FILES and fails a pull request that changes it without
         # moving this default. That rule first applies to the commit that
         # introduced it: this very line moved because the checker demanded it.
@@ -130,7 +130,7 @@ on:
         # something new out of this clone.
         #
         # What it used to do: demand a move only for a CONSUMED file --
-        # tools/, job-*.yml, setup/ -- and fleet-versions.json is none of
+        # tools/, job-*.yml, setup/ -- and dependency-versions.json is none of
         # those. It is checker INPUT: read by the checkers out of this clone,
         # never referenced by a caller. So on #247 the checker printed
         # "nothing a caller consumes changed" and passed, exactly as designed,
@@ -138,7 +138,7 @@ on:
         # effect at all.
         #
         # That was the wave-A failure stated forward instead of backward.
-        # There, fleet-versions.json lost four packages and this default
+        # There, dependency-versions.json lost four packages and this default
         # stayed behind, so repos that had already dropped them were failed
         # for not declaring what the fleet had retired. Same file, same silent
         # checker, opposite direction: a false red then, a false green in #247.
@@ -146,18 +146,22 @@ on:
         # being REMINDED about it, which is worse, because the reminder is the
         # whole mechanism.
         #
-        # The base of the rename: fleet-versions.json became
-        # dependency-versions.json, and the checker that reads it became
-        # check-dependency-versions. Demanded by CHECKER_INPUT_FILES exactly
-        # as a content change would be -- a rename is a change to the file
-        # every caller reads out of this clone. The INVOCATION below still
-        # names the old path on purpose: this commit is the pull request's
-        # base, so it predates the new checker, and pointing at a path absent
-        # from the pinned tree is precisely how v2.2.10 and v2.2.11 shipped
-        # exit 127. tools/check-fleet-versions is a bridge that forwards to
-        # the new name; the follow-up flips the invocation, moves this default
-        # onto the commit carrying the new checker, and deletes the bridge.
-        default: 18d96cbf8b834282da4299d525d5c9f7ff3d4457
+        # The rename landed in two commits, and this is the second. First
+        # fleet-versions.json became dependency-versions.json and
+        # check-fleet-versions became check-dependency-versions -- a change
+        # CHECKER_INPUT_FILES demands this bump for exactly as a content
+        # change would, because a rename is still a change to the file every
+        # caller reads out of this clone. But the INVOCATION could not move
+        # in that same commit: this default is the pull request's base, and
+        # that base predated the new path, so pointing at it would have
+        # pinned callers to a tree with no such file. That is precisely how
+        # v2.2.10 and v2.2.11 shipped exit 127. tools/check-fleet-versions
+        # stood in as a bridge for one commit.
+        #
+        # This commit is the second step. The invocation below now names
+        # tools/check-dependency-versions, this default is the merge commit
+        # that carries it, and the bridge is deleted.
+        default: e54835cc504b8e9e76231c97a7806cc97b38152c
 
 jobs:
   ci-conformance:
@@ -166,7 +170,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      # check-caller-permissions and check-fleet-versions
+      # check-caller-permissions and check-dependency-versions
       # all address a repo by name under a root holding one clone per repo, so
       # the repo under test is checked out at the path its own name implies
       # rather than at the workspace root. Taken from GITHUB_REPOSITORY, not the
@@ -258,11 +262,11 @@ jobs:
         env:
           REPO: ${{ steps.repo.outputs.name }}
           AURUM_CATALOG_ROOT: .aurum-catalog
-        run: .aurum-standard/tools/check-fleet-versions --root .ci-root --repo "$REPO"
+        run: .aurum-standard/tools/check-dependency-versions --root .ci-root --repo "$REPO"
         continue-on-error: ${{ inputs.warn_only }}
 
       # The sibling of the check above, and the division is worth stating.
-      # check-fleet-versions asks WHICH VERSION, for the packages the fleet has
+      # check-dependency-versions asks WHICH VERSION, for the packages the fleet has
       # converged on. This asks a question about every other dependency too:
       # is it a version at all, or merely a range that permits one?
       #

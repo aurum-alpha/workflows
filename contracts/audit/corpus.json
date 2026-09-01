@@ -1,0 +1,419 @@
+{
+  "contract": "audit",
+  "schemaVersion": 1,
+  "description": "The conformance corpus for standards/audit.md. Three parts. 'validity' is judged by event.schema.json alone: an implementation validates each event and must reach the stated verdict. 'floor' is judged by running the implementation: for each described act it must produce an event matching the stated expectations (AE5). 'redaction' is judged by running the implementation's erasure: given the 'before' event and an erasure request for the named subject, it must produce the 'after' event (AE7). Cases marked 'schemaCannotCatch' are here deliberately - they document where the schema stops and the named gate takes over, rather than implying coverage the file does not have.",
+
+  "validity": [
+    {
+      "case": "a-complete-grant-names-both-people",
+      "valid": true,
+      "why": "AE2's central shape. actor is the admin who granted, target is the person who received. The fleet's one pre-existing audit table has a single user_id here and therefore cannot answer who granted anyone access - this case is that defect written as a passing example.",
+      "event": {
+        "schema_version": 1,
+        "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "occurred_at": "2026-03-04T09:12:44.108Z",
+        "action": "user.grant_role",
+        "outcome": "success",
+        "actor": {
+          "type": "user",
+          "id": "01923e01-1111-7000-8000-000000000001",
+          "display": "Dana Okoye <dana@example.com>",
+          "ip": "203.0.113.24",
+          "user_agent": "Mozilla/5.0"
+        },
+        "target": {
+          "type": "user",
+          "id": "01923e01-2222-7000-8000-000000000002",
+          "display": "Sam Reyes <sam@example.com>"
+        },
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        "request_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0aaa",
+        "changes": [
+          { "field": "roles", "before": ["viewer"], "after": ["viewer", "approver"] }
+        ],
+        "reason": "Promoted for Q2 invoice cover"
+      }
+    },
+    {
+      "case": "an-event-without-an-actor-is-rejected",
+      "valid": false,
+      "why": "AE2. The whole question an audit trail answers is who. An event that records what happened to whom but not who did it is the defect this standard was written from, so the schema refuses it rather than admitting it as a partial record.",
+      "event": {
+        "schema_version": 1,
+        "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0b01",
+        "occurred_at": "2026-03-04T09:12:44.108Z",
+        "action": "user.grant_role",
+        "outcome": "success",
+        "target": { "type": "user", "id": "01923e01-2222-7000-8000-000000000002", "display": "Sam Reyes" }
+      }
+    },
+    {
+      "case": "an-internal-integer-key-as-an-id-is-rejected",
+      "valid": false,
+      "why": "IP1, at its extreme case. An audit row outlives the row it points at, so a storage key in it degrades to a number that once meant something. '4711' is not an admitted public id format.",
+      "event": {
+        "schema_version": 1,
+        "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0b02",
+        "occurred_at": "2026-03-04T09:12:44.108Z",
+        "action": "invoice.void",
+        "outcome": "success",
+        "actor": { "type": "user", "id": "4711", "display": "Dana Okoye" },
+        "target": { "type": "invoice", "id": "01923e01-3333-7000-8000-000000000003", "display": "INV-2026-0412" }
+      }
+    },
+    {
+      "case": "a-unix-integer-timestamp-is-rejected",
+      "valid": false,
+      "why": "IP4. Unreadable in a record a human reads years later, and ambiguous in unit. The audit store is the one place where being right about when is the entire value.",
+      "event": {
+        "schema_version": 1,
+        "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0b03",
+        "occurred_at": 1772614364,
+        "action": "invoice.void",
+        "outcome": "success",
+        "actor": { "type": "user", "id": "01923e01-1111-7000-8000-000000000001", "display": "Dana Okoye" },
+        "target": { "type": "invoice", "id": "01923e01-3333-7000-8000-000000000003", "display": "INV-2026-0412" }
+      }
+    },
+    {
+      "case": "an-offset-timestamp-is-rejected",
+      "valid": false,
+      "why": "IP4 stage 3: emitted instants are UTC with a Z suffix. An offset form makes equal instants unequal strings, and string inequality is how ordering and deduplication break in a store that is queried by time.",
+      "event": {
+        "schema_version": 1,
+        "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0b04",
+        "occurred_at": "2026-03-04T11:12:44.108+02:00",
+        "action": "invoice.void",
+        "outcome": "success",
+        "actor": { "type": "user", "id": "01923e01-1111-7000-8000-000000000001", "display": "Dana Okoye" },
+        "target": { "type": "invoice", "id": "01923e01-3333-7000-8000-000000000003", "display": "INV-2026-0412" }
+      }
+    },
+    {
+      "case": "a-three-segment-action-is-rejected",
+      "valid": false,
+      "why": "AE3, inherited from RB2. 'system.dashboard.view' is a shape that exists in the fleet today; admitting it here would fork the action vocabulary from the permission vocabulary, which is exactly what AE3 refuses to allow.",
+      "event": {
+        "schema_version": 1,
+        "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0b05",
+        "occurred_at": "2026-03-04T09:12:44.108Z",
+        "action": "system.dashboard.view",
+        "outcome": "success",
+        "actor": { "type": "user", "id": "01923e01-1111-7000-8000-000000000001", "display": "Dana Okoye" },
+        "target": { "type": "dashboard", "id": "01923e01-4444-7000-8000-000000000004", "display": "Ops" }
+      }
+    },
+    {
+      "case": "a-wildcard-action-is-rejected",
+      "valid": false,
+      "why": "RB6's flat wildcard denial reaching the audit record. An event claiming 'invoice.*' does not say what was done, which is the same untruth wildcards produce in permissionsFor.",
+      "event": {
+        "schema_version": 1,
+        "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0b06",
+        "occurred_at": "2026-03-04T09:12:44.108Z",
+        "action": "invoice.*",
+        "outcome": "success",
+        "actor": { "type": "user", "id": "01923e01-1111-7000-8000-000000000001", "display": "Dana Okoye" },
+        "target": { "type": "invoice", "id": "01923e01-3333-7000-8000-000000000003", "display": "INV-2026-0412" }
+      }
+    },
+    {
+      "case": "a-past-tense-paraphrase-passes-the-schema",
+      "valid": true,
+      "schemaCannotCatch": "AE3's identity rule - that the action string IS the permission string. 'invoice.voided' matches the pattern and is a well-formed event; what is wrong with it is that the product declares the permission 'invoice.void', and a second vocabulary has just started. This is the drift the ledger's AE3 static check exists for: read the declared permission set, assert every emitted action is one of them or a reserved auth.* action. Recorded here as a passing case so the file does not imply the schema catches it.",
+      "event": {
+        "schema_version": 1,
+        "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0b07",
+        "occurred_at": "2026-03-04T09:12:44.108Z",
+        "action": "invoice.voided",
+        "outcome": "success",
+        "actor": { "type": "user", "id": "01923e01-1111-7000-8000-000000000001", "display": "Dana Okoye" },
+        "target": { "type": "invoice", "id": "01923e01-3333-7000-8000-000000000003", "display": "INV-2026-0412" }
+      }
+    },
+    {
+      "case": "an-anonymous-actor-on-a-domain-action-is-rejected",
+      "valid": false,
+      "why": "AE2. An invoice was voided by somebody. An implementation that could not resolve the actor and wrote a placeholder has produced a row that looks like a record and answers nothing - the failure mode this restriction exists to make loud.",
+      "event": {
+        "schema_version": 1,
+        "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0b08",
+        "occurred_at": "2026-03-04T09:12:44.108Z",
+        "action": "invoice.void",
+        "outcome": "success",
+        "actor": { "type": "anonymous" },
+        "target": { "type": "invoice", "id": "01923e01-3333-7000-8000-000000000003", "display": "INV-2026-0412" }
+      }
+    },
+    {
+      "case": "an-anonymous-actor-on-a-failed-login-is-accepted",
+      "valid": true,
+      "why": "The other side of the same rule. Authentication had not succeeded, so there is no identified actor by definition, and the account aimed at is carried as an unidentifiable target with the attempted address as its display.",
+      "event": {
+        "schema_version": 1,
+        "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0b09",
+        "occurred_at": "2026-03-04T09:12:44.108Z",
+        "action": "auth.login_failed",
+        "outcome": "failure",
+        "actor": { "type": "anonymous", "ip": "203.0.113.99", "user_agent": "curl/8.4.0" },
+        "target": { "type": "anonymous", "display": "nosuchuser@example.com" },
+        "reason": "no such identity"
+      }
+    },
+    {
+      "case": "a-request-id-without-a-trace-id-is-rejected",
+      "valid": false,
+      "why": "OC4's floor pair, on the record that most needs it. An audit row carrying half the correlation block cannot be joined to the logs of the request that produced it, which is the one thing linking the record of an act to the evidence of how it went.",
+      "event": {
+        "schema_version": 1,
+        "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0b0a",
+        "occurred_at": "2026-03-04T09:12:44.108Z",
+        "action": "invoice.void",
+        "outcome": "success",
+        "actor": { "type": "user", "id": "01923e01-1111-7000-8000-000000000001", "display": "Dana Okoye" },
+        "target": { "type": "invoice", "id": "01923e01-3333-7000-8000-000000000003", "display": "INV-2026-0412" },
+        "request_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0aaa"
+      }
+    },
+    {
+      "case": "a-credential-change-records-the-fact-and-not-the-value",
+      "valid": true,
+      "why": "AE4's exclusion, as the shape an implementation should copy: the field changed, flagged redacted, with no before and no after. An event carrying either value would validate against the schema too - which is why AE4 states the rule in prose and the ledger keeps it a review question rather than claiming a gate.",
+      "event": {
+        "schema_version": 1,
+        "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0b0b",
+        "occurred_at": "2026-03-04T09:12:44.108Z",
+        "action": "user.change_password",
+        "outcome": "success",
+        "actor": { "type": "user", "id": "01923e01-2222-7000-8000-000000000002", "display": "Sam Reyes" },
+        "target": { "type": "user", "id": "01923e01-2222-7000-8000-000000000002", "display": "Sam Reyes" },
+        "changes": [ { "field": "password", "redacted": true } ]
+      }
+    },
+    {
+      "case": "an-impersonated-act-names-both-the-actor-and-who-is-accountable",
+      "valid": true,
+      "why": "AE2. The act is recorded as the impersonated user because that is what happened; the impersonator is recorded because that is who answers for it. Fusing them either way loses one of the two facts.",
+      "event": {
+        "schema_version": 1,
+        "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0b0c",
+        "occurred_at": "2026-03-04T09:12:44.108Z",
+        "action": "invoice.void",
+        "outcome": "success",
+        "actor": {
+          "type": "user",
+          "id": "01923e01-2222-7000-8000-000000000002",
+          "display": "Sam Reyes",
+          "impersonator": {
+            "type": "user",
+            "id": "01923e01-5555-7000-8000-000000000005",
+            "display": "Support: Rae Lindqvist",
+            "ip": "198.51.100.7"
+          }
+        },
+        "target": { "type": "invoice", "id": "01923e01-3333-7000-8000-000000000003", "display": "INV-2026-0412" },
+        "reason": "Ticket 44192: duplicate invoice raised twice"
+      }
+    },
+    {
+      "case": "a-refusal-is-a-recorded-event-not-an-absence",
+      "valid": true,
+      "why": "AE2's outcome field. AU6's unknown-subject refusal: the caller authenticated at the provider, the application has no record of them, and the row that says so is the one an administrator needs on the support call that follows.",
+      "event": {
+        "schema_version": 1,
+        "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0b0d",
+        "occurred_at": "2026-03-04T09:12:44.108Z",
+        "action": "auth.access_denied",
+        "outcome": "failure",
+        "actor": { "type": "anonymous", "ip": "203.0.113.24" },
+        "target": { "type": "anonymous", "display": "sub=4f1c… at https://idp.example.com" },
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        "request_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0abb",
+        "reason": "authenticated subject has no local record"
+      }
+    },
+    {
+      "case": "an-erasure-marker-without-its-subjects-is-rejected",
+      "valid": false,
+      "why": "AE7. erased_at alone says an erasure happened and not whose, which nobody can verify afterwards. The pair travels together in both directions, which is the part of AE7 the schema can hold; that the named subjects actually lost their display strings is judged by the redaction cases below, because it is a cross-reference JSON Schema cannot express.",
+      "event": {
+        "schema_version": 1,
+        "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0b0e",
+        "occurred_at": "2026-03-04T09:12:44.108Z",
+        "action": "invoice.void",
+        "outcome": "success",
+        "actor": { "type": "user", "id": "01923e01-2222-7000-8000-000000000002" },
+        "target": { "type": "invoice", "id": "01923e01-3333-7000-8000-000000000003" },
+        "erased_at": "2026-09-01T00:00:00.000Z"
+      }
+    },
+    {
+      "case": "an-unknown-field-is-rejected",
+      "valid": false,
+      "why": "PC6. Contracts evolve by adding optional fields to the schema, in a change to this repository - never by an implementation inventing one and everyone else discovering it later. A product with something extra to record puts it in changes or reason.",
+      "event": {
+        "schema_version": 1,
+        "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0b0f",
+        "occurred_at": "2026-03-04T09:12:44.108Z",
+        "action": "invoice.void",
+        "outcome": "success",
+        "actor": { "type": "user", "id": "01923e01-1111-7000-8000-000000000001", "display": "Dana Okoye" },
+        "target": { "type": "invoice", "id": "01923e01-3333-7000-8000-000000000003", "display": "INV-2026-0412" },
+        "severity": "high"
+      }
+    }
+  ],
+
+  "floor": [
+    {
+      "case": "authentication-succeeds",
+      "category": "AE5.1 authentication and session lifecycle",
+      "act": "A known user completes the authorization code flow and a session is established.",
+      "expect": { "action": "auth.login", "outcome": "success", "actor.type": "user", "actor.id": "the user's application public id" }
+    },
+    {
+      "case": "authentication-is-refused",
+      "category": "AE5.1 authentication and session lifecycle",
+      "act": "Authentication is attempted with an address that has no identity, or with a bad credential.",
+      "expect": { "action": "auth.login_failed", "outcome": "failure", "actor.type": "anonymous" }
+    },
+    {
+      "case": "the-provider-ends-the-session",
+      "category": "AE5.1 authentication and session lifecycle",
+      "act": "A back-channel logout token arrives and the proxy destroys the session (auth.md AU5).",
+      "expect": { "action": "auth.session_revoked", "outcome": "success", "actor.type": "system" }
+    },
+    {
+      "case": "an-authenticated-subject-is-unknown-to-the-application",
+      "category": "AE5.1 authentication and session lifecycle",
+      "act": "A valid identity token arrives for a subject with no local record; the application refuses and ends the session (auth.md AU6).",
+      "expect": { "action": "auth.access_denied", "outcome": "failure", "actor.type": "anonymous" }
+    },
+    {
+      "case": "a-role-is-granted",
+      "category": "AE5.2 authorization changes",
+      "act": "An administrator grants a role to another user in a scope (rbac.md RB7's grant).",
+      "expect": { "action": "a declared permission", "outcome": "success", "actor.id": "the administrator", "target.id": "the grantee", "actorIsNotTarget": true }
+    },
+    {
+      "case": "a-roles-permission-set-is-edited",
+      "category": "AE5.2 authorization changes",
+      "act": "A tenant-defined role's permission list is changed (rbac.md RB3).",
+      "expect": { "outcome": "success", "target.type": "role", "changesPresent": true, "why": "The before/after of the permission list is the whole content of this event - without it the row says a role changed and not how." }
+    },
+    {
+      "case": "a-person-is-invited",
+      "category": "AE5.3 identity lifecycle",
+      "act": "An administrator invites a person; the application creates the identity and grants app access (auth.md AU4).",
+      "expect": { "outcome": "success", "actor.id": "the administrator", "target.id": "the new user's application public id", "actorIsNotTarget": true }
+    },
+    {
+      "case": "a-persons-access-is-revoked",
+      "category": "AE5.3 identity lifecycle",
+      "act": "An administrator removes a person from the application (auth.md AU4's revokeAppAccess).",
+      "expect": { "outcome": "success", "actorIsNotTarget": true, "why": "The event survives the removal of the user record it names, which is AE4's point: target.id and target.display are enough to read the row after the row it refers to is gone." }
+    },
+    {
+      "case": "a-record-is-destroyed",
+      "category": "AE5.4 destructive and irreversible writes",
+      "act": "A user voids an invoice - an act they cannot undo from the interface.",
+      "expect": { "action": "a declared permission", "outcome": "success", "changesPresent": true }
+    },
+    {
+      "case": "a-destructive-act-is-refused",
+      "category": "AE5.4 destructive and irreversible writes",
+      "act": "A user without invoice.void attempts to void an invoice and is refused.",
+      "expect": { "outcome": "failure", "reasonPresent": true, "why": "RB8's decision reason lands here and in the log, and never in the response to the refused caller." }
+    },
+    {
+      "case": "a-session-lifetime-is-changed",
+      "category": "AE5.5 security-posture configuration",
+      "act": "An administrator shortens the tenant's idle session timeout.",
+      "expect": { "outcome": "success", "changesPresent": true }
+    },
+    {
+      "case": "personal-data-is-exported-in-bulk",
+      "category": "AE5.6 bulk export of personal data",
+      "act": "An administrator exports the tenant's user list.",
+      "expect": { "outcome": "success", "why": "The one read on the floor, because it is the read that gets asked about. Ordinary reads are not audited - AE5." }
+    },
+    {
+      "case": "an-ordinary-read-emits-nothing",
+      "category": "AE5, the negative case",
+      "act": "A user opens an invoice they are permitted to read.",
+      "expect": { "noEvent": true, "why": "The floor is a floor, not a licence. Auditing every GET turns the audit store into a log store and buries the twelve cases above inside it." }
+    },
+    {
+      "case": "a-failed-write-emits-nothing",
+      "category": "AE8, the negative case",
+      "act": "A void is attempted, the change fails on a constraint, and the transaction rolls back.",
+      "expect": { "noEvent": true, "why": "AE8's inference is that no event means it did not happen. An implementation writing the event outside the change's transaction produces a record of a void that never occurred, and this case fails it." }
+    }
+  ],
+
+  "redaction": [
+    {
+      "case": "erasure-keeps-the-act-and-loses-the-identification",
+      "erase": { "subject_id": "01923e01-2222-7000-8000-000000000002", "at": "2026-09-01T00:00:00.000Z" },
+      "why": "AE7. What survives is the shape of the trail - who by public id, what, when, in what order. What goes is everything that identifies the person behind that id. The supposed conflict between an erasure right and an audit obligation dissolves at exactly this line.",
+      "before": {
+        "schema_version": 1,
+        "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0c01",
+        "occurred_at": "2026-03-04T09:12:44.108Z",
+        "action": "invoice.void",
+        "outcome": "success",
+        "actor": {
+          "type": "user",
+          "id": "01923e01-2222-7000-8000-000000000002",
+          "display": "Sam Reyes <sam@example.com>",
+          "ip": "203.0.113.24",
+          "user_agent": "Mozilla/5.0"
+        },
+        "target": { "type": "invoice", "id": "01923e01-3333-7000-8000-000000000003", "display": "INV-2026-0412" },
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "changes": [ { "field": "status", "before": "open", "after": "void" } ]
+      },
+      "after": {
+        "schema_version": 1,
+        "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0c01",
+        "occurred_at": "2026-03-04T09:12:44.108Z",
+        "action": "invoice.void",
+        "outcome": "success",
+        "actor": { "type": "user", "id": "01923e01-2222-7000-8000-000000000002" },
+        "target": { "type": "invoice", "id": "01923e01-3333-7000-8000-000000000003", "display": "INV-2026-0412" },
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "changes": [ { "field": "status", "before": "open", "after": "void" } ],
+        "erased_at": "2026-09-01T00:00:00.000Z",
+        "erased_subjects": ["01923e01-2222-7000-8000-000000000002"]
+      }
+    },
+    {
+      "case": "erasure-reaches-the-subject-wherever-they-appear",
+      "erase": { "subject_id": "01923e01-2222-7000-8000-000000000002", "at": "2026-09-01T00:00:00.000Z" },
+      "why": "The erased subject is the TARGET here, not the actor, and the administrator who acted is a different living person whose display must survive. An implementation that redacts by position rather than by subject id gets exactly one of these two cases right.",
+      "before": {
+        "schema_version": 1,
+        "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0c02",
+        "occurred_at": "2026-02-01T14:02:00.000Z",
+        "action": "user.grant_role",
+        "outcome": "success",
+        "actor": { "type": "user", "id": "01923e01-1111-7000-8000-000000000001", "display": "Dana Okoye <dana@example.com>" },
+        "target": { "type": "user", "id": "01923e01-2222-7000-8000-000000000002", "display": "Sam Reyes <sam@example.com>" },
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f"
+      },
+      "after": {
+        "schema_version": 1,
+        "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0c02",
+        "occurred_at": "2026-02-01T14:02:00.000Z",
+        "action": "user.grant_role",
+        "outcome": "success",
+        "actor": { "type": "user", "id": "01923e01-1111-7000-8000-000000000001", "display": "Dana Okoye <dana@example.com>" },
+        "target": { "type": "user", "id": "01923e01-2222-7000-8000-000000000002" },
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "erased_at": "2026-09-01T00:00:00.000Z",
+        "erased_subjects": ["01923e01-2222-7000-8000-000000000002"]
+      }
+    }
+  ]
+}

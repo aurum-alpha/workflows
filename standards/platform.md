@@ -182,7 +182,7 @@ the work is an issue in this repository.
 | Data layer | Migrations-only schema change; seeding contract; tenancy isolation rules | not yet written |
 | Async jobs & messaging | Internal envelope contract; at-least-once plus dedupe; signed webhooks | not yet written |
 | Maintenance jobs | The Job interface contract: registration, single-flight, run observability — and where it lands against [factor XII](https://12factor.net/admin-processes) | not yet written |
-| Audit events | Event schema contract with required context fields | not yet written |
+| Audit events | Internal event contract: application data and not a log line; actor separate from target; the action string is the permission string; a stated floor of what must emit; OCSF at the export boundary rather than as the record | [`audit.md`](audit.md) |
 | Security baseline | Response-header set, scanning, image pinning, secrets doctrine | not yet written |
 | Feature flags | Evaluation contract; standard-first (OpenFeature is the candidate) | not yet written |
 | Notifications | Message contract over the async envelope; provider at the boundary | not yet written |

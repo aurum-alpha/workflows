@@ -422,3 +422,47 @@ than imagined.
 implementation that gates on a role name refuses a subject the permission model
 plainly allows, and fails only this case out of eighteen. It is the mechanical
 detector for RB4, which is otherwise the easiest rule here to break by accident.
+
+## Audit standard
+
+Rules from [`audit.md`](audit.md) — the record of consequential acts. The event
+reuses the identifiers contract's ids and timestamps and the observability
+contract's correlation fields, so a violation of IP1, IP4, OC2 or OC4 inside an
+audit event fails those contracts' rules too, from this file's schema.
+
+| # | Rule | Enforced by | Status |
+|---|---|---|---|
+| AE1 | An audit event is application data in the product's own durable, queryable, tenant-scoped store — never a log line, and the log stream is never the system of record | resists a checker honestly: whether a store is the system of record or a convenience is intent, not shape. The review question is whether a history screen could be built from it | **review only** |
+| AE2 | One event shape, and **actor and target are separate required objects** — the failure the fleet's one existing audit table demonstrates, plus `outcome`, an `impersonator` where one acted, and public ids never internal keys | **schema-decided** — `event.schema.json` under `job-contract-conformance`; sixteen validity cases already reach their stated verdict against it | **review only** |
+| AE3 | `action` is `resource.verb`, and where a permission authorized the act the action string **is** that permission; `auth.*` is the fleet's reserved namespace for acts with no permission behind them | the format half is schema-decided. The identity half gets **a static check worth writing early**: read the product's declared permission set, assert every emitted action is one of them or a reserved `auth.*` action (proposed `check-audit-actions`) | **review only** |
+| AE4 | An event is self-contained, immutable and outlives its subject: display denormalized at write time, append-only, no cascade from the target's deletion, values not references, never a credential | the shape half is schema-decided. That the store is genuinely append-only and uncascaded is a schema fact once the [data-layer standard](platform.md#the-capability-roster) gives a checker a schema to read; that no credential reaches `changes` is SC2's judgment again | **review only** |
+| AE5 | The floor of what must emit: authentication and session lifecycle, authorization changes, identity lifecycle, destructive writes, security-posture configuration, bulk personal-data export — and reads otherwise **not** audited | **the generative gate, and the one worth the most here** — enumerate the routes guarded by a destructive permission, exercise each, assert an event carrying that permission as its action. Fourteen `floor` cases in the corpus describe the acts; two of them are negative | **review only** |
+| AE6 | Append-only discipline is required — `INSERT` and `SELECT`, retention deletion under a separate credential. Hash chaining is **not** required; tamper-evidence needs an anchor outside the writer's reach | the grant is a schema fact, readable once the data-layer standard lands. That the request path holds no update is a review question | **review only** |
+| AE7 | Retention has a floor of one year and a stated ceiling; audit rows are tenant-scoped data; erasure **redacts the event rather than deleting it**, keeping the act and losing the identification | the erasure half is corpus-decided by `redaction` cases; `erased_at` and `erased_subjects` travelling together is schema-decided. That a retention period was chosen rather than defaulted is a judgment | **review only** |
+| AE8 | The event is written in the change's own transaction where they share a store; otherwise after the change, with a failed write logged at `error` with the payload inline, and never fire-and-forget | **resists a checker at the rule's own level** — whether a write shares a transaction is a fact about a call graph, and a gate reading source for it is the PC4 violation. The corpus reaches the observable half: a failed change produces no event, a successful one produces exactly one | **review only** |
+
+The interesting split here is between what the schema decides and what it
+cannot, and the corpus says which is which in the case rather than leaving a
+reader to assume coverage.
+
+**Two cases are recorded as passing precisely because the schema cannot catch
+them.** `invoice.voided` is a well-formed event whose only defect is that the
+product declares `invoice.void` — a second vocabulary, one action at a time,
+which is what `check-audit-actions` is for. A credential change carrying the new
+password would validate too; AE4 forbids it in prose and this ledger keeps it a
+review question rather than claiming a gate.
+
+**One redaction case is a verified detector**, in the pattern the authorization
+corpus established. Erasure targets a *subject*, not a position: in the second
+case the erased person is the target and the administrator who acted is a living
+third party whose name must survive. An implementation that redacts by position —
+"the actor is the person, redact the actor" — passes the first case and fails the
+second twice over, stripping a living person's identity while leaving the erased
+subject's in place. It was checked against exactly that broken implementation
+before landing.
+
+**AE5's generative gate is the one to build.** A list of routes that must audit
+rots the day someone adds a route, which is how the fleet's existing audit table
+came to be a well-designed table nothing writes to. An enumeration over the
+permission set cannot rot that way, and AE3's identity rule — the action string
+*is* the permission string — exists largely to make that enumeration possible.

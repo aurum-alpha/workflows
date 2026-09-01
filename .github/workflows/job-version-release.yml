@@ -109,7 +109,7 @@ on:
       runner:
         description: >-
           Override runs-on. Leave empty for the standard default. Set to a
-          GitHub-hosted label where a repo must not build on the portfolio
+          GitHub-hosted label where a repo must not build on the runner fleet
           (CI_STANDARD Principle 4).
         type: string
         default: ""

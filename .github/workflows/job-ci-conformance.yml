@@ -147,21 +147,27 @@ on:
         # whole mechanism.
         #
         # The rename landed in two commits, and this is the second. First
-        # portfolio-versions.json became dependency-versions.json and
-        # check-portfolio-versions became check-dependency-versions -- a change
+        # fleet-versions.json became dependency-versions.json and
+        # check-fleet-versions became check-dependency-versions -- a change
         # CHECKER_INPUT_FILES demands this bump for exactly as a content
         # change would, because a rename is still a change to the file every
         # caller reads out of this clone. But the INVOCATION could not move
         # in that same commit: this default is the pull request's base, and
         # that base predated the new path, so pointing at it would have
         # pinned callers to a tree with no such file. That is precisely how
-        # v2.2.10 and v2.2.11 shipped exit 127. tools/check-portfolio-versions
+        # v2.2.10 and v2.2.11 shipped exit 127. tools/check-fleet-versions
         # stood in as a bridge for one commit.
         #
         # This commit is the second step. The invocation below now names
         # tools/check-dependency-versions, this default is the merge commit
         # that carries it, and the bridge is deleted.
-        default: e54835cc504b8e9e76231c97a7806cc97b38152c
+        #
+        # Bumped again for the vocabulary change that retired "fleet": it
+        # touched every checker's comments and gave check-ci-conformance a
+        # --portfolio flag with --fleet as an alias. No rule changed, but the
+        # bytes every caller reads did, and CHECKER_INPUT_FILES does not
+        # distinguish -- which is the point of it.
+        default: b50794cca773716585f876f9f00b604c293768f1
 
 jobs:
   ci-conformance:

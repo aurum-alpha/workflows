@@ -53,6 +53,42 @@ invoicing product has `invoice.approve` and a recruiting product does not. What
 this standard fixes is the shape, the semantics and the operations — not the
 vocabulary.
 
+#### Why the set is code and cannot be data
+
+The root reason, from which the rest follow: **a permission is one half of a
+pair, and the other half is a line of code.** `invoice.approve` means nothing
+unless somewhere a handler is guarded by
+`check(subject, "invoice.approve", scope)`. The declaration and the call site are
+the same fact written twice, and **you cannot add a permission at runtime because
+you cannot add the code that honours it at runtime.**
+
+Five consequences, each a failure that only appears when the set is data:
+
+- **A permission added without its call site is inert, and inert silently.** An
+  administrator grants it, believes access is conferred, and nothing changes.
+  There is no error to see, because granting something nothing checks is
+  indistinguishable from granting something correctly.
+- **The two halves fall out of step per environment.** Code that checks a
+  permission the database has not got denies everyone; a database holding one the
+  code does not check grants nothing. When the set is compiled in, the check and
+  the declaration ship as one artifact and cannot disagree.
+- **A typo becomes a denial rather than a build failure.** Both prior
+  implementations made the set a language enum for exactly this:
+  `Permission.INVOICE_APPROVE` misspelled does not compile, while
+  `'invoice.aprove'` in a row fails at check time and looks identical to a
+  correct refusal. That property is the single most valuable one here and it
+  evaporates the moment the set is data.
+- **"Where is this enforced?" stops being answerable.** A permission that is a
+  code symbol can be found by search, so an auditor can see every call site — and
+  can find the opposite, a permission that is declared, grantable and never
+  checked anywhere. A permission that is a string in a table can be neither
+  found nor audited.
+- **A new permission is a new capability, and that is a security review event.**
+  Adding one expands what the system can be instructed to do. As a diff, someone
+  approves it. As an `INSERT`, nobody does — and the set of things a system can
+  authorize should not be editable by anyone holding database access or an admin
+  screen.
+
 ### RB2. A permission is `resource.action`
 
 Lowercase, `snake_case` within each segment, a single dot between them:
@@ -72,12 +108,76 @@ the second way keeps the check a simple equality rather than a prefix question.
 
 Roles may be **declared in code** (a closed enum, reviewable in a diff, no
 migration to change) or **stored as data** (so a tenant can define its own).
-Both are admitted; a repository states which in its **Conventions**.
+Both are admitted; a repository states which in its **Conventions**, and most
+products want some of each.
 
 Whichever it is, one rule holds: **a role may contain only permissions from
 RB1's declared set, and that is validated at write time.** A stored role with a
 typo'd permission grants nothing and says nothing, and the failure surfaces
 later as a person who cannot do something everyone believes they can.
+
+#### Why data is safe here when it was not for permissions
+
+The asymmetry is not a compromise, and it is worth stating because it looks like
+one. **A role introduces no capability. It composes capabilities that already
+exist and are already enforced.**
+
+Creating *Regional Auditor* as `{report.read, report.export}` adds nothing the
+system could not already do: both permissions were declared in code, both have
+call sites, both were already grantable. The role is a shorthand for a set that
+was reachable anyway.
+
+So the blast radius of a role invented at runtime is bounded, exactly and by
+construction, by the permission set — **and it is RB1 that does the bounding.
+The code-defined permission set is precisely what makes runtime roles safe.**
+Relax RB1 and this rule becomes indefensible with it.
+
+Three further reasons data is the *right* answer for most roles, not merely a
+tolerated one:
+
+- **Roles are organisational structure, and that is the customer's, not ours.**
+  One tenant splits Approver into two grades; another merges them. Requiring a
+  deploy for a customer's internal reporting lines is requiring a deploy for
+  something we have no opinion about.
+- **Multi-tenancy makes code-only roles impossible, not merely awkward.** Tenant
+  A's roles are not tenant B's, and the alternatives are a source enum holding
+  the union of every customer's org chart, or a build per tenant. Neither is a
+  real option.
+- **The rates of change differ by orders of magnitude.** Permissions change when
+  features change: slow, deliberate, tied to a release. Roles change when people
+  change jobs: fast, frequent, and by administrators who are not engineers. Two
+  things changing at those two rates should not share a release cycle.
+
+#### Which roles still belong in code
+
+A product that stores roles as data should still declare some in source, and the
+discriminator is sharp: **if code refers to a role by name, that role is a system
+role.** A handler that notifies "the billing contact" has made that role's
+existence a code assumption, and a tenant deleting it breaks the feature rather
+than adjusting their own configuration.
+
+Four cases where the answer is code regardless of what the product does with the
+rest:
+
+- **Bootstrap.** A fresh database has no roles and no administrators. Something
+  must grant the first person their access, and it cannot be a role that does not
+  exist yet.
+- **Recovery.** If every administrative role is data, then deleting or
+  misconfiguring them locks everyone out with no path back that does not involve
+  raw SQL against production. A code-declared role is a floor nobody can remove.
+- **Roles that cross tenants.** A platform administrator or a support engineer
+  belongs to no tenant, so no tenant may define or edit them. Code is where a
+  tenant administrator cannot reach.
+- **Roles the tests and the corpus depend on.** This standard's own
+  [`decisions.json`](../contracts/rbac/decisions.json) needs known roles, and so
+  does every integration test. If every role is data, each test carries its own
+  fixture and the fixtures drift.
+
+Two rules follow, and both are enforceable:
+
+- **A system role is not editable or deletable by a tenant.**
+- **A tenant-defined role may not take the name of a system role**, or a lookup
+  by name stops having one answer.
 
 **Roles do not nest and do not inherit.** A role that should have what another
 role has lists the same permissions. Inheritance turns *what can this person do*
@@ -138,9 +238,19 @@ A role that should have everything **enumerates everything**. `hiring-tracker`'s
 holds. That is verbose and it is honest, and the verbosity is a feature: adding a
 permission to the system does not silently add it to the superuser.
 
-Expansion is permitted at *definition* time. A role may be authored as "every
-permission on `invoice`" and stored expanded. What must not happen is a wildcard
-surviving into the check.
+**A wildcard is not a valid permission string anywhere.** Not in a declaration,
+not in a stored role, not as an argument to `check`, and not as authoring
+shorthand a tool expands later. There is no place in the system where `*`,
+`system.*` or `invoice.*` is accepted.
+
+Authoring shorthand is the tempting exception and it is refused for the reason
+the paragraph above gives. A role authored as "every permission on `invoice`"
+either re-expands on load, and silently gains whatever was added to the code
+since — the superuser problem, returned by another door — or freezes at
+definition and quietly stops meaning what it says. Neither is legible, and the
+authored form is what a reviewer reads in a diff. **A rule that admits an
+implicit form has an implicit form**, and the only version of this rule that
+holds is the flat one.
 
 ### RB6. `check` is a pure function of its arguments
 
@@ -266,10 +376,15 @@ specification rather than as prose.
   (2026-09-01): the fork between the two implementations was real and both sides
   had a case — type safety against tenant-defined roles. Admitting both while
   closing the permission set keeps what each was actually protecting.
-- **No wildcards at check time** (2026-09-01): the strongest rule here, and the
-  one most likely to be argued with, because `*` is convenient. It is rejected
-  because it defeats every other rule silently and because it makes
-  `permissionsFor` untrue, which the client contract now depends on.
+- **No wildcards anywhere, not merely at check time** (2026-09-01): the
+  strongest rule here, and the one most likely to be argued with, because `*` is
+  convenient. It is rejected because it defeats every other rule silently and
+  because it makes `permissionsFor` untrue, which the client contract now
+  depends on. An earlier draft of this rule banned wildcards only at check time
+  and permitted them as authoring shorthand — which was inconsistent with this
+  same rule's argument for an enumerated superuser, since an authored `invoice.*`
+  either re-expands and silently grows or freezes and silently stops meaning what
+  it says. The flat denial is the only version that holds.
 - **No role inheritance** (2026-09-01): considered, because it removes
   duplication between similar roles. Rejected because it converts *what can this
   person do* from a lookup into a traversal, and because the duplication it

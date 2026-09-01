@@ -1,7 +1,7 @@
 {
   "contract": "observability",
   "schemaVersion": 1,
-  "description": "Conformance corpus for standards/observability.md. 'validity': the value must validate (or fail) against the named $def in context.schema.json. 'propagation': black-box cases — the implementation receives the described inbound context and the fields on its emitted log lines must satisfy 'expect' (a named $def per field, 'same-as-inbound' for continuation, 'fresh' for a newly minted value). An implementation passes the whole file or names the case it fails.",
+  "description": "Conformance corpus for standards/040-observability.md. 'validity': the value must validate (or fail) against the named $def in context.schema.json. 'propagation': black-box cases — the implementation receives the described inbound context and the fields on its emitted log lines must satisfy 'expect' (a named $def per field, 'same-as-inbound' for continuation, 'fresh' for a newly minted value). An implementation passes the whole file or names the case it fails.",
   "validity": [
     { "id": "traceparent-ok", "def": "traceparent", "value": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01", "valid": true },
     { "id": "traceparent-ok-unsampled", "def": "traceparent", "value": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00", "valid": true, "note": "flags 00 is a valid header; sampling is a flag, not validity (OC1)" },

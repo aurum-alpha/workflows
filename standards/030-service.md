@@ -1,8 +1,8 @@
 # The service contract
 
 One of the Aurum Alpha engineering standards, written under the platform
-contract ([`platform.md`](platform.md)) — a per-capability standard from its
-roster. Read [`enforcement.md`](enforcement.md) for the tier each rule below
+contract ([`000-platform.md`](000-platform.md)) — a per-capability standard from its
+roster. Read [`999-enforcement.md`](999-enforcement.md) for the tier each rule below
 actually holds. Artifacts: [`contracts/service/`](../contracts/service/).
 
 ## Why this exists
@@ -80,9 +80,9 @@ rotates, or stores its own logs, because that is the execution
 environment's job. This rule is inherited, not invented.
 
 What this standard pins is the line itself: **one JSON object per line**,
-carrying `ts` (an instant per [`identifiers.md`](identifiers.md) IP4),
+carrying `ts` (an instant per [`020-identifiers.md`](020-identifiers.md) IP4),
 `level`, `msg`, `service`, and — whenever request context exists — the
-context block from [`observability.md`](observability.md) OC2 and OC4.
+context block from [`040-observability.md`](040-observability.md) OC2 and OC4.
 Schema:
 [`contracts/service/logline.schema.json`](../contracts/service/logline.schema.json).
 
@@ -144,12 +144,12 @@ diagnosis in plain words.
 
 **Specific is not the same as verbose, and it is never an excuse to leak.**
 Name the configuration key, never its value. Reference a record by its
-public id (`identifiers.md` IP1), never by dumping its contents. Name the
+public id (`020-identifiers.md` IP1), never by dumping its contents. Name the
 field that failed validation, not the personal data that failed it. A
 secret, a token, a credential, a full connection string with its password,
 or protected personal data appearing in a log line is a defect of its own,
 and the redaction rules belong to the [secrets
-standard](platform.md#the-capability-roster). *What* failed and *why* is
+standard](000-platform.md#the-capability-roster). *What* failed and *why* is
 almost never the sensitive part; the payload is.
 
 ### SC3. Configuration comes from the environment, and absence blocks serving
@@ -176,7 +176,7 @@ Config lives in environment variables, per
   guessed where it was running has an untestable branch in it.
 
 Secrets arrive the same way and are governed by the [secrets
-standard](platform.md#the-capability-roster); nothing here permits logging
+standard](000-platform.md#the-capability-roster); nothing here permits logging
 one.
 
 ### SC4. SIGTERM means drain
@@ -217,7 +217,7 @@ vulnerabilities to try. It is accepted here because incident response needs
 it more than an attacker does, and because the alternative — provenance
 only in logs — puts it behind exactly the access an incident responder may
 be waiting on. Where a repository's threat model disagrees, the [security
-baseline standard](platform.md#the-capability-roster) governs endpoint
+baseline standard](000-platform.md#the-capability-roster) governs endpoint
 exposure, and the startup log line still satisfies this rule.
 
 ### SC6. Start fast, degrade rather than block, and never crashloop
@@ -328,7 +328,7 @@ state it was built to hold.
 ## Out of scope, deliberately
 
 **The error envelope is not here.** It belongs to the [service interfaces
-standard](http.md) with the rest of the
+standard](050-http.md) with the rest of the
 request/response contract (RFC 9457, pagination, idempotency), because an
 error shape is an API concern rather than a service-lifecycle one, and
 splitting it across two documents is how two answers to one question get
@@ -336,7 +336,7 @@ born. The proposal that raised this standard listed it; this is the
 scope decision, stated rather than silently dropped.
 
 Rate limiting and response headers belong to the [security baseline
-standard](platform.md#the-capability-roster) for the same reason.
+standard](000-platform.md#the-capability-roster) for the same reason.
 
 ## The artifacts
 
@@ -355,7 +355,7 @@ Per PC3, under [`contracts/service/`](../contracts/service/):
 
 ## Enforcement
 
-Registered in [`enforcement.md`](enforcement.md) under "Service standard",
+Registered in [`999-enforcement.md`](999-enforcement.md) under "Service standard",
 every rule review-only today. The split that matters, and the reason this
 standard is the strongest promotion candidate in the ledger:
 

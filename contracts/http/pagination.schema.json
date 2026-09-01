@@ -2,11 +2,11 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.aurumalpha.dev/http/pagination.schema.json",
   "title": "Aurum Alpha collection envelope",
-  "description": "The cursor-paginated collection response. Governed by standards/http.md HA3. schemaVersion 1 — evolves additively per PC6.",
+  "description": "The cursor-paginated collection response. Governed by standards/050-http.md HA3. schemaVersion 1 — evolves additively per PC6.",
   "$defs": {
     "cursor": {
       "type": "string",
-      "description": "Opaque to every consumer (HA3, and identifiers.md IP3 for the same reason ids are opaque): the server generates it, the client echoes it, nobody parses it. A client that decodes a cursor has coupled itself to a query plan.",
+      "description": "Opaque to every consumer (HA3, and 020-identifiers.md IP3 for the same reason ids are opaque): the server generates it, the client echoes it, nobody parses it. A client that decodes a cursor has coupled itself to a query plan.",
       "minLength": 1
     },
     "collection": {

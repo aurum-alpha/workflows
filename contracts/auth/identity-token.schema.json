@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.aurumalpha.dev/auth/identity-token.schema.json",
   "title": "Aurum Alpha proxy-minted identity token",
-  "description": "The token the RP proxy mints for the internal hop to a backend, variant (b) of standards/auth.md AU2. The backend VERIFIES the signature against the proxy's key rather than decoding the token — a parsed but unverified token is no check at all. Registered JWT and OIDC claims keep their RFC spelling and NumericDate encoding; standard-added claims are snake_case. schemaVersion 1 — evolves additively per PC6.",
+  "description": "The token the RP proxy mints for the internal hop to a backend, variant (b) of standards/060-auth.md AU2. The backend VERIFIES the signature against the proxy's key rather than decoding the token — a parsed but unverified token is no check at all. Registered JWT and OIDC claims keep their RFC spelling and NumericDate encoding; standard-added claims are snake_case. schemaVersion 1 — evolves additively per PC6.",
   "type": "object",
   "properties": {
     "iss": {

@@ -1,14 +1,14 @@
 # Authentication: the identity tier, the token, and the session
 
 One of the Aurum Alpha engineering standards, written under the platform
-contract ([`platform.md`](platform.md)) — a per-capability standard from its
-roster. Read [`enforcement.md`](enforcement.md) for the tier each rule below
+contract ([`000-platform.md`](000-platform.md)) — a per-capability standard from its
+roster. Read [`999-enforcement.md`](999-enforcement.md) for the tier each rule below
 actually holds. Artifacts: [`contracts/auth/`](../contracts/auth/).
 
 This document governs how a person comes to be authenticated, what identity
 reaches an application as a result, how that identity is created in the first
 place, and how a session ends. **It does not define the authorization model** —
-who may do what is the [RBAC standard](rbac.md)'s, and
+who may do what is the [RBAC standard](070-rbac.md)'s, and
 the boundary between the two is AU6.
 
 ## Why this exists
@@ -169,7 +169,7 @@ Each field is a decision:
 
 **One convention conflict, stated rather than left silent.** Registered JWT and
 OIDC claims keep their RFC spelling and NumericDate encoding — `exp`, `iat`,
-`auth_time`, `amr` — even though [`identifiers.md`](identifiers.md) IP4
+`auth_time`, `amr` — even though [`020-identifiers.md`](020-identifiers.md) IP4
 otherwise minimises Unix-epoch timestamps. Adopting a standard whole is what PC2
 asks, and renaming half a registered claim set breaks every library that reads
 it. Locally added claims follow the same conventions: snake_case, RFC 3339 where they carry a
@@ -337,7 +337,7 @@ correct answer is **`403` plus session termination**.
 #### The boundary with authorization
 
 Everything past *known subject* belongs to the
-[RBAC standard](rbac.md): the permission model, the
+[RBAC standard](070-rbac.md): the permission model, the
 grant semantics, the check operation and its corpus. This document stops at
 producing a trustworthy subject and refusing an unknown one.
 
@@ -407,7 +407,7 @@ sequenceDiagram
   failure surfaces as an opaque CORS error rather than a `401`.
 - **Response headers stop being readable.** Script reads only a small safelist
   unless the server names others in `Access-Control-Expose-Headers`. **This
-  silently breaks [`http.md`](http.md) HA7**: the client cannot see `Retry-After`,
+  silently breaks [`050-http.md`](050-http.md) HA7**: the client cannot see `Retry-After`,
   so the rule that it wins over the client's own backoff quietly stops applying,
   in this topology only.
 
@@ -482,7 +482,7 @@ Per PC3, under [`contracts/auth/`](../contracts/auth/):
 ## Enforcement
 
 Every rule is review-only today, with gates named per rule in
-[`enforcement.md`](enforcement.md). The honest summary: **the parts with a wire
+[`999-enforcement.md`](999-enforcement.md). The honest summary: **the parts with a wire
 are gateable and the parts that are architecture are not.**
 
 - **AU2 is the strongest available gate.** The identity token is a wire shape, so

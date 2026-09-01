@@ -1,17 +1,17 @@
 # Audit events: who did what, when, to what
 
 One of the Aurum Alpha engineering standards, written under the platform
-contract ([`platform.md`](platform.md)) — a per-capability standard from its
-roster. Read [`enforcement.md`](enforcement.md) for the tier each rule below
+contract ([`000-platform.md`](000-platform.md)) — a per-capability standard from its
+roster. Read [`999-enforcement.md`](999-enforcement.md) for the tier each rule below
 actually holds. Artifacts: [`contracts/audit/`](../contracts/audit/). Id,
-timestamp and money formats are [`identifiers.md`](identifiers.md)'s; the
-context fields are [`observability.md`](observability.md)'s.
+timestamp and money formats are [`020-identifiers.md`](020-identifiers.md)'s; the
+context fields are [`040-observability.md`](040-observability.md)'s.
 
 This document defines the record a product keeps of consequential acts: its
 shape, what must produce one, how long it is kept, and what makes it worth
 trusting. It does not define who is allowed to perform those acts — that is the
-[RBAC standard](rbac.md)'s — and it does not define diagnostic logging, which is
-[`service.md`](service.md) SC2's. AE1 is the boundary between the last two,
+[RBAC standard](070-rbac.md)'s — and it does not define diagnostic logging, which is
+[`030-service.md`](030-service.md) SC2's. AE1 is the boundary between the last two,
 because conflating them is the failure this standard mostly exists to stop.
 
 ## Why this exists
@@ -40,7 +40,7 @@ Four things are wrong with it beyond being empty, and each is instructive:
   them that* — is unanswerable by construction. Actor and target are two fields,
   and every implementation that fuses them discovers this on the day it matters.
 - **Internal integer keys in a permanent record.** `user_id`, `organization_id`
-  and `role_id` are storage keys, which [`identifiers.md`](identifiers.md) IP1
+  and `role_id` are storage keys, which [`020-identifiers.md`](020-identifiers.md) IP1
   says do not leave the service. An audit row is the extreme case of leaving: it
   outlives the row it points at, so a key-based reference degrades to a number
   that once meant something.
@@ -87,7 +87,7 @@ solving a genuinely different problem: statements of fact from one issuer to
 another *cooperating peer* about a security subject — session revoked,
 credential changed — so the receiver can react. It is a signalling protocol
 between domains, not a record kept within one. These standards already meet it in the
-right place: [`auth.md`](auth.md) AU5 adopts OIDC Back-Channel Logout, which is
+right place: [`060-auth.md`](060-auth.md) AU5 adopts OIDC Back-Channel Logout, which is
 that family. It is not an audit trail and does not claim to be.
 
 **CloudEvents** is an envelope, not a content schema, and is already the
@@ -135,7 +135,7 @@ are outside the application's control entirely.
 
 *On [factor XI](https://12factor.net/logs), because the objection is the obvious
 one:* factor XI says an application must not concern itself with the routing or
-storage of **its log stream**, and [`service.md`](service.md) SC2 adopts that
+storage of **its log stream**, and [`030-service.md`](030-service.md) SC2 adopts that
 whole. This rule is not a departure from it, because an audit event is not a log
 line — it is application data, and its store is an attached resource in the sense
 of [factor IV](https://12factor.net/backing-services), named by config and
@@ -198,7 +198,7 @@ accountability hole with a support ticket attached.
 ### AE3. The action names the permission that authorized it
 
 `action` is `resource.verb`, matching the RBAC permission format exactly —
-`^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$`, the same pattern [`rbac.md`](rbac.md) RB2
+`^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$`, the same pattern [`070-rbac.md`](070-rbac.md) RB2
 pins.
 
 **Where an act was authorized by a permission, the action string *is* that
@@ -224,7 +224,7 @@ standard owns, so that every product spells them identically:
 | `auth.login_failed` | Authentication was attempted and refused. `actor.type` is `anonymous`; the account that was aimed at is the `target`. |
 | `auth.logout` | The user ended the session. |
 | `auth.session_revoked` | The session was ended by something other than the user — back-channel logout, an administrator, an expiry. |
-| `auth.access_denied` | An authenticated subject was refused, including [`auth.md`](auth.md) AU6's unknown-subject refusal. |
+| `auth.access_denied` | An authenticated subject was refused, including [`060-auth.md`](060-auth.md) AU6's unknown-subject refusal. |
 
 A product does not add to this namespace; `auth.*` is this standard's. Everything
 else a product audits is one of its own declared permissions.
@@ -257,7 +257,7 @@ So:
 `changes` never carries a secret, a credential, or a raw authentication factor.
 A changed password is audited as *the password changed*, with no value on either
 side; the same holds for tokens, keys and recovery codes. This is
-[`service.md`](service.md) SC2's rule about what a log line may carry, applied to
+[`030-service.md`](030-service.md) SC2's rule about what a log line may carry, applied to
 the store that keeps things longest.
 
 ### AE5. The floor: what must emit an event
@@ -267,9 +267,9 @@ happened. That is a judgment, so the standard states a floor that is not:
 
 1. **Authentication and session lifecycle** — every reserved action in AE3.
 2. **Authorization changes** — `grant` and `revoke`, which
-   [`rbac.md`](rbac.md) RB7 already calls audited events; a role's permission
+   [`070-rbac.md`](070-rbac.md) RB7 already calls audited events; a role's permission
    set changing; a role being created, renamed or deleted.
-3. **Identity lifecycle** — the four operations of [`auth.md`](auth.md) AU4:
+3. **Identity lifecycle** — the four operations of [`060-auth.md`](060-auth.md) AU4:
    a person invited, app access granted, app access revoked, the local record
    removed.
 4. **Destructive and irreversible writes** — delete, void, cancel, refund,
@@ -329,7 +329,7 @@ AE8.
 
 **Audit events are tenant-scoped data**, held under the same isolation rules as
 any other tenant data — the [data-layer
-standard](platform.md#the-capability-roster)'s, when it lands. A query that can
+standard](000-platform.md#the-capability-roster)'s, when it lands. A query that can
 read another tenant's audit rows is the same defect as one that can read their
 invoices, and worse in disclosure terms, because audit rows are a map of who
 does what inside that organisation.
@@ -358,7 +358,7 @@ is what was asked for. This is the one modification permitted against AE4's
 append-only rule; it is a defined operation with its own audit event, not an
 `UPDATE` available to application code. The request that triggers it belongs to
 the [data-subject-rights
-standard](platform.md#the-capability-roster).
+standard](000-platform.md#the-capability-roster).
 
 ### AE8. The event is written with the change, or the failure is loud
 
@@ -378,7 +378,7 @@ each implementation:
 - The event is written **after** the change succeeds, never before, so the record
   cannot claim something that did not happen.
 - A failed audit write is logged at `error` with the **entire event payload
-  inline**, per [`service.md`](service.md) SC2, so the record exists somewhere a
+  inline**, per [`030-service.md`](030-service.md) SC2, so the record exists somewhere a
   human can recover it from.
 - The operation's own outcome states what happened. Silently swallowing the audit
   failure and returning `200` is the one response that is never acceptable, because
@@ -408,7 +408,7 @@ Per PC3, under [`contracts/audit/`](../contracts/audit/):
 
 ## Enforcement
 
-Registered in [`enforcement.md`](enforcement.md) under "Audit standard". Every
+Registered in [`999-enforcement.md`](999-enforcement.md) under "Audit standard". Every
 rule lands review-only, as the charter requires, and the gates named below are
 commitments.
 

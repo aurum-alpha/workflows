@@ -2,7 +2,7 @@
 
 One of the Aurum Alpha engineering standards; read
 [`STANDARDS.md`](STANDARDS.md) for the charter it is written under and
-[`standards/enforcement.md`](standards/enforcement.md) for what enforces it.
+[`standards/999-enforcement.md`](standards/999-enforcement.md) for what enforces it.
 
 This document is two things at once, deliberately:
 
@@ -167,7 +167,7 @@ pull request's branch to be up to date with the default branch before it can
 merge — on, org-wide. A pull request that passed and then fell behind cannot
 land until it is updated and CI has run again, so that the tree which was proved
 and the tree which lands are the same tree.
-[`standards/ci.md`](standards/ci.md) carries the reasoning and the throughput
+[`standards/010-ci.md`](standards/010-ci.md) carries the reasoning and the throughput
 cost; what follows is only the part an agent gets wrong.
 
 **Bring the branch up to date by merging the default branch into it, not by
@@ -241,7 +241,7 @@ prevent, at a smaller scale.
 An agent working in an Aurum Alpha repository is bound by the same standards a
 person is. The CI standard in particular is not advisory background: it governs
 what a pipeline may look like, how versions are pinned, what may publish, and
-what a job may contain. Read [`standards/ci.md`](standards/ci.md) — or the
+what a job may contain. Read [`standards/010-ci.md`](standards/010-ci.md) — or the
 vendored copy, in a handed-over repository — before changing anything under
 `.github/`.
 
@@ -261,7 +261,7 @@ version was one line and wrong.
 
 What the checker cannot prove: that the work queue is honoured, that the approval
 gate is respected, that a correction reached the docs. Those stay review
-questions, and [`standards/enforcement.md`](standards/enforcement.md) says so in
+questions, and [`standards/999-enforcement.md`](standards/999-enforcement.md) says so in
 the row rather than implying coverage it lacks.
 
 Repos are held to it by name. A repository not yet listed still has its findings

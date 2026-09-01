@@ -1,14 +1,14 @@
 # Authorization: the RBAC model, its operations, and its decision corpus
 
 One of the Aurum Alpha engineering standards, written under the platform
-contract ([`platform.md`](platform.md)) — a per-capability standard from its
-roster. Read [`enforcement.md`](enforcement.md) for the tier each rule below
+contract ([`000-platform.md`](000-platform.md)) — a per-capability standard from its
+roster. Read [`999-enforcement.md`](999-enforcement.md) for the tier each rule below
 actually holds. Artifacts: [`contracts/rbac/`](../contracts/rbac/).
 
 This document defines **who may do what**, as an interface specification:
 a data model, a set of operations with defined semantics, and a corpus of
 decision cases any implementation in any language must reproduce. It picks up
-where [`auth.md`](auth.md) AU6 stops — that document produces a trustworthy
+where [`060-auth.md`](060-auth.md) AU6 stops — that document produces a trustworthy
 subject and refuses an unknown one; this one decides what a known subject may do.
 
 ## Why this exists
@@ -207,7 +207,7 @@ Five things it breaks:
   the change saved, and the behaviour does not move.
 - **It makes `permissionsFor` untrue, exactly as a wildcard does.** A gate that
   is not a permission gate does not appear in the list, so the `/me` document of
-  [`auth.md`](auth.md) AU6 describes a subject who can do more or less than it
+  [`060-auth.md`](060-auth.md) AU6 describes a subject who can do more or less than it
   says, and the interface renders the wrong screen. This is the same failure as
   RB6's wildcard, arriving by a different door.
 - **It is invisible to the corpus.** [`decisions.json`](../contracts/rbac/decisions.json)
@@ -290,7 +290,7 @@ one of which silently defeats every other rule in this document.
 
 The cost of that is not only the bypass. It makes `permissionsFor` **lie**: a
 subject holding `*` has every permission and the list enumerates none of them, so
-the `/me` document of [`auth.md`](auth.md) AU6 tells the client something untrue
+the `/me` document of [`060-auth.md`](060-auth.md) AU6 tells the client something untrue
 and the interface renders the wrong screen.
 
 A role that should have everything **enumerates everything**. `hiring-tracker`'s
@@ -365,13 +365,13 @@ loop by hand and gets it wrong somewhere.
 grant and which role satisfied it, or that none did.
 
 A denial that cannot say why is the reason-giving failure of
-[`service.md`](service.md) SC2, on the surface where it matters most. It is also
+[`030-service.md`](030-service.md) SC2, on the surface where it matters most. It is also
 the difference between an audit trail worth keeping and a log of the word
 `false`.
 
 The reason is what an application logs and what an administrator reads on a
 support call. It is never returned to an unauthorised caller: the
-[`http.md`](http.md) HA3 envelope that reaches the client says the request was
+[`050-http.md`](050-http.md) HA3 envelope that reaches the client says the request was
 refused, and the reason stays in the log.
 
 ### RB9. A cached decision is keyed by everything the decision depends on
@@ -408,7 +408,7 @@ Per PC3, under [`contracts/rbac/`](../contracts/rbac/):
 ## Enforcement
 
 Every rule is review-only today, with gates named per rule in
-[`enforcement.md`](enforcement.md). **This standard is the most gateable one in
+[`999-enforcement.md`](999-enforcement.md). **This standard is the most gateable one in
 the repository**, and that is the point of writing authorization as an interface
 specification rather than as prose.
 

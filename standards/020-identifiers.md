@@ -1,8 +1,8 @@
 # Identifiers and primitive representations
 
 One of the Aurum Alpha engineering standards, written under the platform
-contract ([`platform.md`](platform.md)) — a per-capability standard from its
-roster. Read [`enforcement.md`](enforcement.md) for the tier each rule below
+contract ([`000-platform.md`](000-platform.md)) — a per-capability standard from its
+roster. Read [`999-enforcement.md`](999-enforcement.md) for the tier each rule below
 actually holds. Artifacts:
 [`contracts/identifiers/`](../contracts/identifiers/).
 
@@ -124,7 +124,7 @@ Storage profile: MySQL columns are `DATETIME(3)` holding UTC — `DATETIME(6)`
 where the repository pins six digits — and never `TIMESTAMP`, whose 2038
 ceiling and session-zone conversion are both traps; `DATE` for calendar
 dates. Other engines state their profile in the [data-layer
-standard](platform.md#the-capability-roster) as they are admitted.
+standard](000-platform.md#the-capability-roster) as they are admitted.
 
 ### IP5. Money is integer minor units plus an explicit currency
 
@@ -164,7 +164,7 @@ Per PC3, the contract lives under
 
 ## Enforcement
 
-Registered in [`enforcement.md`](enforcement.md) under "Identifiers
+Registered in [`999-enforcement.md`](999-enforcement.md) under "Identifiers
 standard". Honestly: everything lands review-only, and the gates it is
 getting are the platform contract's own mechanisms —
 `check-contract-artifacts` proves the tree above stays present and parsing;
@@ -172,7 +172,7 @@ getting are the platform contract's own mechanisms —
 once that shared job exists. IP1 is the one rule with a capability-specific
 gate to name: a schema-level check that externally addressable tables carry
 a public id column in an admitted format, buildable once the [data-layer
-standard](platform.md#the-capability-roster) gives a checker a schema to
+standard](000-platform.md#the-capability-roster) gives a checker a schema to
 read. Until then IP1 is the review question on every API-shaped diff: *does
 anything in this payload count rows?*
 

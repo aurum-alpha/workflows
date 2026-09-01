@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json",
   "title": "Aurum Alpha primitive representations",
-  "description": "Wire-form definitions for identifiers, timestamps, dates, and money. Governed by standards/identifiers.md; other contracts reference these $defs instead of restating patterns. schemaVersion 1 — evolves additively per PC6.",
+  "description": "Wire-form definitions for identifiers, timestamps, dates, and money. Governed by standards/020-identifiers.md; other contracts reference these $defs instead of restating patterns. schemaVersion 1 — evolves additively per PC6.",
   "$defs": {
     "schemaVersion": {
       "const": 1

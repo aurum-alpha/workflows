@@ -1,7 +1,7 @@
 {
   "contract": "audit",
   "schemaVersion": 1,
-  "description": "The conformance corpus for standards/audit.md. Three parts. 'validity' is judged by event.schema.json alone: an implementation validates each event and must reach the stated verdict. 'floor' is judged by running the implementation: for each described act it must produce an event matching the stated expectations (AE5). 'redaction' is judged by running the implementation's erasure: given the 'before' event and an erasure request for the named subject, it must produce the 'after' event (AE7). Cases marked 'schemaCannotCatch' are here deliberately - they document where the schema stops and the named gate takes over, rather than implying coverage the file does not have.",
+  "description": "The conformance corpus for standards/080-audit.md. Three parts. 'validity' is judged by event.schema.json alone: an implementation validates each event and must reach the stated verdict. 'floor' is judged by running the implementation: for each described act it must produce an event matching the stated expectations (AE5). 'redaction' is judged by running the implementation's erasure: given the 'before' event and an erasure request for the named subject, it must produce the 'after' event (AE7). Cases marked 'schemaCannotCatch' are here deliberately - they document where the schema stops and the named gate takes over, rather than implying coverage the file does not have.",
 
   "validity": [
     {
@@ -281,37 +281,37 @@
     {
       "case": "the-provider-ends-the-session",
       "category": "AE5.1 authentication and session lifecycle",
-      "act": "A back-channel logout token arrives and the proxy destroys the session (auth.md AU5).",
+      "act": "A back-channel logout token arrives and the proxy destroys the session (060-auth.md AU5).",
       "expect": { "action": "auth.session_revoked", "outcome": "success", "actor.type": "system" }
     },
     {
       "case": "an-authenticated-subject-is-unknown-to-the-application",
       "category": "AE5.1 authentication and session lifecycle",
-      "act": "A valid identity token arrives for a subject with no local record; the application refuses and ends the session (auth.md AU6).",
+      "act": "A valid identity token arrives for a subject with no local record; the application refuses and ends the session (060-auth.md AU6).",
       "expect": { "action": "auth.access_denied", "outcome": "failure", "actor.type": "anonymous" }
     },
     {
       "case": "a-role-is-granted",
       "category": "AE5.2 authorization changes",
-      "act": "An administrator grants a role to another user in a scope (rbac.md RB7's grant).",
+      "act": "An administrator grants a role to another user in a scope (070-rbac.md RB7's grant).",
       "expect": { "action": "a declared permission", "outcome": "success", "actor.id": "the administrator", "target.id": "the grantee", "actorIsNotTarget": true }
     },
     {
       "case": "a-roles-permission-set-is-edited",
       "category": "AE5.2 authorization changes",
-      "act": "A tenant-defined role's permission list is changed (rbac.md RB3).",
+      "act": "A tenant-defined role's permission list is changed (070-rbac.md RB3).",
       "expect": { "outcome": "success", "target.type": "role", "changesPresent": true, "why": "The before/after of the permission list is the whole content of this event - without it the row says a role changed and not how." }
     },
     {
       "case": "a-person-is-invited",
       "category": "AE5.3 identity lifecycle",
-      "act": "An administrator invites a person; the application creates the identity and grants app access (auth.md AU4).",
+      "act": "An administrator invites a person; the application creates the identity and grants app access (060-auth.md AU4).",
       "expect": { "outcome": "success", "actor.id": "the administrator", "target.id": "the new user's application public id", "actorIsNotTarget": true }
     },
     {
       "case": "a-persons-access-is-revoked",
       "category": "AE5.3 identity lifecycle",
-      "act": "An administrator removes a person from the application (auth.md AU4's revokeAppAccess).",
+      "act": "An administrator removes a person from the application (060-auth.md AU4's revokeAppAccess).",
       "expect": { "outcome": "success", "actorIsNotTarget": true, "why": "The event survives the removal of the user record it names, which is AE4's point: target.id and target.display are enough to read the row after the row it refers to is gone." }
     },
     {

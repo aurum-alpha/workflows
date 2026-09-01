@@ -1,8 +1,8 @@
 # The web client: what a browser holds, fetches, sends and reports
 
 One of the Aurum Alpha engineering standards, written under the platform
-contract ([`platform.md`](platform.md)) — a per-capability standard from its
-roster. Read [`enforcement.md`](enforcement.md) for the tier each rule below
+contract ([`000-platform.md`](000-platform.md)) — a per-capability standard from its
+roster. Read [`999-enforcement.md`](999-enforcement.md) for the tier each rule below
 actually holds. Artifacts: [`contracts/web-client/`](../contracts/web-client/).
 
 This document governs code that runs in a browser: what it may hold as a
@@ -11,7 +11,7 @@ an Aurum Alpha service (WC3), what it does with the values that service
 sends (WC4), and what it reports when something breaks (WC5).
 
 **It does not decide how authentication works.** That belongs to the
-[authentication and authorization standard](auth.md),
+[authentication and authorization standard](060-auth.md),
 and the boundary is drawn deliberately: a rule that is equally true of a
 server-rendered application with no JavaScript is not a browser rule. WC1
 carries only what is true *because* the client is a browser.
@@ -48,7 +48,7 @@ what the page may hold determines how the API client presents itself, which
 determines what the runtime configuration document has to carry, which
 determines what a browser may be told at all. Split across five standards
 each would be mostly cross-reference. This follows the shape of the
-[service contract](service.md), which bundles health, logging, config,
+[service contract](030-service.md), which bundles health, logging, config,
 shutdown and provenance for the same reason — they are one process's
 obligations, and these are one client's.
 
@@ -86,7 +86,7 @@ Three consequences, and they are the whole of this rule:
   thing this rule prevents.
 
 **Everything else about authentication belongs to the [authentication and
-authorization standard](auth.md), not here** —
+authorization standard](060-auth.md), not here** —
 which component is the identity provider's client, the session cookie's
 attributes and lifetime, refresh and revocation, and what identity crosses
 from that component to the backend. Those decisions are not browser
@@ -136,7 +136,7 @@ read. The naive translation of the factor — *put it in the bundle at build
 time* — is what actually violates it, twice over: config becomes code, and
 one artifact per environment breaks the build-once separation
 [factor V](https://12factor.net/build-release-run) and the
-[CI standard](ci.md) both require.
+[CI standard](010-ci.md) both require.
 
 **Build provenance is compiled in, and is not fetched at all.** The application
 version and the commit describe the *build* rather than the environment, so
@@ -144,7 +144,7 @@ baking them breaks nothing — and no server can supply them, because under a
 split origin the backend has no idea which frontend build a given browser is
 running. The bundler writes them at build time (`define` in Vite and its
 equivalents). That is the browser's half of the runtime provenance rule
-([`service.md`](service.md) SC5), and WC5 requires it in error reports.
+([`030-service.md`](030-service.md) SC5), and WC5 requires it in error reports.
 
 **Nothing secret goes in either document.** Both are served to every visitor
 who loads the page — the bootstrap to anonymous ones — so both are public by
@@ -160,7 +160,7 @@ consumer needs exactly one home, and a codebase with forty call sites has
 forty places for one of them to be missing:
 
 - **Types are generated from the committed OpenAPI document**
-  ([`http.md`](http.md) HA2), never hand-written. A hand-maintained
+  ([`050-http.md`](050-http.md) HA2), never hand-written. A hand-maintained
   interface mirroring an API is a copy that drifts, and it drifts silently
   because nothing compares them.
 - **Errors are parsed as problem+json** (HA3). The client branches on
@@ -185,7 +185,7 @@ tree.
 
 ### WC4. Presentation is the client's job, and it is done with `Intl`
 
-The [identifiers standard](identifiers.md) rules that the server speaks base
+The [identifiers standard](020-identifiers.md) rules that the server speaks base
 representations — RFC 3339 UTC instants, integer minor units with an ISO
 4217 code, opaque public ids — and that presentation is the UI's job. This
 rule is the other half of that sentence, and without it the first half is an
@@ -223,7 +223,7 @@ turn every other consumer's correct rendering into a parsing job.
 ### WC5. The browser does not originate the server's trace, and reports errors with the request id
 
 A browser is not a service, and the observability standard's propagation
-rule ([`observability.md`](observability.md) OC1) already answers this case
+rule ([`040-observability.md`](040-observability.md) OC1) already answers this case
 without naming it: an inbound request without a valid `traceparent` starts a
 new trace at the receiving service's edge. That is the correct default here.
 The trace begins at the edge, not in the page.
@@ -241,7 +241,7 @@ service standard applies to log lines:
 
 - **It states a specific reason** — which operation, against which endpoint,
   with which request id. A report saying only that an error occurred is the
-  [`service.md`](service.md) SC2 failure on a new surface: a class of
+  [`030-service.md`](030-service.md) SC2 failure on a new surface: a class of
   problem with no occurrence in it.
 - **It carries the application version and commit** from WC2, because a
   stack trace against unknown source is unreadable, and browsers hold stale
@@ -274,7 +274,7 @@ Per PC3, under [`contracts/web-client/`](../contracts/web-client/):
 ## Enforcement
 
 Every rule here is review-only today, with gates named per rule in
-[`enforcement.md`](enforcement.md). Two are cheaply and honestly gateable,
+[`999-enforcement.md`](999-enforcement.md). Two are cheaply and honestly gateable,
 and the rest are not, which is worth being direct about: **this is the least
 gateable standard in the repository so far**, because its subject runs on
 someone else's machine.
@@ -290,7 +290,7 @@ someone else's machine.
   `sessionStorage` and IndexedDB after a login and asserts nothing
   credential-shaped is there. The cookie's own attributes are a live gate
   too, but they belong to the [authentication and authorization
-  standard](auth.md), which sets them.
+  standard](060-auth.md), which sets them.
 - **WC1's central claim resists a checker entirely.** Proving no token
   reaches JavaScript means proving a negative about a program's runtime, and
   a gate that tried would be reading the implementation, which PC4 forbids.
@@ -308,7 +308,7 @@ someone else's machine.
   chose the Backend-For-Frontend pattern, pinned the session cookie's
   attributes, and required refresh-token rotation. Every one of those is a
   decision the [authentication and authorization
-  standard](auth.md) states as its own — and each
+  standard](060-auth.md) states as its own — and each
   is equally true of a server-rendered application with no JavaScript,
   which is the test that shows they are not browser rules. Deciding them
   here would have been this repository's own two-answers failure, committed

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.aurumalpha.dev/http/problem.schema.json",
   "title": "Aurum Alpha problem+json error envelope",
-  "description": "The RFC 9457 problem details envelope, profiled. Governed by standards/http.md HA2. Every error response from every endpoint uses this shape, served as application/problem+json. schemaVersion 1 — evolves additively per PC6.",
+  "description": "The RFC 9457 problem details envelope, profiled. Governed by standards/050-http.md HA2. Every error response from every endpoint uses this shape, served as application/problem+json. schemaVersion 1 — evolves additively per PC6.",
   "type": "object",
   "properties": {
     "type": {
@@ -24,7 +24,7 @@
     },
     "detail": {
       "type": "string",
-      "description": "THIS occurrence's specific reason, per the reason-giving rule of service.md SC2: which value, which rule, which limit. Never the bare class restated, never a stack trace, never a secret or a record's contents — this envelope crosses the trust boundary.",
+      "description": "THIS occurrence's specific reason, per the reason-giving rule of 030-service.md SC2: which value, which rule, which limit. Never the bare class restated, never a stack trace, never a secret or a record's contents — this envelope crosses the trust boundary.",
       "minLength": 1
     },
     "instance": {

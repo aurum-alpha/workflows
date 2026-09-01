@@ -1,7 +1,7 @@
 {
   "contract": "web-client",
   "schemaVersion": 1,
-  "description": "Conformance corpus for standards/web-client.md. 'validity': the value must validate (or fail) against the named schema root \u2014 'runtime-config' or 'error-report'. 'behaviour': black-box cases a live client and its serving process must satisfy; the harness drives the stimulus and asserts 'expect'. An implementation passes the whole file or names the case it fails.",
+  "description": "Conformance corpus for standards/090-web-client.md. 'validity': the value must validate (or fail) against the named schema root \u2014 'runtime-config' or 'error-report'. 'behaviour': black-box cases a live client and its serving process must satisfy; the harness drives the stimulus and asserts 'expect'. An implementation passes the whole file or names the case it fails.",
   "validity": [
     {
       "id": "config-minimal-ok",

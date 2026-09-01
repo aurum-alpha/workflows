@@ -1,7 +1,7 @@
 {
   "contract": "service",
   "schemaVersion": 1,
-  "description": "Conformance corpus for standards/service.md. 'validity': the value must validate (or fail) against the named $def in health.schema.json, or against logline.schema.json where def is 'logLine'. 'lifecycle': black-box cases a running service must satisfy — the harness drives the described stimulus and asserts 'expect'. An implementation passes the whole file or names the case it fails.",
+  "description": "Conformance corpus for standards/030-service.md. 'validity': the value must validate (or fail) against the named $def in health.schema.json, or against logline.schema.json where def is 'logLine'. 'lifecycle': black-box cases a running service must satisfy — the harness drives the described stimulus and asserts 'expect'. An implementation passes the whole file or names the case it fails.",
   "validity": [
     {
       "id": "liveness-ok",

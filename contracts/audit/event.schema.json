@@ -2,13 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.aurumalpha.dev/audit/event.schema.json",
   "title": "Aurum Alpha audit event",
-  "description": "The record of one consequential act. Governed by standards/audit.md AE2-AE4. Ids and timestamps come from the identifiers contract and the correlation fields from the observability contract, referenced rather than restated. This is application DATA (AE1), not a log line: the shape below is what is stored and queried, whatever else it is also emitted to. schema_version 1 - evolves additively per PC6.",
+  "description": "The record of one consequential act. Governed by standards/080-audit.md AE2-AE4. Ids and timestamps come from the identifiers contract and the correlation fields from the observability contract, referenced rather than restated. This is application DATA (AE1), not a log line: the shape below is what is stored and queried, whatever else it is also emitted to. schema_version 1 - evolves additively per PC6.",
   "type": "object",
   "$defs": {
     "action": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
-      "description": "AE3. resource.verb, the same pattern standards/rbac.md RB2 pins for permissions, because where an act was authorized by a permission the action string IS that permission - the same bytes, not a past-tense rendering of them. That identity is what makes 'show me everything done under invoice.void' one query and what makes AE5's floor mechanically checkable."
+      "description": "AE3. resource.verb, the same pattern standards/070-rbac.md RB2 pins for permissions, because where an act was authorized by a permission the action string IS that permission - the same bytes, not a past-tense rendering of them. That identity is what makes 'show me everything done under invoice.void' one query and what makes AE5's floor mechanically checkable."
     },
     "reservedAction": {
       "enum": [
@@ -129,7 +129,7 @@
     },
     "reason": {
       "type": "string",
-      "description": "Optional free text: the justification an administrator typed, or the decision reason from standards/rbac.md RB8 on a refusal. RB8's reason belongs here and in the log, never in the response to the refused caller."
+      "description": "Optional free text: the justification an administrator typed, or the decision reason from standards/070-rbac.md RB8 on a refusal. RB8's reason belongs here and in the log, never in the response to the refused caller."
     },
     "erased_at": {
       "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp",

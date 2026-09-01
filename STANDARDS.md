@@ -115,7 +115,7 @@ Landing a standard and landing its enforcement in one change is how standards
 stall. So the sequence is fixed:
 
 1. The standard lands with every rule registered in
-   [`standards/enforcement.md`](standards/enforcement.md), at the tier that
+   [`standards/999-enforcement.md`](standards/999-enforcement.md), at the tier that
    rule actually holds — for a new standard, usually **review only**.
 2. Each rule names, in that ledger, **the gate it is eventually getting** — or
    states plainly that it resists one and will stay review-only.
@@ -183,7 +183,7 @@ document citing its own paperwork.
 
 Where a rule depends on a standard **not yet written**, the reference still
 has to be a working link, so it points at the row that tracks it:
-`[the data-layer standard](standards/platform.md#the-capability-roster)`.
+`[the data-layer standard](standards/000-platform.md#the-capability-roster)`.
 That link resolves today, lands the reader on a row that says "not yet
 written", and becomes a direct link to the document when one lands. A bare
 name is not a reference and a link to a file that does not exist is a 404;
@@ -217,19 +217,32 @@ order to describe its state.** Two things are deliberately not covered by that:
 Every standard here is binding. The **Enforcement** column says how much of it
 is held mechanically today; the ledger says which rule is which.
 
-| Standard | Covers | Enforcement |
-|---|---|---|
-| [`standards/ci.md`](standards/ci.md) | Pipeline doctrine, the shared job catalog, build/release/publish | largely gated |
-| [`standards/enforcement.md`](standards/enforcement.md) | The ledger: every rule, its gate, its tier | — it is the register |
-| [`AGENTS.md`](AGENTS.md) | How coding agents work in an Aurum Alpha repository | rules 1-5 gated, rest review |
-| [`standards/platform.md`](standards/platform.md) | The platform contract: application-layer opinions as protocols and interface specs, never tools | review, gates named |
-| [`standards/identifiers.md`](standards/identifiers.md) | Identifiers and primitive representations: public vs internal ids, the format table, timestamps, money | review, corpus written |
-| [`standards/observability.md`](standards/observability.md) | Observability transport and context propagation: W3C trace context, the id vocabulary, OTLP | review, corpus written |
-| [`standards/service.md`](standards/service.md) | The service contract: health and readiness, structured logging, configuration, graceful shutdown, runtime provenance | review, live gate available |
-| [`standards/http.md`](standards/http.md) | Service interfaces: protocol selection (HTTP, gRPC, SSE, WebSocket), OpenAPI, RFC 9457 errors, cursor pagination, versioning, idempotency, backpressure, snake_case wire naming | review, corpus written |
-| [`standards/auth.md`](standards/auth.md) | Authentication: the identity tier, the proxy-minted identity token, identity linkage, provisioning, sessions, deployment topologies | review, corpus written |
-| [`standards/rbac.md`](standards/rbac.md) | Authorization: the permission and role model, scope containment, the check operation, and the decision corpus | review, corpus written |
-| [`standards/web-client.md`](standards/web-client.md) | The web client: what a browser may hold as a credential, runtime configuration, the API client module, presentation and i18n, frontend error reporting | review, corpus written |
+**Each document has a number, and the number is its address.** It is stable for
+the life of the document, never reused and never reassigned — an address that
+moves is worse than none, because every citation that used it now points
+somewhere else silently. A document is cited by its number and a rule by its id
+within that document: `060 AU5` names one rule in one document and still will
+after ten more standards land. Numbers are spaced by ten so a document can be
+inserted where the reading order wants it; otherwise a new standard takes the
+next free slot. `000` is where to start. `999` is the ledger, last because it
+indexes everything above it. `AGENTS.md` carries no number because Cursor,
+Claude Code and `check-agent-docs` all address it by name at the repository
+root, which is an address already.
+
+| # | Standard | Covers | Enforcement |
+|---|---|---|---|
+| `000` | [`000-platform.md`](standards/000-platform.md) | The platform contract: application-layer opinions as protocols and interface specs, never tools | review, gates named |
+| `010` | [`010-ci.md`](standards/010-ci.md) | Pipeline doctrine, the shared job catalog, build/release/publish | largely gated |
+| `020` | [`020-identifiers.md`](standards/020-identifiers.md) | Identifiers and primitive representations: public vs internal ids, the format table, timestamps, money | review, corpus written |
+| `030` | [`030-service.md`](standards/030-service.md) | The service contract: health and readiness, structured logging, configuration, graceful shutdown, runtime provenance | review, live gate available |
+| `040` | [`040-observability.md`](standards/040-observability.md) | Observability transport and context propagation: W3C trace context, the id vocabulary, OTLP | review, corpus written |
+| `050` | [`050-http.md`](standards/050-http.md) | Service interfaces: protocol selection (HTTP, gRPC, SSE, WebSocket), OpenAPI, RFC 9457 errors, cursor pagination, versioning, idempotency, backpressure, snake_case wire naming | review, corpus written |
+| `060` | [`060-auth.md`](standards/060-auth.md) | Authentication: the identity tier, the proxy-minted identity token, identity linkage, provisioning, sessions, deployment topologies | review, corpus written |
+| `070` | [`070-rbac.md`](standards/070-rbac.md) | Authorization: the permission and role model, scope containment, the check operation, and the decision corpus | review, corpus written |
+| `080` | [`080-audit.md`](standards/080-audit.md) | Audit events: the record of consequential acts — actor separate from target, the action string is the permission string, the floor of what must emit, retention and erasure | review, corpus written |
+| `090` | [`090-web-client.md`](standards/090-web-client.md) | The web client: what a browser may hold as a credential, runtime configuration, the API client module, presentation and i18n, frontend error reporting | review, corpus written |
+| `999` | [`999-enforcement.md`](standards/999-enforcement.md) | The ledger: every rule, its gate, its tier | — it is the register |
+| — | [`AGENTS.md`](AGENTS.md) | How coding agents work in an Aurum Alpha repository | rules 1-5 gated, rest review |
 
 Standards still to be written are tracked as issues in this repository, and the
 platform contract's capability roster names which capability is waiting on one.

@@ -19,7 +19,7 @@ taken up. Adoption is tracked in each repository's own issue tracker.
 
 ## CI standard
 
-Rules from [`ci.md`](ci.md). `tools/check-ci-conformance` runs two ways from one
+Rules from [`010-ci.md`](010-ci.md). `tools/check-ci-conformance` runs two ways from one
 source — `--repo-root` inside a repo's own CI via `job-ci-conformance.yml`, and
 `--portfolio` for sweeps — because an audit and a gate that can disagree eventually
 will.
@@ -106,7 +106,7 @@ ninety is correct for firmware that has no other durable home, and no checker
 can tell those apart. Whether a long retention is earned stays a review
 question, and so does whether the deliverable should have a release instead.
 
-Where a CI rule reads **review only** above, `ci.md` explains why: BUILD ONCE
+Where a CI rule reads **review only** above, `010-ci.md` explains why: BUILD ONCE
 needs to know what an artifact is, and the per-stack DAG needs to know which
 stack a job belongs to. Those resist a checker honestly. The rest are candidates
 for the gate.
@@ -146,7 +146,7 @@ agent stopped at the approval gate, is not a fact on disk.
 
 ## Platform standard
 
-Rules from [`platform.md`](platform.md) — the
+Rules from [`000-platform.md`](000-platform.md) — the
 doctrine the per-capability application standards are written under. The
 per-capability rules themselves register here as each standard lands; these
 rows govern the doctrine.
@@ -169,14 +169,14 @@ that moves its row.
 
 ## Identifiers standard
 
-Rules from [`identifiers.md`](identifiers.md) —
+Rules from [`020-identifiers.md`](020-identifiers.md) —
 the first per-capability standard under the platform contract, and the first
 `contracts/` tree, so the PC3–PC6 mechanisms above now have something to run
 against.
 
 | # | Rule | Enforced by | Status |
 |---|---|---|---|
-| IP1 | Internal integer keys never leave the service; addressable rows carry a separate opaque public id | schema-level column check, buildable once the [data-layer standard](platform.md#the-capability-roster) defines a readable schema; until then the stated review question | **review only** |
+| IP1 | Internal integer keys never leave the service; addressable rows carry a separate opaque public id | schema-level column check, buildable once the [data-layer standard](000-platform.md#the-capability-roster) defines a readable schema; until then the stated review question | **review only** |
 | IP2 | Public ids use an admitted format from the table (UUIDv7, nanoid profile, prefixed handle); UUIDv4-in-an-index needs a written defence | `job-contract-conformance` running `contracts/identifiers/corpus.json` (proposed) | **review only** |
 | IP3 | Ids are opaque — equality only, no parsing meaning out of them | — resists honestly; review question on consumers | **review only** |
 | IP4 | Instants are RFC 3339 UTC `Z` at one pinned fractional precision (default three digits, extendable to six or nine, never fewer); calendar dates are `full-date`; MySQL profile `DATETIME(3)` | corpus validity + canonical cases (proposed, same job) | **review only** |
@@ -186,13 +186,13 @@ IP2, IP4 and IP5 are exactly what a corpus can hold: their gate is the
 platform contract's own `job-contract-conformance`, and the corpus already
 exists, so promoting them is building the job, not writing the cases. IP1's
 mechanical gate is named but waits on the [data-layer
-standard](platform.md#the-capability-roster). IP3 resists a checker — what a
+standard](000-platform.md#the-capability-roster). IP3 resists a checker — what a
 consumer does with an id after receiving it is not a fact on disk — and the
 document states the review question instead.
 
 ## Observability standard
 
-Rules from [`observability.md`](observability.md) —
+Rules from [`040-observability.md`](040-observability.md) —
 the propagation and telemetry-transport profile the service baseline's log
 fields and the async envelope both build on.
 
@@ -236,7 +236,7 @@ question until someone rules on it.
 
 ## Service standard
 
-Rules from [`service.md`](service.md) — what a running service exposes. This
+Rules from [`030-service.md`](030-service.md) — what a running service exposes. This
 section carries the ledger's strongest promotion candidate: `job-image-starts`
 already accepts an `http` probe and already reads startup output, so SC1 and
 SC5 need an extension of a job every repository calls, not a new one.
@@ -284,7 +284,7 @@ It stays a review question on every diff that reads its surroundings.
 
 ## Service interfaces standard
 
-Rules from [`http.md`](http.md) — which protocol an interaction uses, and the
+Rules from [`050-http.md`](050-http.md) — which protocol an interaction uses, and the
 conventions for the default answer.
 
 | # | Rule | Enforced by | Status |
@@ -323,7 +323,7 @@ than a fact about a diff.
 
 ## Web client standard
 
-Rules from [`web-client.md`](web-client.md) — the obligations of code running
+Rules from [`090-web-client.md`](090-web-client.md) — the obligations of code running
 in a browser.
 
 | # | Rule | Enforced by | Status |
@@ -337,7 +337,7 @@ in a browser.
 **WC2 is the one to build first**, and it is unusual in this repository for
 being both cheap and high-value: the failure it catches — an API origin baked
 into the bundle at build time — produces one artifact per environment, breaks
-the build-once separation the [CI standard](ci.md) requires, and **nothing
+the build-once separation the [CI standard](010-ci.md) requires, and **nothing
 fails today when it happens**. That is the exact profile of a rule that is a
 preference until something enforces it.
 
@@ -352,9 +352,9 @@ wire, and the wire here is the two contracts under
 
 ## Authentication standard
 
-Rules from [`auth.md`](auth.md) — how a person is authenticated, what identity
+Rules from [`060-auth.md`](060-auth.md) — how a person is authenticated, what identity
 reaches an application, and how a session ends. The authorization model is the
-[RBAC standard](rbac.md)'s.
+[RBAC standard](070-rbac.md)'s.
 
 | # | Rule | Enforced by | Status |
 |---|---|---|---|
@@ -381,8 +381,8 @@ unenforced.
 
 ## Authorization standard
 
-Rules from [`rbac.md`](rbac.md) — the model, its operations and its decision
-corpus. Authentication is [`auth.md`](auth.md)'s; AU6 is the boundary.
+Rules from [`070-rbac.md`](070-rbac.md) — the model, its operations and its decision
+corpus. Authentication is [`060-auth.md`](060-auth.md)'s; AU6 is the boundary.
 
 | # | Rule | Enforced by | Status |
 |---|---|---|---|
@@ -425,7 +425,7 @@ detector for RB4, which is otherwise the easiest rule here to break by accident.
 
 ## Audit standard
 
-Rules from [`audit.md`](audit.md) — the record of consequential acts. The event
+Rules from [`080-audit.md`](080-audit.md) — the record of consequential acts. The event
 reuses the identifiers contract's ids and timestamps and the observability
 contract's correlation fields, so a violation of IP1, IP4, OC2 or OC4 inside an
 audit event fails those contracts' rules too, from this file's schema.
@@ -435,7 +435,7 @@ audit event fails those contracts' rules too, from this file's schema.
 | AE1 | An audit event is application data in the product's own durable, queryable, tenant-scoped store — never a log line, and the log stream is never the system of record | resists a checker honestly: whether a store is the system of record or a convenience is intent, not shape. The review question is whether a history screen could be built from it | **review only** |
 | AE2 | One event shape, and **actor and target are separate required objects** — the failure the portfolio's one existing audit table demonstrates, plus `outcome`, an `impersonator` where one acted, and public ids never internal keys | **schema-decided** — `event.schema.json` under `job-contract-conformance`; sixteen validity cases already reach their stated verdict against it | **review only** |
 | AE3 | `action` is `resource.verb`, and where a permission authorized the act the action string **is** that permission; `auth.*` is this standard's reserved namespace for acts with no permission behind them | the format half is schema-decided. The identity half gets **a static check worth writing early**: read the product's declared permission set, assert every emitted action is one of them or a reserved `auth.*` action (proposed `check-audit-actions`) | **review only** |
-| AE4 | An event is self-contained, immutable and outlives its subject: display denormalized at write time, append-only, no cascade from the target's deletion, values not references, never a credential | the shape half is schema-decided. That the store is genuinely append-only and uncascaded is a schema fact once the [data-layer standard](platform.md#the-capability-roster) gives a checker a schema to read; that no credential reaches `changes` is SC2's judgment again | **review only** |
+| AE4 | An event is self-contained, immutable and outlives its subject: display denormalized at write time, append-only, no cascade from the target's deletion, values not references, never a credential | the shape half is schema-decided. That the store is genuinely append-only and uncascaded is a schema fact once the [data-layer standard](000-platform.md#the-capability-roster) gives a checker a schema to read; that no credential reaches `changes` is SC2's judgment again | **review only** |
 | AE5 | The floor of what must emit: authentication and session lifecycle, authorization changes, identity lifecycle, destructive writes, security-posture configuration, bulk personal-data export — and reads otherwise **not** audited | **the generative gate, and the one worth the most here** — enumerate the routes guarded by a destructive permission, exercise each, assert an event carrying that permission as its action. Fourteen `floor` cases in the corpus describe the acts; two of them are negative | **review only** |
 | AE6 | Append-only discipline is required — `INSERT` and `SELECT`, retention deletion under a separate credential. Hash chaining is **not** required; tamper-evidence needs an anchor outside the writer's reach | the grant is a schema fact, readable once the data-layer standard lands. That the request path holds no update is a review question | **review only** |
 | AE7 | Retention has a floor of one year and a stated ceiling; audit rows are tenant-scoped data; erasure **redacts the event rather than deleting it**, keeping the act and losing the identification | the erasure half is corpus-decided by `redaction` cases; `erased_at` and `erased_subjects` travelling together is schema-decided. That a retention period was chosen rather than defaulted is a judgment | **review only** |

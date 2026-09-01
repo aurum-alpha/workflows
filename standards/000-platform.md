@@ -2,7 +2,7 @@
 
 One of the Aurum Alpha engineering standards — read
 [`../STANDARDS.md`](../STANDARDS.md) for the charter this is written under,
-and [`enforcement.md`](enforcement.md) for the tier each rule below actually
+and [`999-enforcement.md`](999-enforcement.md) for the tier each rule below actually
 holds.
 
 This document states the doctrine every application-layer standard is written
@@ -172,33 +172,33 @@ the work is an issue in this repository.
 
 | Capability | The standard takes the form of | Document |
 |---|---|---|
-| Authentication | OIDC profile: a proxy is the relying party, one signed identity token crosses to the backend, the application is never in the authentication chain | [`auth.md`](auth.md) |
-| Authorization | Application-owned RBAC as a full interface spec: model, operations, semantics, corpus — never derived from token claims | [`rbac.md`](rbac.md) |
-| Identity provisioning | The application originates the user and creates the identity; four operations over SCIM or an admin API | [`auth.md`](auth.md) AU4 |
-| Session lifecycle | Idle and absolute limits, invisible refresh, back-channel logout with a short-token backstop | [`auth.md`](auth.md) AU5 |
-| Configuration | [Factor III](https://12factor.net/config) profile: variable naming, fail-loud on missing, no environment detection in code | [`service.md`](service.md) SC3 |
+| Authentication | OIDC profile: a proxy is the relying party, one signed identity token crosses to the backend, the application is never in the authentication chain | [`060-auth.md`](060-auth.md) |
+| Authorization | Application-owned RBAC as a full interface spec: model, operations, semantics, corpus — never derived from token claims | [`070-rbac.md`](070-rbac.md) |
+| Identity provisioning | The application originates the user and creates the identity; four operations over SCIM or an admin API | [`060-auth.md`](060-auth.md) AU4 |
+| Session lifecycle | Idle and absolute limits, invisible refresh, back-channel logout with a short-token backstop | [`060-auth.md`](060-auth.md) AU5 |
+| Configuration | [Factor III](https://12factor.net/config) profile: variable naming, fail-loud on missing, no environment detection in code | [`030-service.md`](030-service.md) SC3 |
 | Secrets | Delivery convention — how a secret reaches a process; never a vendor SDK in application code | not yet written |
-| Logging | [Factor XI](https://12factor.net/logs) profile: structured log-line schema to stdout; transport is the platform's problem | [`service.md`](service.md) SC2 |
-| Health & readiness | Two-endpoint contract, fixed paths and shapes | [`service.md`](service.md) SC1 |
-| Service lifecycle | [Factor IX](https://12factor.net/disposability) profile: SIGTERM means drain — readiness flips, in-flight completes, stated timeout | [`service.md`](service.md) SC4 |
-| Runtime provenance | The running service reports the commit and build it is | [`service.md`](service.md) SC5 |
-| Observability & context propagation | OTLP profile; W3C trace context; one id vocabulary across logs, traces, events | [`observability.md`](observability.md) |
-| Service interfaces & HTTP APIs | Protocol selection (HTTP default, gRPC internal-only, SSE before WebSocket); OpenAPI description; RFC 9457 errors; pagination, versioning, idempotency keys, retry semantics; snake_case wire naming | [`http.md`](http.md) |
-| Identifiers & primitives | Internal keys never exposed; public-id format table; RFC 3339 UTC; integer minor-unit money | [`identifiers.md`](identifiers.md) |
+| Logging | [Factor XI](https://12factor.net/logs) profile: structured log-line schema to stdout; transport is the platform's problem | [`030-service.md`](030-service.md) SC2 |
+| Health & readiness | Two-endpoint contract, fixed paths and shapes | [`030-service.md`](030-service.md) SC1 |
+| Service lifecycle | [Factor IX](https://12factor.net/disposability) profile: SIGTERM means drain — readiness flips, in-flight completes, stated timeout | [`030-service.md`](030-service.md) SC4 |
+| Runtime provenance | The running service reports the commit and build it is | [`030-service.md`](030-service.md) SC5 |
+| Observability & context propagation | OTLP profile; W3C trace context; one id vocabulary across logs, traces, events | [`040-observability.md`](040-observability.md) |
+| Service interfaces & HTTP APIs | Protocol selection (HTTP default, gRPC internal-only, SSE before WebSocket); OpenAPI description; RFC 9457 errors; pagination, versioning, idempotency keys, retry semantics; snake_case wire naming | [`050-http.md`](050-http.md) |
+| Identifiers & primitives | Internal keys never exposed; public-id format table; RFC 3339 UTC; integer minor-unit money | [`020-identifiers.md`](020-identifiers.md) |
 | Data layer | Migrations-only schema change; seeding contract; tenancy isolation rules | not yet written |
 | Async jobs & messaging | Internal envelope contract; at-least-once plus dedupe; signed webhooks | not yet written |
 | Maintenance jobs | The Job interface contract: registration, single-flight, run observability — and where it lands against [factor XII](https://12factor.net/admin-processes) | not yet written |
-| Audit events | Internal event contract: application data and not a log line; actor separate from target; the action string is the permission string; a stated floor of what must emit; OCSF at the export boundary rather than as the record | [`audit.md`](audit.md) |
+| Audit events | Internal event contract: application data and not a log line; actor separate from target; the action string is the permission string; a stated floor of what must emit; OCSF at the export boundary rather than as the record | [`080-audit.md`](080-audit.md) |
 | Security baseline | Response-header set, scanning, image pinning, secrets doctrine | not yet written |
 | Feature flags | Evaluation contract; standard-first (OpenFeature is the candidate) | not yet written |
 | Notifications | Message contract over the async envelope; provider at the boundary | not yet written |
 | Blob storage | S3 API as the storage protocol; reference, tenancy and upload rules | not yet written |
 | Data subject rights | Export and erasure as endpoint contracts | not yet written |
-| What a browser may hold | Session cookie only: no token in JavaScript or web storage, no provider credential in the bundle, a `401` answered by navigating. The authentication architecture itself is the authentication row's | [`web-client.md`](web-client.md) WC1 |
-| Client configuration | Fetched from the server at load, never compiled into the bundle — [factor III](https://12factor.net/config) honoured through the server's environment, and build-once preserved | [`web-client.md`](web-client.md) WC2 |
-| API client contract | One generated client module owning problem+json parsing, idempotency keys, bounded retries and cursor paging at the boundary | [`web-client.md`](web-client.md) WC3 |
-| Presentation, formatting & i18n | The other half of the base-representation rule: viewer's locale and zone, `Intl` formatting, currency exponents | [`web-client.md`](web-client.md) WC4 |
-| Frontend observability | The browser does not originate the server's trace; correlation by request id; a closed error-report shape | [`web-client.md`](web-client.md) WC5 |
+| What a browser may hold | Session cookie only: no token in JavaScript or web storage, no provider credential in the bundle, a `401` answered by navigating. The authentication architecture itself is the authentication row's | [`090-web-client.md`](090-web-client.md) WC1 |
+| Client configuration | Fetched from the server at load, never compiled into the bundle — [factor III](https://12factor.net/config) honoured through the server's environment, and build-once preserved | [`090-web-client.md`](090-web-client.md) WC2 |
+| API client contract | One generated client module owning problem+json parsing, idempotency keys, bounded retries and cursor paging at the boundary | [`090-web-client.md`](090-web-client.md) WC3 |
+| Presentation, formatting & i18n | The other half of the base-representation rule: viewer's locale and zone, `Intl` formatting, currency exponents | [`090-web-client.md`](090-web-client.md) WC4 |
+| Frontend observability | The browser does not originate the server's trace; correlation by request id; a closed error-report shape | [`090-web-client.md`](090-web-client.md) WC5 |
 
 Two rows deserve a word on why they are the worked examples:
 
@@ -219,7 +219,7 @@ W3C trace context, per the propagation profile.
 ## Enforcement
 
 Every rule here is review-only today, honestly, with the gates named per rule in
-[`enforcement.md`](enforcement.md):
+[`999-enforcement.md`](999-enforcement.md):
 
 - **PC1 and PC2 resist a checker** and stay review questions: what
   constitutes "a tool the lifecycle depends on" or "a standard that

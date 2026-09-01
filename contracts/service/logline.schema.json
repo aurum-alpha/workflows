@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.aurumalpha.dev/service/logline.schema.json",
   "title": "Aurum Alpha structured log line",
-  "description": "One JSON object per line, to stdout. Governed by standards/service.md SC2; the timestamp comes from the identifiers contract and the context block from the observability contract, referenced rather than restated. schemaVersion 1 — evolves additively per PC6.",
+  "description": "One JSON object per line, to stdout. Governed by standards/030-service.md SC2; the timestamp comes from the identifiers contract and the context block from the observability contract, referenced rather than restated. schemaVersion 1 — evolves additively per PC6.",
   "type": "object",
   "properties": {
     "ts": {

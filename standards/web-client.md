@@ -102,10 +102,29 @@ environment-agnostic.** No API URL, no tenant, no provider hostname, no
 feature toggle is compiled in. The bundle that was tested in staging is the
 bundle that reaches production, byte for byte.
 
-At load, the client fetches a small **runtime configuration document** from
-the server that served it, shaped by
+At load, the client fetches a small **bootstrap document** from the origin that
+served it, shaped by
 [`contracts/web-client/runtime-config.schema.json`](../contracts/web-client/runtime-config.schema.json).
-The server renders that document from *its own* environment.
+That origin renders it from *its own* environment.
+
+**Three things are involved and only the middle one is this document**, because
+conflating them produces a config that cannot be correct in every topology:
+
+| | Where it comes from | Changes when |
+|---|---|---|
+| **Build provenance** | compiled into the bundle by the bundler | the frontend is rebuilt |
+| **Bootstrap** | the origin that served the bundle, from its environment | that host is deployed |
+| **Application config** | `GET /api/config` from the backend | the backend is deployed or reconfigured |
+
+The bootstrap exists because of an ordering problem that has no other answer:
+**the client cannot ask the API where the API is.** The API origin cannot be
+compiled in — that is environment-specific, and the build-once violation this
+rule exists to stop — so it has to arrive from the host that served the page.
+Everything else the backend knows about itself, including its own version and
+whatever the frontend needs to interact correctly with *that* deployment, belongs
+on `/api/config` and not here. Where one origin serves both (the default
+topology) the two may be answered by one endpoint; keeping them distinct is what
+makes the split-origin topology work without a special case.
 
 **This is not a departure from [factor III](https://12factor.net/config).**
 It reads like one, and stating it as an exception would be wrong. Factor III
@@ -119,15 +138,18 @@ one artifact per environment breaks the build-once separation
 [factor V](https://12factor.net/build-release-run) and the
 [CI standard](ci.md) both require.
 
-Two things may be compiled in, because both describe the *build* rather than
-the environment: the application version and the commit it was built from.
-That is the browser's half of the runtime provenance rule
+**Build provenance is compiled in, and is not fetched at all.** The application
+version and the commit describe the *build* rather than the environment, so
+baking them breaks nothing — and no server can supply them, because under a
+split origin the backend has no idea which frontend build a given browser is
+running. The bundler writes them at build time (`define` in Vite and its
+equivalents). That is the browser's half of the runtime provenance rule
 ([`service.md`](service.md) SC5), and WC5 requires it in error reports.
 
-**Nothing secret goes in the runtime config document.** It is served to
-every anonymous visitor who loads the page, so it is public by construction.
-A value that must not be public belongs behind the server, where the
-browser can use its effect without ever seeing it.
+**Nothing secret goes in either document.** Both are served to every visitor
+who loads the page — the bootstrap to anonymous ones — so both are public by
+construction. A value that must not be public belongs behind the server, where
+the browser can use its effect without ever seeing it.
 
 ### WC3. One API client module, generated, owning the boundary rules
 
@@ -298,6 +320,16 @@ someone else's machine.
   standards would each be mostly a link to the others. The roster still
   gains a row per capability, so the table keeps its property that absence
   means declined.
+- **Build provenance is compiled in, not served** (2026-09-01): the first
+  version of this rule put the frontend's version and commit inside the served
+  document and required them. That is wrong wherever the bundle and the API come
+  from different origins, because the serving backend has no idea which frontend
+  build a given browser is running — and the split-origin topology is admitted.
+  Three things were being conflated: build provenance (compiled in), the
+  bootstrap (from the bundle's origin), and application config (from the
+  backend). Removing a required field is breaking under PC6, so the contract
+  moves to schemaVersion 2 and the deprecation window is stated as nil, because
+  no implementation consumed version 1.
 - **Client config is factor III honoured, not departed from** (2026-08-31):
   stated deliberately, because the charter requires a departure to be
   declared and this one would have been declared wrongly. The browser reads

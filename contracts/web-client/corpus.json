@@ -7,16 +7,12 @@
       "id": "config-minimal-ok",
       "def": "runtime-config",
       "value": {
-        "schema_version": 1,
+        "schema_version": 2,
         "environment": "production",
         "api_base_url": "https://app.example.com",
         "auth": {
           "login_path": "/auth/login",
           "logout_path": "/auth/logout"
-        },
-        "build": {
-          "version": "2.4.1",
-          "commit": "9f3c1ab7de204c5581f0a2b6e7d4c3918a5b0e2f"
         }
       },
       "valid": true,
@@ -26,16 +22,12 @@
       "id": "config-with-features-ok",
       "def": "runtime-config",
       "value": {
-        "schema_version": 1,
+        "schema_version": 2,
         "environment": "staging",
         "api_base_url": "https://staging.example.com",
         "auth": {
           "login_path": "/auth/login",
           "logout_path": "/auth/logout"
-        },
-        "build": {
-          "version": "2.4.1",
-          "commit": "9f3c1ab"
         },
         "features": {
           "new_billing_ui": true,
@@ -49,16 +41,12 @@
       "id": "config-rejects-unknown-property",
       "def": "runtime-config",
       "value": {
-        "schema_version": 1,
+        "schema_version": 2,
         "environment": "production",
         "api_base_url": "https://app.example.com",
         "auth": {
           "login_path": "/auth/login",
           "logout_path": "/auth/logout"
-        },
-        "build": {
-          "version": "2.4.1",
-          "commit": "9f3c1ab"
         },
         "oidc_client_secret": "s3cr3t"
       },
@@ -69,7 +57,7 @@
       "id": "config-rejects-provider-detail-in-auth",
       "def": "runtime-config",
       "value": {
-        "schema_version": 1,
+        "schema_version": 2,
         "environment": "production",
         "api_base_url": "https://app.example.com",
         "auth": {
@@ -77,44 +65,40 @@
           "logout_path": "/auth/logout",
           "client_id": "spa-prod",
           "issuer": "https://id.example.com"
-        },
-        "build": {
-          "version": "2.4.1",
-          "commit": "9f3c1ab"
         }
       },
       "valid": false,
       "note": "the browser is not an OAuth participant, so it is told where to navigate and nothing about the provider. The closed set is what keeps a client_id or issuer from arriving here and inviting the page to do an exchange itself (WC1)"
     },
     {
-      "id": "config-rejects-missing-build",
+      "id": "config-rejects-frontend-build-provenance",
       "def": "runtime-config",
       "value": {
-        "schema_version": 1,
+        "schema_version": 2,
         "environment": "production",
         "api_base_url": "https://app.example.com",
         "auth": {
           "login_path": "/auth/login",
           "logout_path": "/auth/logout"
+        },
+        "build": {
+          "version": "2.4.1",
+          "commit": "9f3c1ab"
         }
       },
       "valid": false,
-      "note": "without version and commit an error report cannot say which bundle produced it (WC2, WC5)"
+      "note": "the correction that produced schemaVersion 2: a serving origin cannot know which frontend build the browser is running, so provenance is compiled into the bundle and never served (WC2)"
     },
     {
       "id": "config-rejects-relative-login-path-without-slash",
       "def": "runtime-config",
       "value": {
-        "schema_version": 1,
+        "schema_version": 2,
         "environment": "production",
         "api_base_url": "https://app.example.com",
         "auth": {
           "login_path": "auth/login",
           "logout_path": "/auth/logout"
-        },
-        "build": {
-          "version": "2.4.1",
-          "commit": "9f3c1ab"
         }
       },
       "valid": false,

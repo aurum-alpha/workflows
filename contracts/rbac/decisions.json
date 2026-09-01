@@ -1,0 +1,441 @@
+{
+  "contract": "rbac",
+  "schemaVersion": 1,
+  "description": "The decision corpus for standards/rbac.md \u2014 the artifact that makes a polyglot authorization standard enforceable from one source. An implementation loads 'roles', 'scopeContainment' and 'grants', then evaluates every case in 'checks' and either reproduces each expected decision or names the case it failed. No running service and no network: the corpus is data and check() is a pure function of its arguments, which is what RB7 requires and why it requires it.",
+  "fixture": {
+    "permissions": [
+      "invoice.read",
+      "invoice.approve",
+      "invoice.void",
+      "user.invite",
+      "user.remove",
+      "report.read",
+      "report.export"
+    ],
+    "roles": [
+      {
+        "name": "viewer",
+        "permissions": [
+          "invoice.read",
+          "report.read"
+        ],
+        "origin": "code"
+      },
+      {
+        "name": "approver",
+        "permissions": [
+          "invoice.read",
+          "invoice.approve"
+        ],
+        "origin": "code"
+      },
+      {
+        "name": "tenant_admin",
+        "permissions": [
+          "invoice.read",
+          "invoice.approve",
+          "invoice.void",
+          "user.invite",
+          "user.remove",
+          "report.read",
+          "report.export"
+        ],
+        "origin": "code"
+      },
+      {
+        "name": "auditor",
+        "permissions": [
+          "report.read",
+          "report.export"
+        ],
+        "origin": "code"
+      },
+      {
+        "name": "regional_auditor",
+        "origin": "tenant",
+        "permissions": [
+          "report.read",
+          "report.export"
+        ]
+      }
+    ],
+    "scopeContainment": {
+      "description": "The application declares its own hierarchy; this fixture uses one tenant containing two projects, plus a second tenant that contains neither. 'global' contains everything.",
+      "global": [
+        "tenant:acme",
+        "tenant:globex",
+        "project:alpha",
+        "project:beta",
+        "project:gamma"
+      ],
+      "tenant:acme": [
+        "project:alpha",
+        "project:beta"
+      ],
+      "tenant:globex": [
+        "project:gamma"
+      ]
+    },
+    "grants": [
+      {
+        "subject": "usr_ana",
+        "role": "viewer",
+        "scope": "tenant:acme"
+      },
+      {
+        "subject": "usr_ben",
+        "role": "approver",
+        "scope": "project:alpha"
+      },
+      {
+        "subject": "usr_cara",
+        "role": "tenant_admin",
+        "scope": "tenant:acme"
+      },
+      {
+        "subject": "usr_dev",
+        "role": "auditor",
+        "scope": "global"
+      },
+      {
+        "subject": "usr_eve",
+        "role": "viewer",
+        "scope": "tenant:acme"
+      },
+      {
+        "subject": "usr_eve",
+        "role": "approver",
+        "scope": "tenant:acme"
+      },
+      {
+        "subject": "usr_fay",
+        "role": "regional_auditor",
+        "scope": "tenant:acme"
+      }
+    ]
+  },
+  "checks": [
+    {
+      "id": "granted-at-the-exact-scope",
+      "check": {
+        "subject": "usr_ana",
+        "permission": "invoice.read",
+        "scope": "tenant:acme"
+      },
+      "expect": {
+        "allowed": true,
+        "reason": {
+          "role": "viewer",
+          "scope": "tenant:acme"
+        }
+      },
+      "note": "the base case"
+    },
+    {
+      "id": "deny-by-default-for-an-ungranted-permission",
+      "check": {
+        "subject": "usr_ana",
+        "permission": "invoice.approve",
+        "scope": "tenant:acme"
+      },
+      "expect": {
+        "allowed": false
+      },
+      "note": "viewer does not carry it, and no grant means deny \u2014 never 'allow unless denied' (RB6)"
+    },
+    {
+      "id": "containment-a-tenant-grant-satisfies-a-project-check",
+      "check": {
+        "subject": "usr_ana",
+        "permission": "invoice.read",
+        "scope": "project:alpha"
+      },
+      "expect": {
+        "allowed": true,
+        "reason": {
+          "role": "viewer",
+          "scope": "tenant:acme"
+        }
+      },
+      "note": "a grant at a containing scope satisfies a check at a contained one, and the reason names the scope the grant was actually held at (RB5)"
+    },
+    {
+      "id": "containment-does-not-run-upward",
+      "check": {
+        "subject": "usr_ben",
+        "permission": "invoice.approve",
+        "scope": "tenant:acme"
+      },
+      "expect": {
+        "allowed": false
+      },
+      "note": "usr_ben holds approver on one project only; a project grant does not reach the tenant. The inverse of the case above, and the one an implementation gets wrong by treating containment as symmetric"
+    },
+    {
+      "id": "containment-does-not-cross-siblings",
+      "check": {
+        "subject": "usr_ben",
+        "permission": "invoice.approve",
+        "scope": "project:beta"
+      },
+      "expect": {
+        "allowed": false
+      },
+      "note": "alpha and beta share a tenant; a grant on one reaches neither the other nor their parent"
+    },
+    {
+      "id": "no-leakage-into-another-tenant",
+      "check": {
+        "subject": "usr_cara",
+        "permission": "invoice.void",
+        "scope": "tenant:globex"
+      },
+      "expect": {
+        "allowed": false
+      },
+      "note": "usr_cara is tenant_admin of acme and nothing at all in globex"
+    },
+    {
+      "id": "the-same-permission-in-two-scopes-decides-differently",
+      "check": {
+        "subject": "usr_cara",
+        "permission": "invoice.read",
+        "scope": "tenant:globex"
+      },
+      "expect": {
+        "allowed": false
+      },
+      "before": {
+        "subject": "usr_cara",
+        "permission": "invoice.read",
+        "scope": "tenant:acme",
+        "expect": {
+          "allowed": true
+        }
+      },
+      "note": "THE CACHE CASE, and the reason it is in the corpus rather than left to review. Evaluate 'before' first, then the check: an implementation whose cache keys on subject and permission without scope returns allowed for both and fails here. That is a cross-tenant authorization result produced by a cache key, and no test exercising one tenant at a time will ever show it (RB7, RB9)"
+    },
+    {
+      "id": "global-contains-every-scope",
+      "check": {
+        "subject": "usr_dev",
+        "permission": "report.export",
+        "scope": "project:gamma"
+      },
+      "expect": {
+        "allowed": true,
+        "reason": {
+          "role": "auditor",
+          "scope": "global"
+        }
+      },
+      "note": "a global grant reaches everywhere, including a tenant the subject has no other relationship with"
+    },
+    {
+      "id": "a-global-grant-is-still-only-its-own-permissions",
+      "check": {
+        "subject": "usr_dev",
+        "permission": "invoice.void",
+        "scope": "project:gamma"
+      },
+      "expect": {
+        "allowed": false
+      },
+      "note": "global is a scope, not a superuser. auditor carries report permissions and nothing else, wherever it is held"
+    },
+    {
+      "id": "a-tenant-defined-role-is-decided-only-by-its-permissions",
+      "check": {
+        "subject": "usr_fay",
+        "permission": "report.export",
+        "scope": "tenant:acme"
+      },
+      "expect": {
+        "allowed": true,
+        "reason": {
+          "role": "regional_auditor",
+          "scope": "tenant:acme"
+        }
+      },
+      "note": "THE ROLE-NAME CASE, and the mechanical detector for RB4. usr_fay holds regional_auditor, a tenant-defined role carrying exactly the permissions of the code-declared auditor. An implementation that gates on a role name \u2014 'is this subject an auditor' \u2014 refuses a subject the permission model plainly allows, and fails here while passing every other case. It is also why fixture roles carry an 'origin': the corpus has to be able to express a role the code never heard of"
+    },
+    {
+      "id": "grants-are-additive",
+      "check": {
+        "subject": "usr_eve",
+        "permission": "invoice.approve",
+        "scope": "tenant:acme"
+      },
+      "expect": {
+        "allowed": true,
+        "reason": {
+          "role": "approver",
+          "scope": "tenant:acme"
+        }
+      },
+      "note": "usr_eve holds viewer and approver at the same scope; the permission set is the union of both (RB6)"
+    },
+    {
+      "id": "an-unheld-permission-is-still-denied-with-two-roles",
+      "check": {
+        "subject": "usr_eve",
+        "permission": "invoice.void",
+        "scope": "tenant:acme"
+      },
+      "expect": {
+        "allowed": false
+      },
+      "note": "additive does not mean generous \u2014 the union of viewer and approver still excludes void"
+    },
+    {
+      "id": "no-permission-implies-another",
+      "check": {
+        "subject": "usr_ben",
+        "permission": "invoice.read",
+        "scope": "project:alpha"
+      },
+      "expect": {
+        "allowed": true,
+        "reason": {
+          "role": "approver",
+          "scope": "project:alpha"
+        }
+      },
+      "note": "approver holds invoice.read explicitly. It is in the corpus to make the converse observable: approve does not imply read, and read is granted here only because the role lists it (RB6)"
+    },
+    {
+      "id": "an-ungranted-subject-is-denied-everything",
+      "check": {
+        "subject": "usr_nobody",
+        "permission": "invoice.read",
+        "scope": "tenant:acme"
+      },
+      "expect": {
+        "allowed": false
+      },
+      "note": "a subject with no grants at all. Distinct from auth.md AU6's unknown subject, which never reaches a check"
+    },
+    {
+      "id": "permissionsFor-enumerates-the-true-set",
+      "operation": "permissionsFor",
+      "check": {
+        "subject": "usr_eve",
+        "scope": "tenant:acme"
+      },
+      "expect": {
+        "permissions": [
+          "invoice.approve",
+          "invoice.read",
+          "report.read"
+        ]
+      },
+      "note": "the union of viewer and approver, sorted, complete. This is what feeds the /me document of auth.md AU6, and it is why RB6 forbids a wildcard surviving into the check: a subject holding one would have every permission while this list enumerated none of them, and the interface would render the wrong screen"
+    },
+    {
+      "id": "permissionsFor-is-scope-sensitive",
+      "operation": "permissionsFor",
+      "check": {
+        "subject": "usr_cara",
+        "scope": "tenant:globex"
+      },
+      "expect": {
+        "permissions": []
+      },
+      "note": "empty rather than absent \u2014 'this subject may do nothing here' is a statement, not a missing answer"
+    },
+    {
+      "id": "checkAll-requires-every-permission",
+      "operation": "checkAll",
+      "check": {
+        "subject": "usr_ana",
+        "permissions": [
+          "invoice.read",
+          "invoice.approve"
+        ],
+        "scope": "tenant:acme"
+      },
+      "expect": {
+        "allowed": false
+      },
+      "note": "usr_ana holds the first and not the second"
+    },
+    {
+      "id": "checkAny-requires-only-one",
+      "operation": "checkAny",
+      "check": {
+        "subject": "usr_ana",
+        "permissions": [
+          "invoice.read",
+          "invoice.approve"
+        ],
+        "scope": "tenant:acme"
+      },
+      "expect": {
+        "allowed": true,
+        "reason": {
+          "role": "viewer",
+          "scope": "tenant:acme"
+        }
+      },
+      "note": "both prior fleet implementations grew checkAny and checkAll independently, which is good evidence that a codebase without them writes the loop by hand and gets it wrong somewhere"
+    }
+  ],
+  "rejections": [
+    {
+      "id": "role-carrying-an-undeclared-permission-is-refused",
+      "stimulus": "store a role whose permissions include 'invoice.aprove'",
+      "expect": {
+        "refused": true
+      },
+      "note": "validated at write time (RB3). Accepted silently, it grants nothing and says nothing, and surfaces later as a person who cannot do what everyone believes they can"
+    },
+    {
+      "id": "three-segment-permission-is-refused",
+      "stimulus": "declare the permission 'system.dashboard.view'",
+      "expect": {
+        "refused": true
+      },
+      "note": "a resource that has not been named; it is system_dashboard.view (RB2)"
+    },
+    {
+      "id": "wildcard-permission-is-refused",
+      "stimulus": "declare, store, check against, or offer as authoring shorthand any of '*', 'system.*' or 'invoice.*'",
+      "expect": {
+        "refused": true
+      },
+      "note": "the rule with the most evidence behind it, and a flat denial rather than a check-time one. A wildcard surviving into the check silently defeats every other rule and makes permissionsFor untrue; a wildcard admitted as authoring shorthand either re-expands and silently grows or freezes and silently stops meaning what it says. There is no place in the system where one is accepted (RB6)"
+    },
+    {
+      "id": "check-against-an-undeclared-permission-errors",
+      "stimulus": "call check() with 'invoice.frobnicate'",
+      "expect": {
+        "error": true
+      },
+      "note": "an error, not a denial. A denial is indistinguishable from a correct refusal and hides the typo forever (RB1)"
+    },
+    {
+      "id": "tenant-cannot-edit-or-delete-a-system-role",
+      "stimulus": "as a tenant administrator, edit the permissions of a code-declared system role, then attempt to delete it",
+      "expect": {
+        "refused": true
+      },
+      "note": "the recovery floor. If every administrative role is data, deleting them locks everyone out with no path back that does not involve raw SQL against production (RB3)"
+    },
+    {
+      "id": "tenant-role-cannot-shadow-a-system-role-name",
+      "stimulus": "create a tenant-defined role named the same as an existing system role",
+      "expect": {
+        "refused": true
+      },
+      "note": "a lookup by name must have one answer. Shadowing is also how a tenant would otherwise redefine a role the code refers to by name (RB3)"
+    },
+    {
+      "id": "a-role-may-only-compose-declared-permissions",
+      "stimulus": "create a tenant-defined role containing a permission string that is well-formed but not in the application's declared set",
+      "expect": {
+        "refused": true
+      },
+      "note": "this is the check that makes runtime roles safe at all. A role composes capabilities that already exist and are already enforced; the closed permission set of RB1 is exactly what bounds a role's blast radius, so relaxing RB1 would make RB3 indefensible with it"
+    }
+  ]
+}

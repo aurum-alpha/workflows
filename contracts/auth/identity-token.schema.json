@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/auth/identity-token.schema.json",
+  "title": "Aurum Alpha proxy-minted identity token",
+  "description": "The token the RP proxy mints for the internal hop to a backend, variant (b) of standards/auth.md AU2. The backend VERIFIES the signature against the proxy's key rather than decoding the token — a parsed but unverified token is no check at all. Registered JWT and OIDC claims keep their RFC spelling and NumericDate encoding; fleet-added claims are snake_case. schemaVersion 1 — evolves additively per PC6.",
+  "type": "object",
+  "properties": {
+    "iss": {
+      "type": "string",
+      "format": "uri",
+      "description": "THE PROXY, not the identity provider. It names who signed this token, which is what the backend validates against. The identity's own issuer is nested under 'identity' because (issuer, subject) is the link key of AU3 and must travel as a unit.",
+      "minLength": 1
+    },
+    "aud": {
+      "type": "string",
+      "description": "The application this token was minted for. MUST be enforced: without the check, a token minted for one application replays against another.",
+      "minLength": 1
+    },
+    "exp": { "type": "integer", "description": "NumericDate. Short — five minutes, an internal hop rather than a user session. This is also AU5's revocation backstop." },
+    "iat": { "type": "integer", "description": "NumericDate." },
+    "jti": { "type": "string", "description": "Unique per token, so a replay is detectable.", "minLength": 1 },
+    "auth_time": { "type": "integer", "description": "NumericDate of the actual human authentication, so an application can require step-up for a sensitive operation without understanding how authentication happened." },
+    "amr": {
+      "type": "array",
+      "description": "OIDC authentication methods reference — what the person actually did. Read for step-up decisions, never for authorization.",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "identity": {
+      "type": "object",
+      "description": "The link key plus cached display attributes. The pair (issuer, subject) is what an application stores; everything else here is for display and is never a key (AU3).",
+      "properties": {
+        "issuer": { "type": "string", "format": "uri", "description": "The identity domain. Half of the link key — a subject is unique only within its issuer.", "minLength": 1 },
+        "subject": { "type": "string", "description": "The provider's subject. Opaque, never displayed, never parsed.", "minLength": 1 },
+        "email": { "type": "string", "description": "Cached display attribute. NEVER a foreign key (AU3)." },
+        "email_verified": { "type": "boolean" },
+        "name": { "type": "string" }
+      },
+      "required": ["issuer", "subject"],
+      "additionalProperties": false
+    },
+    "session_id": { "type": "string", "description": "Correlation, and honouring back-channel logout (AU5).", "minLength": 1 }
+  },
+  "required": ["iss", "aud", "exp", "iat", "jti", "identity"],
+  "additionalProperties": false
+}

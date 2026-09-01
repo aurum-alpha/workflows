@@ -1,14 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.aurumalpha.dev/web-client/runtime-config.schema.json",
-  "title": "Aurum Alpha browser runtime configuration document",
-  "description": "The document a server renders from its own environment and serves to the browser at load, so the bundle itself stays environment-agnostic. Governed by standards/web-client.md WC2. This document is served to every anonymous visitor and is therefore PUBLIC BY CONSTRUCTION \u2014 a value that must not be public belongs behind the server, never here. schemaVersion 1 \u2014 evolves additively per PC6.",
+  "title": "Aurum Alpha browser bootstrap document",
+  "description": "What the origin that served the bundle tells the client, rendered from THAT origin's environment. Governed by standards/web-client.md WC2. Deliberately minimal: it exists to solve the ordering problem that the client cannot ask the API where the API is. Everything the backend knows about itself belongs on GET /api/config, and the frontend's own build provenance is compiled into the bundle \u2014 no server can supply it, because under a split origin the backend has no idea which frontend build a given browser is running. Served to every anonymous visitor and therefore PUBLIC BY CONSTRUCTION. schemaVersion 2 \u2014 see the schema_version note.",
   "type": "object",
   "properties": {
     "schema_version": {
       "type": "integer",
-      "const": 1,
-      "description": "Pins the shape so a client served a newer document by an older server, or the reverse, fails loudly rather than reading a field that moved (PC6)."
+      "const": 2,
+      "description": "Version 1 carried a 'build' object and required it. That was wrong: build provenance describes the frontend artifact and is compiled in by the bundler, so a serving origin cannot supply it. Removing a required field is breaking under PC6 and so takes a new version; the deprecation window is nil because no implementation consumed version 1 \u2014 stated rather than assumed."
     },
     "environment": {
       "type": "string",
@@ -49,27 +49,6 @@
       ],
       "additionalProperties": false
     },
-    "build": {
-      "type": "object",
-      "description": "What the browser is running. These are the two values WC2 permits to be compiled into the bundle, because they describe the build rather than the environment \u2014 the browser's half of service.md SC5. They are echoed here so a client can detect that it is running a bundle older than the one the server now serves.",
-      "properties": {
-        "version": {
-          "type": "string",
-          "description": "The application version this bundle was built as.",
-          "minLength": 1
-        },
-        "commit": {
-          "type": "string",
-          "description": "The full commit the bundle was built from. Required in every error report (WC5), because a stack trace against unknown source is unreadable.",
-          "pattern": "^[0-9a-f]{7,40}$"
-        }
-      },
-      "required": [
-        "version",
-        "commit"
-      ],
-      "additionalProperties": false
-    },
     "features": {
       "type": "object",
       "description": "Per-environment toggles the client reads at load. Present so that a toggle is never a reason to rebuild the bundle, which is the WC2 failure this document exists to prevent. The evaluation contract itself belongs to the feature flags standard, not here.",
@@ -82,8 +61,7 @@
     "schema_version",
     "environment",
     "api_base_url",
-    "auth",
-    "build"
+    "auth"
   ],
   "additionalProperties": false
 }

@@ -349,3 +349,32 @@ cookie attributes of WC1 and the build output of WC2 — and those are where the
 gates go. For the rest, the boundary a gate could legitimately check is the
 wire, and the wire here is the two contracts under
 [`contracts/web-client/`](../contracts/web-client/).
+
+## Authentication standard
+
+Rules from [`auth.md`](auth.md) — how a person is authenticated, what identity
+reaches an application, and how a session ends. The authorization model is the
+[RBAC standard](platform.md#the-capability-roster)'s.
+
+| # | Rule | Enforced by | Status |
+|---|---|---|---|
+| AU1 | Authentication is a tier in front of the application; a reverse proxy is strongly preferred and application code is admitted with a stated reason; the application talks to the provider on the control plane only | — **resists a checker entirely**: whether authentication sits in a tier or in the application is an architecture question, and a gate reading source to answer it would be the PC4 violation. Review question: *which process is the OAuth client, and what holds the tokens* | **review only** |
+| AU2 | One signed identity token crosses to the backend; (b) preferred, (a) admitted, (c) discouraged; the backend verifies rather than decodes; no authorization claim appears in it | **the strongest gate here** — the token is a wire shape, so the corpus validates it, and *verified rather than decoded* is testable by presenting a token signed with an untrusted key and requiring refusal (proposed) | **review only** |
+| AU3 | An application stores `(issuer, subject)` as a link and keeps its own key; email is a matching key and never a foreign key; the subject identifier type is `public` | corpus rejects a subject without its issuer. That an application did not key its user table on the subject is a schema review question, not something a boundary shows | **review only** |
+| AU4 | Users originate in the application, which creates the identity; four operations with stated semantics; creation idempotent and never owning; an application never disables an identity | two corpus behaviour cases — a second application reusing an identity, and revocation in one application leaving another unaffected (proposed). The rest governs who may change what, which no boundary reveals | **review only** |
+| AU5 | Idle eight hours, absolute seven days; refresh invisible and rotated; back-channel logout for revocation with the short access token as backstop; logout is RP-initiated | live gates are available for the observable half — a session refusing service after its absolute cap, and logout ending the provider session too (proposed) | **review only** |
+| AU6 | An authenticated subject with no local user gets `403` and the session ends, never `401`; `/me` carries advisory permissions the client renders from and never enforces on | **a clean live behaviour case**: authenticate as an unknown subject, require 403 with the session ended. That the server also enforces every permission resists a checker and is the review question | **review only** |
+| AU7 | The topology is one of three, each with its stated cookie prefix and CORS posture; the split stays inside one registrable domain | **observable from outside**: a login response's `Set-Cookie` and a preflight's answer either carry what the tables require or they do not (proposed) | **review only** |
+
+**AU2 is the one to build first.** It is the only rule here whose subject is a
+wire shape rather than an arrangement of processes, and the property it protects
+— that a backend verifies a signature rather than decoding a token — is both the
+whole security value of the preferred variant and a thing that looks identical to
+the broken version in every log and every test that only sends valid tokens.
+
+The pattern across this ledger is worth naming rather than apologising for: **the
+parts of authentication that live on a wire are gateable and the parts that are
+architecture are not.** AU1, AU3, AU4 and half of AU5 govern where state lives
+and who may change it, and neither appears at a boundary a gate can watch. Their
+review questions are stated in the rows above so that unenforced is visibly
+unenforced.

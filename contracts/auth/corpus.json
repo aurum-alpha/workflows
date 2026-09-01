@@ -1,0 +1,249 @@
+{
+  "contract": "auth",
+  "schemaVersion": 1,
+  "description": "Conformance corpus for standards/auth.md. 'validity': the value must validate (or fail) against the named schema root \u2014 'identity-token' or 'me'. 'behaviour': black-box cases a live deployment must satisfy. An implementation passes the whole file or names the case it fails.",
+  "validity": [
+    {
+      "id": "token-minimal-ok",
+      "def": "identity-token",
+      "value": {
+        "iss": "https://rp.aurumalpha.dev",
+        "aud": "billing-api",
+        "exp": 1788312045,
+        "iat": 1788311745,
+        "jti": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "identity": {
+          "issuer": "https://id.aurumalpha.dev/realms/aurum",
+          "subject": "f7c1d2e8-5a44-4b91-9c3e-2d8a1b0f6e77"
+        }
+      },
+      "valid": true,
+      "note": "the irreducible token: who signed it, who it is for, when it dies, and the link key (AU2)"
+    },
+    {
+      "id": "token-full-ok",
+      "def": "identity-token",
+      "value": {
+        "iss": "https://rp.aurumalpha.dev",
+        "aud": "billing-api",
+        "exp": 1788312045,
+        "iat": 1788311745,
+        "jti": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "auth_time": 1788309000,
+        "amr": [
+          "pwd",
+          "otp"
+        ],
+        "identity": {
+          "issuer": "https://id.aurumalpha.dev/realms/aurum",
+          "subject": "f7c1d2e8-5a44-4b91-9c3e-2d8a1b0f6e77",
+          "email": "someone@example.com",
+          "email_verified": true,
+          "name": "Someone Example"
+        },
+        "session_id": "8fK2mQ7xW3pLzR"
+      },
+      "valid": true,
+      "note": "amr present so an application can require step-up without understanding how authentication happened (AU2)"
+    },
+    {
+      "id": "token-rejects-roles-claim",
+      "def": "identity-token",
+      "value": {
+        "iss": "https://rp.aurumalpha.dev",
+        "aud": "billing-api",
+        "exp": 1788312045,
+        "iat": 1788311745,
+        "jti": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "identity": {
+          "issuer": "https://id.aurumalpha.dev/realms/aurum",
+          "subject": "f7c1d2e8-5a44-4b91-9c3e-2d8a1b0f6e77"
+        },
+        "roles": [
+          "billing_admin"
+        ]
+      },
+      "valid": false,
+      "note": "THE case this shape exists for. A roles claim would make every application's access control depend on provider configuration, which is the failure the whole standard prevents (AU2)"
+    },
+    {
+      "id": "token-rejects-missing-aud",
+      "def": "identity-token",
+      "value": {
+        "iss": "https://rp.aurumalpha.dev",
+        "exp": 1788312045,
+        "iat": 1788311745,
+        "jti": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "identity": {
+          "issuer": "https://id.aurumalpha.dev/realms/aurum",
+          "subject": "f7c1d2e8-5a44-4b91-9c3e-2d8a1b0f6e77"
+        }
+      },
+      "valid": false,
+      "note": "without an audience a token minted for one application replays against another (AU2)"
+    },
+    {
+      "id": "token-rejects-subject-without-issuer",
+      "def": "identity-token",
+      "value": {
+        "iss": "https://rp.aurumalpha.dev",
+        "aud": "billing-api",
+        "exp": 1788312045,
+        "iat": 1788311745,
+        "jti": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "identity": {
+          "subject": "f7c1d2e8-5a44-4b91-9c3e-2d8a1b0f6e77"
+        }
+      },
+      "valid": false,
+      "note": "a subject is unique only within its issuer, so half the link key is not a key at all (AU3)"
+    },
+    {
+      "id": "me-minimal-ok",
+      "def": "me",
+      "value": {
+        "schema_version": 1,
+        "user": {
+          "id": "usr_8fK2mQ7xW3pLzR"
+        },
+        "permissions": [
+          "invoice.read",
+          "invoice.approve"
+        ]
+      },
+      "valid": true,
+      "note": "the application's own public id, never the provider's subject (IP1, AU6)"
+    },
+    {
+      "id": "me-full-ok",
+      "def": "me",
+      "value": {
+        "schema_version": 1,
+        "user": {
+          "id": "usr_8fK2mQ7xW3pLzR",
+          "name": "Someone Example",
+          "email": "someone@example.com",
+          "email_verified": true
+        },
+        "permissions": [
+          "invoice.read",
+          "invoice.approve",
+          "purchase_order.void"
+        ],
+        "roles": [
+          "billing_admin"
+        ],
+        "session": {
+          "expires_at": "2026-09-02T03:44:03.187Z"
+        }
+      },
+      "valid": true
+    },
+    {
+      "id": "me-rejects-malformed-permission",
+      "def": "me",
+      "value": {
+        "schema_version": 1,
+        "user": {
+          "id": "usr_8fK2mQ7xW3pLzR"
+        },
+        "permissions": [
+          "Invoice.Approve"
+        ]
+      },
+      "valid": false,
+      "note": "permissions are lowercase resource.action; casing drift is how two services stop agreeing about the same permission"
+    },
+    {
+      "id": "me-rejects-empty-permissions-omitted",
+      "def": "me",
+      "value": {
+        "schema_version": 1,
+        "user": {
+          "id": "usr_8fK2mQ7xW3pLzR"
+        }
+      },
+      "valid": false,
+      "note": "an absent list and an empty list are different claims; requiring the field makes 'this user may do nothing here' explicit rather than inferred"
+    }
+  ],
+  "behaviour": [
+    {
+      "id": "token-signed-with-wrong-key-is-refused",
+      "stimulus": "present a well-formed identity token signed with a key the backend does not trust",
+      "expect": {
+        "status_code": 401,
+        "side_effect": "no application state read or written"
+      },
+      "note": "the difference between verifying and decoding, which is the whole security value of variant (b) (AU2)"
+    },
+    {
+      "id": "token-for-another-audience-is-refused",
+      "stimulus": "present a valid token whose aud names a different application",
+      "expect": {
+        "status_code": 401
+      },
+      "note": "without this check the fleet's services are interchangeable to an attacker holding any one token (AU2)"
+    },
+    {
+      "id": "unknown-subject-is-403-and-logged-out",
+      "stimulus": "authenticate successfully as an identity that has no local user record",
+      "expect": {
+        "status_code": 403,
+        "session": "ended"
+      },
+      "note": "a 401 here loops forever: it returns an already-valid user to the provider, which authenticates them again (AU6)"
+    },
+    {
+      "id": "revoking-app-access-leaves-the-identity-alive",
+      "stimulus": "revoke a user's access in application A, then authenticate as them at application B",
+      "expect": {
+        "app_b": "unaffected, still signed in"
+      },
+      "note": "an application may remove its own grant and may never disable the identity (AU4)"
+    },
+    {
+      "id": "second-application-inviting-the-same-person-reuses-the-identity",
+      "stimulus": "invite the same email address from a second application",
+      "expect": {
+        "subject": "identical to the first",
+        "identities_created": 0
+      },
+      "note": "ensureIdentity is idempotent and never claims ownership (AU4)"
+    },
+    {
+      "id": "session-cookie-carries-the-required-attributes",
+      "stimulus": "complete a login and inspect the Set-Cookie header",
+      "expect": {
+        "attributes": "HttpOnly, Secure, SameSite=Lax",
+        "name_prefix": "__Host- in topology A, __Secure- in topology B"
+      },
+      "note": "HttpOnly is what puts the credential out of reach of injected script (AU7)"
+    },
+    {
+      "id": "preflight-succeeds-without-a-session",
+      "stimulus": "send OPTIONS to an API path with no cookie, from the client origin",
+      "expect": {
+        "status_code": "2xx",
+        "headers.access-control-allow-credentials": "true"
+      },
+      "note": "preflight is uncredentialed by specification; a proxy demanding a session on OPTIONS breaks every request before it starts (AU7)"
+    },
+    {
+      "id": "retry-after-is-readable-cross-origin",
+      "stimulus": "in topology B, exceed a rate limit and read Retry-After from script",
+      "expect": {
+        "header": "readable"
+      },
+      "note": "without Access-Control-Expose-Headers the client cannot see it and HA7 silently stops applying (AU7)"
+    },
+    {
+      "id": "me-user-id-is-not-the-provider-subject",
+      "stimulus": "fetch /me as a user whose identity link is known, and compare user.id against the provider's subject for that identity",
+      "expect": {
+        "equal": false
+      },
+      "note": "not schema-checkable, and the schema must not pretend otherwise: IP2 admits UUIDv7 as a public id format, so a bare UUID is legal and a subject that happens to be one is indistinguishable by shape. The property is real and the check has to compare two values, which only a live case can do (AU3, IP1)"
+    }
+  ]
+}

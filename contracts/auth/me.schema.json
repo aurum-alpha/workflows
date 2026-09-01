@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/auth/me.schema.json",
+  "title": "Aurum Alpha client identity document",
+  "description": "What a client fetches at load to know who is signed in and what to render. Governed by standards/auth.md AU6. THE PERMISSIONS HERE ARE ADVISORY: the client uses them to decide what to render, never to decide what is allowed, and every one is enforced again on the server on every request. The permission vocabulary itself belongs to the RBAC standard, not here. schemaVersion 1 — evolves additively per PC6.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "user": {
+      "type": "object",
+      "description": "Identity fields reuse OIDC's registered claim names rather than inventing parallel spellings (PC2).",
+      "properties": {
+        "id": {
+          "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/publicId",
+          "description": "The APPLICATION's own public id for this user, per IP1. Never the provider's subject — that never leaves the identity link."
+        },
+        "name": { "type": "string", "minLength": 1 },
+        "email": { "type": "string", "minLength": 1 },
+        "email_verified": { "type": "boolean" }
+      },
+      "required": ["id"],
+      "additionalProperties": false
+    },
+    "permissions": {
+      "type": "array",
+      "description": "Flat list the interface tests against to decide what to draw. Advisory by construction — see the description above.",
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$" }
+    },
+    "roles": {
+      "type": "array",
+      "description": "For showing a person what they are. Not the thing the interface branches on — that is 'permissions'.",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "session": {
+      "type": "object",
+      "description": "So the client can warn before a session lapses rather than losing work to a surprise redirect.",
+      "properties": {
+        "expires_at": { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp" }
+      },
+      "required": ["expires_at"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["schema_version", "user", "permissions"],
+  "additionalProperties": false
+}

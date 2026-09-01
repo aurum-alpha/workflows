@@ -1,0 +1,291 @@
+{
+  "contract": "web-client",
+  "schemaVersion": 1,
+  "description": "Conformance corpus for standards/web-client.md. 'validity': the value must validate (or fail) against the named schema root \u2014 'runtime-config' or 'error-report'. 'behaviour': black-box cases a live client and its serving process must satisfy; the harness drives the stimulus and asserts 'expect'. An implementation passes the whole file or names the case it fails.",
+  "validity": [
+    {
+      "id": "config-minimal-ok",
+      "def": "runtime-config",
+      "value": {
+        "schema_version": 1,
+        "environment": "production",
+        "api_base_url": "https://app.example.com",
+        "auth": {
+          "login_path": "/auth/login",
+          "logout_path": "/auth/logout"
+        },
+        "build": {
+          "version": "2.4.1",
+          "commit": "9f3c1ab7de204c5581f0a2b6e7d4c3918a5b0e2f"
+        }
+      },
+      "valid": true,
+      "note": "the whole document a client needs: where the API is, how to start and end a session, and what it is running (WC1, WC2)"
+    },
+    {
+      "id": "config-with-features-ok",
+      "def": "runtime-config",
+      "value": {
+        "schema_version": 1,
+        "environment": "staging",
+        "api_base_url": "https://staging.example.com",
+        "auth": {
+          "login_path": "/auth/login",
+          "logout_path": "/auth/logout"
+        },
+        "build": {
+          "version": "2.4.1",
+          "commit": "9f3c1ab"
+        },
+        "features": {
+          "new_billing_ui": true,
+          "export_csv": false
+        }
+      },
+      "valid": true,
+      "note": "the same bundle, same commit, different environment \u2014 which is the WC2 property the whole rule exists for"
+    },
+    {
+      "id": "config-rejects-unknown-property",
+      "def": "runtime-config",
+      "value": {
+        "schema_version": 1,
+        "environment": "production",
+        "api_base_url": "https://app.example.com",
+        "auth": {
+          "login_path": "/auth/login",
+          "logout_path": "/auth/logout"
+        },
+        "build": {
+          "version": "2.4.1",
+          "commit": "9f3c1ab"
+        },
+        "oidc_client_secret": "s3cr3t"
+      },
+      "valid": false,
+      "note": "the closed property set is the enforcement of 'nothing secret goes here' \u2014 this document is served to every anonymous visitor (WC2)"
+    },
+    {
+      "id": "config-rejects-provider-detail-in-auth",
+      "def": "runtime-config",
+      "value": {
+        "schema_version": 1,
+        "environment": "production",
+        "api_base_url": "https://app.example.com",
+        "auth": {
+          "login_path": "/auth/login",
+          "logout_path": "/auth/logout",
+          "client_id": "spa-prod",
+          "issuer": "https://id.example.com"
+        },
+        "build": {
+          "version": "2.4.1",
+          "commit": "9f3c1ab"
+        }
+      },
+      "valid": false,
+      "note": "the browser is not an OAuth participant, so it is told where to navigate and nothing about the provider. The closed set is what keeps a client_id or issuer from arriving here and inviting the page to do an exchange itself (WC1)"
+    },
+    {
+      "id": "config-rejects-missing-build",
+      "def": "runtime-config",
+      "value": {
+        "schema_version": 1,
+        "environment": "production",
+        "api_base_url": "https://app.example.com",
+        "auth": {
+          "login_path": "/auth/login",
+          "logout_path": "/auth/logout"
+        }
+      },
+      "valid": false,
+      "note": "without version and commit an error report cannot say which bundle produced it (WC2, WC5)"
+    },
+    {
+      "id": "config-rejects-relative-login-path-without-slash",
+      "def": "runtime-config",
+      "value": {
+        "schema_version": 1,
+        "environment": "production",
+        "api_base_url": "https://app.example.com",
+        "auth": {
+          "login_path": "auth/login",
+          "logout_path": "/auth/logout"
+        },
+        "build": {
+          "version": "2.4.1",
+          "commit": "9f3c1ab"
+        }
+      },
+      "valid": false,
+      "note": "a login path resolved against the current route sends the user somewhere different depending on where they were when the session expired"
+    },
+    {
+      "id": "report-api-error-ok",
+      "def": "error-report",
+      "value": {
+        "schema_version": 1,
+        "ts": "2026-08-31T21:44:03.187Z",
+        "kind": "api_error",
+        "message": "POST /v1/subscriptions was rejected: plan_id is required",
+        "request_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "build": {
+          "version": "2.4.1",
+          "commit": "9f3c1ab"
+        },
+        "context": {
+          "route": "/billing/subscriptions",
+          "method": "POST",
+          "status": 422,
+          "problem_type": "https://errors.aurumalpha.dev/billing/invalid-request"
+        }
+      },
+      "valid": true,
+      "note": "the report names the operation and this occurrence's reason, and carries the id that joins it to the server's log (WC5)"
+    },
+    {
+      "id": "report-unhandled-exception-ok",
+      "def": "error-report",
+      "value": {
+        "schema_version": 1,
+        "ts": "2026-08-31T21:44:03.187Z",
+        "kind": "unhandled_exception",
+        "message": "reading 'total' of undefined while rendering the invoice summary",
+        "build": {
+          "version": "2.4.1",
+          "commit": "9f3c1ab"
+        },
+        "context": {
+          "route": "/invoices/:id"
+        },
+        "stack": "TypeError: Cannot read properties of undefined\\n    at InvoiceSummary (main-4f2a.js:1:20481)"
+      },
+      "valid": true,
+      "note": "no request_id, correctly \u2014 nothing was asked of the server, so there is none to carry. The route is a PATTERN, not the resolved path with the invoice id in it"
+    },
+    {
+      "id": "report-rejects-api-error-without-request-id",
+      "def": "error-report",
+      "value": {
+        "schema_version": 1,
+        "ts": "2026-08-31T21:44:03.187Z",
+        "kind": "api_error",
+        "message": "POST /v1/subscriptions was rejected: plan_id is required",
+        "build": {
+          "version": "2.4.1",
+          "commit": "9f3c1ab"
+        },
+        "context": {
+          "route": "/billing/subscriptions",
+          "method": "POST",
+          "status": 422
+        }
+      },
+      "valid": false,
+      "note": "the conditional requirement: an api_error without the server's request id cannot be joined to anything, which is the whole correlation mechanism WC5 relies on"
+    },
+    {
+      "id": "report-rejects-missing-build",
+      "def": "error-report",
+      "value": {
+        "schema_version": 1,
+        "ts": "2026-08-31T21:44:03.187Z",
+        "kind": "unhandled_exception",
+        "message": "reading 'total' of undefined while rendering the invoice summary",
+        "stack": "TypeError: Cannot read properties of undefined"
+      },
+      "valid": false,
+      "note": "browsers hold stale bundles longer than servers hold stale builds; a trace against unknown source is unreadable (WC5)"
+    },
+    {
+      "id": "report-rejects-extra-property-carrying-user-data",
+      "def": "error-report",
+      "value": {
+        "schema_version": 1,
+        "ts": "2026-08-31T21:44:03.187Z",
+        "kind": "unhandled_exception",
+        "message": "reading 'total' of undefined while rendering the invoice summary",
+        "build": {
+          "version": "2.4.1",
+          "commit": "9f3c1ab"
+        },
+        "form_state": {
+          "email": "someone@example.com",
+          "card_number": "4111111111111111"
+        }
+      },
+      "valid": false,
+      "note": "the closed property set is what stops a reporter shipping the user's form to a third party. This is the case the shape exists for (WC5)"
+    },
+    {
+      "id": "report-rejects-locale-formatted-timestamp",
+      "def": "error-report",
+      "value": {
+        "schema_version": 1,
+        "ts": "31/08/2026 21:44",
+        "kind": "assertion",
+        "message": "invoice total did not match the sum of its lines",
+        "build": {
+          "version": "2.4.1",
+          "commit": "9f3c1ab"
+        }
+      },
+      "valid": false,
+      "note": "presentation is for the viewer, never for the wire \u2014 the client formats for display and still sends the base form (WC4, IP4)"
+    }
+  ],
+  "behaviour": [
+    {
+      "id": "bundle-contains-no-environment-values",
+      "stimulus": "grep the built bundle for the api_base_url of any environment",
+      "expect": {
+        "matches": "none"
+      },
+      "note": "the WC2 gate, and the cheapest in this standard: one artifact promoted through environments, so the value cannot be in it"
+    },
+    {
+      "id": "same-bundle-serves-two-environments",
+      "stimulus": "serve the identical build output from a staging server and a production server",
+      "expect": {
+        "each_client": "fetches a runtime config naming its own environment and api_base_url",
+        "bundle_bytes": "identical"
+      },
+      "note": "the property WC2 is actually protecting; a build-time bake fails here and nowhere else"
+    },
+    {
+      "id": "no-token-in-web-storage-after-login",
+      "stimulus": "complete a login, then read localStorage, sessionStorage and IndexedDB",
+      "expect": {
+        "access_token": "absent",
+        "refresh_token": "absent",
+        "id_token": "absent"
+      },
+      "note": "WC1's observable half. The browser is never given a token, so there is nothing to store; this catches a client that started holding one without saying so"
+    },
+    {
+      "id": "retry-reuses-the-idempotency-key",
+      "stimulus": "make a mutating call that fails with 503, and let the client retry",
+      "expect": {
+        "second_request": "same Idempotency-Key as the first"
+      },
+      "note": "a fresh key on the retry defeats the mechanism entirely and duplicates the charge (WC3, HA6)"
+    },
+    {
+      "id": "money-renders-by-currency-not-by-two-decimals",
+      "stimulus": "render {\"amount_minor\": 1000, \"currency\": \"JPY\"} and {\"amount_minor\": 1000, \"currency\": \"USD\"}",
+      "expect": {
+        "jpy": "\u00a51,000",
+        "usd": "$10.00"
+      },
+      "note": "the exponent belongs to the currency; dividing by 100 is wrong for JPY and for every three-exponent currency (WC4, IP5)"
+    },
+    {
+      "id": "instant-renders-in-the-viewers-zone",
+      "stimulus": "render the instant 2026-01-01T03:00:00.000Z as a date, with the viewer's zone set to America/Los_Angeles",
+      "expect": {
+        "rendered_date": "2025-12-31"
+      },
+      "note": "the calendar day an instant falls on depends on the zone; rendering the UTC date directly is off by one for a predictable fraction of users every day (WC4)"
+    }
+  ]
+}

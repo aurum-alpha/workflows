@@ -1,58 +1,268 @@
-# aurum-alpha/workflows
+# Aurum Alpha engineering standards
 
-The definition of how Aurum Alpha builds software — the standards themselves,
-and the shared CI infrastructure that implements them: reusable workflows,
-composite actions, conformance checkers and shared configuration.
+`aurum-alpha/workflows` is the definition of how this organisation builds
+software: the standards themselves, and the shared CI infrastructure that
+implements them — reusable workflows, composite actions, conformance checkers
+and shared configuration. This page is the charter. It says what a standard is
+here, what makes one binding, and indexes the rest. It states no engineering
+rules itself — every rule belongs to a numbered document under `standards/`.
 
-Start with **[STANDARDS.md](STANDARDS.md)** — the charter. It says what a
-standard is here, what makes one binding, and indexes the rest.
+Not a convenience library of things several repos happened to need — the
+answer, per language and per capability, that repos are standardized *onto*
+rather than each arriving at independently.
 
-| | |
-|---|---|
-| [STANDARDS.md](STANDARDS.md) | The charter: scope, the enforcement law, the tiers, how a standard is added |
-| [AGENTS.md](AGENTS.md) | How coding agents work in an Aurum Alpha repository |
-| [standards/000-platform.md](standards/000-platform.md) | The platform contract: application-layer opinions as protocols and interface specs |
-| [standards/010-ci.md](standards/010-ci.md) | Pipeline doctrine, the shared job catalog, build and release |
-| [standards/020-identifiers.md](standards/020-identifiers.md) | Identifiers and primitive representations: ids, timestamps, dates, money |
-| [standards/030-service.md](standards/030-service.md) | The service contract: health, logging, config, shutdown, provenance |
-| [standards/040-observability.md](standards/040-observability.md) | Observability transport and context propagation: trace context, id vocabulary, OTLP |
-| [standards/050-http.md](standards/050-http.md) | Service interfaces: protocol selection, OpenAPI, problem+json errors, pagination, idempotency, wire naming |
-| [standards/060-auth.md](standards/060-auth.md) | Authentication: identity tier, identity token, linkage, provisioning, sessions, topologies |
-| [standards/070-rbac.md](standards/070-rbac.md) | Authorization: permissions, roles, grants, scope containment, the check operation |
-| [standards/080-audit.md](standards/080-audit.md) | Audit events: actor and target, the action vocabulary, what must emit, retention and erasure |
-| [standards/090-web-client.md](standards/090-web-client.md) | The web client: browser auth, runtime config, the API client, presentation and i18n, error reports |
-| [standards/999-enforcement.md](standards/999-enforcement.md) | Every rule, its gate, and the tier it actually reaches |
+That was already true of continuous integration, and the CI standard is the
+worked example the rest of this follows: a document that states the rule and
+the reasoning, a catalog that implements it once, and a checker that fails the
+build when a repo drifts. The scope is now every layer of a product, not just
+its pipeline.
 
-Consult the relevant standard before any change it governs, in any repository.
+**Two repos solving the same problem two ways is not diversity, it is the absence
+of an opinion — and an organisation with no opinion re-litigates the same
+decision every time someone starts a service.**
 
-## Rule ids — what `PC1` or `IP4` means
+## What this is for
 
-Every rule in every standard has a short id: the CI standard's principles are
-bare numbers, and each other standard carries a mnemonic prefix. The id names a
-section in the standard's own document (the rule and its reasoning) and a row
-in [`standards/999-enforcement.md`](standards/999-enforcement.md) (the mechanism that
-enforces it and the tier it actually holds). This table is the prefix map;
-the ledger, not this table, is the register of the rules themselves.
+Every application faces two kinds of decision, and only one of them is its own.
 
-| Prefix | Standard | Rules govern |
-|---|---|---|
-| PC | [`standards/000-platform.md`](standards/000-platform.md) | The platform contract doctrine: opinions as protocols and interface specs, never tools |
-| 1–18 | [`standards/010-ci.md`](standards/010-ci.md) | Pipelines: what a job may be, how versions pin, what may publish |
-| IP | [`standards/020-identifiers.md`](standards/020-identifiers.md) | Identifiers and primitives: public vs internal ids, id formats, timestamps, dates, money |
-| SC | [`standards/030-service.md`](standards/030-service.md) | What a running service exposes: health and readiness, log lines, config, shutdown, provenance |
-| OC | [`standards/040-observability.md`](standards/040-observability.md) | Context propagation and telemetry: W3C trace context, the id vocabulary, OTLP |
-| HA | [`standards/050-http.md`](standards/050-http.md) | Service interfaces: which protocol, then the HTTP surface — description, error envelope, pagination, versioning, idempotency, retries |
-| AU | [`standards/060-auth.md`](standards/060-auth.md) | Authentication: which process is the OAuth client, what identity crosses to a backend, how a user is created and how a session ends |
-| RB | [`standards/070-rbac.md`](standards/070-rbac.md) | Authorization: what a permission is, how a grant is scoped, and what `check` must decide |
-| AE | [`standards/080-audit.md`](standards/080-audit.md) | Audit events: what a record of a consequential act contains, what must produce one, how long it is kept |
-| WC | [`standards/090-web-client.md`](standards/090-web-client.md) | Code running in a browser: authentication pattern, runtime configuration, the API client module, presentation and i18n, error reporting |
-| A | [`AGENTS.md`](AGENTS.md) | How coding agents work: one guidance source, the work queue, the approval gate |
+Which pagination style, which error envelope, which identifier format, where
+the session lives, what an audit row contains: real decisions, decided badly
+more often than not, and **not decisions any particular product's problem has
+an opinion about**. An invoicing system is not better or worse at invoicing for
+having picked cursor pagination over offset. The choice still has to be made,
+so each repository makes it alone, differently, and at the cost of an argument
+that has already been had elsewhere.
 
-Each new capability standard from the platform contract's roster adds its own
-prefix here as it lands.
+The other kind is the domain: what an invoice *is* here, when it may be voided,
+who is allowed to. That is the part a client is paying for and the only part
+where a repository's own judgment is the right input.
+
+So the purpose, in three steps:
+
+1. **Remove the arbitrary decision from every repository, wherever the decision
+   is not material to that application's purpose or domain.** Not to make the
+   choices uniform for its own sake, but because a decision that could go
+   either way should go one way once, here, with the reasoning written down.
+2. **Which leaves each repository spending its judgment on business logic** —
+   the domain, the workflow, the thing that is actually specific to it.
+3. **Which is why this makes development faster, not slower.** A standards
+   effort is assumed to be a tax. This one is the opposite: the decisions it
+   removes were never free, they were being paid for repeatedly, in argument
+   and in divergence, by people who had something better to think about.
+
+That is also why the standards are written as contracts with conformance tests
+rather than as advice. An arbitrary decision is only genuinely removed once
+nobody has to remember it.
+
+## Scope: internal and client work alike
+
+These standards bind everything Aurum Alpha builds — the products we operate and
+the systems we build for clients. A client engagement is not an exemption. It is
+the case that matters most, because it is the code that leaves.
+
+**A standard must survive handover.** A client repository follows these rules and
+then, at handover, stops being able to reach this repository at all: no shared
+job to call, no checker to run, no catalog to resolve. A standard that only works
+while `aurum-alpha/workflows` is reachable is not a standard, it is a dependency.
+
+Three consequences, and they constrain how every document here is written:
+
+1. **State the rule, not just the mechanism.** A reader with no access to this
+   repo must be able to read the rule, understand why it exists, and comply. The
+   shared job is how *we* comply cheaply; it is never the only description of
+   what compliance is.
+2. **Every standard must be satisfiable without this repo.** Where a rule is
+   normally met by calling a shared workflow, the document says what the
+   workflow does in terms a person could reimplement.
+3. **Handover is a copy, not a link.** A repository leaving the portfolio vendors the
+   standards it was built to, so the rules travel with the code. What it loses is
+   the updates, which is correct — it is no longer ours.
+
+## The law
+
+**A rule is not done when it is written. It is done when something fails if it
+is broken.**
+
+Every rule in the CI standard was written down first and violated afterwards, in
+a repo whose CI was green the entire time, because writing a rule and enforcing
+it are different acts and only the second one holds. A principle nobody can fail
+is a preference.
+
+That history also taught what *kind* of rule survives. Three rules failed the
+same way in three disguises: one keyed on a file, one keyed on a filename, one
+keyed on an outcome with no mechanism named. The common shape is that **a rule
+naming anything other than the act itself stops applying the moment the act
+moves.** Write rules against acts, then make something fail when the act is
+wrong.
+
+### Three tiers, and the difference between them matters
+
+- **gated** — a violation turns that repo's required check red. This is
+  enforcement.
+- **audit only** — a checker exists but runs from a workstation when someone
+  remembers. This is a habit, and habits are what drifted in the first place.
+  Every one of these is a candidate for folding into the gate. A checker nothing
+  runs does not degrade to weaker enforcement — it degrades to a checker that is
+  itself wrong, silently.
+- **review only** — nothing mechanical. Some rules resist automation honestly.
+  Saying so is the point: an unenforced rule should be visibly unenforced, not
+  quietly assumed. A rule that resists a checker gets the next best thing — a
+  review question someone has to answer, not a line someone has to remember.
+
+### A new standard's rules start review-only and name their gates
+
+Landing a standard and landing its enforcement in one change is how standards
+stall. So the sequence is fixed:
+
+1. The standard lands with every rule registered in
+   [`standards/999-enforcement.md`](standards/999-enforcement.md), at the tier that
+   rule actually holds — for a new standard, usually **review only**.
+2. Each rule names, in that ledger, **the gate it is eventually getting** — or
+   states plainly that it resists one and will stay review-only.
+3. Promoting a rule to gated is its own change, and the ledger row moves with it.
+
+A rule that lands review-only with no proposed gate and no admission that it
+cannot have one is not finished. That is exactly the failure the law above
+describes, arriving one document earlier.
+
+**The tier describes the rule's enforcement, never the document's standing.** A
+merged document is binding — see the writing conventions below.
+
+## The foundation: twelve-factor
+
+**[The Twelve-Factor App](https://12factor.net/) is the ground these standards
+are built on**, not a reference we consulted. Config in the environment, logs
+as event streams, strict build/release/run separation, disposable processes
+that shut down gracefully — most of what the CI standard and the platform
+contract say about how a service behaves is twelve-factor, applied here
+with the open choices pinned.
+
+Two consequences for how these documents are written:
+
+- **Where a rule restates a factor, the document cites the factor as its
+  justification.** "Logs go to stdout because we said so" is a preference;
+  "logs go to stdout per [factor XI](https://12factor.net/logs), because the
+  application must not concern itself with routing or storage" is an argument
+  a reader can check against a source older and more tested than we are.
+  Claiming a well-known idea as a house invention also costs credibility with
+  exactly the engineers we want reading these documents.
+- **Where a rule departs from a factor, the document says so, in the rule,
+  with the reason.** A silent departure is worse than a stated one: the next
+  reader assumes we did not know.
+
+What a standard here adds on top of a factor is the part twelve-factor
+deliberately leaves open — the *specific* names, formats and endpoints that
+let four languages interoperate. Factor III says config lives in the
+environment; it does not say what the variables are called. That pinning is
+ours, and it is the only part that is.
+
+**Known departures: none today.** One tension is open and unsettled rather
+than assumed: [factor XII](https://12factor.net/admin-processes) says
+admin and management tasks run as one-off processes, while the maintenance
+jobs capability on the platform roster is heading toward a registered Job
+interface inside the service. Whichever way that lands, the maintenance jobs
+standard states the choice against factor XII rather than around it.
+
+## How these documents are written
+
+Two conventions, because both failures are quiet ones.
+
+**A merged document is binding, and says nothing about its own status.** No
+document carries a `Status: proposed` or `Status: agreed` header. Review happens
+in the pull request; merging it is the approval. A status line on a merged
+document is either wrong (it still says "proposed") or noise (it says "agreed",
+which every merged document is). What varies per rule is how it is *enforced*,
+and that lives in one place: the ledger.
+
+**A document references other documents, never a tracker.** Relative markdown
+links between `.md` files, always — a reference a reader can click and open,
+not a name they have to go hunting for. An issue or pull request number in
+doctrine is a citation to something a reader outside this repository cannot
+open, that says nothing once merged, and that ages into a dead reference — a
+document citing its own paperwork.
+
+Where a rule depends on a standard **not yet written**, the reference still
+has to be a working link, so it points at the row that tracks it:
+`[the data-layer standard](standards/000-platform.md#the-capability-roster)`.
+That link resolves today, lands the reader on a row that says "not yet
+written", and becomes a direct link to the document when one lands. A bare
+name is not a reference and a link to a file that does not exist is a 404;
+this is the form that is neither. Pending work is still tracked as issues
+here; the documents just do not cite them.
+
+## Non-compliance is tracked where the code is
+
+This repository holds the standard. **It does not hold the list of who is
+failing it.** Gaps in the standards or the catalog are issues *here*; a
+repository that does not yet meet a standard has work in *its own* tracker.
+
+A repo that does not yet comply has work to do in its own issue tracker,
+against its own code, prioritized against its own roadmap. Recording that here
+turns the standard into a scoreboard, gives every standards change a second
+diff to maintain, and puts a client repository's shortcomings in a repository it
+will never own.
+
+The rule, therefore: **no document under `standards/` names a repository in
+order to describe its state.** Two things are deliberately not covered by that:
+
+- **Incident citations.** "Learned the hard way" evidence naming the repo and
+  the run that proved a rule necessary is what makes these documents arguments
+  rather than assertions. A citation is history, not a status report.
+- **Checker allow-lists.** `tools/` carries per-repo entries because a gate has
+  to know what it is currently letting through. Each entry states the gap it
+  represents — a debt with a name, not a permission — and the target state for
+  every list is empty.
+
+## The standards
+
+Every standard here is binding. Consult the relevant one before any change it
+governs, in any repository. The **Enforcement** column says how much of it is
+held mechanically today; the ledger says which rule is which.
+
+**Each document has a number, and the number is its address.** It is stable for
+the life of the document, never reused and never reassigned — an address that
+moves is worse than none, because every citation that used it now points
+somewhere else silently. Numbers are spaced by ten so a document can be
+inserted where the reading order wants it; otherwise a new standard takes the
+next free slot. `000` is where to start. `999` is the ledger, last because it
+indexes everything above it. `AGENTS.md` carries no number because Cursor,
+Claude Code and `check-agent-docs` all address it by name at the repository
+root, which is an address already.
+
+**Every rule has a short id**, and the **Prefix** column is the map: the CI
+standard's principles are bare numbers, and each other standard carries a
+mnemonic prefix. The id names a section in the standard's own document (the
+rule and its reasoning) and a row in the ledger (the mechanism that enforces it
+and the tier it actually holds). Document number plus rule id is a full
+citation: `060 AU5` names one rule in one document and still will after ten
+more standards land.
+
+| # | Prefix | Document | Covers | Enforcement |
+|---|---|---|---|---|
+| `000` | PC | [`000-platform.md`](standards/000-platform.md) | The platform contract: application-layer opinions as protocols and interface specs, never tools | review, gates named |
+| `010` | 1–18 | [`010-ci.md`](standards/010-ci.md) | Pipeline doctrine, the shared job catalog, build/release/publish | largely gated |
+| `020` | IP | [`020-identifiers.md`](standards/020-identifiers.md) | Identifiers and primitive representations: public vs internal ids, the format table, timestamps, money | review, corpus written |
+| `030` | SC | [`030-service.md`](standards/030-service.md) | The service contract: health and readiness, structured logging, configuration, graceful shutdown, runtime provenance | review, live gate available |
+| `040` | OC | [`040-observability.md`](standards/040-observability.md) | Observability transport and context propagation: W3C trace context, the id vocabulary, OTLP | review, corpus written |
+| `050` | HA | [`050-http.md`](standards/050-http.md) | Service interfaces: protocol selection (HTTP, gRPC, SSE, WebSocket), OpenAPI, RFC 9457 errors, cursor pagination, versioning, idempotency, backpressure, snake_case wire naming | review, corpus written |
+| `060` | AU | [`060-auth.md`](standards/060-auth.md) | Authentication: the identity tier, the proxy-minted identity token, identity linkage, provisioning, sessions, deployment topologies | review, corpus written |
+| `070` | RB | [`070-rbac.md`](standards/070-rbac.md) | Authorization: the permission and role model, scope containment, the check operation, and the decision corpus | review, corpus written |
+| `080` | AE | [`080-audit.md`](standards/080-audit.md) | Audit events: the record of consequential acts — actor separate from target, the action string is the permission string, the floor of what must emit, retention and erasure | review, corpus written |
+| `090` | WC | [`090-web-client.md`](standards/090-web-client.md) | The web client: what a browser may hold as a credential, runtime configuration, the API client module, presentation and i18n, frontend error reporting | review, corpus written |
+| `999` | — | [`999-enforcement.md`](standards/999-enforcement.md) | The ledger: every rule, its gate, its tier | — it is the register |
+| — | A | [`AGENTS.md`](AGENTS.md) | How coding agents work in an Aurum Alpha repository: one guidance source, the work queue, the approval gate | rules 1-5 gated, rest review |
+
+Standards still to be written are tracked as issues in this repository, and the
+platform contract's capability roster names which capability is waiting on one.
+Each issue carries the reasoning it was raised with, so the document can be
+written from the argument rather than from memory. Each lands with the next
+free number and its own prefix.
 
 ## What is here
 
+- `standards/` — the numbered documents above.
+- `contracts/` — the artifacts behind the application-layer standards: JSON
+  Schemas and conformance corpora, one directory per capability.
 - `.github/workflows/job-*.yml` — the shared job catalog. One reusable workflow
   per capability, consumed by every repository that has that capability.
 - `tools/check-*` — the conformance checkers. Each runs both inside a
@@ -62,8 +272,19 @@ prefix here as it lands.
   is held to: the package manager, the dev/build toolchain, and the handful of
   runtime packages that have converged. It names versions, never repositories.
 
-## Where work is tracked
+## Adding or changing a standard
 
-Gaps in the standards or the catalog are issues **in this repository**. A
-repository that does not yet meet a standard has work in **its own** tracker —
-see the charter's "Non-compliance is tracked where the code is".
+1. **Open an issue first**, stating the rule and the reasoning. A standard
+   arriving as a finished document with no argument attached is a preference
+   with formatting.
+2. **Write the document under `standards/`**, at the next free number. State
+   the rule, the reasoning, and what compliance looks like to a reader outside
+   this repo.
+3. **Register every rule in the ledger**, at the tier it actually holds today
+   and with the gate it is getting.
+4. **Add the row to the index above.**
+
+Changing an existing rule follows the same path. A rule that has been violated
+in production gets its incident written into the document beside it — that
+evidence is the reason these documents get followed, and the reason the next
+person does not re-litigate a decision already paid for once.

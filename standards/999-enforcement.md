@@ -6,7 +6,7 @@ because the question "is this rule real?" has to have one answer and one place
 to look it up.
 
 The tiers — **gated**, **audit only**, **review only** — and the law they serve
-are defined in [`../STANDARDS.md`](../STANDARDS.md). Read that first; this
+are defined in [`../README.md`](../README.md). Read that first; this
 document is the register, not the argument.
 
 **Proposed gate** is a commitment, not a wish. A rule landing review-only names
@@ -212,7 +212,7 @@ stays a review question.
 
 ## Charter: document conventions
 
-Rules from [`../STANDARDS.md`](../STANDARDS.md)'s "How these documents are
+Rules from [`../README.md`](../README.md)'s "How these documents are
 written" and "The foundation: twelve-factor".
 
 | # | Rule | Enforced by | Status |

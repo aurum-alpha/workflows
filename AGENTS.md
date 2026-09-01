@@ -1,7 +1,7 @@
 # AGENTS.md — the Aurum Alpha agent standard
 
 One of the Aurum Alpha engineering standards; read
-[`STANDARDS.md`](STANDARDS.md) for the charter it is written under and
+[`README.md`](README.md) for the charter it is written under and
 [`standards/999-enforcement.md`](standards/999-enforcement.md) for what enforces it.
 
 This document is two things at once, deliberately:

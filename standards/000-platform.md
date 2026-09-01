@@ -1,7 +1,7 @@
 # The platform contract
 
 One of the Aurum Alpha engineering standards — read
-[`../STANDARDS.md`](../STANDARDS.md) for the charter this is written under,
+[`../README.md`](../README.md) for the charter this is written under,
 and [`999-enforcement.md`](999-enforcement.md) for the tier each rule below actually
 holds.
 
@@ -9,9 +9,9 @@ This document states the doctrine every application-layer standard is written
 under: what form an opinion about a platform capability is allowed to
 take. The capabilities themselves — authentication, logging, jobs, audit, and
 the rest — each get their own standard, tracked in this repository's issues
-and indexed in the roster below. This document is the constitution those
-standards are drafted against, the same way the charter is the constitution
-for this one.
+and indexed in the roster below. The charter says what a standard is; this
+document says what form one about a platform capability may take, and nothing
+more than that.
 
 ## Why this exists
 
@@ -218,25 +218,9 @@ W3C trace context, per the propagation profile.
 
 ## Enforcement
 
-Every rule here is review-only today, honestly, with the gates named per rule in
-[`999-enforcement.md`](999-enforcement.md):
-
-- **PC1 and PC2 resist a checker** and stay review questions: what
-  constitutes "a tool the lifecycle depends on" or "a standard that
-  suffices" is judgment. The review question is stated, which is the honest
-  version of unenforced.
-- **PC3 gets `check-contract-artifacts`**: an agreed capability's
-  `contracts/<capability>/` tree exists, schemas parse, the corpus is
-  non-empty. Cheap, no false positives, promotable early.
-- **PC4 gets `job-contract-conformance`**: a shared job that runs a
-  capability's corpus against a repository's implementation, adopted
-  per-capability as corpora land. This is the gate that matters — the one
-  that fails the implementation that drifted.
-- **PC5 gates in the package repositories**: every release runs the corpus,
-  and a manifest check asserts no shared package depends on another.
-- **PC6 gets `check-contract-evolution`**: a schema diff on every change to
-  `contracts/` — removed or retyped fields fail; a version bump with a
-  stated window passes.
+Registered in [`999-enforcement.md`](999-enforcement.md) under "Platform
+standard", every rule review-only today with its gate named there — the rows
+are the record, and they are not repeated here.
 
 What no checker will prove: that an opinion was delivered as a contract
 rather than smuggled in as a dependency. That stays a review question on

@@ -95,7 +95,7 @@ Lowercase, `snake_case` within each segment, a single dot between them:
 `invoice.approve`, `candidate_process.advance`, `purchase_order.void`.
 
 **The dot rather than a colon, for a reason that is not taste.** Scope
-references in RB4 are `type:id` — `tenant:acme`, `job:8fK2mQ`. Using a colon in
+references in RB5 are `type:id` — `tenant:acme`, `job:8fK2mQ`. Using a colon in
 both would give one separator two meanings in one system, and the first
 ambiguous string is the one nobody notices. Reserving `:` for scope and `.` for
 permission keeps every identifier parseable on sight.
@@ -148,43 +148,103 @@ tolerated one:
   change jobs: fast, frequent, and by administrators who are not engineers. Two
   things changing at those two rates should not share a release cycle.
 
-#### Which roles still belong in code
+#### Which roles still belong in code, and why
 
-A product that stores roles as data should still declare some in source, and the
-discriminator is sharp: **if code refers to a role by name, that role is a system
-role.** A handler that notifies "the billing contact" has made that role's
-existence a code assumption, and a tenant deleting it breaks the feature rather
-than adjusting their own configuration.
+Some roles are declared in source, and **the reason is seeding, never checking**
+— RB4 forbids code from consulting a role name at all. A product declares system
+roles so that it ships working and can be recovered, not so that anything can
+branch on them.
 
-Four cases where the answer is code regardless of what the product does with the
-rest:
+Four cases:
 
 - **Bootstrap.** A fresh database has no roles and no administrators. Something
   must grant the first person their access, and it cannot be a role that does not
-  exist yet.
-- **Recovery.** If every administrative role is data, then deleting or
-  misconfiguring them locks everyone out with no path back that does not involve
-  raw SQL against production. A code-declared role is a floor nobody can remove.
+  exist yet. This is a chicken-and-egg problem with exactly one solution.
+- **Recovery.** If every administrative role is data, deleting or misconfiguring
+  them locks everyone out with no path back that does not involve raw SQL against
+  production. A code-declared role is a floor nobody can remove.
+- **A sane default.** A product should arrive with a small set of workable roles
+  rather than an empty list and an instruction to invent one. Minimal is the
+  target: enough to run the system, not a catalogue.
 - **Roles that cross tenants.** A platform administrator or a support engineer
   belongs to no tenant, so no tenant may define or edit them. Code is where a
   tenant administrator cannot reach.
-- **Roles the tests and the corpus depend on.** This standard's own
-  [`decisions.json`](../contracts/rbac/decisions.json) needs known roles, and so
-  does every integration test. If every role is data, each test carries its own
-  fixture and the fixtures drift.
 
 Two rules follow, and both are enforceable:
 
-- **A system role is not editable or deletable by a tenant.**
+- **A system role is not editable or deletable by a tenant.** It is the recovery
+  floor, and a floor a tenant can remove is not one.
 - **A tenant-defined role may not take the name of a system role**, or a lookup
-  by name stops having one answer.
+  by name stops having one answer — and seeding, migration and display all do
+  look roles up by name.
+
+### RB4. Code never branches on a role name
+
+**The authorization system does not know what roles are called and must not
+learn.** No conditional, no route guard, no feature check, no report filter asks
+*is this subject an administrator*. Every one of them asks
+`check(subject, permission, scope)`.
+
+A role name appears in code in exactly two places, and neither is a decision:
+the **seed definition** of a system role, and **display** — showing a person what
+they are. Anywhere else, the name has become an authorization input and RB1
+through RB3 have been routed around.
+
+This is the rule most likely to be broken by accident, because `if role ==
+"admin"` is the shortest thing to type and it works on the day it is written.
+Five things it breaks:
+
+- **It asks the wrong question.** A role is a bundle of capabilities, not a
+  capability. *Is this person an administrator* is a question about how they came
+  to hold a permission; the code only ever needs to know whether they hold it.
+- **It denies people who plainly qualify.** A tenant defines its own role
+  carrying every permission the operation needs, and the branch refuses it
+  anyway — because the name does not match. The permission model said yes and the
+  name check said no.
+- **It makes editing a role's permissions do nothing.** The whole point of a
+  role as a set is that changing the set changes what its holders may do. A
+  name branch is not reading the set, so an administrator edits the role, sees
+  the change saved, and the behaviour does not move.
+- **It makes `permissionsFor` untrue, exactly as a wildcard does.** A gate that
+  is not a permission gate does not appear in the list, so the `/me` document of
+  [`auth.md`](auth.md) AU6 describes a subject who can do more or less than it
+  says, and the interface renders the wrong screen. This is the same failure as
+  RB6's wildcard, arriving by a different door.
+- **It is invisible to the corpus.** [`decisions.json`](../contracts/rbac/decisions.json)
+  evaluates `check`. A role-name branch is an authorization decision the corpus
+  cannot see, so an implementation can reproduce all seventeen cases and still
+  have ungoverned gates.
+
+And where roles are tenant-editable data, a name branch is **code depending on a
+row a customer can rename or delete.**
+
+#### The cases that look like exceptions
+
+*"But I need to notify the billing contact."* That is not a role check, and
+treating it as one is how the anti-pattern arrives wearing a reasonable face. It
+is one of two things:
+
+- A **permission** — `billing.receive_notices` — if any number of people may hold
+  it, or
+- an **explicit assignment** on the tenant record, a `billing_contact` field
+  naming one user, if exactly one person holds it.
+
+Both are better than a role lookup, and the second is better than inventing a
+permission for a singleton. The test is whether you are asking *may this person
+do X* (a permission) or *who is our X* (a field).
+
+*"The admin screen lists roles to assign."* That is data being rendered, not a
+branch. Fine.
+
+*"Migrations and seeds reference role names."* Setup, not a runtime decision.
+Fine.
 
 **Roles do not nest and do not inherit.** A role that should have what another
 role has lists the same permissions. Inheritance turns *what can this person do*
 into a graph traversal, and the answer stops being readable from the role's own
 definition.
 
-### RB4. A grant binds a subject to a role within a scope
+### RB5. A grant binds a subject to a role within a scope
 
 ```
 Grant { subject, role, scope }
@@ -205,9 +265,9 @@ one.** A grant at `tenant:acme` satisfies a check at `job:V1StGX` when the
 application declares that job as within that tenant. `global` contains
 everything.
 
-A subject may hold many grants. They are evaluated together, and RB5 says how.
+A subject may hold many grants. They are evaluated together, and RB6 says how.
 
-### RB5. Deny by default, additive only, and no permission means "everything"
+### RB6. Deny by default, additive only, and no permission means "everything"
 
 Three semantics, and every one of them is a place implementations diverge unless
 pinned.
@@ -243,6 +303,11 @@ not in a stored role, not as an argument to `check`, and not as authoring
 shorthand a tool expands later. There is no place in the system where `*`,
 `system.*` or `invoice.*` is accepted.
 
+RB4's role-name branch is the same failure through another door: both create a
+gate that grants or refuses without a permission behind it, and both make
+`permissionsFor` describe a subject who is not the one the system will actually
+serve.
+
 Authoring shorthand is the tempting exception and it is refused for the reason
 the paragraph above gives. A role authored as "every permission on `invoice`"
 either re-expands on load, and silently gains whatever was added to the code
@@ -252,7 +317,7 @@ authored form is what a reviewer reads in a diff. **A rule that admits an
 implicit form has an implicit form**, and the only version of this rule that
 holds is the flat one.
 
-### RB6. `check` is a pure function of its arguments
+### RB7. `check` is a pure function of its arguments
 
 ```
 check(subject, permission, scope) → Decision
@@ -276,7 +341,7 @@ consequences follow, and both are the kind that survive a long time:
   ever show it.
 
 A pure `check` makes the second impossible by construction, and makes the corpus
-of RB8 writable at all: *given these grants, this check returns deny* has no
+of RB9 writable at all: *given these grants, this check returns deny* has no
 meaning if the answer also depends on state the case cannot state.
 
 #### The operations
@@ -294,7 +359,7 @@ meaning if the answer also depends on state the case cannot state.
 independently, which is good evidence that a codebase without them writes the
 loop by hand and gets it wrong somewhere.
 
-### RB7. A decision carries its reason
+### RB8. A decision carries its reason
 
 `check` returns a **Decision**, not a boolean: the outcome, and *why* — which
 grant and which role satisfied it, or that none did.
@@ -309,13 +374,13 @@ support call. It is never returned to an unauthorised caller: the
 [`http.md`](http.md) HA3 envelope that reaches the client says the request was
 refused, and the reason stays in the log.
 
-### RB8. A cached decision is keyed by everything the decision depends on
+### RB9. A cached decision is keyed by everything the decision depends on
 
 Caching authorization is normal and often necessary. Two rules make it safe.
 
 **The cache key includes the subject, the permission and the scope** — every
-argument of RB6's function, because a key missing one of them returns another
-subject's or another tenant's answer. This is the failure quoted in RB6, stated
+argument of RB7's function, because a key missing one of them returns another
+subject's or another tenant's answer. This is the failure quoted in RB7, stated
 as a rule so it is caught in review rather than in production.
 
 **Every path that changes a grant invalidates.** Granting, revoking, editing a
@@ -337,7 +402,7 @@ Per PC3, under [`contracts/rbac/`](../contracts/rbac/):
 - **`model.schema.json`** — permission, role, grant and scope shapes.
 - **`decisions.json`** — **the corpus that matters**: a set of grants, then a
   list of checks with their expected decisions. This is the file that makes a
-  polyglot standard enforceable from one source, and it is why RB6 requires a
+  polyglot standard enforceable from one source, and it is why RB7 requires a
   pure function. Three implementations, one judge.
 
 ## Enforcement
@@ -347,7 +412,7 @@ Every rule is review-only today, with gates named per rule in
 the repository**, and that is the point of writing authorization as an interface
 specification rather than as prose.
 
-- **RB5, RB6 and RB4's containment are decided entirely by the decision
+- **RB6, RB7 and RB5's containment are decided entirely by the decision
   corpus.** An implementation loads the grants, runs the checks, and either
   reproduces every expected decision or names the case it failed. No running
   service, no browser, no network — the corpus is data and the check is a
@@ -357,12 +422,12 @@ specification rather than as prose.
   three-segment permissions RB2 forbids.
 - **RB3's validation is testable** by attempting to store a role containing an
   undeclared permission and requiring a refusal.
-- **RB8's cache key resists a static checker** and is caught by a corpus case
+- **RB9's cache key resists a static checker** and is caught by a corpus case
   instead: check a permission in one scope, then the same permission in another
   where it is not granted, and require deny. A cache keyed without scope fails
   it. This is the one gate that would have caught the production defect quoted
-  in RB6.
-- **RB1 and RB7 stay review questions.** That a declaration is genuinely the
+  in RB7.
+- **RB1 and RB8 stay review questions.** That a declaration is genuinely the
   complete set, and that a reason is genuinely informative, are judgments about
   content rather than shape.
 

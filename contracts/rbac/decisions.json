@@ -1,7 +1,7 @@
 {
   "contract": "rbac",
   "schemaVersion": 1,
-  "description": "The decision corpus for standards/rbac.md \u2014 the artifact that makes a polyglot authorization standard enforceable from one source. An implementation loads 'roles', 'scopeContainment' and 'grants', then evaluates every case in 'checks' and either reproduces each expected decision or names the case it failed. No running service and no network: the corpus is data and check() is a pure function of its arguments, which is what RB6 requires and why it requires it.",
+  "description": "The decision corpus for standards/rbac.md \u2014 the artifact that makes a polyglot authorization standard enforceable from one source. An implementation loads 'roles', 'scopeContainment' and 'grants', then evaluates every case in 'checks' and either reproduces each expected decision or names the case it failed. No running service and no network: the corpus is data and check() is a pure function of its arguments, which is what RB7 requires and why it requires it.",
   "fixture": {
     "permissions": [
       "invoice.read",
@@ -18,14 +18,16 @@
         "permissions": [
           "invoice.read",
           "report.read"
-        ]
+        ],
+        "origin": "code"
       },
       {
         "name": "approver",
         "permissions": [
           "invoice.read",
           "invoice.approve"
-        ]
+        ],
+        "origin": "code"
       },
       {
         "name": "tenant_admin",
@@ -37,10 +39,20 @@
           "user.remove",
           "report.read",
           "report.export"
-        ]
+        ],
+        "origin": "code"
       },
       {
         "name": "auditor",
+        "permissions": [
+          "report.read",
+          "report.export"
+        ],
+        "origin": "code"
+      },
+      {
+        "name": "regional_auditor",
+        "origin": "tenant",
         "permissions": [
           "report.read",
           "report.export"
@@ -94,6 +106,11 @@
         "subject": "usr_eve",
         "role": "approver",
         "scope": "tenant:acme"
+      },
+      {
+        "subject": "usr_fay",
+        "role": "regional_auditor",
+        "scope": "tenant:acme"
       }
     ]
   },
@@ -124,7 +141,7 @@
       "expect": {
         "allowed": false
       },
-      "note": "viewer does not carry it, and no grant means deny \u2014 never 'allow unless denied' (RB5)"
+      "note": "viewer does not carry it, and no grant means deny \u2014 never 'allow unless denied' (RB6)"
     },
     {
       "id": "containment-a-tenant-grant-satisfies-a-project-check",
@@ -140,7 +157,7 @@
           "scope": "tenant:acme"
         }
       },
-      "note": "a grant at a containing scope satisfies a check at a contained one, and the reason names the scope the grant was actually held at (RB4)"
+      "note": "a grant at a containing scope satisfies a check at a contained one, and the reason names the scope the grant was actually held at (RB5)"
     },
     {
       "id": "containment-does-not-run-upward",
@@ -196,7 +213,7 @@
           "allowed": true
         }
       },
-      "note": "THE CACHE CASE, and the reason it is in the corpus rather than left to review. Evaluate 'before' first, then the check: an implementation whose cache keys on subject and permission without scope returns allowed for both and fails here. That is a cross-tenant authorization result produced by a cache key, and no test exercising one tenant at a time will ever show it (RB6, RB8)"
+      "note": "THE CACHE CASE, and the reason it is in the corpus rather than left to review. Evaluate 'before' first, then the check: an implementation whose cache keys on subject and permission without scope returns allowed for both and fails here. That is a cross-tenant authorization result produced by a cache key, and no test exercising one tenant at a time will ever show it (RB7, RB9)"
     },
     {
       "id": "global-contains-every-scope",
@@ -227,6 +244,22 @@
       "note": "global is a scope, not a superuser. auditor carries report permissions and nothing else, wherever it is held"
     },
     {
+      "id": "a-tenant-defined-role-is-decided-only-by-its-permissions",
+      "check": {
+        "subject": "usr_fay",
+        "permission": "report.export",
+        "scope": "tenant:acme"
+      },
+      "expect": {
+        "allowed": true,
+        "reason": {
+          "role": "regional_auditor",
+          "scope": "tenant:acme"
+        }
+      },
+      "note": "THE ROLE-NAME CASE, and the mechanical detector for RB4. usr_fay holds regional_auditor, a tenant-defined role carrying exactly the permissions of the code-declared auditor. An implementation that gates on a role name \u2014 'is this subject an auditor' \u2014 refuses a subject the permission model plainly allows, and fails here while passing every other case. It is also why fixture roles carry an 'origin': the corpus has to be able to express a role the code never heard of"
+    },
+    {
       "id": "grants-are-additive",
       "check": {
         "subject": "usr_eve",
@@ -240,7 +273,7 @@
           "scope": "tenant:acme"
         }
       },
-      "note": "usr_eve holds viewer and approver at the same scope; the permission set is the union of both (RB5)"
+      "note": "usr_eve holds viewer and approver at the same scope; the permission set is the union of both (RB6)"
     },
     {
       "id": "an-unheld-permission-is-still-denied-with-two-roles",
@@ -268,7 +301,7 @@
           "scope": "project:alpha"
         }
       },
-      "note": "approver holds invoice.read explicitly. It is in the corpus to make the converse observable: approve does not imply read, and read is granted here only because the role lists it (RB5)"
+      "note": "approver holds invoice.read explicitly. It is in the corpus to make the converse observable: approve does not imply read, and read is granted here only because the role lists it (RB6)"
     },
     {
       "id": "an-ungranted-subject-is-denied-everything",
@@ -296,7 +329,7 @@
           "report.read"
         ]
       },
-      "note": "the union of viewer and approver, sorted, complete. This is what feeds the /me document of auth.md AU6, and it is why RB5 forbids a wildcard surviving into the check: a subject holding one would have every permission while this list enumerated none of them, and the interface would render the wrong screen"
+      "note": "the union of viewer and approver, sorted, complete. This is what feeds the /me document of auth.md AU6, and it is why RB6 forbids a wildcard surviving into the check: a subject holding one would have every permission while this list enumerated none of them, and the interface would render the wrong screen"
     },
     {
       "id": "permissionsFor-is-scope-sensitive",
@@ -370,7 +403,7 @@
       "expect": {
         "refused": true
       },
-      "note": "the rule with the most evidence behind it, and a flat denial rather than a check-time one. A wildcard surviving into the check silently defeats every other rule and makes permissionsFor untrue; a wildcard admitted as authoring shorthand either re-expands and silently grows or freezes and silently stops meaning what it says. There is no place in the system where one is accepted (RB5)"
+      "note": "the rule with the most evidence behind it, and a flat denial rather than a check-time one. A wildcard surviving into the check silently defeats every other rule and makes permissionsFor untrue; a wildcard admitted as authoring shorthand either re-expands and silently grows or freezes and silently stops meaning what it says. There is no place in the system where one is accepted (RB6)"
     },
     {
       "id": "check-against-an-undeclared-permission-errors",

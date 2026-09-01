@@ -389,15 +389,16 @@ corpus. Authentication is [`auth.md`](auth.md)'s; AU6 is the boundary.
 | RB1 | Permissions are a closed set declared in code; a check against an undeclared permission is an error, not a denial | corpus rejection case for the error behaviour. That the declaration is genuinely complete is a judgment about content | **review only** |
 | RB2 | A permission is `resource.action`: lowercase, snake_case segments, exactly two, the dot reserved for permissions and the colon for scopes | **static and decidable** — every declared permission matches `^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$`, which also catches the three-segment form (proposed `check-permission-names`) | **review only** |
 | RB3 | A role is a named set; code-declared or data-stored, either admitted; every permission in it must be declared; a system role is not tenant-editable and a tenant role may not shadow its name; roles do not nest or inherit | three corpus rejection cases: an undeclared permission in a role, a tenant editing or deleting a system role, and a tenant role shadowing a system role's name | **review only** |
-| RB4 | A grant binds subject to role within a scope; `global` or `type:id`; a containing scope satisfies a contained check | **decided entirely by the decision corpus** — five containment cases including the two an implementation gets wrong, upward and sibling | **review only** |
-| RB5 | Deny by default; grants additive with no negative grants; **no wildcard anywhere** — declaration, stored role, check argument or authoring shorthand; no permission implying another | **decided entirely by the decision corpus**, plus a rejection case covering all four surfaces a wildcard could enter by | **review only** |
-| RB6 | `check` is a pure function of subject, permission and scope; scope is an argument, never ambient state | the corpus is only writable *because* of this rule, so passing it is the evidence. Purity itself resists a checker — a gate reading source for it would be the PC4 violation | **review only** |
-| RB7 | A decision carries its reason; the reason is logged and never returned to an unauthorised caller | the reason's presence and shape are corpus-checked; whether it is *informative* is a judgment, like SC2's | **review only** |
-| RB8 | A cached decision is keyed by subject, permission and scope, and every path that changes a grant invalidates | **one corpus case catches the whole failure**: the same permission checked in two scopes, allowed in the first and denied in the second. A cache keyed without scope fails it | **review only** |
+| RB4 | **Code never branches on a role name.** A role name appears in code only in a system role's seed definition and in display; every decision is `check(subject, permission, scope)` | **one corpus case is a mechanical detector**: a subject holding a tenant-defined role that carries exactly the permissions of a code-declared one. An implementation gating on the name refuses a subject the permission model allows, and fails that case while passing every other. A grep for role-name comparisons is a weak second gate with real false positives — display and seeding are legitimate | **review only** |
+| RB5 | A grant binds subject to role within a scope; `global` or `type:id`; a containing scope satisfies a contained check | **decided entirely by the decision corpus** — five containment cases including the two an implementation gets wrong, upward and sibling | **review only** |
+| RB6 | Deny by default; grants additive with no negative grants; **no wildcard anywhere** — declaration, stored role, check argument or authoring shorthand; no permission implying another | **decided entirely by the decision corpus**, plus a rejection case covering all four surfaces a wildcard could enter by | **review only** |
+| RB7 | `check` is a pure function of subject, permission and scope; scope is an argument, never ambient state | the corpus is only writable *because* of this rule, so passing it is the evidence. Purity itself resists a checker — a gate reading source for it would be the PC4 violation | **review only** |
+| RB8 | A decision carries its reason; the reason is logged and never returned to an unauthorised caller | the reason's presence and shape are corpus-checked; whether it is *informative* is a judgment, like SC2's | **review only** |
+| RB9 | A cached decision is keyed by subject, permission and scope, and every path that changes a grant invalidates | **one corpus case catches the whole failure**: the same permission checked in two scopes, allowed in the first and denied in the second. A cache keyed without scope fails it | **review only** |
 
 **This is the most gateable standard in the repository**, and that is the point
 of writing authorization as an interface specification rather than as prose.
-RB4, RB5 and RB8 are decided by data: an implementation loads the fixture, runs
+RB5, RB6 and RB9 are decided by data: an implementation loads the fixture, runs
 seventeen checks, and either reproduces every decision or names the one it
 failed. No running service, no browser, no network — which is what PC3 promised
 a corpus would buy and the first place it fully pays.
@@ -406,8 +407,18 @@ The corpus is also the fleet's first real answer to *one contract judging three
 languages*. A Go, a TypeScript and a PHP implementation each pass it or each
 name their failure, and none of them can pass by importing anything.
 
-`decisions.json` carries one case for a defect found in production code rather
-than imagined: **the same permission checked in two scopes.** An implementation
-caching on subject and permission alone returns allowed for both, which is a
-cross-tenant authorization result produced by a cache key, and no test that
-exercises one tenant at a time will ever show it.
+`decisions.json` carries two cases that exist to catch a specific mistake rather
+than to describe correct behaviour, and both were verified as detectors before
+landing — a reference implementation passes them, and a deliberately broken one
+fails each.
+
+**The same permission checked in two scopes.** An implementation caching on
+subject and permission alone returns allowed for both, which is a cross-tenant
+authorization result produced by a cache key, and no test exercising one tenant
+at a time will ever show it. This one is a defect found in production code rather
+than imagined.
+
+**A tenant-defined role carrying exactly a code-declared role's permissions.** An
+implementation that gates on a role name refuses a subject the permission model
+plainly allows, and fails only this case out of eighteen. It is the mechanical
+detector for RB4, which is otherwise the easiest rule here to break by accident.

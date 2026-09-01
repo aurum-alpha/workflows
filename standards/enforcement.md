@@ -354,7 +354,7 @@ wire, and the wire here is the two contracts under
 
 Rules from [`auth.md`](auth.md) — how a person is authenticated, what identity
 reaches an application, and how a session ends. The authorization model is the
-[RBAC standard](platform.md#the-capability-roster)'s.
+[RBAC standard](rbac.md)'s.
 
 | # | Rule | Enforced by | Status |
 |---|---|---|---|

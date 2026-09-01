@@ -11,7 +11,7 @@ an Aurum Alpha service (WC3), what it does with the values that service
 sends (WC4), and what it reports when something breaks (WC5).
 
 **It does not decide how authentication works.** That belongs to the
-[authentication and authorization standard](platform.md#the-capability-roster),
+[authentication and authorization standard](auth.md),
 and the boundary is drawn deliberately: a rule that is equally true of a
 server-rendered application with no JavaScript is not a browser rule. WC1
 carries only what is true *because* the client is a browser.
@@ -86,7 +86,7 @@ Three consequences, and they are the whole of this rule:
   thing this rule prevents.
 
 **Everything else about authentication belongs to the [authentication and
-authorization standard](platform.md#the-capability-roster), not here** —
+authorization standard](auth.md), not here** —
 which component is the identity provider's client, the session cookie's
 attributes and lifetime, refresh and revocation, and what identity crosses
 from that component to the backend. Those decisions are not browser
@@ -290,7 +290,7 @@ someone else's machine.
   `sessionStorage` and IndexedDB after a login and asserts nothing
   credential-shaped is there. The cookie's own attributes are a live gate
   too, but they belong to the [authentication and authorization
-  standard](platform.md#the-capability-roster), which sets them.
+  standard](auth.md), which sets them.
 - **WC1's central claim resists a checker entirely.** Proving no token
   reaches JavaScript means proving a negative about a program's runtime, and
   a gate that tried would be reading the implementation, which PC4 forbids.
@@ -308,7 +308,7 @@ someone else's machine.
   chose the Backend-For-Frontend pattern, pinned the session cookie's
   attributes, and required refresh-token rotation. Every one of those is a
   decision the [authentication and authorization
-  standard](platform.md#the-capability-roster) states as its own — and each
+  standard](auth.md) states as its own — and each
   is equally true of a server-rendered application with no JavaScript,
   which is the test that shows they are not browser rules. Deciding them
   here would have been this repository's own two-answers failure, committed

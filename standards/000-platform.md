@@ -250,10 +250,16 @@ written, it points at the roster row.
 - **Version.** The repository's, in `.version`, SemVer, moved by a release pull
   request that touches nothing else. Never an artifact's
   ([`010-ci.md`](010-ci.md), Principle 15).
-- **Release.** The act of putting one version into one environment: the run's
-  artifacts are published, the release-triggered jobs run as steps in declared
-  order with the migrate step first, and the servers and workers roll out. Also
-  the name of that trigger.
+- **Release.** The officially published, versioned artifacts of one build
+  run, suitable for operational deployment: the images, bundles and rendered
+  manifests, tagged with the repository's version. A release is made by the
+  release pull request and publishes what main has already gated; it runs
+  nothing anywhere ([`010-ci.md`](010-ci.md)).
+- **Deployment.** Taking a release's artifacts and running them in one
+  environment: the deployment-triggered jobs run as steps in declared order
+  with the migrate step first, then the servers and workers roll out. A
+  deployment names a release and an environment. Also the name of that
+  trigger.
 - **Environment.** A deployment target, such as development, staging or
   production, differing from every other only in configuration
   ([factor X](https://12factor.net/dev-prod-parity)).
@@ -267,7 +273,7 @@ written, it points at the roster row.
   deployables of one repository and no other, which is the checkable edge of a
   service.
 - **Runner.** The platform component that starts a one-shot worker on a tick,
-  at a release step, or by an operator's hand. The platform states what a
+  at a deployment step, or by an operator's hand. The platform states what a
   runner must do and builds none; every runtime it could sit on supplies one.
 
 ### Work
@@ -279,7 +285,7 @@ written, it points at the roster row.
 - **Run.** One execution of a job by a worker, with a run id, a trigger, a key,
   and an outcome, and a record of all four in the service's database.
 - **Trigger.** What causes a run. There are four: a **message** arriving, a
-  **tick** of a schedule, a **release** step, and an **operator**. A stream of
+  **tick** of a schedule, a **deployment** step, and an **operator**. A stream of
   triggers, which is only ever messages, goes to a pool; a single invocation
   goes to a one-shot.
 - **Event.** An occurrence a service reports as a fact: past tense, about one
@@ -299,13 +305,13 @@ written, it points at the roster row.
   the same transaction as the effect ([`055-messaging.md`](055-messaging.md)
   AM3).
 - **Schedule.** A five-field cron expression in UTC, declared beside a job in
-  the repository and rendered to the runner at release. **Tick.** One firing
+  the repository and rendered to the runner at deployment. **Tick.** One firing
   of a schedule at one scheduled instant, identified by the job's name and
   that instant, so two firings of one tick are one piece of work.
 - **Operator.** A person with the standing to run a job by hand, deploy a
   release, or intervene in a running system. The fourth trigger.
 - **Migration.** One ordered `.sql` file that moves a database's schema forward
-  and converges if run again. **The migrate step** is the release-triggered
+  and converges if run again. **The migrate step** is the deployment-triggered
   job that applies the pending ones, run by a one-shot worker in its own image
   with its own credential ([`025-structured-data.md`](025-structured-data.md)
   SD2, SD3).

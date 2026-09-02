@@ -37,16 +37,13 @@ every seam a reviewer would want to check:
 - **Seven of eight run Postgres**, and the identifiers standard wrote a storage
   profile for MySQL only, deferring every other engine to this document.
 
-Against that, one repository has already answered every question this document
-asks, in writing and with gates. Its architecture document states that SQL is
-the query language and an ORM is a worse notation for it; that migrations
-expand and never contract in the same release, because *"rollback is a
-data-loss event wearing a tag change"*; that the service never applies
-migrations at boot; and that every scoped table carries its isolation columns
-denormalized *"so every policy is a single joinless predicate"*, with a suite
-that discovers scoped tables from the catalog and fails one added without them.
-That is a portfolio standard sitting in one repository's `docs/`, and the next
-product to need it will derive it again. This document lifts it.
+None of that is a failure of care. It is what happens when the questions
+themselves have not been stated: what a migration *is*, what a query is
+allowed to be, what a tenant boundary means at the row. Each product answered
+those structurally, in the first week, by whatever its tooling defaulted to —
+and each defaulted differently. This document states the questions and answers
+them once, from the properties the answers must have, so that the next product
+inherits the answers rather than the questions.
 
 ### The standard evaluated first, per PC2
 
@@ -72,8 +69,7 @@ library may execute it, bind its parameters, and map result rows onto a
 language type; a library may **not** generate SQL at runtime from an object
 model, a fluent builder, or a chain of method calls.
 
-The argument is the one that repository already made, and it is not about
-taste: *a query you cannot paste into a console and `EXPLAIN` as-is is one
+The argument is not about taste: *a query you cannot paste into a console and `EXPLAIN` as-is is one
 nobody will profile.* The SQL is the review surface, the debugging surface and
 the performance surface, and a builder chain hides the one thing every one of
 those needs. Object-relational mapping also abstracts the engine as though it
@@ -201,10 +197,13 @@ database, and nothing in a deploy path runs one.
 
 ### SD5. Isolation levels are declared, and they are the RBAC scope types
 
-**This standard does not fix how many isolation levels a product has.** One
-existing product has two (system, organisation); another has three (platform,
-tenant, client organisation); a third has none because it is single-tenant. A
-standard naming the levels would fit none of them.
+**This standard does not fix how many isolation levels a product has.**
+Products differ here for structural reasons, not stylistic ones: a practice
+that serves client organisations has a level beneath the tenant that a
+single-tenant tool does not have at all, and a platform that hosts many
+practices has one above it. A standard that named the levels would fit the
+products it was written from and force a fiction on the rest — an empty
+middle level, or two things called by one name.
 
 What it fixes is that **a product declares its levels, once, and the
 declaration is the same one its authorization uses.** [`070-rbac.md`](070-rbac.md)
@@ -227,12 +226,14 @@ predicate that is slower, that is easy to get subtly wrong, and that a policy
 engine cannot apply. The redundancy is the price of the predicate being trivially
 right.
 
-**Name the levels, and never use one to mean another.** The product that has
-three levels retired an earlier vocabulary in which the middle term was also
-used for the innermost, and the retirement is recorded in its agent
-instructions because the ambiguity had cost it. Every multi-tenant product
-walks into that once; naming the rule here is so the portfolio walks into it
-once in total.
+**Name the levels, and never use one to mean another.** The middle and
+innermost levels are the ones that blur, because ordinary speech has one word
+for both — *the customer* is the practice to the platform and the client
+organisation to the practice. A codebase that lets the word drift ends up with
+a query scoped at the wrong level, and that is a cross-tenant read with a
+plausible variable name. So the declaration fixes the vocabulary as well as
+the columns: one name per level, used for that level and nothing else, in
+code, schema and documentation alike.
 
 ### SD6. Isolation is a behaviour, proven by enumeration
 
@@ -247,7 +248,7 @@ cost:
 
 | Mechanism | What it is | What it costs |
 |---|---|---|
-| **Row-level security** | The engine enforces the predicate on every statement, from a context the connection binds per request. Application scoping remains; RLS is the backstop that makes a missed `WHERE` clause a denied row rather than a leak. | Postgres has it; MySQL does not. The per-request binding (`SET LOCAL`) is a discipline the code must make structural — one existing product does so by making the bound transaction the only handle a query can accept. |
+| **Row-level security** | The engine enforces the predicate on every statement, from a context the connection binds per request. Application scoping remains; RLS is the backstop that makes a missed `WHERE` clause a denied row rather than a leak. | Postgres has it; MySQL does not. The per-request binding (`SET LOCAL`) is a discipline the code must make structural — for instance by making the bound transaction the only handle a query method will accept, so an unbound query cannot be written. |
 | **One database per tenant** | The strongest boundary: the tenant is a connection string, and there is no query that can cross it. | Migrations apply per tenant (SD3), the from-previous-release gate runs per tenant, and connection pools multiply. Correct for a small number of high-assurance tenants; wrong for thousands of small ones. |
 | **Application-layer scoping** | Every query carries the isolation predicate, and the check is in the code path. Ownership checks on individual rows are the authorization layer's, per RB5. | No backstop. A missed predicate is a cross-tenant read that no test exercising one tenant at a time will show — which is why the enumeration gate below exists, and why this mechanism leans on it hardest. |
 
@@ -255,10 +256,11 @@ Whichever mechanism, two rules hold across all three:
 
 - **A missing isolation context denies.** A request that resolved no tenant —
   the platform host, an unauthenticated path, a background job with no tenant
-  bound — sees no scoped rows, by construction. The existing product's policies
-  achieve this because `app_has_tenant(NULL)` is false; an application-layer
-  implementation achieves it by refusing to run a scoped query with a null
-  scope rather than by omitting the predicate.
+  bound — sees no scoped rows, by construction. Under row-level security this
+  falls out of the predicate's shape — `has_tenant(NULL)` is false, so an
+  unbound connection matches nothing; an application-layer implementation
+  achieves it by refusing to run a scoped query with a null scope rather than
+  by omitting the predicate.
 - **No bypass role on scoped tables.** The platform operator's predicate never
   appears in a policy on a tenant-scoped table, and a platform-admin flag never
   short-circuits an application-layer scope check. Support access happens
@@ -275,8 +277,6 @@ type and foreign key, and to be covered by the product's mechanism. Because the
 suite enumerates, a table added tomorrow is covered the day it lands, and a
 table added *without* the columns is the finding. A list of tables to check
 rots the day someone adds a table; that is how a fixture becomes a scoreboard.
-The existing suite is the precedent and it is worth copying rather than
-re-deriving.
 
 ### SD7. Identifiers and primitives in storage, per engine
 
@@ -389,9 +389,10 @@ standard is unusual in how many of those gates are cheap:
 - **SD2's shape is two greps with no false positives**: nothing but `*.sql` in
   the migrations directory, and no merged migration's bytes changed — the
   second is reachable from history. The `db:push` reachability check is a third.
-- **SD4 has a working precedent** — one repository's expand-only check is a
-  regular expression over the up section of each file — and generalising it
-  is a copy, not a design.
+- **SD4's gate is a regular expression** over each file's up section for the
+  three statement kinds and the marker. It is small enough that the corpus is
+  most of the design, and the corpus already covers the violation, the marker,
+  and the marker with no release named.
 - **SD3's live gate is the from-empty and from-previous-release run**: apply
   the image's migrations to an empty database, then apply the current image's
   to a database the previous release's image migrated. `job-image-starts`
@@ -415,8 +416,7 @@ standard is unusual in how many of those gates are cheap:
 ## Decisions
 
 - **SQL is the query language; no runtime generation** (2026-09-02): the most
-  consequential rule here and the one that makes six repositories
-  non-conformant on the day it lands. Decided because the alternative hides
+  consequential rule here. Decided because the alternative hides
   the review, debugging and performance surface behind a notation that is
   worse than the thing it abstracts, and because the portability it buys is
   one no product here can use. Code generation *from* authored SQL is the
@@ -432,18 +432,21 @@ standard is unusual in how many of those gates are cheap:
   the only answer consistent with BUILD ONCE and factor XII at once. The
   alternatives — migrate at boot, migrate from a source checkout — each fail
   a rule this repository already has.
-- **Expand-only, with contraction one release later** (2026-09-02): lifted
-  whole from the repository that wrote it, because its argument — that this is
-  the entire reason rollback works — is complete and does not improve by
-  restating.
+- **Expand-only, with contraction one release later** (2026-09-02): the
+  rollback argument is the whole justification. A forward-migrated schema must
+  be a superset of what the previous release reads, or redeploying that release
+  destroys data — and rollback is reached for precisely when something is
+  already wrong. Three releases per removal is the price of that being true
+  without anyone having to reason about it under pressure.
 - **No fixed number of isolation levels; the levels are the RBAC scope types**
-  (2026-09-02): two existing products differ in depth and a third has none. Tying
-  the declaration to RB5's makes one hierarchy serve both layers, which is the
-  point.
+  (2026-09-02): products differ in depth for structural reasons, and a fixed
+  number would fit some by forcing a fiction on the rest. Tying the declaration
+  to RB5's makes one hierarchy serve both layers, which is the point.
 - **Isolation is a behaviour with three admitted mechanisms, and RLS is not
   required** (2026-09-02): row-level security is the strongest backstop
   available on the majority engine and it is not available on the other; a
-  requirement would have made a product non-conformant by engine. The
+  requirement would have made conformance a property of the engine rather than
+  of the design. The
   behaviour is what the gate proves, and each mechanism is admitted with its
   cost written down so the choice is made with the price known.
 - **Per-engine storage profile, no mandated engine** (2026-09-02): the

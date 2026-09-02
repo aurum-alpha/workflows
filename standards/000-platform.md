@@ -180,36 +180,39 @@ written, it points at the roster row.
   one version, and one build run produces every artifact it ships at that
   version ([`010-ci.md`](010-ci.md), Principles 7 and 15). A repository may
   hold one service or many.
-- **Service.** A collection, never a process: the servers, workers, jobs and
-  backing resources that together provide one capability under one name and
-  one ownership. A service has zero or more servers, zero or more workers, and
-  zero or more backing resources; a service with no database is an ordinary
-  service. Where it owns a database it owns it exclusively, and every process
-  that holds that database's credential belongs to the service
-  ([`025-structured-data.md`](025-structured-data.md) SD13). A service lives
-  in exactly one repository, because every process that touches one schema
-  must be built beside that schema's migrations, in one run, at one version;
-  a repository may hold several services. Services integrate only through a
-  server's interface or through messages, never through one another's
-  resources.
-- **Process.** A running instance of an image, or of a command in one, with a
-  lifecycle of its own: it starts, becomes ready, receives `SIGTERM`, and
-  exits. The unit [`030-service.md`](030-service.md)'s rules bind. A process is
-  of exactly one type, server or worker, never both. Several processes of one
-  type are replicas.
+- **Service.** A collection, never a process: the servers and workers that
+  together provide one capability under one name and one ownership, and the
+  backing services they attach. A service has one or more processes; it may
+  have no server, when it is workers only, or no worker. Where a service holds
+  state, that state lives in a stateful server it attaches, and the service
+  owns that state exclusively: the schema, the bucket, the volume, the topic,
+  and the credential to it. Every process that holds that credential belongs
+  to the service ([`025-structured-data.md`](025-structured-data.md) SD13
+  states this for structured data). A service lives in exactly one repository,
+  because every process that touches one schema must be built beside that
+  schema's migrations, in one run, at one version; a repository may hold
+  several services. Services integrate only through a server's interface or
+  through messages, never through one another's state.
+- **Process.** An operating-system process, in exactly that sense: one running
+  program with its own process id, address space, environment, standard
+  streams, signals, and exit code. Nothing more abstract is meant anywhere in
+  these standards. A container runs one process. It starts, becomes ready,
+  receives `SIGTERM`, and exits, and [`030-service.md`](030-service.md)'s
+  rules bind it. A process is of exactly one type, server or worker, never
+  both. Several processes of one type are replicas.
 - **Server.** A long-running process that handles network requests on demand,
   synchronously, and runs no jobs. A server is **stateless** when nothing it
-  holds needs to survive its restart, because its state lives in backing
-  resources; the servers the portfolio writes are stateless. A server is
-  **stateful** when it maintains state across restarts and is itself where that
-  state lives. **Databases and storage backends are themselves stateful
-  servers**: a database engine, a cache, an object store, a message broker each
-  is a long-running process answering requests and keeping state across its
-  restarts. The portfolio attaches them as backing resources rather than
-  writing them, and keeps its own servers stateless by putting their state
-  there. So a service that owns a database contains a stateful server it did
-  not write, and the rules that bind it are the data standard's, not the
-  service contract's.
+  holds needs to survive its restart, because its state lives in a stateful
+  server it attaches; every server the portfolio writes is stateless. A server
+  is **stateful** when it maintains state across restarts and is itself where
+  that state lives. Every persistence engine is a stateful server, and they
+  differ only in the shape of what they persist: structured data in a
+  relational database, documents in a document store, keys and values in a
+  cache, objects in an object store, files on a network filesystem, blocks on
+  a block-storage target, messages in a broker. None stands above the others;
+  each is a stateful server the portfolio attaches as a backing service rather
+  than writes, and the rules that bind what is inside it are the data
+  standards', not the service contract's.
 - **Worker.** A process, long-running or short-running, that executes jobs
   outside any request, in response to a trigger. The long-running form, the
   **pool**, consumes a queue and is scaled by replicas against its backlog. The
@@ -220,18 +223,16 @@ written, it points at the roster row.
   the web client ([`090-web-client.md`](090-web-client.md)), another service's
   process, a command-line tool, a third party. A client carries an identity
   ([`060-auth.md`](060-auth.md)) and is authorized
-  ([`070-rbac.md`](070-rbac.md)); it never holds a credential to a service's
-  resources.
-- **Backing resource.** Anything a process consumes over the network as an
-  attached resource in [factor IV](https://12factor.net/backing-services)'s
-  sense: a database, a cache, a message transport, object storage, a mail
-  relay, a third-party API. Attached by configuration and never by code
-  ([`030-service.md`](030-service.md) SC3).
-- **Database.** The structured store a service owns, if it owns one: one
-  schema, one writer, one credential, private to the service
-  ([`025-structured-data.md`](025-structured-data.md)). The engine behind it
-  is a stateful server; the service owns the schema and the credential, never
-  the engine.
+  ([`070-rbac.md`](070-rbac.md)); it never holds a credential to any
+  service's state.
+- **Backing service.** A service a process consumes over the network, attached
+  by configuration and never by code ([`030-service.md`](030-service.md) SC3;
+  [factor IV](https://12factor.net/backing-services)). Ours or a vendor's: one
+  stateful server or a cluster of them, a broker, a mail relay, a third-party
+  API. There is no third kind of thing a process reaches over the network. It
+  is a server, or a service made of servers, which is why the word is service
+  and not resource. What a process has that is not a backing service is local
+  and ephemeral: its image, its environment, its scratch disk.
 
 ### Delivery
 
@@ -260,8 +261,8 @@ written, it points at the roster row.
   ([factor III](https://12factor.net/config);
   [`030-service.md`](030-service.md) SC3). A process's configuration surface is
   the set it reads.
-- **Credential.** A secret that grants a process access to a backing resource.
-  One credential per resource per service; the migration credential separate
+- **Credential.** A secret that grants a process access to a backing service.
+  One credential per backing service per service; the migration credential separate
   from the runtime credential; and a database's credential present in the
   deployables of one repository and no other, which is the checkable edge of a
   service.

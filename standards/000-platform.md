@@ -240,8 +240,9 @@ written, it points at the roster row.
   version.
 - **Image.** An OCI container image, the unit of packaging and deployment. An
   image does one thing: it is a server, or a worker, or the migrate step, and
-  never more than one of those ([`010-ci.md`](010-ci.md);
-  [`035-workers.md`](035-workers.md) WK2).
+  never more than one of those; images are cut on dependency closure,
+  credential and configuration surface ([`010-ci.md`](010-ci.md), Principle
+  15).
 - **Build run.** One execution of a repository's CI on one commit, producing
   every artifact the repository ships and testing them together. The artifacts
   of one run share a provenance and assert compatibility with one another by

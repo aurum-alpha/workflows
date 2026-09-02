@@ -120,10 +120,10 @@ the repository's version, under [`010-ci.md`](010-ci.md)'s Principles 7 and
 artifact of that run. The job it runs is code under 057's contract, and is
 packaged only by being inside a worker.
 
-**Which jobs share a worker image is decided by three things**: the dependency
-closure, the credential, and the configuration surface.
-Where all three are the same, jobs share an image. Where one differs, the
-image splits. So:
+**Which jobs share a worker image is decided by the three criteria of
+[`010-ci.md`](010-ci.md) Principle 15**: the dependency closure, the
+credential, and the configuration surface. Where all three are the same, jobs
+share an image; where one differs, the image splits. Applied to workers:
 
 - The **migrate image**, `<service>-migrate`, stands alone. 025 SD3
   gives it the migration credential and nothing else, and no other job may

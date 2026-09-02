@@ -8,15 +8,18 @@ times. A commit that renamed the tool and flipped the invocation together
 would ship a job calling a name the pinned checkout does not have -- exit 127,
 which is what the first attempt at this rename did to gofast.
 
-So the rename is three waves, and this is wave 1:
+So the rename is three waves, and waves 1 and 2 are done:
 
-  1. THIS COMMIT. `check-lint-configs` is the real file; this name still works.
-     A main now exists carrying both, which is the precondition the old
-     docstring named and could not previously satisfy.
-  2. Flip job-ci-conformance's invocation to `check-lint-configs` and bump
-     `standard_ref` to a wave-1 commit. Safe, because every checkout that
-     could be selected has both names.
-  3. Delete this file once no released tag's `standard_ref` predates wave 1.
+  1. DONE (8e4070a). `check-lint-configs` became the real file; this name kept
+     working. A main carrying both names is the precondition the original
+     docstring named and could not satisfy from inside itself.
+  2. DONE. job-ci-conformance now invokes `check-lint-configs`, with
+     `standard_ref` moved to 8e4070a -- the first commit whose tools/ carries
+     that name. Nothing selects this shim by default any more.
+  3. NOT YET. Delete this file once no released tag ships a job body that
+     invokes the old name. Until then a caller pinned at a pre-wave-2 tag can
+     still reach it, which is the whole reason it is a shim and not a
+     deletion.
 
 WHY THE NAME CHANGED. The checker never checked an eslint config in the sense
 its name implied: it enforces byte-identity of SHARED LINT CONFIGS against the

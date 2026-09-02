@@ -173,17 +173,19 @@ on:
         # otherwise fetch checkers from f254ede -- a tree without it.
         #
         # Bumped again for wave 1 of the check-eslint-config ->
-        # check-lint-configs rename. NOTE WHAT THIS BUMP DOES AND DOES NOT DO:
-        # it points at this pull request's BASE, which does not carry the
-        # rename either, and that is not a mistake -- standard_ref can never
-        # name the commit being created (see the note above about the catalog
-        # listing). The one-commit lag is designed; this gate exists to keep it
-        # at one rather than letting it grow to twenty. Wave 2, which flips the
-        # invocation below to check-lint-configs, is what needs a standard_ref
-        # that actually carries the new name, and it will bump to the wave-1
-        # merge commit for exactly that reason. Until then line 323 calls the
-        # old name deliberately, and the shim answers to it.
-        default: 1cc13b9314c5735a6b9648d3d8f8703dad0cd12d
+        # check-lint-configs rename. That bump pointed at its own pull
+        # request's BASE, which did not carry the rename -- correct, because
+        # standard_ref can never name the commit being created, and the
+        # one-commit lag is designed.
+        #
+        # WAVE 2 IS THIS BUMP, and it is the one that matters. 8e4070a is the
+        # wave-1 merge commit, so it is the first commit where tools/ carries
+        # check-lint-configs. Only now can the invocation below name it: the
+        # step runs the checker out of the standard_ref clone, so flipping the
+        # name without this bump is precisely the exit 127 that #126 shipped
+        # and that this repo's own "Every checker job-ci-conformance invokes
+        # exists" step now catches in both trees.
+        default: 8e4070a36702b511bbfd6bb0bd1991a5da03a7fd
 
 jobs:
   ci-conformance:
@@ -319,20 +321,22 @@ jobs:
         run: .aurum-standard/tools/check-overrides --root .ci-root --repo "$REPO"
         continue-on-error: ${{ inputs.warn_only }}
 
-      # The shared eslint config says, in its own header, that a byte-identity
+      # A shared lint config says, in its own header, that a byte-identity
       # checker fails the build if one repo edits it. No such checker existed;
       # six repos matched by luck and the sentence was decoration. This is it.
       #
-      # It covers .oxlintrc.json on the same terms. That file made the case for
-      # itself: oxlint's config was one repo's local file, and the portfolio spent
-      # a release arguing about oxlint's coverage when it was arguing with that
-      # file. A shared config nothing compares is a shared config in name only.
+      # .oxlintrc.json is the config it covers today, and that file made the
+      # case for itself: oxlint's config was one repo's local file, and the
+      # portfolio spent a release arguing about oxlint's coverage when it was
+      # arguing with that file. A shared config nothing compares is a shared
+      # config in name only. The checker's list is a tuple rather than a
+      # constant precisely so entries can come and go -- eslint's did.
       - name: The shared lint configs are unedited
         if: ${{ !cancelled() }}
         env:
           REPO: ${{ steps.repo.outputs.name }}
           AURUM_CATALOG_ROOT: .aurum-catalog
-        run: .aurum-standard/tools/check-eslint-config --root .ci-root --repo "$REPO"
+        run: .aurum-standard/tools/check-lint-configs --root .ci-root --repo "$REPO"
         continue-on-error: ${{ inputs.warn_only }}
 
       # AGENTS.md says there is one source of agent guidance and only one. What

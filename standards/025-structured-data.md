@@ -179,11 +179,14 @@ build run, at the same version as the service.** That image is the migration
 runner and the `.sql` files and nothing else — not the listener, not a worker
 — because an image does one thing, and because the migration credential then
 has exactly one home: the runtime image never holds it, and the migrate image
-holds nothing but it. [`010-ci.md`](010-ci.md)'s BUILD ONCE compiles every
-artifact the repository ships in one run, and its versioning of the repository
-rather than the artifact is what binds them — the migrate image and the
+holds nothing but it. Two rules of [`010-ci.md`](010-ci.md) bind the two
+images. BUILD ONCE: the build job is the only compiler in the run, each
+artifact is compiled exactly once and stored, and the migrate image is
+assembled from what that job stored — never recompiled at image build.
+Versioning the repository rather than the artifact: that one build job builds
+every artifact the repository ships, every time, so the migrate image and the
 service image at one version carry one schema by construction, because they
-were built from one commit and tested together.
+came out of one run that compiled and tested them together.
 
 **The migrate image runs to completion and exits.** It applies every pending
 migration in order and exits zero, or stops at the first failure and exits

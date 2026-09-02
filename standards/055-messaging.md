@@ -276,9 +276,14 @@ What binds the worker to the service is the version, not the image.
 every image one build run produces shares one provenance, was tested against
 the others in that run, and asserts compatibility with them by construction: a
 worker at one version consuming rows a service at another version migrated is
-not a state the release process can produce. BUILD ONCE is what makes that
-true — one build job compiles every artifact the repository ships, every time,
-whether or not the files under any one of them changed.
+not a state the release process can produce. Two rules of that document make
+it true. BUILD ONCE: the build job is the only compiler in the run, so each
+artifact is compiled exactly once, stored, and every image is assembled from
+what that job stored — the image build never recompiles. Versioning the
+repository: that one build job builds every artifact the repository ships,
+every time, whether or not the files under any one of them changed, so the
+worker image and the service image at one version came out of one run that
+compiled and tested them together.
 
 A worker that reads this service's database is this service's worker: same
 repository, same version, its own image. A worker with its own database is

@@ -10,7 +10,7 @@
         "00001_init.sql": "-- +goose Up\nCREATE TABLE IF NOT EXISTS tenants (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, public_id uuid NOT NULL UNIQUE);\n-- +goose Down\nDROP TABLE tenants;",
         "00002_invoices.sql": "-- +goose Up\nCREATE TABLE IF NOT EXISTS invoices (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, tenant_id bigint NOT NULL REFERENCES tenants(id), total_amount bigint NOT NULL, total_currency char(3) NOT NULL);\n-- +goose Down\nDROP TABLE invoices;"
       },
-      "reachableScripts": { "migrate": "app migrate", "start": "app serve" },
+      "reachableScripts": { "migrate": "docker run svc-migrate:2.4.0", "start": "docker run svc:2.4.0" },
       "expect": { "findings": [] },
       "why": "SD2's shape and SD4's rule both satisfied. The Down sections contain DROP TABLE and are ignored: down migrations are for local iteration and are never trusted in production."
     },
@@ -20,7 +20,7 @@
         "00001_init.sql": "-- +goose Up\nCREATE TABLE IF NOT EXISTS tenants (id bigint PRIMARY KEY);\n-- +goose Down\nDROP TABLE tenants;",
         "0002_add_invoices.ts": "export async function up(db) { await db.schema.createTable('invoices')... }"
       },
-      "reachableScripts": { "migrate": "app migrate" },
+      "reachableScripts": { "migrate": "docker run svc-migrate:2.4.0" },
       "expect": { "findings": [ { "kind": "non-sql-file", "subject": "0002_add_invoices.ts" } ] },
       "why": "SD2. A migration is never code: an up() function puts a translation layer between the reviewer and the statement, and ties the history to a language runtime."
     },

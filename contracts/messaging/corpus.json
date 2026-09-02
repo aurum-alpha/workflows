@@ -1,0 +1,400 @@
+{
+  "contract": "messaging",
+  "schemaVersion": 1,
+  "description": "The conformance corpus for standards/055-messaging.md. Three parts. 'validity' is judged by envelope.schema.json alone. 'delivery' is judged by running a consumer: deliver the sequence in order and count the distinct effects an idempotent consumer produces (AM3); a delivery may carry 'fails' to model a handler failure followed by redelivery. 'signing' is judged by computing: given the secret, id, timestamp and exact body bytes, the webhook-signature value an implementation must produce, and deliveries it must reject (AM7, AM8). Signature values here were computed with HMAC-SHA256 over id + '.' + timestamp + '.' + body, keyed by the base64-decoded secret, per Standard Webhooks.",
+  "validity": [
+    {
+      "case": "a-complete-envelope-is-accepted",
+      "valid": true,
+      "why": "AM1 in full: every pinned attribute present, the tracing extension carried, tenant context as tenantid, data snake_case.",
+      "event": {
+        "specversion": "1.0",
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "source": "/invoicing",
+        "type": "invoice.voided",
+        "subject": "01923e01-3333-7000-8000-000000000003",
+        "time": "2026-03-04T09:12:44.108Z",
+        "datacontenttype": "application/json",
+        "dataschema": "https://contracts.aurumalpha.dev/invoicing/invoice-voided/v1.schema.json",
+        "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        "tenantid": "01923e01-9999-7000-8000-00000000000f",
+        "data": {
+          "invoice_id": "01923e01-3333-7000-8000-000000000003"
+        }
+      }
+    },
+    {
+      "case": "a-hostname-source-is-rejected",
+      "valid": false,
+      "why": "AM1. source is half the event's identity and must be identical in every environment; a hostname is not.",
+      "event": {
+        "specversion": "1.0",
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "source": "https://api.example.com/invoicing",
+        "type": "invoice.voided",
+        "subject": "01923e01-3333-7000-8000-000000000003",
+        "time": "2026-03-04T09:12:44.108Z",
+        "datacontenttype": "application/json",
+        "dataschema": "https://contracts.aurumalpha.dev/invoicing/invoice-voided/v1.schema.json",
+        "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        "tenantid": "01923e01-9999-7000-8000-00000000000f",
+        "data": {
+          "invoice_id": "01923e01-3333-7000-8000-000000000003"
+        }
+      }
+    },
+    {
+      "case": "a-missing-traceparent-is-rejected",
+      "valid": false,
+      "why": "OC1 through AM1: the envelope carries the trace of what produced it, and a message with no trace is unattributable work.",
+      "event": {
+        "specversion": "1.0",
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "source": "/invoicing",
+        "type": "invoice.voided",
+        "subject": "01923e01-3333-7000-8000-000000000003",
+        "time": "2026-03-04T09:12:44.108Z",
+        "datacontenttype": "application/json",
+        "dataschema": "https://contracts.aurumalpha.dev/invoicing/invoice-voided/v1.schema.json",
+        "tenantid": "01923e01-9999-7000-8000-00000000000f",
+        "data": {
+          "invoice_id": "01923e01-3333-7000-8000-000000000003"
+        }
+      }
+    },
+    {
+      "case": "a-three-segment-type-is-rejected",
+      "valid": false,
+      "why": "AM1. resource.event, exactly two segments; the service is not repeated because source names it.",
+      "event": {
+        "specversion": "1.0",
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "source": "/invoicing",
+        "type": "invoicing.invoice.voided",
+        "subject": "01923e01-3333-7000-8000-000000000003",
+        "time": "2026-03-04T09:12:44.108Z",
+        "datacontenttype": "application/json",
+        "dataschema": "https://contracts.aurumalpha.dev/invoicing/invoice-voided/v1.schema.json",
+        "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        "tenantid": "01923e01-9999-7000-8000-00000000000f",
+        "data": {
+          "invoice_id": "01923e01-3333-7000-8000-000000000003"
+        }
+      }
+    },
+    {
+      "case": "a-present-tense-type-passes-the-schema",
+      "valid": true,
+      "schemaCannotCatch": "AM1's past-tense rule. invoice.void matches the pattern and is the audit ACTION vocabulary, not the event vocabulary; the schema cannot tell tense. Recorded as passing so the file does not imply coverage it lacks; the review question is the gate.",
+      "event": {
+        "specversion": "1.0",
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "source": "/invoicing",
+        "type": "invoice.void",
+        "subject": "01923e01-3333-7000-8000-000000000003",
+        "time": "2026-03-04T09:12:44.108Z",
+        "datacontenttype": "application/json",
+        "dataschema": "https://contracts.aurumalpha.dev/invoicing/invoice-voided/v1.schema.json",
+        "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        "tenantid": "01923e01-9999-7000-8000-00000000000f",
+        "data": {
+          "invoice_id": "01923e01-3333-7000-8000-000000000003"
+        }
+      }
+    },
+    {
+      "case": "a-snake-case-tenant-attribute-is-rejected",
+      "valid": false,
+      "why": "AM1. The CloudEvents attribute grammar admits only lowercase letters and digits, and this profile closes its extension set; tenant_id is neither a legal attribute name nor a declared one. The value belongs under tenantid.",
+      "event": {
+        "specversion": "1.0",
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "source": "/invoicing",
+        "type": "invoice.voided",
+        "subject": "01923e01-3333-7000-8000-000000000003",
+        "time": "2026-03-04T09:12:44.108Z",
+        "datacontenttype": "application/json",
+        "dataschema": "https://contracts.aurumalpha.dev/invoicing/invoice-voided/v1.schema.json",
+        "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        "data": {
+          "invoice_id": "01923e01-3333-7000-8000-000000000003"
+        },
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f"
+      }
+    },
+    {
+      "case": "an-offset-time-is-rejected",
+      "valid": false,
+      "why": "IP4 through AM1: emitted instants are UTC with a Z suffix.",
+      "event": {
+        "specversion": "1.0",
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "source": "/invoicing",
+        "type": "invoice.voided",
+        "subject": "01923e01-3333-7000-8000-000000000003",
+        "time": "2026-03-04T11:12:44.108+02:00",
+        "datacontenttype": "application/json",
+        "dataschema": "https://contracts.aurumalpha.dev/invoicing/invoice-voided/v1.schema.json",
+        "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        "tenantid": "01923e01-9999-7000-8000-00000000000f",
+        "data": {
+          "invoice_id": "01923e01-3333-7000-8000-000000000003"
+        }
+      }
+    },
+    {
+      "case": "an-internal-key-as-subject-is-rejected",
+      "valid": false,
+      "why": "IP1 through AM1: the subject is the entity's public id; an integer is an internal key that never leaves the service.",
+      "event": {
+        "specversion": "1.0",
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "source": "/invoicing",
+        "type": "invoice.voided",
+        "subject": "4711",
+        "time": "2026-03-04T09:12:44.108Z",
+        "datacontenttype": "application/json",
+        "dataschema": "https://contracts.aurumalpha.dev/invoicing/invoice-voided/v1.schema.json",
+        "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        "tenantid": "01923e01-9999-7000-8000-00000000000f",
+        "data": {
+          "invoice_id": "01923e01-3333-7000-8000-000000000003"
+        }
+      }
+    },
+    {
+      "case": "a-non-v7-id-is-rejected",
+      "valid": false,
+      "why": "IP2 through AM1: the producer mints a UUIDv7. A v4 gives a consumer's inbox a random-insert index for no benefit.",
+      "event": {
+        "specversion": "1.0",
+        "id": "9f6a2c3e-1b4d-4e8f-9a0b-7c6d5e4f3a2b",
+        "source": "/invoicing",
+        "type": "invoice.voided",
+        "subject": "01923e01-3333-7000-8000-000000000003",
+        "time": "2026-03-04T09:12:44.108Z",
+        "datacontenttype": "application/json",
+        "dataschema": "https://contracts.aurumalpha.dev/invoicing/invoice-voided/v1.schema.json",
+        "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        "tenantid": "01923e01-9999-7000-8000-00000000000f",
+        "data": {
+          "invoice_id": "01923e01-3333-7000-8000-000000000003"
+        }
+      }
+    },
+    {
+      "case": "an-undeclared-extension-is-rejected",
+      "valid": false,
+      "why": "PC6 through AM1: the extension set is closed and grows by amending the schema, never by a producer inventing an attribute a consumer discovers later.",
+      "event": {
+        "specversion": "1.0",
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "source": "/invoicing",
+        "type": "invoice.voided",
+        "subject": "01923e01-3333-7000-8000-000000000003",
+        "time": "2026-03-04T09:12:44.108Z",
+        "datacontenttype": "application/json",
+        "dataschema": "https://contracts.aurumalpha.dev/invoicing/invoice-voided/v1.schema.json",
+        "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        "tenantid": "01923e01-9999-7000-8000-00000000000f",
+        "data": {
+          "invoice_id": "01923e01-3333-7000-8000-000000000003"
+        },
+        "priority": "high"
+      }
+    }
+  ],
+  "delivery": [
+    {
+      "case": "the-same-event-delivered-twice-has-one-effect",
+      "deliveries": [
+        {
+          "source": "/invoicing",
+          "id": "01923e8a-0000-7000-8000-000000000001"
+        },
+        {
+          "source": "/invoicing",
+          "id": "01923e8a-0000-7000-8000-000000000001"
+        }
+      ],
+      "expect": {
+        "effects": 1
+      },
+      "why": "AM3. At-least-once means this sequence is ordinary, and the consumer's inbox is what makes it harmless."
+    },
+    {
+      "case": "two-events-from-one-source-have-two-effects",
+      "deliveries": [
+        {
+          "source": "/invoicing",
+          "id": "01923e8a-0000-7000-8000-000000000001"
+        },
+        {
+          "source": "/invoicing",
+          "id": "01923e8a-0000-7000-8000-000000000002"
+        }
+      ],
+      "expect": {
+        "effects": 2
+      },
+      "why": "AM3. Distinct ids are distinct events."
+    },
+    {
+      "case": "the-same-id-from-two-sources-is-two-events",
+      "deliveries": [
+        {
+          "source": "/invoicing",
+          "id": "01923e8a-0000-7000-8000-000000000001"
+        },
+        {
+          "source": "/billing",
+          "id": "01923e8a-0000-7000-8000-000000000001"
+        }
+      ],
+      "expect": {
+        "effects": 2
+      },
+      "why": "AM3, and a VERIFIED DETECTOR. The key is (source, id), which is the identity CloudEvents guarantees unique; a consumer that deduplicates on id alone treats two producers' events as one and drops the second. This case fails such a consumer by name."
+    },
+    {
+      "case": "a-failed-attempt-then-a-redelivery-has-one-effect",
+      "deliveries": [
+        {
+          "source": "/invoicing",
+          "id": "01923e8a-0000-7000-8000-000000000003",
+          "fails": true
+        },
+        {
+          "source": "/invoicing",
+          "id": "01923e8a-0000-7000-8000-000000000003"
+        }
+      ],
+      "expect": {
+        "effects": 1
+      },
+      "why": "AM3 and AM5. The first attempt fails before the inbox row and the effect commit - they are one transaction - so nothing is recorded and the redelivery does the work once."
+    },
+    {
+      "case": "a-dead-letter-replay-has-one-effect",
+      "deliveries": [
+        {
+          "source": "/invoicing",
+          "id": "01923e8a-0000-7000-8000-000000000004",
+          "fails": true
+        },
+        {
+          "source": "/invoicing",
+          "id": "01923e8a-0000-7000-8000-000000000004",
+          "fails": true
+        },
+        {
+          "source": "/invoicing",
+          "id": "01923e8a-0000-7000-8000-000000000004"
+        },
+        {
+          "source": "/invoicing",
+          "id": "01923e8a-0000-7000-8000-000000000004"
+        }
+      ],
+      "expect": {
+        "effects": 1
+      },
+      "why": "AM5. Replay redelivers the same envelope, id and all; AM3 makes it safe, and the final duplicate (an operator replaying twice) is absorbed the same way."
+    },
+    {
+      "case": "a-provider-event-re-enveloped-twice-has-one-effect",
+      "deliveries": [
+        {
+          "source": "/stripe",
+          "id": "evt_1PqR9s2eZvKYlo2C"
+        },
+        {
+          "source": "/stripe",
+          "id": "evt_1PqR9s2eZvKYlo2C"
+        }
+      ],
+      "expect": {
+        "effects": 1
+      },
+      "why": "AM8. An inbound webhook becomes an envelope with the provider as source and the provider's event id as id, so a provider redelivery is a repeat under AM3 with no provider-specific logic."
+    }
+  ],
+  "signing": [
+    {
+      "case": "the-signature-over-id-timestamp-body",
+      "secret": "whsec_AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=",
+      "webhook_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+      "webhook_timestamp": 1756771200,
+      "body": "{\"specversion\":\"1.0\",\"id\":\"01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99\",\"source\":\"/invoicing\",\"type\":\"invoice.voided\",\"subject\":\"01923e01-3333-7000-8000-000000000003\",\"time\":\"2026-03-04T09:12:44.108Z\",\"datacontenttype\":\"application/json\",\"dataschema\":\"https://contracts.aurumalpha.dev/invoicing/invoice-voided/v1.schema.json\",\"traceparent\":\"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01\",\"tenantid\":\"01923e01-9999-7000-8000-00000000000f\",\"data\":{\"invoice_id\":\"01923e01-3333-7000-8000-000000000003\",\"reason\":\"duplicate\"}}",
+      "expect": {
+        "webhook_signature": "v1,Bn/CZNYy09WFN9VrsnfR7lUm/1RJGagkpXb4N23DXG4="
+      },
+      "why": "AM7. HMAC-SHA256 over id + '.' + timestamp + '.' + body, keyed by the base64-decoded secret, encoded v1,<base64>. An implementation reproduces this value byte for byte or its verifier and every receiver's disagree."
+    },
+    {
+      "case": "a-tampered-body-is-rejected",
+      "secret": "whsec_AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=",
+      "webhook_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+      "webhook_timestamp": 1756771200,
+      "body": "{\"specversion\":\"1.0\",\"id\":\"01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99\",\"source\":\"/invoicing\",\"type\":\"invoice.voided\",\"subject\":\"01923e01-3333-7000-8000-000000000003\",\"time\":\"2026-03-04T09:12:44.108Z\",\"datacontenttype\":\"application/json\",\"dataschema\":\"https://contracts.aurumalpha.dev/invoicing/invoice-voided/v1.schema.json\",\"traceparent\":\"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01\",\"tenantid\":\"01923e01-9999-7000-8000-00000000000f\",\"data\":{\"invoice_id\":\"01923e01-3333-7000-8000-000000000003\",\"reason\":\"fraud\"}}",
+      "header": "v1,Bn/CZNYy09WFN9VrsnfR7lUm/1RJGagkpXb4N23DXG4=",
+      "now": 1756771210,
+      "expect": {
+        "accept": false
+      },
+      "why": "AM7/AM8. One field changed; the signature was over the original bytes. Verify over the raw body, before parsing, or a re-serialised body defeats this."
+    },
+    {
+      "case": "a-wrong-secret-is-rejected",
+      "secret": "whsec_ZWZnaGlqa2xtbm9wcXJzdHV2d3h5ent8fX5/gIGCg4Q=",
+      "webhook_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+      "webhook_timestamp": 1756771200,
+      "body": "{\"specversion\":\"1.0\",\"id\":\"01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99\",\"source\":\"/invoicing\",\"type\":\"invoice.voided\",\"subject\":\"01923e01-3333-7000-8000-000000000003\",\"time\":\"2026-03-04T09:12:44.108Z\",\"datacontenttype\":\"application/json\",\"dataschema\":\"https://contracts.aurumalpha.dev/invoicing/invoice-voided/v1.schema.json\",\"traceparent\":\"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01\",\"tenantid\":\"01923e01-9999-7000-8000-00000000000f\",\"data\":{\"invoice_id\":\"01923e01-3333-7000-8000-000000000003\",\"reason\":\"duplicate\"}}",
+      "header": "v1,Bn/CZNYy09WFN9VrsnfR7lUm/1RJGagkpXb4N23DXG4=",
+      "now": 1756771210,
+      "expect": {
+        "accept": false
+      },
+      "why": "AM7. One secret per endpoint; a signature made with another endpoint's secret verifies nowhere else."
+    },
+    {
+      "case": "a-stale-timestamp-is-rejected-even-with-a-valid-signature",
+      "secret": "whsec_AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=",
+      "webhook_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+      "webhook_timestamp": 1756771200,
+      "body": "{\"specversion\":\"1.0\",\"id\":\"01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99\",\"source\":\"/invoicing\",\"type\":\"invoice.voided\",\"subject\":\"01923e01-3333-7000-8000-000000000003\",\"time\":\"2026-03-04T09:12:44.108Z\",\"datacontenttype\":\"application/json\",\"dataschema\":\"https://contracts.aurumalpha.dev/invoicing/invoice-voided/v1.schema.json\",\"traceparent\":\"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01\",\"tenantid\":\"01923e01-9999-7000-8000-00000000000f\",\"data\":{\"invoice_id\":\"01923e01-3333-7000-8000-000000000003\",\"reason\":\"duplicate\"}}",
+      "header": "v1,Bn/CZNYy09WFN9VrsnfR7lUm/1RJGagkpXb4N23DXG4=",
+      "now": 1756774800,
+      "expect": {
+        "accept": false
+      },
+      "why": "AM8. The signature is genuine and an hour old; the timestamp tolerance (five minutes in this profile) is what makes a captured delivery useless later."
+    },
+    {
+      "case": "a-rotation-header-with-the-new-signature-second-is-accepted",
+      "secret": "whsec_AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=",
+      "webhook_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+      "webhook_timestamp": 1756771200,
+      "body": "{\"specversion\":\"1.0\",\"id\":\"01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99\",\"source\":\"/invoicing\",\"type\":\"invoice.voided\",\"subject\":\"01923e01-3333-7000-8000-000000000003\",\"time\":\"2026-03-04T09:12:44.108Z\",\"datacontenttype\":\"application/json\",\"dataschema\":\"https://contracts.aurumalpha.dev/invoicing/invoice-voided/v1.schema.json\",\"traceparent\":\"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01\",\"tenantid\":\"01923e01-9999-7000-8000-00000000000f\",\"data\":{\"invoice_id\":\"01923e01-3333-7000-8000-000000000003\",\"reason\":\"duplicate\"}}",
+      "header": "v1,PKULiEG+L0dQtd50kjGUSm5zCu6E0vRVWEJ9+cDLT80= v1,Bn/CZNYy09WFN9VrsnfR7lUm/1RJGagkpXb4N23DXG4=",
+      "now": 1756771210,
+      "expect": {
+        "accept": true
+      },
+      "why": "AM7. During rotation the sender signs with old and new and sends both, space-separated; a receiver accepts if ANY signature verifies, so the overlap window has no unverifiable deliveries."
+    },
+    {
+      "case": "a-fresh-genuine-delivery-is-accepted",
+      "secret": "whsec_AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=",
+      "webhook_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+      "webhook_timestamp": 1756771200,
+      "body": "{\"specversion\":\"1.0\",\"id\":\"01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99\",\"source\":\"/invoicing\",\"type\":\"invoice.voided\",\"subject\":\"01923e01-3333-7000-8000-000000000003\",\"time\":\"2026-03-04T09:12:44.108Z\",\"datacontenttype\":\"application/json\",\"dataschema\":\"https://contracts.aurumalpha.dev/invoicing/invoice-voided/v1.schema.json\",\"traceparent\":\"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01\",\"tenantid\":\"01923e01-9999-7000-8000-00000000000f\",\"data\":{\"invoice_id\":\"01923e01-3333-7000-8000-000000000003\",\"reason\":\"duplicate\"}}",
+      "header": "v1,Bn/CZNYy09WFN9VrsnfR7lUm/1RJGagkpXb4N23DXG4=",
+      "now": 1756771210,
+      "expect": {
+        "accept": true
+      },
+      "why": "The positive case, so the rejections above are shown to be discriminating rather than a verifier that rejects everything."
+    }
+  ]
+}

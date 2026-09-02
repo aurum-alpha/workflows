@@ -197,7 +197,7 @@ fields and the async envelope both build on.
 
 | # | Rule | Enforced by | Status |
 |---|---|---|---|
-| OC1 | W3C trace context on every boundary — HTTP calls and the job envelope; continue valid inbound context, start fresh otherwise; no parallel correlation scheme | propagation corpus under `job-contract-conformance` (proposed) | **review only** |
+| OC1 | W3C trace context on every boundary — HTTP calls and the job envelope; continue valid inbound context, start fresh otherwise; no parallel correlation scheme | propagation corpus under `job-contract-conformance` (proposed); the envelope half is met by the CloudEvents tracing extension, gated by [`055-messaging.md`](055-messaging.md)'s schema | **review only** |
 | OC2 | One id vocabulary: `trace_id`, `span_id`, `request_id`, `tenant_id` — same snake_case names and formats in every log line and audit event, every language | corpus validity cases (same job, proposed) | **review only** |
 | OC3 | Traces and metrics leave as OTLP to an endpoint from the OTel env vars; no vendor exporter in application code; logs stay stdout per the service baseline | env presence checkable; wire half proven where the corpus runs live; vendor-exporter half a review question | **review only** |
 | OC4 | The context block is present on lines and events emitted within request context | startup-line assertion in `job-image-starts` (proposed) + propagation corpus | **review only** |
@@ -219,7 +219,7 @@ written" and "The foundation: twelve-factor".
 | D1 | No document carries a status header; a merged document is binding | `check-standards-docs` (proposed): no `Status:` line in a standard | **review only** |
 | D2 | Documents reference documents by working relative link — never a tracker number, never a bare name; a standard not yet written is linked at its roster row | `check-standards-docs` (proposed): no issue or pull-request reference in a standard's prose, and every relative link resolves | **review only** |
 | D3 | A rule restating a twelve-factor factor cites it; a rule departing from one says so, in the rule, with the reason | — resists honestly: whether a citation is apt, or a departure argued, is judgment | **review only** |
-| D4 | A rule is argued from principle, never from precedent: its reason is a property of the rule, checkable without knowledge of this organisation's history; an incident may show a rule is needed but never that an answer is right | — resists honestly: a grep finds the word and not the fallacy. The review question on every Decisions entry: *would this reason hold if the repository it came from did not exist?* | **review only** |
+| D4 | A rule is argued from principle, never from precedent, and a standard is not an inventory: it names, counts and describes no repository; a failure mode is stated as the general property it is, so the text does not reveal which repository, if any, taught it | — resists honestly: a grep finds repository names and counting phrases, not the fallacy, and is still worth running. The review question on every rule and every Decisions entry: *would this reason hold if no current repository existed?* | **review only** |
 
 D1 and D2 are the cheapest gates in this ledger — a grep each, no false
 positives — and they are the kind of rule that regresses silently, because a
@@ -483,7 +483,7 @@ grant as a schema fact.
 |---|---|---|---|
 | SD1 | SQL is the query language: authored text, bound through native placeholders, no runtime generation from an object model or builder; codegen *from* SQL admitted | **resists a clean gate honestly** — checking imports is checking the implementation (PC4). The boundary gate is a driver-level capture in the conformance job asserting every executed statement matches committed text; it does not exist yet. Until then: *can I paste this into a console?* | **review only** |
 | SD2 | A migration is an ordered `.sql` file, immutable once merged, never code; authoring unconstrained; every statement converges (guarded DDL, `ON CONFLICT` seeds) so a re-run against an applied or half-applied database exits zero; `db:push` absent from any deploy-reachable script | **three greps with no false positives**: only `*.sql` in the migrations directory, no merged file's bytes changed (from history), no push command reachable — plus a static, partial fourth for unguarded common forms. Ten corpus cases (proposed `check-migrations`); the live replay in SD3's gate is the proof of convergence | **review only** |
-| SD3 | Migrations ship in the image, run by a `migrate` command as a discrete step before rollout, never at boot; idempotent at the command level (version record) and the file level (SD2); migration credential ≠ runtime credential | **live gate**: apply from empty, apply from the previous release's image, then replay every file against the migrated database bypassing the version record and require exit zero and an unchanged schema — as a sibling of `job-image-starts` (proposed `job-migrate`). Boot-time migration is a review question | **review only** |
+| SD3 | Migrations ship in their own image, built in the same run at the same version, run to completion as a discrete step before rollout, never at boot; idempotent at the command level (version record) and the file level (SD2); migration credential ≠ runtime credential | **live gate**: apply from empty, apply from the previous release's image, then replay every file against the migrated database bypassing the version record and require exit zero and an unchanged schema — as a sibling of `job-image-starts` (proposed `job-migrate`). Boot-time migration is a review question | **review only** |
 | SD4 | Migrations expand; `DROP COLUMN`, `DROP TABLE`, `ALTER … TYPE` need `-- expand-only-ok: <release>`; down never trusted | a regex over each file's up section for the three statement kinds and the marker; the corpus covers the violation, the marker, and the marker with no release named (proposed `check-migrations`) | **review only** |
 | SD5 | Isolation levels are declared and are the RB5 scope types; every scoped table carries the column for every containing level, denormalized; predicates are joinless | schema-decided by the isolation corpus; **one case is a verified detector** — a table carrying the inner column but not the outer one, which a suite checking only the innermost column passes wrongly | **review only** |
 | SD6 | Isolation is a behaviour with three admitted mechanisms; a missing context denies; no bypass role on scoped tables; the gate enumerates scoped tables from the catalog | **the generative gate worth the most here** — discover scoped tables from `information_schema`, assert columns, types, keys and coverage; a table added tomorrow is covered the day it lands, and a table added without its columns is the finding | **review only** |
@@ -506,3 +506,33 @@ Three rows above are now buildable that were not: IP1 (a public id column in
 an admitted format), AE4 and AE6 (the audit table's grant excludes `UPDATE`
 and `DELETE`). Each of those rows says it was waiting on this standard, and
 each now has a schema to read.
+
+## Messaging standard
+
+Rules from [`055-messaging.md`](055-messaging.md) — the envelope, delivery
+semantics, and webhooks. The envelope is a CloudEvents profile, so AM1 is
+gated by a schema over a standard rather than over an invention; the
+delivery rules are the internal contract and are gated by running a consumer.
+
+| # | Rule | Enforced by | Status |
+|---|---|---|---|
+| AM1 | A message is a CloudEvents 1.0 event in JSON structured format under this profile: UUIDv7 `id`, logical `source`, past-tense `resource.event` `type`, public-id `subject`, IP4 `time`, `dataschema`, the tracing extension, `tenantid`, closed extension set | **schema-decided** — `envelope.schema.json` under `job-contract-conformance`; ten validity cases. Past tense is the one half the schema cannot tell and stays a review question | **review only** |
+| AM2 | The transport is not the contract; a queue table belongs to one service; the transport is an attached resource | review question, and SD13's credential check covers the shared-table half | **review only** |
+| AM3 | At-least-once; the consumer is idempotent on `(source, id)`, with the inbox row in the effect's transaction, retained past the redelivery horizon; ordering not relied on | **decided by the `delivery` corpus** — deliver the sequence, count the effects. **One case is a verified detector**: the same id from two sources, which a consumer keyed on id alone collapses to one effect | **review only** |
+| AM4 | Produced in the transaction that caused it: the outbox, relayed by a consumer under AM3 | resists a boundary gate honestly — transaction sharing is a call-graph fact (PC4). The observable half (change without message, message without change, each provoked) is a live test | **review only** |
+| AM5 | Bounded retries with backoff and jitter; dead-letter with envelope, attempts and last error; replayable; poison never blocks; failures logged with the OC4 context block | the dead-letter shape is schema-checkable; the rest is review | **review only** |
+| AM6 | Work outside a request is a consumer in a worker — its own image, built in the same run at the same version — never a timer in the HTTP process; workers drain per SC4 | **static check with no false positives**: no `setInterval`/ticker/cron in the request-serving entrypoint (proposed `check-no-timers`); the worker image is built, started and published like any other image | **review only** |
+| AM7 | A webhook leaving is the envelope in structured mode, signed per Standard Webhooks: `webhook-id` = event id, `webhook-timestamp` per attempt, `webhook-signature` `v1,<base64>` HMAC-SHA256 over `id.timestamp.body`; one secret per endpoint, rotated with two signatures; retried per AM5 with the spec's response semantics | **decided by the `signing` corpus** — computed signature values an implementation reproduces byte for byte | **review only** |
+| AM8 | A webhook arriving is verified over the raw body, re-enveloped with the provider as `source` and the provider's event id as `id`, recorded in one transaction, and only then answered `2xx`; the work happens afterwards as a consumer | the rejections are `signing` corpus cases; the re-envelope dedupe is a `delivery` case; the order of the four steps is a review question | **review only** |
+
+The corpus was run before landing: ten validity cases, six delivery cases and
+six signing cases all reproduce their expected results against a reference
+implementation, and the AM3 detector was checked against a consumer that
+deduplicates on `id` alone — it passes five of the six delivery cases and
+fails exactly the one it exists to catch. The signing values were computed,
+not typed, so a verifier in any language proves its HMAC against them.
+
+One row above changes as a result of this standard: OC1's envelope requirement
+is now met by a standard extension rather than by a field the fleet named, and
+OC1's row points here for the envelope half.
+

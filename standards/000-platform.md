@@ -82,7 +82,8 @@ it relocates it to a vendor we have to staff.
 ### PC2. Standard protocol first, profile second, internal contract last
 
 Where an industry standard suffices — OIDC for identity, OTLP for telemetry,
-W3C trace context for propagation, RFC 9457 for HTTP errors — the standard
+W3C trace context for propagation, RFC 9457 for HTTP errors, CloudEvents for
+messages — the standard
 adopts it, as a **written profile**: the document pins the choices the
 standard leaves open, because "we use OIDC" unpinned is four implementations
 waiting to happen.
@@ -188,7 +189,7 @@ the work is an issue in this repository.
 | Structured data | SQL as the query language with no runtime generation; migrations as ordered `.sql` files shipped in the image and run as a step before rollout; expand-only; declared isolation levels that are the RBAC scope types, proven by enumeration; per-engine storage profile | [`025-structured-data.md`](025-structured-data.md) |
 | Document storage | When a document store is admitted beside the relational store, and which of the structured-data rules do not transfer | not yet written |
 | Backup and recovery | Restore is exercised, not assumed; recovery objectives stated per product; spans structured, blob and document storage | not yet written |
-| Async jobs & messaging | Internal envelope contract; at-least-once plus dedupe; signed webhooks | not yet written |
+| Async messaging | CloudEvents 1.0 profile as the envelope; at-least-once with `(source, id)` deduplication through inbox and outbox; workers, never timers; Standard Webhooks signing at the edge | [`055-messaging.md`](055-messaging.md) |
 | Maintenance jobs | The Job interface contract: registration, single-flight, run observability — and where it lands against [factor XII](https://12factor.net/admin-processes) | not yet written |
 | Audit events | Internal event contract: application data and not a log line; actor separate from target; the action string is the permission string; a stated floor of what must emit; OCSF at the export boundary rather than as the record | [`080-audit.md`](080-audit.md) |
 | Security baseline | Response-header set, scanning, image pinning, secrets doctrine | not yet written |
@@ -212,11 +213,13 @@ these grants, this check returns deny. Three languages implement it; one
 corpus judges all three. When someone asks what "an interface spec, not a
 library" means, the answer is that standard.
 
-**Async messaging** is the model internal contract: no wire standard covers
-it fully (its standard evaluates CloudEvents before inventing), so the standard
-defines the envelope — and the discipline PC2 demands is visible right there:
-the invention is scoped to the envelope, while the identity inside it stays
-W3C trace context, per the propagation profile.
+**Async messaging** is the model of PC2 working as intended, and it did not
+go the way this paragraph first predicted. Its standard was expected to
+evaluate CloudEvents and then invent an envelope; the evaluation found that
+CloudEvents suffices, so the envelope is a profile and the invention is confined
+to what no wire standard covers — delivery: at-least-once, the inbox and the
+outbox, the worker. The discipline PC2 demands is visible in what did *not* get
+invented.
 
 ## Enforcement
 

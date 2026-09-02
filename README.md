@@ -201,14 +201,18 @@ without going there. Where an existing implementation has a good argument, the
 document makes the argument and drops the attribution. The argument stands on
 its own or it does not stand.
 
-This is not a ban on history, and the carve-out below for incident citations
-holds. *We watched this fail, in this run* is evidence that a rule is
-**needed**, and it is the strongest such evidence there is. What it can never be
-is evidence that a particular answer is **right**. History motivates a rule;
-logic justifies it; a document that confuses the two has written down a habit
-and called it a standard. The Decisions log at the foot of every standard is
-where this bites hardest: each entry is the reason a choice went one way, and an
-entry that reads *as done in …* is a decision nobody made.
+**A standard is not an inventory of what exists.** It names no repository,
+counts no repositories, and describes no repository's current state — not as
+justification, not as motivation, not as colour. What a repository does today
+is irrelevant to a rule that binds every repository, current and future, and a
+document that opens by surveying the estate has made its argument contingent
+on a survey that is stale the day it merges. Where an incident taught the
+author a rule, the document states the failure mode as the general property it
+is — *a timer in the request process runs once per replica* — so that a reader
+cannot tell from the text which repository, if any, taught it. The Decisions
+log at the foot of every standard is where this bites hardest: each entry is
+the reason a choice went one way, and an entry that reads *as done in …* or
+*because N products do …* is a decision nobody made.
 
 ## Non-compliance is tracked where the code is
 
@@ -222,12 +226,15 @@ turns the standard into a scoreboard, gives every standards change a second
 diff to maintain, and puts a client repository's shortcomings in a repository it
 will never own.
 
-The rule, therefore: **no document under `standards/` names a repository in
-order to describe its state.** Two things are deliberately not covered by that:
+The rule, therefore: **no document under `standards/` names a repository at
+all**, whether to describe its state or to justify a rule by it. Two things are
+deliberately not covered by that:
 
-- **Incident citations.** "Learned the hard way" evidence naming the repo and
-  the run that proved a rule necessary is what makes these documents arguments
-  rather than assertions. A citation is history, not a status report.
+- **The CI standard's decisions log**, which cites the change that settled
+  each row. That is a record of this repository's own history, not a
+  description of another repository's state, and it is the one place a
+  citation of the past is admitted. It does not extend to a standard's rules or
+  its reasoning, which name no repository at all — see D4.
 - **Checker allow-lists.** `tools/` carries per-repo entries because a gate has
   to know what it is currently letting through. Each entry states the gap it
   represents — a debt with a name, not a permission — and the target state for
@@ -266,6 +273,7 @@ more standards land.
 | `030` | SC | [`030-service.md`](standards/030-service.md) | The service contract: health and readiness, structured logging, configuration, graceful shutdown, runtime provenance | review, live gate available |
 | `040` | OC | [`040-observability.md`](standards/040-observability.md) | Observability transport and context propagation: W3C trace context, the id vocabulary, OTLP | review, corpus written |
 | `050` | HA | [`050-http.md`](standards/050-http.md) | Service interfaces: protocol selection (HTTP, gRPC, SSE, WebSocket), OpenAPI, RFC 9457 errors, cursor pagination, versioning, idempotency, backpressure, snake_case wire naming | review, corpus written |
+| `055` | AM | [`055-messaging.md`](standards/055-messaging.md) | Async messaging: CloudEvents 1.0 as the envelope, at-least-once with inbox and outbox, workers not timers, Standard Webhooks signing in and out | review, corpus written |
 | `060` | AU | [`060-auth.md`](standards/060-auth.md) | Authentication: the identity tier, the proxy-minted identity token, identity linkage, provisioning, sessions, deployment topologies | review, corpus written |
 | `070` | RB | [`070-rbac.md`](standards/070-rbac.md) | Authorization: the permission and role model, scope containment, the check operation, and the decision corpus | review, corpus written |
 | `080` | AE | [`080-audit.md`](standards/080-audit.md) | Audit events: the record of consequential acts — actor separate from target, the action string is the permission string, the floor of what must emit, retention and erasure | review, corpus written |

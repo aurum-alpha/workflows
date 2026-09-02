@@ -228,11 +228,27 @@ jobs:
           OUT: ${{ runner.temp }}/knip-output.txt
         run: |
           set -uo pipefail
-          pnpm dlx knip@"$KNIP_VERSION" -c "$CONFIG" --dependencies >"$OUT" 2>&1
-          rc=$?
+          # `|| rc=$?` rather than a bare call followed by `rc=$?`, and the
+          # difference is the whole job. GitHub runs `run:` blocks under
+          # `bash -e`, which `set -uo pipefail` does NOT clear -- it adds
+          # options, it does not remove `-e`. So a bare call aborted the step
+          # the instant knip exited 1, which is what knip does whenever it
+          # finds anything: `rc=$?` never ran, KNIP_RC was never written, and
+          # neither the error check nor the warn_only report step below ever
+          # executed. The job hard-failed on findings in every mode,
+          # warn_only included.
+          #
+          # A command whose failure is handled by `||` is exempt from `-e`, so
+          # this form captures the code instead of dying on it.
+          #
+          # This shipped and had to be found in CI, because the first caller
+          # was chosen for being CLEAN: knip exited 0 there, the bug never
+          # fired, and a green canary said the job worked. It did not. A gate
+          # is only proven by a run that FAILS the way it is supposed to.
+          rc=0
+          pnpm dlx knip@"$KNIP_VERSION" -c "$CONFIG" --dependencies >"$OUT" 2>&1 || rc=$?
           cat "$OUT"
           echo "KNIP_RC=$rc" >> "$GITHUB_ENV"
-          exit 0
 
       - name: Fail if knip could not complete its analysis
         env:

@@ -57,10 +57,11 @@ right one are the same option.
 
 ### The standard evaluated first, per PC2
 
-The platform contract's own text expected this document to *invent* an
-envelope after evaluating CloudEvents. The evaluation was done, and the
-expectation was wrong: **CloudEvents 1.0 suffices as the envelope**, and this
-document adopts it as a profile. The reasons are specific:
+An envelope is a boundary format, and PC2 says a boundary format is adopted
+from an existing standard where one suffices and invented only where none
+does. **CloudEvents 1.0 suffices as the envelope**, and this document adopts it
+as a profile. Sufficiency means three specific properties, each of which an
+invented envelope would otherwise have to state and defend on its own:
 
 - **Identity is defined, and it is the deduplication key.** The specification
   requires that `source + id` be unique for each distinct event. That is
@@ -385,12 +386,13 @@ standard". Every rule lands review-only with its gate named:
 
 ## Decisions
 
-- **CloudEvents is adopted, not evaluated and passed over** (2026-09-02): the
-  platform contract's text assumed an invention; the evaluation found the
-  standard sufficient for the envelope and the invention necessary only for
-  delivery. The platform contract's worked-example paragraph is corrected in
-  the same change, per the charter's rule that a correction lands in the
-  documents.
+- **CloudEvents is the envelope** (2026-09-02): it defines an event's identity
+  as `source + id` and requires it unique, it carries trace context as a
+  defined extension, and it binds to HTTP in a structured mode with a
+  registered media type — the three properties an envelope must have, met by a
+  standard with a defined grammar rather than by a shape this document would
+  defend alone. Delivery semantics are invented because no wire standard states
+  them, and the invention stops there.
 - **`(source, id)` is the deduplication key** (2026-09-02): it is the identity
   the specification already guarantees unique, so adopting it costs nothing
   and inventing another would give one message two identities.

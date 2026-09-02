@@ -167,7 +167,7 @@ on:
         # --portfolio flag with --fleet as an alias. No rule changed, but the
         # bytes every caller reads did, and CHECKER_INPUT_FILES does not
         # distinguish -- which is the point of it.
-        default: fb2ce12dd73cad592fcb03633fc0118d58b4d283
+        default: ce68ddfe2cce664401ce34d3d789bc27da121377
 
 jobs:
   ci-conformance:

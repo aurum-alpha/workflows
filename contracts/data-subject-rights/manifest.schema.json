@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/data-subject-rights/manifest.schema.json",
+  "title": "Aurum Alpha data-export package manifest",
+  "description": "standards/082-data-subject-rights.md DR3: manifest.json at the root of an export package. It names what the package holds and where it came from, so a recipient can verify every file and a reviewer can compare the package against the inventory that generated it. Every file the zip contains is listed here with its digest; a file not listed is a defect in the builder, and a listed file that is absent is a defect in the delivery. schema_version 1 - evolves additively per PC6.",
+  "type": "object",
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "identifier": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+    "file": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^(rows/[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)?\\.jsonl|blobs/[a-z][a-z0-9_]*/[A-Za-z0-9_.-]+)$",
+          "description": "rows/<entry>.jsonl for a relational or document entry, rows/<entry>.<subject_column>.jsonl where a store carries two entries, blobs/<entry>/<object public id> for an object. Forward slashes, no absolute paths, no parent references - the zip is opened on a machine the service does not control."
+        },
+        "entry": {
+          "$ref": "#/$defs/identifier",
+          "description": "The inventory entry the file was built from. The package is a function of the inventory, and this is the join."
+        },
+        "kind": { "enum": ["rows", "blob"] },
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "rows only: lines in the file. Zero is legal - an exported entry with no rows for this subject still yields a file, so the recipient can tell 'nothing held' from 'not exported'."
+        },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "object_id": {
+          "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/publicId",
+          "description": "blob only: the object's public id per 026."
+        },
+        "filename": {
+          "type": "string",
+          "minLength": 1,
+          "description": "blob only: the original filename from the object's metadata, for the recipient. Never part of the path, which is the object id."
+        },
+        "content_type": {
+          "type": "string",
+          "minLength": 1,
+          "description": "blob only: the content type the service recorded at upload (026), not one sniffed at export."
+        }
+      },
+      "required": ["path", "entry", "kind", "bytes", "sha256"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "rows" } } },
+          "then": {
+            "required": ["count"],
+            "not": { "anyOf": [ { "required": ["object_id"] }, { "required": ["filename"] }, { "required": ["content_type"] } ] }
+          },
+          "else": {
+            "required": ["object_id", "content_type"],
+            "not": { "required": ["count"] }
+          }
+        }
+      ]
+    }
+  },
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "request_id": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/uuidv7",
+      "description": "The request resource this package answers."
+    },
+    "subject_id": { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/publicId" },
+    "tenant_id": {
+      "$ref": "https://contracts.aurumalpha.dev/observability/context.schema.json#/$defs/tenantId",
+      "description": "DR3: the tenant the package is bounded to."
+    },
+    "service": { "type": "string", "minLength": 1 },
+    "release": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$",
+      "description": "The repository version that built the package (010), so a package can be reproduced against the inventory as it was."
+    },
+    "inventory_sha256": {
+      "$ref": "#/$defs/sha256",
+      "description": "Digest of the inventory declaration the builder read. Two packages built under different inventories differ in ways the file list alone may not show."
+    },
+    "generated_at": { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp" },
+    "row_format": {
+      "const": "application/jsonl",
+      "description": "One JSON object per line, snake_case keys per 050 HA8, primitives per 020 - a row format a job streams in keyset batches (057 JB7) without holding a table in memory, and a recipient parses with any JSON library."
+    },
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/file" }
+    }
+  },
+  "required": ["schema_version", "request_id", "subject_id", "tenant_id", "service", "release", "inventory_sha256", "generated_at", "row_format", "files"],
+  "additionalProperties": false
+}

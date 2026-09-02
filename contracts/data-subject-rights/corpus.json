@@ -1,0 +1,783 @@
+{
+  "contract": "data-subject-rights",
+  "schemaVersion": 1,
+  "description": "The conformance corpus for standards/082-data-subject-rights.md. Seven parts. 'inventory' is judged by inventory.schema.json alone. 'coverage' is judged by comparing a catalog to an inventory: each case starts from the shared fixture, applies its mutations, and expects exactly the listed findings (DR1). 'requests' is judged by request.schema.json alone. 'erasure' is judged by running an erasure implementation over the fixture: given a subject, a tenant and an instant, the rows that must remain in the named tables afterwards, byte for byte, and the order entries were treated in (DR4, DR5); a case may instead run the retention purge at an instant. Two erasure cases are detectors: 'anonymise-is-an-allowlist-not-a-denylist' fails an implementation that scrubs the columns it recognises as identifying by name and leaves the rest, and 'audit-rows-survive-redacted-by-subject' fails an implementation that deletes every dependent row and reduces only the subject's own. 'export' is judged two ways: manifest cases by manifest.schema.json, and package cases by building the package from the fixture and comparing the file list, row counts and column sets (DR3). 'hold' is judged by running the request lifecycle with a legal hold placed and released at stated instants (DR6). 'transitions' is judged by a pure function from a request's state and an action to the status or problem type that results (DR2). The fixture models a subject's id as their public id wherever a row references them; an implementation with integer foreign keys resolves through the root row and is judged on the same expectations.",
+  "fixture": {
+    "inventory": {
+      "schema_version": 1,
+      "service": "billing",
+      "entries": [
+        { "name": "users", "store": "relational", "subject_column": "public_id", "tenant_scoped": false, "treatment": "anonymise", "retained_columns": [], "export": true, "export_excludes": ["password_hash"] },
+        { "name": "tenant_members", "store": "relational", "subject_column": "user_id", "via": "users", "tenant_scoped": true, "membership": true, "treatment": "delete", "export": true },
+        { "name": "sessions", "store": "relational", "subject_column": "user_id", "via": "users", "tenant_scoped": true, "treatment": "delete", "export": false },
+        { "name": "orders", "store": "relational", "subject_column": "user_id", "via": "users", "tenant_scoped": true, "treatment": "retain",
+          "legal_basis": { "kind": "legal_obligation", "reference": "statutory retention of issued invoices, seven years from issue", "retain_for": "P7Y", "from": "issued_at" },
+          "retained_columns": ["amount", "currency", "issued_at", "tax_id"], "export": true },
+        { "name": "avatars", "store": "blob", "subject_column": "user_id", "via": "users", "tenant_scoped": true, "treatment": "delete", "export": true },
+        { "name": "audit_events", "store": "relational", "subject_column": "actor_id", "via": "users", "tenant_scoped": true, "treatment": "anonymise",
+          "retained_columns": ["action", "outcome", "occurred_at", "target_id", "target_display", "changes"],
+          "stamp": { "at": "erased_at", "subjects": "erased_subjects" }, "export": true },
+        { "name": "audit_events", "store": "relational", "subject_column": "target_id", "via": "users", "tenant_scoped": true, "treatment": "anonymise",
+          "retained_columns": ["action", "outcome", "occurred_at", "actor_id", "actor_display", "actor_ip", "actor_user_agent", "changes"],
+          "stamp": { "at": "erased_at", "subjects": "erased_subjects" }, "export": true, "export_excludes": ["actor_display", "actor_ip", "actor_user_agent"] },
+        { "name": "messages", "store": "relational", "subject_column": "sender_id", "via": "users", "tenant_scoped": true, "treatment": "anonymise", "retained_columns": ["body", "sent_at", "recipient_id"], "export": true },
+        { "name": "messages", "store": "relational", "subject_column": "recipient_id", "via": "users", "tenant_scoped": true, "treatment": "anonymise", "retained_columns": ["body", "sent_at", "sender_id"], "export": true },
+        { "name": "search_documents", "store": "document", "subject_column": "user_id", "via": "users", "tenant_scoped": true, "treatment": "delete", "export": false },
+        { "name": "notification_provider", "store": "external", "subject_column": "recipient_id", "tenant_scoped": true, "treatment": "delete", "export": false },
+        { "name": "identity_links", "store": "relational", "subject_column": "user_id", "via": "users", "tenant_scoped": false, "treatment": "delete", "export": true },
+        { "name": "currencies", "store": "relational", "treatment": "none", "reason": "reference data: no column names or describes a person" }
+      ]
+    },
+    "tables": {
+      "users": {
+        "columns": [
+          { "name": "id", "type": "integer", "nullable": false, "role": "internal_key" },
+          { "name": "public_id", "type": "uuid", "nullable": false, "role": "public_id" },
+          { "name": "email", "type": "text", "nullable": false },
+          { "name": "full_name", "type": "text", "nullable": false },
+          { "name": "phone", "type": "text", "nullable": true },
+          { "name": "notes", "type": "text", "nullable": true },
+          { "name": "password_hash", "type": "text", "nullable": false },
+          { "name": "created_at", "type": "timestamp", "nullable": false, "role": "timestamp" },
+          { "name": "updated_at", "type": "timestamp", "nullable": false, "role": "timestamp" }
+        ],
+        "rows": [
+          { "id": 1, "public_id": "01923e01-1111-7000-8000-000000000001", "email": "dana@example.com", "full_name": "Dana Okoye", "phone": null, "notes": null, "password_hash": "$argon2id$v=19$m=65536,t=3,p=4$AAAA$BBBB", "created_at": "2025-11-02T08:00:00.000Z", "updated_at": "2025-11-02T08:00:00.000Z" },
+          { "id": 2, "public_id": "01923e01-2222-7000-8000-000000000002", "email": "sam@example.com", "full_name": "Sam Reyes", "phone": "+1 555 0100", "notes": "prefers calls after 6pm on +1 555 0100; partner is Alex Reyes", "password_hash": "$argon2id$v=19$m=65536,t=3,p=4$CCCC$DDDD", "created_at": "2025-12-10T09:30:00.000Z", "updated_at": "2026-01-04T10:00:00.000Z" },
+          { "id": 4, "public_id": "01923e01-4444-7000-8000-000000000004", "email": "kim@example.com", "full_name": "Kim Achebe", "phone": null, "notes": null, "password_hash": "$argon2id$v=19$m=65536,t=3,p=4$EEEE$FFFF", "created_at": "2026-01-15T12:00:00.000Z", "updated_at": "2026-01-15T12:00:00.000Z" }
+        ]
+      },
+      "tenant_members": {
+        "columns": [
+          { "name": "id", "type": "integer", "nullable": false, "role": "internal_key" },
+          { "name": "public_id", "type": "uuid", "nullable": false, "role": "public_id" },
+          { "name": "tenant_id", "type": "uuid", "nullable": false, "role": "isolation" },
+          { "name": "user_id", "type": "uuid", "nullable": false },
+          { "name": "role_display", "type": "text", "nullable": false },
+          { "name": "created_at", "type": "timestamp", "nullable": false, "role": "timestamp" },
+          { "name": "updated_at", "type": "timestamp", "nullable": false, "role": "timestamp" }
+        ],
+        "rows": [
+          { "id": 10, "public_id": "01923e02-0000-7000-8000-000000000010", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "user_id": "01923e01-1111-7000-8000-000000000001", "role_display": "Administrator", "created_at": "2025-11-02T08:00:00.000Z", "updated_at": "2025-11-02T08:00:00.000Z" },
+          { "id": 11, "public_id": "01923e02-0000-7000-8000-000000000011", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "user_id": "01923e01-2222-7000-8000-000000000002", "role_display": "Member", "created_at": "2025-12-10T09:30:00.000Z", "updated_at": "2025-12-10T09:30:00.000Z" },
+          { "id": 12, "public_id": "01923e02-0000-7000-8000-000000000012", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "user_id": "01923e01-4444-7000-8000-000000000004", "role_display": "Member", "created_at": "2026-01-15T12:00:00.000Z", "updated_at": "2026-01-15T12:00:00.000Z" },
+          { "id": 13, "public_id": "01923e02-0000-7000-8000-000000000013", "tenant_id": "01923e01-9999-7000-8000-000000000010", "user_id": "01923e01-4444-7000-8000-000000000004", "role_display": "Approver", "created_at": "2026-02-01T12:00:00.000Z", "updated_at": "2026-02-01T12:00:00.000Z" }
+        ]
+      },
+      "sessions": {
+        "columns": [
+          { "name": "id", "type": "integer", "nullable": false, "role": "internal_key" },
+          { "name": "public_id", "type": "uuid", "nullable": false, "role": "public_id" },
+          { "name": "tenant_id", "type": "uuid", "nullable": false, "role": "isolation" },
+          { "name": "user_id", "type": "uuid", "nullable": false },
+          { "name": "ip", "type": "text", "nullable": false },
+          { "name": "user_agent", "type": "text", "nullable": false },
+          { "name": "created_at", "type": "timestamp", "nullable": false, "role": "timestamp" },
+          { "name": "updated_at", "type": "timestamp", "nullable": false, "role": "timestamp" }
+        ],
+        "rows": [
+          { "id": 20, "public_id": "01923e03-0000-7000-8000-000000000020", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "user_id": "01923e01-2222-7000-8000-000000000002", "ip": "203.0.113.24", "user_agent": "Mozilla/5.0", "created_at": "2026-03-04T09:00:00.000Z", "updated_at": "2026-03-04T09:00:00.000Z" },
+          { "id": 21, "public_id": "01923e03-0000-7000-8000-000000000021", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "user_id": "01923e01-4444-7000-8000-000000000004", "ip": "198.51.100.7", "user_agent": "Mozilla/5.0", "created_at": "2026-03-05T09:00:00.000Z", "updated_at": "2026-03-05T09:00:00.000Z" },
+          { "id": 22, "public_id": "01923e03-0000-7000-8000-000000000022", "tenant_id": "01923e01-9999-7000-8000-000000000010", "user_id": "01923e01-4444-7000-8000-000000000004", "ip": "198.51.100.7", "user_agent": "Mozilla/5.0", "created_at": "2026-03-06T09:00:00.000Z", "updated_at": "2026-03-06T09:00:00.000Z" }
+        ]
+      },
+      "orders": {
+        "columns": [
+          { "name": "id", "type": "integer", "nullable": false, "role": "internal_key" },
+          { "name": "public_id", "type": "uuid", "nullable": false, "role": "public_id" },
+          { "name": "tenant_id", "type": "uuid", "nullable": false, "role": "isolation" },
+          { "name": "user_id", "type": "uuid", "nullable": false },
+          { "name": "amount", "type": "integer", "nullable": false },
+          { "name": "currency", "type": "text", "nullable": false },
+          { "name": "tax_id", "type": "text", "nullable": false },
+          { "name": "billing_email", "type": "text", "nullable": false },
+          { "name": "issued_at", "type": "timestamp", "nullable": false },
+          { "name": "created_at", "type": "timestamp", "nullable": false, "role": "timestamp" },
+          { "name": "updated_at", "type": "timestamp", "nullable": false, "role": "timestamp" }
+        ],
+        "rows": [
+          { "id": 30, "public_id": "01923e04-0000-7000-8000-000000000030", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "user_id": "01923e01-2222-7000-8000-000000000002", "amount": 12999, "currency": "EUR", "tax_id": "DE811223344", "billing_email": "sam@example.com", "issued_at": "2019-02-11T10:00:00.000Z", "created_at": "2019-02-11T10:00:00.000Z", "updated_at": "2019-02-11T10:00:00.000Z" },
+          { "id": 31, "public_id": "01923e04-0000-7000-8000-000000000031", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "user_id": "01923e01-4444-7000-8000-000000000004", "amount": 4500, "currency": "EUR", "tax_id": "DE811223355", "billing_email": "kim@example.com", "issued_at": "2026-02-20T10:00:00.000Z", "created_at": "2026-02-20T10:00:00.000Z", "updated_at": "2026-02-20T10:00:00.000Z" },
+          { "id": 32, "public_id": "01923e04-0000-7000-8000-000000000032", "tenant_id": "01923e01-9999-7000-8000-000000000010", "user_id": "01923e01-4444-7000-8000-000000000004", "amount": 900, "currency": "JPY", "tax_id": "JP1234567890123", "billing_email": "kim@example.com", "issued_at": "2026-02-22T10:00:00.000Z", "created_at": "2026-02-22T10:00:00.000Z", "updated_at": "2026-02-22T10:00:00.000Z" }
+        ]
+      },
+      "avatars": {
+        "columns": [
+          { "name": "object_id", "type": "uuid", "nullable": false, "role": "public_id" },
+          { "name": "tenant_id", "type": "uuid", "nullable": false, "role": "isolation" },
+          { "name": "user_id", "type": "uuid", "nullable": false },
+          { "name": "content_type", "type": "text", "nullable": false },
+          { "name": "size_bytes", "type": "integer", "nullable": false },
+          { "name": "filename", "type": "text", "nullable": false },
+          { "name": "created_at", "type": "timestamp", "nullable": false, "role": "timestamp" },
+          { "name": "updated_at", "type": "timestamp", "nullable": false, "role": "timestamp" }
+        ],
+        "rows": [
+          { "object_id": "01923e05-0000-7000-8000-000000000040", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "user_id": "01923e01-2222-7000-8000-000000000002", "content_type": "image/png", "size_bytes": 48211, "filename": "me.png", "created_at": "2026-01-04T10:00:00.000Z", "updated_at": "2026-01-04T10:00:00.000Z" }
+        ]
+      },
+      "audit_events": {
+        "columns": [
+          { "name": "id", "type": "integer", "nullable": false, "role": "internal_key" },
+          { "name": "event_id", "type": "uuid", "nullable": false, "role": "public_id" },
+          { "name": "tenant_id", "type": "uuid", "nullable": false, "role": "isolation" },
+          { "name": "occurred_at", "type": "timestamp", "nullable": false },
+          { "name": "action", "type": "text", "nullable": false },
+          { "name": "outcome", "type": "text", "nullable": false },
+          { "name": "actor_id", "type": "uuid", "nullable": false },
+          { "name": "actor_display", "type": "text", "nullable": true },
+          { "name": "actor_ip", "type": "text", "nullable": true },
+          { "name": "actor_user_agent", "type": "text", "nullable": true },
+          { "name": "target_id", "type": "uuid", "nullable": false },
+          { "name": "target_display", "type": "text", "nullable": true },
+          { "name": "changes", "type": "json", "nullable": true },
+          { "name": "erased_at", "type": "timestamp", "nullable": true },
+          { "name": "erased_subjects", "type": "array", "nullable": true },
+          { "name": "created_at", "type": "timestamp", "nullable": false, "role": "timestamp" },
+          { "name": "updated_at", "type": "timestamp", "nullable": false, "role": "timestamp" }
+        ],
+        "rows": [
+          { "id": 50, "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0c01", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "occurred_at": "2026-03-04T09:12:44.108Z", "action": "invoice.void", "outcome": "success", "actor_id": "01923e01-2222-7000-8000-000000000002", "actor_display": "Sam Reyes <sam@example.com>", "actor_ip": "203.0.113.24", "actor_user_agent": "Mozilla/5.0", "target_id": "01923e01-3333-7000-8000-000000000003", "target_display": "INV-2026-0412", "changes": [ { "field": "status", "before": "open", "after": "void" } ], "erased_at": null, "erased_subjects": null, "created_at": "2026-03-04T09:12:44.108Z", "updated_at": "2026-03-04T09:12:44.108Z" },
+          { "id": 51, "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0c02", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "occurred_at": "2026-02-01T14:02:00.000Z", "action": "user.grant_role", "outcome": "success", "actor_id": "01923e01-1111-7000-8000-000000000001", "actor_display": "Dana Okoye <dana@example.com>", "actor_ip": "203.0.113.9", "actor_user_agent": "Mozilla/5.0", "target_id": "01923e01-2222-7000-8000-000000000002", "target_display": "Sam Reyes <sam@example.com>", "changes": null, "erased_at": null, "erased_subjects": null, "created_at": "2026-02-01T14:02:00.000Z", "updated_at": "2026-02-01T14:02:00.000Z" },
+          { "id": 52, "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0c03", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "occurred_at": "2026-02-02T09:00:00.000Z", "action": "user.grant_role", "outcome": "success", "actor_id": "01923e01-1111-7000-8000-000000000001", "actor_display": "Dana Okoye <dana@example.com>", "actor_ip": "203.0.113.9", "actor_user_agent": "Mozilla/5.0", "target_id": "01923e01-4444-7000-8000-000000000004", "target_display": "Kim Achebe <kim@example.com>", "changes": null, "erased_at": null, "erased_subjects": null, "created_at": "2026-02-02T09:00:00.000Z", "updated_at": "2026-02-02T09:00:00.000Z" },
+          { "id": 53, "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0c04", "tenant_id": "01923e01-9999-7000-8000-000000000010", "occurred_at": "2026-03-01T11:00:00.000Z", "action": "invoice.approve", "outcome": "success", "actor_id": "01923e01-4444-7000-8000-000000000004", "actor_display": "Kim Achebe <kim@example.com>", "actor_ip": "198.51.100.7", "actor_user_agent": "Mozilla/5.0", "target_id": "01923e01-3333-7000-8000-000000000005", "target_display": "INV-2026-0501", "changes": null, "erased_at": null, "erased_subjects": null, "created_at": "2026-03-01T11:00:00.000Z", "updated_at": "2026-03-01T11:00:00.000Z" }
+        ]
+      },
+      "messages": {
+        "columns": [
+          { "name": "id", "type": "integer", "nullable": false, "role": "internal_key" },
+          { "name": "public_id", "type": "uuid", "nullable": false, "role": "public_id" },
+          { "name": "tenant_id", "type": "uuid", "nullable": false, "role": "isolation" },
+          { "name": "sender_id", "type": "uuid", "nullable": false },
+          { "name": "recipient_id", "type": "uuid", "nullable": false },
+          { "name": "body", "type": "text", "nullable": false },
+          { "name": "sent_at", "type": "timestamp", "nullable": false },
+          { "name": "created_at", "type": "timestamp", "nullable": false, "role": "timestamp" },
+          { "name": "updated_at", "type": "timestamp", "nullable": false, "role": "timestamp" }
+        ],
+        "rows": [
+          { "id": 60, "public_id": "01923e06-0000-7000-8000-000000000060", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "sender_id": "01923e01-2222-7000-8000-000000000002", "recipient_id": "01923e01-1111-7000-8000-000000000001", "body": "can you void INV-2026-0412?", "sent_at": "2026-03-04T09:10:00.000Z", "created_at": "2026-03-04T09:10:00.000Z", "updated_at": "2026-03-04T09:10:00.000Z" },
+          { "id": 61, "public_id": "01923e06-0000-7000-8000-000000000061", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "sender_id": "01923e01-1111-7000-8000-000000000001", "recipient_id": "01923e01-2222-7000-8000-000000000002", "body": "done", "sent_at": "2026-03-04T09:13:00.000Z", "created_at": "2026-03-04T09:13:00.000Z", "updated_at": "2026-03-04T09:13:00.000Z" }
+        ]
+      },
+      "search_documents": {
+        "columns": [
+          { "name": "doc_id", "type": "uuid", "nullable": false, "role": "public_id" },
+          { "name": "tenant_id", "type": "uuid", "nullable": false, "role": "isolation" },
+          { "name": "user_id", "type": "uuid", "nullable": false },
+          { "name": "document", "type": "json", "nullable": false },
+          { "name": "created_at", "type": "timestamp", "nullable": false, "role": "timestamp" },
+          { "name": "updated_at", "type": "timestamp", "nullable": false, "role": "timestamp" }
+        ],
+        "rows": [
+          { "doc_id": "01923e07-0000-7000-8000-000000000070", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "user_id": "01923e01-2222-7000-8000-000000000002", "document": { "name": "Sam Reyes", "email": "sam@example.com" }, "created_at": "2026-01-04T10:00:00.000Z", "updated_at": "2026-01-04T10:00:00.000Z" },
+          { "doc_id": "01923e07-0000-7000-8000-000000000071", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "user_id": "01923e01-4444-7000-8000-000000000004", "document": { "name": "Kim Achebe", "email": "kim@example.com" }, "created_at": "2026-01-15T12:00:00.000Z", "updated_at": "2026-01-15T12:00:00.000Z" },
+          { "doc_id": "01923e07-0000-7000-8000-000000000072", "tenant_id": "01923e01-9999-7000-8000-000000000010", "user_id": "01923e01-4444-7000-8000-000000000004", "document": { "name": "Kim Achebe", "email": "kim@example.com" }, "created_at": "2026-02-01T12:00:00.000Z", "updated_at": "2026-02-01T12:00:00.000Z" }
+        ]
+      },
+      "notification_provider": {
+        "columns": [
+          { "name": "recipient_id", "type": "uuid", "nullable": false, "role": "public_id" },
+          { "name": "tenant_id", "type": "uuid", "nullable": false, "role": "isolation" },
+          { "name": "address", "type": "text", "nullable": false },
+          { "name": "created_at", "type": "timestamp", "nullable": false, "role": "timestamp" },
+          { "name": "updated_at", "type": "timestamp", "nullable": false, "role": "timestamp" }
+        ],
+        "rows": [
+          { "recipient_id": "01923e01-2222-7000-8000-000000000002", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "address": "sam@example.com", "created_at": "2025-12-10T09:30:00.000Z", "updated_at": "2025-12-10T09:30:00.000Z" },
+          { "recipient_id": "01923e01-4444-7000-8000-000000000004", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "address": "kim@example.com", "created_at": "2026-01-15T12:00:00.000Z", "updated_at": "2026-01-15T12:00:00.000Z" }
+        ]
+      },
+      "identity_links": {
+        "columns": [
+          { "name": "id", "type": "integer", "nullable": false, "role": "internal_key" },
+          { "name": "public_id", "type": "uuid", "nullable": false, "role": "public_id" },
+          { "name": "user_id", "type": "uuid", "nullable": false },
+          { "name": "issuer", "type": "text", "nullable": false },
+          { "name": "subject", "type": "text", "nullable": false },
+          { "name": "created_at", "type": "timestamp", "nullable": false, "role": "timestamp" },
+          { "name": "updated_at", "type": "timestamp", "nullable": false, "role": "timestamp" }
+        ],
+        "rows": [
+          { "id": 80, "public_id": "01923e08-0000-7000-8000-000000000080", "user_id": "01923e01-1111-7000-8000-000000000001", "issuer": "https://id.example.com/realms/main", "subject": "f7c1d2e8-5a44-4b91-9c3e-2d8a1b0f6e01", "created_at": "2025-11-02T08:00:00.000Z", "updated_at": "2025-11-02T08:00:00.000Z" },
+          { "id": 81, "public_id": "01923e08-0000-7000-8000-000000000081", "user_id": "01923e01-2222-7000-8000-000000000002", "issuer": "https://id.example.com/realms/main", "subject": "f7c1d2e8-5a44-4b91-9c3e-2d8a1b0f6e02", "created_at": "2025-12-10T09:30:00.000Z", "updated_at": "2025-12-10T09:30:00.000Z" },
+          { "id": 82, "public_id": "01923e08-0000-7000-8000-000000000082", "user_id": "01923e01-4444-7000-8000-000000000004", "issuer": "https://id.example.com/realms/main", "subject": "f7c1d2e8-5a44-4b91-9c3e-2d8a1b0f6e04", "created_at": "2026-01-15T12:00:00.000Z", "updated_at": "2026-01-15T12:00:00.000Z" }
+        ]
+      },
+      "currencies": {
+        "columns": [
+          { "name": "code", "type": "text", "nullable": false, "role": "public_id" },
+          { "name": "name", "type": "text", "nullable": false },
+          { "name": "exponent", "type": "integer", "nullable": false }
+        ],
+        "rows": [
+          { "code": "EUR", "name": "Euro", "exponent": 2 },
+          { "code": "JPY", "name": "Yen", "exponent": 0 }
+        ]
+      }
+    }
+  },
+  "inventory": [
+    {
+      "case": "the-fixture-inventory-is-accepted",
+      "valid": true,
+      "why": "DR1 and DR5 in full: a root row anonymised to a shell, a membership entry, deleted sessions, retained invoices under a named obligation with an expiry, a blob owned through its row, an audit store with one entry per subject column and the AE7 stamp, a two-subject messages table declared twice, a derived document store, an external provider, a global identity link, and a reference table declared free of personal data.",
+      "inventory": { "$fixture": "inventory" }
+    },
+    {
+      "case": "a-retained-entry-without-a-legal-basis-is-rejected",
+      "valid": false,
+      "why": "DR5: retain is the one treatment that keeps personal data against the subject's request, and it is admitted only with the obligation named and an expiry. Without them it is soft delete under a better name.",
+      "inventory": { "schema_version": 1, "service": "billing", "entries": [
+        { "name": "orders", "store": "relational", "subject_column": "user_id", "tenant_scoped": true, "treatment": "retain", "retained_columns": ["amount", "currency"], "export": true }
+      ] }
+    },
+    {
+      "case": "an-anonymised-entry-without-an-allowlist-is-rejected",
+      "valid": false,
+      "why": "DR5: anonymisation is an allowlist and the list is declared even when empty. An absent list is a decision nobody made, and the detector in the erasure part is what an implementation does with it.",
+      "inventory": { "schema_version": 1, "service": "billing", "entries": [
+        { "name": "users", "store": "relational", "subject_column": "public_id", "tenant_scoped": false, "treatment": "anonymise", "export": true }
+      ] }
+    },
+    {
+      "case": "a-deleted-entry-declaring-survivors-is-rejected",
+      "valid": false,
+      "why": "DR5: a deleted row keeps nothing. Survivors on a delete entry mean the author intended anonymise or retain and the declaration will be read two ways.",
+      "inventory": { "schema_version": 1, "service": "billing", "entries": [
+        { "name": "sessions", "store": "relational", "subject_column": "user_id", "tenant_scoped": true, "treatment": "delete", "retained_columns": ["ip"], "export": false }
+      ] }
+    },
+    {
+      "case": "a-none-entry-with-a-subject-column-is-rejected",
+      "valid": false,
+      "why": "DR1: an entry declared free of personal data cannot also say which column names the person. One of the two claims is false.",
+      "inventory": { "schema_version": 1, "service": "billing", "entries": [
+        { "name": "currencies", "store": "relational", "subject_column": "code", "treatment": "none", "reason": "reference data" }
+      ] }
+    },
+    {
+      "case": "a-blob-entry-without-an-owning-row-is-rejected",
+      "valid": false,
+      "why": "026 through DR1: an object is owned by a row and an object without one is an orphan, so a blob entry reaches its subject through the entry that owns it.",
+      "inventory": { "schema_version": 1, "service": "billing", "entries": [
+        { "name": "avatars", "store": "blob", "subject_column": "user_id", "tenant_scoped": true, "treatment": "delete", "export": true }
+      ] }
+    },
+    {
+      "case": "a-legal-basis-without-an-expiry-is-rejected",
+      "valid": false,
+      "why": "DR5: a basis with no retain_for is a decision to hold personal data indefinitely, and 080 AE7's reasoning against a missing retention ceiling applies with more force to rows the subject asked to have removed.",
+      "inventory": { "schema_version": 1, "service": "billing", "entries": [
+        { "name": "orders", "store": "relational", "subject_column": "user_id", "tenant_scoped": true, "treatment": "retain",
+          "legal_basis": { "kind": "legal_obligation", "reference": "statutory retention of issued invoices", "from": "issued_at" },
+          "retained_columns": ["amount", "currency"], "export": true }
+      ] }
+    },
+    {
+      "case": "an-unexported-entry-excluding-columns-is-rejected",
+      "valid": false,
+      "why": "DR3: export_excludes on an entry that is not exported is a contradiction the reader would otherwise resolve by guessing which flag was meant.",
+      "inventory": { "schema_version": 1, "service": "billing", "entries": [
+        { "name": "sessions", "store": "relational", "subject_column": "user_id", "tenant_scoped": true, "treatment": "delete", "export": false, "export_excludes": ["ip"] }
+      ] }
+    }
+  ],
+  "coverage": [
+    {
+      "case": "a-complete-inventory-has-no-findings",
+      "why": "DR1: every table in the catalog has an entry, every named column exists, every non-retained NOT NULL column has a tombstone, and the membership entry is unique.",
+      "mutations": [],
+      "expect": { "findings": [] }
+    },
+    {
+      "case": "a-table-added-without-an-entry-is-the-finding",
+      "why": "DR1, the generative half: the checker enumerates the catalog, so a table added tomorrow is covered the day it lands and a table added without a declaration is named. A list of tables to check would rot the day someone added one.",
+      "mutations": [
+        { "add_table": { "name": "support_notes", "columns": [
+          { "name": "id", "type": "integer", "nullable": false, "role": "internal_key" },
+          { "name": "tenant_id", "type": "uuid", "nullable": false, "role": "isolation" },
+          { "name": "user_id", "type": "uuid", "nullable": false },
+          { "name": "body", "type": "text", "nullable": false },
+          { "name": "created_at", "type": "timestamp", "nullable": false, "role": "timestamp" },
+          { "name": "updated_at", "type": "timestamp", "nullable": false, "role": "timestamp" }
+        ] } }
+      ],
+      "expect": { "findings": ["undeclared_table:support_notes"] }
+    },
+    {
+      "case": "a-not-null-column-with-no-tombstone-is-the-finding",
+      "why": "DR5: reduction tombstones a column with NULL where it is nullable and with the text tombstone where it is text. A NOT NULL integer that is neither structural nor retained has no value the job can write, so the declaration is refused until an expand migration (025 SD4) makes the column nullable or the entry retains it.",
+      "mutations": [
+        { "add_column": { "table": "users", "column": { "name": "age", "type": "integer", "nullable": false } } }
+      ],
+      "expect": { "findings": ["no_tombstone:users.age"] }
+    },
+    {
+      "case": "a-retained-column-that-does-not-exist-is-the-finding",
+      "why": "DR1: an allowlist naming a column the table lacks is an allowlist written from memory, and the column it meant is now tombstoned.",
+      "mutations": [
+        { "set_retained": { "entry": "orders", "subject_column": "user_id", "retained_columns": ["amount", "currency", "issued_at", "vat_number"] } }
+      ],
+      "expect": { "findings": ["unknown_column:orders.vat_number"] }
+    },
+    {
+      "case": "a-via-naming-no-entry-is-the-finding",
+      "why": "DR4: dependency order is computed from via, and a reference to nothing has no position in it.",
+      "mutations": [
+        { "add_entry": { "name": "refunds", "store": "relational", "subject_column": "order_id", "via": "purchases", "tenant_scoped": true, "treatment": "delete", "export": true } },
+        { "add_table": { "name": "refunds", "columns": [
+          { "name": "id", "type": "integer", "nullable": false, "role": "internal_key" },
+          { "name": "tenant_id", "type": "uuid", "nullable": false, "role": "isolation" },
+          { "name": "order_id", "type": "uuid", "nullable": false },
+          { "name": "created_at", "type": "timestamp", "nullable": false, "role": "timestamp" },
+          { "name": "updated_at", "type": "timestamp", "nullable": false, "role": "timestamp" }
+        ] } }
+      ],
+      "expect": { "findings": ["dangling_via:refunds->purchases"] }
+    },
+    {
+      "case": "a-second-membership-entry-is-the-finding",
+      "why": "DR4: one entry decides whether a subject still belongs anywhere else. Two answers to that question would let global rows go while a membership remained.",
+      "mutations": [
+        { "add_entry": { "name": "sessions", "store": "relational", "subject_column": "user_id", "via": "users", "tenant_scoped": true, "membership": true, "treatment": "delete", "export": false } }
+      ],
+      "expect": { "findings": ["duplicate_entry:sessions.user_id", "duplicate_membership"] }
+    }
+  ],
+  "requests": [
+    {
+      "case": "a-pending-export-is-accepted",
+      "valid": true,
+      "why": "DR2: created, verified, with its deadline computed at creation.",
+      "request": { "schema_version": 1, "id": "01923e90-0000-7000-8000-000000000001", "kind": "export", "subject_id": "01923e01-2222-7000-8000-000000000002", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "requested_by": "self", "requester_id": "01923e01-2222-7000-8000-000000000002", "status": "pending", "created_at": "2026-09-02T10:00:00.000Z", "updated_at": "2026-09-02T10:00:00.000Z", "verified_at": "2026-09-02T09:58:00.000Z", "deadline_at": "2026-09-05T10:00:00.000Z" }
+    },
+    {
+      "case": "a-completed-export-carries-its-package",
+      "valid": true,
+      "why": "DR3: size, digest, file count and the availability window, and no URL - the download route mints one per 026.",
+      "request": { "schema_version": 1, "id": "01923e90-0000-7000-8000-000000000001", "kind": "export", "subject_id": "01923e01-2222-7000-8000-000000000002", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "requested_by": "self", "requester_id": "01923e01-2222-7000-8000-000000000002", "status": "completed", "created_at": "2026-09-02T10:00:00.000Z", "updated_at": "2026-09-02T10:04:12.000Z", "verified_at": "2026-09-02T09:58:00.000Z", "deadline_at": "2026-09-05T10:00:00.000Z", "completed_at": "2026-09-02T10:04:12.000Z",
+        "package": { "size_bytes": 61234, "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08", "files": 10, "available_until": "2026-09-09T10:04:12.000Z" } }
+    },
+    {
+      "case": "a-held-erasure-carries-its-hold",
+      "valid": true,
+      "why": "DR6: the hold is visible on the resource by id and instant, and the administrator's reason is not.",
+      "request": { "schema_version": 1, "id": "01923e90-0000-7000-8000-000000000002", "kind": "erasure", "subject_id": "01923e01-2222-7000-8000-000000000002", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "requested_by": "self", "requester_id": "01923e01-2222-7000-8000-000000000002", "status": "held", "created_at": "2026-09-02T10:00:00.000Z", "updated_at": "2026-09-16T10:00:00.000Z", "verified_at": "2026-09-02T09:58:00.000Z", "deadline_at": "2026-09-19T10:00:00.000Z", "grace_ends_at": "2026-09-16T10:00:00.000Z",
+        "hold": { "id": "01923e91-0000-7000-8000-000000000001", "placed_at": "2026-09-03T15:00:00.000Z" } }
+    },
+    {
+      "case": "a-completed-erasure-carries-its-proof",
+      "valid": true,
+      "why": "DR7: the counts, whether identity access was revoked, the ledger entry 028 replays, and the audit event 080 keeps.",
+      "request": { "schema_version": 1, "id": "01923e90-0000-7000-8000-000000000003", "kind": "erasure", "subject_id": "01923e01-2222-7000-8000-000000000002", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "requested_by": "tenant_admin", "requester_id": "01923e01-1111-7000-8000-000000000001", "status": "completed", "created_at": "2026-09-02T10:00:00.000Z", "updated_at": "2026-09-16T11:30:00.000Z", "verified_at": "2026-09-02T09:58:00.000Z", "deadline_at": "2026-09-19T10:00:00.000Z", "grace_ends_at": "2026-09-16T10:00:00.000Z", "completed_at": "2026-09-16T11:30:00.000Z",
+        "result": { "entries_treated": 12, "rows_deleted": 6, "rows_reduced": 5, "blobs_deleted": 1, "identity_revoked": true, "ledger_entry_id": "01923e92-0000-7000-8000-000000000001", "audit_event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0c99" } }
+    },
+    {
+      "case": "an-export-in-held-status-is-rejected",
+      "valid": false,
+      "why": "DR6: a hold suspends deletion and never access. An export cannot be held, and a resource claiming it has confused the two rights.",
+      "request": { "schema_version": 1, "id": "01923e90-0000-7000-8000-000000000001", "kind": "export", "subject_id": "01923e01-2222-7000-8000-000000000002", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "requested_by": "self", "requester_id": "01923e01-2222-7000-8000-000000000002", "status": "held", "created_at": "2026-09-02T10:00:00.000Z", "updated_at": "2026-09-02T10:00:00.000Z", "verified_at": "2026-09-02T09:58:00.000Z", "deadline_at": "2026-09-05T10:00:00.000Z",
+        "hold": { "id": "01923e91-0000-7000-8000-000000000001", "placed_at": "2026-09-03T15:00:00.000Z" } }
+    },
+    {
+      "case": "a-completed-erasure-without-its-result-is-rejected",
+      "valid": false,
+      "why": "DR7: completion is a claim, and the result is the evidence. A resource that says completed with no ledger entry and no audit event id is the erasure nobody can prove ran.",
+      "request": { "schema_version": 1, "id": "01923e90-0000-7000-8000-000000000003", "kind": "erasure", "subject_id": "01923e01-2222-7000-8000-000000000002", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "requested_by": "self", "requester_id": "01923e01-2222-7000-8000-000000000002", "status": "completed", "created_at": "2026-09-02T10:00:00.000Z", "updated_at": "2026-09-16T11:30:00.000Z", "verified_at": "2026-09-02T09:58:00.000Z", "deadline_at": "2026-09-19T10:00:00.000Z", "grace_ends_at": "2026-09-16T10:00:00.000Z", "completed_at": "2026-09-16T11:30:00.000Z" }
+    },
+    {
+      "case": "an-erasure-without-a-grace-end-is-rejected",
+      "valid": false,
+      "why": "DR4: the grace period is what makes an erasure cancellable, and a resource without grace_ends_at cannot say whether it still is.",
+      "request": { "schema_version": 1, "id": "01923e90-0000-7000-8000-000000000003", "kind": "erasure", "subject_id": "01923e01-2222-7000-8000-000000000002", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "requested_by": "self", "requester_id": "01923e01-2222-7000-8000-000000000002", "status": "pending", "created_at": "2026-09-02T10:00:00.000Z", "updated_at": "2026-09-02T10:00:00.000Z", "verified_at": "2026-09-02T09:58:00.000Z", "deadline_at": "2026-09-19T10:00:00.000Z" }
+    },
+    {
+      "case": "a-request-without-a-verification-instant-is-rejected",
+      "valid": false,
+      "why": "DR2: the verification step is a contract, and its evidence is the instant on the resource. A handler that checked auth_time and did not record it leaves nothing a reviewer can see.",
+      "request": { "schema_version": 1, "id": "01923e90-0000-7000-8000-000000000001", "kind": "export", "subject_id": "01923e01-2222-7000-8000-000000000002", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "requested_by": "self", "requester_id": "01923e01-2222-7000-8000-000000000002", "status": "pending", "created_at": "2026-09-02T10:00:00.000Z", "updated_at": "2026-09-02T10:00:00.000Z", "deadline_at": "2026-09-05T10:00:00.000Z" }
+    }
+  ],
+  "erasure": [
+    {
+      "case": "entries-are-treated-children-before-parents",
+      "why": "DR4: an entry with via is treated before the entry it names, so a foreign key never dangles mid-run and a crash between batches leaves a state a rerun can continue from. Ties keep declaration order.",
+      "subject": "01923e01-2222-7000-8000-000000000002",
+      "tenant": "01923e01-9999-7000-8000-00000000000f",
+      "at": "2026-09-16T11:00:00.000Z",
+      "expect": {
+        "order": ["tenant_members.user_id", "sessions.user_id", "orders.user_id", "avatars.user_id", "audit_events.actor_id", "audit_events.target_id", "messages.sender_id", "messages.recipient_id", "search_documents.user_id", "identity_links.user_id", "users.public_id", "notification_provider.recipient_id"]
+      }
+    },
+    {
+      "case": "deleted-entries-lose-the-subjects-rows-and-nobody-elses",
+      "why": "DR5 delete, across every store kind: the relational rows, the object, the document and the provider's contact go; the other subjects' rows in the same tables are untouched. The reference table declared none is not read.",
+      "subject": "01923e01-2222-7000-8000-000000000002",
+      "tenant": "01923e01-9999-7000-8000-00000000000f",
+      "at": "2026-09-16T11:00:00.000Z",
+      "expect": {
+        "tables": {
+          "sessions": [
+            { "id": 21, "public_id": "01923e03-0000-7000-8000-000000000021", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "user_id": "01923e01-4444-7000-8000-000000000004", "ip": "198.51.100.7", "user_agent": "Mozilla/5.0", "created_at": "2026-03-05T09:00:00.000Z", "updated_at": "2026-03-05T09:00:00.000Z" },
+            { "id": 22, "public_id": "01923e03-0000-7000-8000-000000000022", "tenant_id": "01923e01-9999-7000-8000-000000000010", "user_id": "01923e01-4444-7000-8000-000000000004", "ip": "198.51.100.7", "user_agent": "Mozilla/5.0", "created_at": "2026-03-06T09:00:00.000Z", "updated_at": "2026-03-06T09:00:00.000Z" }
+          ],
+          "avatars": [],
+          "search_documents": [
+            { "doc_id": "01923e07-0000-7000-8000-000000000071", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "user_id": "01923e01-4444-7000-8000-000000000004", "document": { "name": "Kim Achebe", "email": "kim@example.com" }, "created_at": "2026-01-15T12:00:00.000Z", "updated_at": "2026-01-15T12:00:00.000Z" },
+            { "doc_id": "01923e07-0000-7000-8000-000000000072", "tenant_id": "01923e01-9999-7000-8000-000000000010", "user_id": "01923e01-4444-7000-8000-000000000004", "document": { "name": "Kim Achebe", "email": "kim@example.com" }, "created_at": "2026-02-01T12:00:00.000Z", "updated_at": "2026-02-01T12:00:00.000Z" }
+          ],
+          "notification_provider": [
+            { "recipient_id": "01923e01-4444-7000-8000-000000000004", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "address": "kim@example.com", "created_at": "2026-01-15T12:00:00.000Z", "updated_at": "2026-01-15T12:00:00.000Z" }
+          ],
+          "identity_links": [
+            { "id": 80, "public_id": "01923e08-0000-7000-8000-000000000080", "user_id": "01923e01-1111-7000-8000-000000000001", "issuer": "https://id.example.com/realms/main", "subject": "f7c1d2e8-5a44-4b91-9c3e-2d8a1b0f6e01", "created_at": "2025-11-02T08:00:00.000Z", "updated_at": "2025-11-02T08:00:00.000Z" },
+            { "id": 82, "public_id": "01923e08-0000-7000-8000-000000000082", "user_id": "01923e01-4444-7000-8000-000000000004", "issuer": "https://id.example.com/realms/main", "subject": "f7c1d2e8-5a44-4b91-9c3e-2d8a1b0f6e04", "created_at": "2026-01-15T12:00:00.000Z", "updated_at": "2026-01-15T12:00:00.000Z" }
+          ],
+          "currencies": [
+            { "code": "EUR", "name": "Euro", "exponent": 2 },
+            { "code": "JPY", "name": "Yen", "exponent": 0 }
+          ]
+        }
+      }
+    },
+    {
+      "case": "anonymise-is-an-allowlist-not-a-denylist",
+      "detector": true,
+      "why": "DR5, the detector. The root row is reduced to its structural columns: the internal key, the public id, the two timestamps. Every other value is tombstoned - NULL where nullable, the text tombstone where not - and the free-text notes field, which carries a phone number and a partner's name, goes with the rest. A plausible wrong implementation scrubs the columns it recognises as identifying by name (email, name, phone, ip, user_agent) and leaves the rest, because 'notes is not personal data'. It passes every other case in this part and fails this one on exactly that column.",
+      "subject": "01923e01-2222-7000-8000-000000000002",
+      "tenant": "01923e01-9999-7000-8000-00000000000f",
+      "at": "2026-09-16T11:00:00.000Z",
+      "expect": {
+        "tables": {
+          "users": [
+            { "id": 1, "public_id": "01923e01-1111-7000-8000-000000000001", "email": "dana@example.com", "full_name": "Dana Okoye", "phone": null, "notes": null, "password_hash": "$argon2id$v=19$m=65536,t=3,p=4$AAAA$BBBB", "created_at": "2025-11-02T08:00:00.000Z", "updated_at": "2025-11-02T08:00:00.000Z" },
+            { "id": 2, "public_id": "01923e01-2222-7000-8000-000000000002", "email": "[erased]", "full_name": "[erased]", "phone": null, "notes": null, "password_hash": "[erased]", "created_at": "2025-12-10T09:30:00.000Z", "updated_at": "2026-01-04T10:00:00.000Z" },
+            { "id": 4, "public_id": "01923e01-4444-7000-8000-000000000004", "email": "kim@example.com", "full_name": "Kim Achebe", "phone": null, "notes": null, "password_hash": "$argon2id$v=19$m=65536,t=3,p=4$EEEE$FFFF", "created_at": "2026-01-15T12:00:00.000Z", "updated_at": "2026-01-15T12:00:00.000Z" }
+          ]
+        }
+      }
+    },
+    {
+      "case": "retained-rows-keep-only-the-basis-columns-and-their-subject",
+      "why": "DR5 retain: the invoice survives under its named obligation, reduced at erasure time to the columns the basis needs - amount, currency, issue date, tax id - plus its subject linkage and structural columns. The billing email is tombstoned now, not in seven years.",
+      "subject": "01923e01-2222-7000-8000-000000000002",
+      "tenant": "01923e01-9999-7000-8000-00000000000f",
+      "at": "2026-09-16T11:00:00.000Z",
+      "expect": {
+        "tables": {
+          "orders": [
+            { "id": 30, "public_id": "01923e04-0000-7000-8000-000000000030", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "user_id": "01923e01-2222-7000-8000-000000000002", "amount": 12999, "currency": "EUR", "tax_id": "DE811223344", "billing_email": "[erased]", "issued_at": "2019-02-11T10:00:00.000Z", "created_at": "2019-02-11T10:00:00.000Z", "updated_at": "2019-02-11T10:00:00.000Z" },
+            { "id": 31, "public_id": "01923e04-0000-7000-8000-000000000031", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "user_id": "01923e01-4444-7000-8000-000000000004", "amount": 4500, "currency": "EUR", "tax_id": "DE811223355", "billing_email": "kim@example.com", "issued_at": "2026-02-20T10:00:00.000Z", "created_at": "2026-02-20T10:00:00.000Z", "updated_at": "2026-02-20T10:00:00.000Z" },
+            { "id": 32, "public_id": "01923e04-0000-7000-8000-000000000032", "tenant_id": "01923e01-9999-7000-8000-000000000010", "user_id": "01923e01-4444-7000-8000-000000000004", "amount": 900, "currency": "JPY", "tax_id": "JP1234567890123", "billing_email": "kim@example.com", "issued_at": "2026-02-22T10:00:00.000Z", "created_at": "2026-02-22T10:00:00.000Z", "updated_at": "2026-02-22T10:00:00.000Z" }
+          ]
+        }
+      }
+    },
+    {
+      "case": "audit-rows-survive-redacted-by-subject",
+      "detector": true,
+      "why": "DR5 and 080 AE7, the second detector. The audit store is anonymised, never deleted, and it is declared once per subject column so the erasure reaches the subject wherever they appear. Where the subject acted, their display, ip and user agent go and the invoice they acted on keeps its display; where the subject was acted upon, their display goes and the living administrator who acted keeps theirs. Both rows are stamped with erased_at and the subject's id. A plausible wrong implementation deletes every dependent row and reduces only the subject's own - 'erase means delete, the shell is for foreign keys' - and fails this case by removing the trail 080 AE4 says outlives its subject, while passing every other case in this part.",
+      "subject": "01923e01-2222-7000-8000-000000000002",
+      "tenant": "01923e01-9999-7000-8000-00000000000f",
+      "at": "2026-09-16T11:00:00.000Z",
+      "expect": {
+        "tables": {
+          "audit_events": [
+            { "id": 50, "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0c01", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "occurred_at": "2026-03-04T09:12:44.108Z", "action": "invoice.void", "outcome": "success", "actor_id": "01923e01-2222-7000-8000-000000000002", "actor_display": null, "actor_ip": null, "actor_user_agent": null, "target_id": "01923e01-3333-7000-8000-000000000003", "target_display": "INV-2026-0412", "changes": [ { "field": "status", "before": "open", "after": "void" } ], "erased_at": "2026-09-16T11:00:00.000Z", "erased_subjects": ["01923e01-2222-7000-8000-000000000002"], "created_at": "2026-03-04T09:12:44.108Z", "updated_at": "2026-03-04T09:12:44.108Z" },
+            { "id": 51, "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0c02", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "occurred_at": "2026-02-01T14:02:00.000Z", "action": "user.grant_role", "outcome": "success", "actor_id": "01923e01-1111-7000-8000-000000000001", "actor_display": "Dana Okoye <dana@example.com>", "actor_ip": "203.0.113.9", "actor_user_agent": "Mozilla/5.0", "target_id": "01923e01-2222-7000-8000-000000000002", "target_display": null, "changes": null, "erased_at": "2026-09-16T11:00:00.000Z", "erased_subjects": ["01923e01-2222-7000-8000-000000000002"], "created_at": "2026-02-01T14:02:00.000Z", "updated_at": "2026-02-01T14:02:00.000Z" },
+            { "id": 52, "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0c03", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "occurred_at": "2026-02-02T09:00:00.000Z", "action": "user.grant_role", "outcome": "success", "actor_id": "01923e01-1111-7000-8000-000000000001", "actor_display": "Dana Okoye <dana@example.com>", "actor_ip": "203.0.113.9", "actor_user_agent": "Mozilla/5.0", "target_id": "01923e01-4444-7000-8000-000000000004", "target_display": "Kim Achebe <kim@example.com>", "changes": null, "erased_at": null, "erased_subjects": null, "created_at": "2026-02-02T09:00:00.000Z", "updated_at": "2026-02-02T09:00:00.000Z" },
+            { "id": 53, "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0c04", "tenant_id": "01923e01-9999-7000-8000-000000000010", "occurred_at": "2026-03-01T11:00:00.000Z", "action": "invoice.approve", "outcome": "success", "actor_id": "01923e01-4444-7000-8000-000000000004", "actor_display": "Kim Achebe <kim@example.com>", "actor_ip": "198.51.100.7", "actor_user_agent": "Mozilla/5.0", "target_id": "01923e01-3333-7000-8000-000000000005", "target_display": "INV-2026-0501", "changes": null, "erased_at": null, "erased_subjects": null, "created_at": "2026-03-01T11:00:00.000Z", "updated_at": "2026-03-01T11:00:00.000Z" }
+          ]
+        }
+      }
+    },
+    {
+      "case": "erasure-is-bounded-by-tenant-and-global-rows-wait-for-the-last-membership",
+      "why": "DR4 and DR8: a subject who belongs to two tenants erases in one, and only that tenant's rows move; the person row and the identity link are global and survive while a membership remains elsewhere. A second erasure in the other tenant treats what is left and then the global rows.",
+      "subject": "01923e01-4444-7000-8000-000000000004",
+      "tenant": "01923e01-9999-7000-8000-00000000000f",
+      "at": "2026-09-16T11:00:00.000Z",
+      "then": { "tenant": "01923e01-9999-7000-8000-000000000010", "at": "2026-10-01T11:00:00.000Z" },
+      "expect": {
+        "after_first": {
+          "tables": {
+            "tenant_members": [
+              { "id": 10, "public_id": "01923e02-0000-7000-8000-000000000010", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "user_id": "01923e01-1111-7000-8000-000000000001", "role_display": "Administrator", "created_at": "2025-11-02T08:00:00.000Z", "updated_at": "2025-11-02T08:00:00.000Z" },
+              { "id": 11, "public_id": "01923e02-0000-7000-8000-000000000011", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "user_id": "01923e01-2222-7000-8000-000000000002", "role_display": "Member", "created_at": "2025-12-10T09:30:00.000Z", "updated_at": "2025-12-10T09:30:00.000Z" },
+              { "id": 13, "public_id": "01923e02-0000-7000-8000-000000000013", "tenant_id": "01923e01-9999-7000-8000-000000000010", "user_id": "01923e01-4444-7000-8000-000000000004", "role_display": "Approver", "created_at": "2026-02-01T12:00:00.000Z", "updated_at": "2026-02-01T12:00:00.000Z" }
+            ],
+            "sessions": [
+              { "id": 20, "public_id": "01923e03-0000-7000-8000-000000000020", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "user_id": "01923e01-2222-7000-8000-000000000002", "ip": "203.0.113.24", "user_agent": "Mozilla/5.0", "created_at": "2026-03-04T09:00:00.000Z", "updated_at": "2026-03-04T09:00:00.000Z" },
+              { "id": 22, "public_id": "01923e03-0000-7000-8000-000000000022", "tenant_id": "01923e01-9999-7000-8000-000000000010", "user_id": "01923e01-4444-7000-8000-000000000004", "ip": "198.51.100.7", "user_agent": "Mozilla/5.0", "created_at": "2026-03-06T09:00:00.000Z", "updated_at": "2026-03-06T09:00:00.000Z" }
+            ],
+            "users": [
+              { "id": 1, "public_id": "01923e01-1111-7000-8000-000000000001", "email": "dana@example.com", "full_name": "Dana Okoye", "phone": null, "notes": null, "password_hash": "$argon2id$v=19$m=65536,t=3,p=4$AAAA$BBBB", "created_at": "2025-11-02T08:00:00.000Z", "updated_at": "2025-11-02T08:00:00.000Z" },
+              { "id": 2, "public_id": "01923e01-2222-7000-8000-000000000002", "email": "sam@example.com", "full_name": "Sam Reyes", "phone": "+1 555 0100", "notes": "prefers calls after 6pm on +1 555 0100; partner is Alex Reyes", "password_hash": "$argon2id$v=19$m=65536,t=3,p=4$CCCC$DDDD", "created_at": "2025-12-10T09:30:00.000Z", "updated_at": "2026-01-04T10:00:00.000Z" },
+              { "id": 4, "public_id": "01923e01-4444-7000-8000-000000000004", "email": "kim@example.com", "full_name": "Kim Achebe", "phone": null, "notes": null, "password_hash": "$argon2id$v=19$m=65536,t=3,p=4$EEEE$FFFF", "created_at": "2026-01-15T12:00:00.000Z", "updated_at": "2026-01-15T12:00:00.000Z" }
+            ],
+            "identity_links": [
+              { "id": 80, "public_id": "01923e08-0000-7000-8000-000000000080", "user_id": "01923e01-1111-7000-8000-000000000001", "issuer": "https://id.example.com/realms/main", "subject": "f7c1d2e8-5a44-4b91-9c3e-2d8a1b0f6e01", "created_at": "2025-11-02T08:00:00.000Z", "updated_at": "2025-11-02T08:00:00.000Z" },
+              { "id": 81, "public_id": "01923e08-0000-7000-8000-000000000081", "user_id": "01923e01-2222-7000-8000-000000000002", "issuer": "https://id.example.com/realms/main", "subject": "f7c1d2e8-5a44-4b91-9c3e-2d8a1b0f6e02", "created_at": "2025-12-10T09:30:00.000Z", "updated_at": "2025-12-10T09:30:00.000Z" },
+              { "id": 82, "public_id": "01923e08-0000-7000-8000-000000000082", "user_id": "01923e01-4444-7000-8000-000000000004", "issuer": "https://id.example.com/realms/main", "subject": "f7c1d2e8-5a44-4b91-9c3e-2d8a1b0f6e04", "created_at": "2026-01-15T12:00:00.000Z", "updated_at": "2026-01-15T12:00:00.000Z" }
+            ]
+          }
+        },
+        "after_second": {
+          "tables": {
+            "tenant_members": [
+              { "id": 10, "public_id": "01923e02-0000-7000-8000-000000000010", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "user_id": "01923e01-1111-7000-8000-000000000001", "role_display": "Administrator", "created_at": "2025-11-02T08:00:00.000Z", "updated_at": "2025-11-02T08:00:00.000Z" },
+              { "id": 11, "public_id": "01923e02-0000-7000-8000-000000000011", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "user_id": "01923e01-2222-7000-8000-000000000002", "role_display": "Member", "created_at": "2025-12-10T09:30:00.000Z", "updated_at": "2025-12-10T09:30:00.000Z" }
+            ],
+            "users": [
+              { "id": 1, "public_id": "01923e01-1111-7000-8000-000000000001", "email": "dana@example.com", "full_name": "Dana Okoye", "phone": null, "notes": null, "password_hash": "$argon2id$v=19$m=65536,t=3,p=4$AAAA$BBBB", "created_at": "2025-11-02T08:00:00.000Z", "updated_at": "2025-11-02T08:00:00.000Z" },
+              { "id": 2, "public_id": "01923e01-2222-7000-8000-000000000002", "email": "sam@example.com", "full_name": "Sam Reyes", "phone": "+1 555 0100", "notes": "prefers calls after 6pm on +1 555 0100; partner is Alex Reyes", "password_hash": "$argon2id$v=19$m=65536,t=3,p=4$CCCC$DDDD", "created_at": "2025-12-10T09:30:00.000Z", "updated_at": "2026-01-04T10:00:00.000Z" },
+              { "id": 4, "public_id": "01923e01-4444-7000-8000-000000000004", "email": "[erased]", "full_name": "[erased]", "phone": null, "notes": null, "password_hash": "[erased]", "created_at": "2026-01-15T12:00:00.000Z", "updated_at": "2026-01-15T12:00:00.000Z" }
+            ],
+            "identity_links": [
+              { "id": 80, "public_id": "01923e08-0000-7000-8000-000000000080", "user_id": "01923e01-1111-7000-8000-000000000001", "issuer": "https://id.example.com/realms/main", "subject": "f7c1d2e8-5a44-4b91-9c3e-2d8a1b0f6e01", "created_at": "2025-11-02T08:00:00.000Z", "updated_at": "2025-11-02T08:00:00.000Z" },
+              { "id": 81, "public_id": "01923e08-0000-7000-8000-000000000081", "user_id": "01923e01-2222-7000-8000-000000000002", "issuer": "https://id.example.com/realms/main", "subject": "f7c1d2e8-5a44-4b91-9c3e-2d8a1b0f6e02", "created_at": "2025-12-10T09:30:00.000Z", "updated_at": "2025-12-10T09:30:00.000Z" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "case": "retention-purge-deletes-a-retained-row-once-its-basis-expires",
+      "why": "DR5: retain has an end. The purge job deletes a retained row when the column named in from plus retain_for has passed, and leaves rows still inside their window. Run at a later instant, the 2019 invoice is past seven years and the 2026 invoices are not.",
+      "purge_at": "2026-09-16T11:00:00.000Z",
+      "expect": {
+        "tables": {
+          "orders": [
+            { "id": 31, "public_id": "01923e04-0000-7000-8000-000000000031", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "user_id": "01923e01-4444-7000-8000-000000000004", "amount": 4500, "currency": "EUR", "tax_id": "DE811223355", "billing_email": "kim@example.com", "issued_at": "2026-02-20T10:00:00.000Z", "created_at": "2026-02-20T10:00:00.000Z", "updated_at": "2026-02-20T10:00:00.000Z" },
+            { "id": 32, "public_id": "01923e04-0000-7000-8000-000000000032", "tenant_id": "01923e01-9999-7000-8000-000000000010", "user_id": "01923e01-4444-7000-8000-000000000004", "amount": 900, "currency": "JPY", "tax_id": "JP1234567890123", "billing_email": "kim@example.com", "issued_at": "2026-02-22T10:00:00.000Z", "created_at": "2026-02-22T10:00:00.000Z", "updated_at": "2026-02-22T10:00:00.000Z" }
+          ]
+        }
+      }
+    }
+  ],
+  "export": [
+    {
+      "case": "a-complete-manifest-is-accepted",
+      "valid": true,
+      "why": "DR3: provenance (request, subject, tenant, service, release, inventory digest), the row format, and every file with its digest.",
+      "manifest": { "schema_version": 1, "request_id": "01923e90-0000-7000-8000-000000000001", "subject_id": "01923e01-2222-7000-8000-000000000002", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "service": "billing", "release": "2.4.0", "inventory_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "generated_at": "2026-09-02T10:04:12.000Z", "row_format": "application/jsonl",
+        "files": [
+          { "path": "rows/users.jsonl", "entry": "users", "kind": "rows", "count": 1, "bytes": 212, "sha256": "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae" },
+          { "path": "rows/audit_events.actor_id.jsonl", "entry": "audit_events", "kind": "rows", "count": 1, "bytes": 402, "sha256": "fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9" },
+          { "path": "blobs/avatars/01923e05-0000-7000-8000-000000000040", "entry": "avatars", "kind": "blob", "bytes": 48211, "sha256": "a3f5c1d2e4b6a7980b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f708192a3b4c5d6", "object_id": "01923e05-0000-7000-8000-000000000040", "filename": "me.png", "content_type": "image/png" }
+        ] }
+    },
+    {
+      "case": "a-rows-file-without-a-count-is-rejected",
+      "valid": false,
+      "why": "DR3: the count is how a recipient tells 'nothing held' from 'not exported', and how a reviewer compares the package to the store.",
+      "manifest": { "schema_version": 1, "request_id": "01923e90-0000-7000-8000-000000000001", "subject_id": "01923e01-2222-7000-8000-000000000002", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "service": "billing", "release": "2.4.0", "inventory_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "generated_at": "2026-09-02T10:04:12.000Z", "row_format": "application/jsonl",
+        "files": [ { "path": "rows/users.jsonl", "entry": "users", "kind": "rows", "bytes": 212, "sha256": "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae" } ] }
+    },
+    {
+      "case": "a-path-outside-the-package-is-rejected",
+      "valid": false,
+      "why": "DR3: the zip is opened on a machine the service does not control, and a path with a parent reference is a file written somewhere the recipient did not choose.",
+      "manifest": { "schema_version": 1, "request_id": "01923e90-0000-7000-8000-000000000001", "subject_id": "01923e01-2222-7000-8000-000000000002", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "service": "billing", "release": "2.4.0", "inventory_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "generated_at": "2026-09-02T10:04:12.000Z", "row_format": "application/jsonl",
+        "files": [ { "path": "rows/../../etc/passwd.jsonl", "entry": "users", "kind": "rows", "count": 1, "bytes": 212, "sha256": "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae" } ] }
+    },
+    {
+      "case": "a-manifest-without-the-inventory-digest-is-rejected",
+      "valid": false,
+      "why": "DR3: the package is a function of the inventory, and a package that cannot say which inventory built it cannot be checked against one.",
+      "manifest": { "schema_version": 1, "request_id": "01923e90-0000-7000-8000-000000000001", "subject_id": "01923e01-2222-7000-8000-000000000002", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "service": "billing", "release": "2.4.0", "generated_at": "2026-09-02T10:04:12.000Z", "row_format": "application/jsonl",
+        "files": [ { "path": "rows/users.jsonl", "entry": "users", "kind": "rows", "count": 1, "bytes": 212, "sha256": "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae" } ] }
+    },
+    {
+      "case": "the-package-holds-the-exported-entries-and-nothing-else",
+      "why": "DR3: one rows file per exported entry, suffixed by subject column where a store carries two entries, one file per object; the entries declared export false (sessions, the derived index, the provider's copy) and the entry declared none are absent.",
+      "subject": "01923e01-2222-7000-8000-000000000002",
+      "tenant": "01923e01-9999-7000-8000-00000000000f",
+      "expect": {
+        "files": [
+          { "path": "rows/users.jsonl", "entry": "users", "count": 1 },
+          { "path": "rows/tenant_members.jsonl", "entry": "tenant_members", "count": 1 },
+          { "path": "rows/orders.jsonl", "entry": "orders", "count": 1 },
+          { "path": "blobs/avatars/01923e05-0000-7000-8000-000000000040", "entry": "avatars" },
+          { "path": "rows/audit_events.actor_id.jsonl", "entry": "audit_events", "count": 1 },
+          { "path": "rows/audit_events.target_id.jsonl", "entry": "audit_events", "count": 1 },
+          { "path": "rows/messages.sender_id.jsonl", "entry": "messages", "count": 1 },
+          { "path": "rows/messages.recipient_id.jsonl", "entry": "messages", "count": 1 },
+          { "path": "rows/identity_links.jsonl", "entry": "identity_links", "count": 1 }
+        ]
+      }
+    },
+    {
+      "case": "internal-keys-credentials-and-third-party-columns-are-absent",
+      "why": "DR3: the internal key never leaves the service (020 IP1) and is excluded without being named; the password hash is excluded by declaration; in the audit rows where the subject was the target, the administrator's display, ip and user agent are another person's data and are excluded by declaration while the subject's own target_display is kept.",
+      "subject": "01923e01-2222-7000-8000-000000000002",
+      "tenant": "01923e01-9999-7000-8000-00000000000f",
+      "expect": {
+        "columns": {
+          "rows/users.jsonl": ["public_id", "email", "full_name", "phone", "notes", "created_at", "updated_at"],
+          "rows/audit_events.target_id.jsonl": ["event_id", "tenant_id", "occurred_at", "action", "outcome", "actor_id", "target_id", "target_display", "changes", "erased_at", "erased_subjects", "created_at", "updated_at"]
+        }
+      }
+    },
+    {
+      "case": "tenancy-bounds-the-package",
+      "why": "DR3: a subject in two tenants requesting in one receives that tenant's rows and the global entries; the other tenant's orders, memberships and audit rows are not in the package. An exported entry with no rows in this tenant still yields an empty file, so the recipient can see it was considered.",
+      "subject": "01923e01-4444-7000-8000-000000000004",
+      "tenant": "01923e01-9999-7000-8000-00000000000f",
+      "expect": {
+        "files": [
+          { "path": "rows/users.jsonl", "entry": "users", "count": 1 },
+          { "path": "rows/tenant_members.jsonl", "entry": "tenant_members", "count": 1 },
+          { "path": "rows/orders.jsonl", "entry": "orders", "count": 1 },
+          { "path": "rows/audit_events.actor_id.jsonl", "entry": "audit_events", "count": 0 },
+          { "path": "rows/audit_events.target_id.jsonl", "entry": "audit_events", "count": 1 },
+          { "path": "rows/messages.sender_id.jsonl", "entry": "messages", "count": 0 },
+          { "path": "rows/messages.recipient_id.jsonl", "entry": "messages", "count": 0 },
+          { "path": "rows/identity_links.jsonl", "entry": "identity_links", "count": 1 }
+        ]
+      }
+    }
+  ],
+  "hold": [
+    {
+      "case": "a-hold-suspends-erasure-after-grace",
+      "why": "DR6: the request runs its grace, the dispatcher finds a hold, and the request goes held instead of running. Nothing has moved.",
+      "grace": "P14D",
+      "steps": [
+        { "at": "2026-09-02T10:00:00.000Z", "do": "create", "kind": "erasure", "expect": "pending" },
+        { "at": "2026-09-03T15:00:00.000Z", "do": "hold", "expect": "pending" },
+        { "at": "2026-09-17T03:00:00.000Z", "do": "dispatch", "expect": "held" }
+      ],
+      "subject": "01923e01-2222-7000-8000-000000000002",
+      "tenant": "01923e01-9999-7000-8000-00000000000f",
+      "expect": { "users_email": "sam@example.com" }
+    },
+    {
+      "case": "a-release-returns-the-request-to-pending-and-the-next-dispatch-runs-it",
+      "why": "DR6: release is not completion. The request resumes where the hold found it, and the erasure runs on the next dispatch with no new request and no new verification, because the subject's request stood the whole time.",
+      "grace": "P14D",
+      "steps": [
+        { "at": "2026-09-02T10:00:00.000Z", "do": "create", "kind": "erasure", "expect": "pending" },
+        { "at": "2026-09-03T15:00:00.000Z", "do": "hold", "expect": "pending" },
+        { "at": "2026-09-17T03:00:00.000Z", "do": "dispatch", "expect": "held" },
+        { "at": "2026-09-20T09:00:00.000Z", "do": "release", "expect": "pending" },
+        { "at": "2026-09-21T03:00:00.000Z", "do": "dispatch", "expect": "completed" }
+      ],
+      "subject": "01923e01-2222-7000-8000-000000000002",
+      "tenant": "01923e01-9999-7000-8000-00000000000f",
+      "expect": { "users_email": "[erased]" }
+    },
+    {
+      "case": "a-hold-does-not-suspend-export",
+      "why": "DR6: a hold preserves evidence; it does not withdraw the person's right to see it. The export runs on its first dispatch with the hold in place.",
+      "grace": "P14D",
+      "steps": [
+        { "at": "2026-09-03T15:00:00.000Z", "do": "hold", "expect": null },
+        { "at": "2026-09-04T10:00:00.000Z", "do": "create", "kind": "export", "expect": "pending" },
+        { "at": "2026-09-04T10:00:05.000Z", "do": "dispatch", "expect": "completed" }
+      ],
+      "subject": "01923e01-2222-7000-8000-000000000002",
+      "tenant": "01923e01-9999-7000-8000-00000000000f",
+      "expect": { "users_email": "sam@example.com" }
+    },
+    {
+      "case": "a-hold-suspends-the-retention-purge-for-its-subject",
+      "why": "DR6: a hold suspends every deletion for the subject, the retention job's included. The 2019 invoice is past its seven years and stays while the hold stands; the purge is not an exception to the hold because it runs from a different declaration.",
+      "grace": "P14D",
+      "steps": [
+        { "at": "2026-09-03T15:00:00.000Z", "do": "hold", "expect": null },
+        { "at": "2026-09-16T11:00:00.000Z", "do": "purge", "expect": null }
+      ],
+      "subject": "01923e01-2222-7000-8000-000000000002",
+      "tenant": "01923e01-9999-7000-8000-00000000000f",
+      "expect": { "order_30_present": true }
+    }
+  ],
+  "transitions": [
+    {
+      "case": "an-erasure-is-created-when-authentication-is-fresh",
+      "why": "DR2: the step-up window is fifteen minutes from auth_time; sixty seconds is inside it.",
+      "given": { "kind": "erasure", "auth_age_seconds": 60, "open_request": false },
+      "action": "create",
+      "expect": { "http": 201, "status": "pending" }
+    },
+    {
+      "case": "an-erasure-with-stale-authentication-is-refused",
+      "why": "DR2: an unattended session must not be able to destroy an account. The refusal is 403 with a stable type, and the client answers it by navigating to re-authenticate, never by retrying.",
+      "given": { "kind": "erasure", "auth_age_seconds": 3600, "open_request": false },
+      "action": "create",
+      "expect": { "http": 403, "problem": "step-up-required" }
+    },
+    {
+      "case": "an-export-is-created-without-step-up",
+      "why": "DR2: an export reveals to the subject what they may already read; the verification bar is the session. A stale auth_time does not refuse it.",
+      "given": { "kind": "export", "auth_age_seconds": 3600, "open_request": false },
+      "action": "create",
+      "expect": { "http": 201, "status": "pending" }
+    },
+    {
+      "case": "a-second-request-while-one-is-open-returns-the-open-one",
+      "why": "DR2: one open request per subject per kind. The second creation is not an error and not a second job; it is the existing resource, answered 200 rather than 201 so the client can tell.",
+      "given": { "kind": "export", "auth_age_seconds": 60, "open_request": true },
+      "action": "create",
+      "expect": { "http": 200, "status": "pending" }
+    },
+    {
+      "case": "a-pending-erasure-is-cancelled-with-fresh-authentication",
+      "why": "DR4: cancellation is the grace period's purpose, and it is verified like creation because cancelling someone else's erasure is as harmful as creating one.",
+      "given": { "kind": "erasure", "status": "pending", "auth_age_seconds": 60 },
+      "action": "cancel",
+      "expect": { "http": 200, "status": "cancelled" }
+    },
+    {
+      "case": "a-running-erasure-cannot-be-cancelled",
+      "why": "DR4: once the job holds the request the data is moving in batches, and a cancellation now would leave a state nobody declared. The refusal names the reason.",
+      "given": { "kind": "erasure", "status": "running", "auth_age_seconds": 60 },
+      "action": "cancel",
+      "expect": { "http": 409, "problem": "erasure-not-cancellable" }
+    },
+    {
+      "case": "a-held-erasure-can-still-be-cancelled",
+      "why": "DR6: the hold suspends the erasure, not the subject's control of their own request. Withdrawing it is always theirs while nothing has run.",
+      "given": { "kind": "erasure", "status": "held", "auth_age_seconds": 60 },
+      "action": "cancel",
+      "expect": { "http": 200, "status": "cancelled" }
+    },
+    {
+      "case": "a-completed-export-is-downloaded-through-a-presigned-redirect",
+      "why": "DR3 and 026: the download route checks the requester, mints a short-lived presigned GET, and redirects. The resource never carries a URL.",
+      "given": { "kind": "export", "status": "completed", "auth_age_seconds": 60, "past_available_until": false },
+      "action": "download",
+      "expect": { "http": 302 }
+    },
+    {
+      "case": "an-export-past-its-window-is-gone",
+      "why": "DR3: the package is a concentrated copy of personal data and is deleted after seven days; the route says gone rather than not found, because the request existed and the client should not retry.",
+      "given": { "kind": "export", "status": "completed", "auth_age_seconds": 60, "past_available_until": true },
+      "action": "download",
+      "expect": { "http": 410, "problem": "export-expired", "status": "expired" }
+    },
+    {
+      "case": "an-export-not-yet-built-cannot-be-downloaded",
+      "why": "DR3: the request resource is where a client waits; the download route is not a poll.",
+      "given": { "kind": "export", "status": "running", "auth_age_seconds": 60 },
+      "action": "download",
+      "expect": { "http": 409, "problem": "export-not-ready" }
+    },
+    {
+      "case": "a-dispatch-before-grace-does-nothing",
+      "why": "DR4: the dispatcher selects requests whose grace has ended and no others; a request inside grace is left pending and cancellable.",
+      "given": { "kind": "erasure", "status": "pending", "grace_ended": false, "hold": false },
+      "action": "dispatch",
+      "expect": { "status": "pending" }
+    },
+    {
+      "case": "a-dispatch-after-grace-with-no-hold-runs",
+      "why": "DR4: grace over, no hold, the message is written and the job takes it.",
+      "given": { "kind": "erasure", "status": "pending", "grace_ended": true, "hold": false },
+      "action": "dispatch",
+      "expect": { "status": "running" }
+    }
+  ]
+}

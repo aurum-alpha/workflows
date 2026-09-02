@@ -1,0 +1,204 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/document-storage/admission.schema.json",
+  "title": "Aurum Alpha document store admission",
+  "description": "standards/027-document-storage.md DS1: the declaration a repository writes to admit a document store beside its relational store. A store with no admission is not admitted. The declaration names the engine (DS9), the role (DS2), the test the relational engine's JSON column failed (DS1), the collections with their scoping, id source, schema versions and indexes (DS4-DS7), the jobs that project, rebuild and reconcile a derived store (DS8), and the backup posture the backup standard reads. The conditional rules are the ones prose states and a reviewer would otherwise remember: a derived store names its system of record and its jobs and declares backup: rebuild; a primary store declares backup: snapshot and names no rebuild; a scale reason carries its measure; a scoped collection names its isolation levels. Three checks JSON Schema cannot express are judged by the corpus runner and said so there: the engine's admitted roles against storage-profiles.json, that current_schema_version has a schema, that the two credentials differ, and that every index on a scoped collection leads with the outermost isolation field. schema_version 1 - evolves additively per PC6.",
+  "type": "object",
+  "$defs": {
+    "jobName": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+      "description": "A job name in 057 JB1's grammar, resource.verb; the job carries its own declaration under JB3."
+    },
+    "duration": {
+      "type": "string",
+      "pattern": "^P(?!$)(\\d+D)?(T(?=\\d)(\\d+H)?(\\d+M)?(\\d+S)?)?$",
+      "description": "ISO 8601 duration, days and time components only, as 057's declaration uses."
+    },
+    "snakeName": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "snake_case, per 025 SD10's identifier rule carried across: an unquoted identifier that case-folds is two names until it is one."
+    },
+    "envVar": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*$",
+      "description": "The name of the environment variable that carries the connection, per 030 SC3; never the value."
+    },
+    "schemaUri": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://",
+      "description": "The URI of the JSON Schema (draft 2020-12) for one version of one collection (DS6). The file lives in the repository; the URI is its stable name."
+    },
+    "indexField": {
+      "type": "object",
+      "properties": {
+        "field": { "$ref": "#/$defs/snakeName", "description": "A top-level or dotted document field." },
+        "order": { "enum": ["asc", "desc", "text"], "description": "Sort direction, or text for a full-text component." }
+      },
+      "required": ["field", "order"],
+      "additionalProperties": false
+    },
+    "index": {
+      "type": "object",
+      "description": "DS7: one index the declaration step creates if absent and never drops without an expand-only reason. DS4: on a scoped collection the first field is the outermost isolation field (judged by the runner, since the schema cannot see the collection's levels from here).",
+      "properties": {
+        "name": { "$ref": "#/$defs/snakeName" },
+        "fields": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/indexField" } },
+        "unique": { "type": "boolean", "description": "A uniqueness the engine enforces per document key. Not a substitute for a relational UNIQUE across a race (DS1)." }
+      },
+      "required": ["name", "fields"],
+      "additionalProperties": false
+    },
+    "collection": {
+      "type": "object",
+      "description": "One collection (index, in a search engine's vocabulary) the store holds.",
+      "properties": {
+        "name": { "$ref": "#/$defs/snakeName", "description": "Plural noun, snake_case, per SD10's naming carried across." },
+        "scoped": { "type": "boolean", "description": "DS4. Whether documents carry isolation fields. An unscoped collection is one the product's isolation declaration does not reach - reference data - and is the exception." },
+        "isolation_levels": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/snakeName" },
+          "description": "DS4 / 025 SD5. Outermost first: ['tenant'] or ['tenant', 'client_org']. Each level's field on the document is <level>_id. Required when scoped, absent otherwise."
+        },
+        "id_source": {
+          "enum": ["entity_public_id", "minted_uuidv7"],
+          "description": "DS4. The document's id is the public id of the entity it projects (a derived document, upserted by key) or a UUIDv7 minted for it (a primary document that is its own entity). The engine's generated identifier is not an admitted source."
+        },
+        "current_schema_version": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "DS6. The version the writer writes. A reader accepts this and the one before it. Must have an entry in schemas (runner-checked)."
+        },
+        "schemas": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": { "pattern": "^[1-9][0-9]*$" },
+          "additionalProperties": { "$ref": "#/$defs/schemaUri" },
+          "description": "DS6. Every version still present in the store, by number, to its JSON Schema URI. A version dropped from a reader's window is dropped here in the same release, after the backfill reported nothing left."
+        },
+        "indexes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/index" },
+          "description": "DS7. Rendered by documents.declare into the engine's form per storage-profiles.json."
+        },
+        "max_document_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 262144,
+          "description": "DS10. The ceiling the writer enforces on a serialised document; at or below 256 KiB. Above it the payload is a blob and the document carries a reference."
+        }
+      },
+      "required": ["name", "scoped", "id_source", "current_schema_version", "schemas", "indexes", "max_document_bytes"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": { "properties": { "scoped": { "const": true } } },
+          "then": { "required": ["isolation_levels"] },
+          "else": { "not": { "required": ["isolation_levels"] } }
+        }
+      ]
+    }
+  },
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1, "description": "The version of this declaration's own shape, per PC6." },
+    "service": {
+      "type": "string",
+      "pattern": "^/[a-z][a-z0-9-]*$",
+      "description": "The logical name of the owning service, in the form 055 AM1 uses for source: /invoicing. The store is private to this service (SD13 via DS3)."
+    },
+    "engine": {
+      "enum": ["mongodb", "opensearch"],
+      "description": "DS9. An engine admitted by storage-profiles.json; the runner asserts this enumeration and that file agree. An engine is admitted by adding its profile entry and this value in one change."
+    },
+    "role": {
+      "enum": ["derived", "primary"],
+      "description": "DS2. derived: a projection of the system of record, rebuildable, may be lost, not backed up. primary: the only copy, a database in every sense, backed up."
+    },
+    "reason": {
+      "type": "object",
+      "description": "DS1. Which of the three tests the relational engine's JSON column failed, and the argument. The statement is what a reviewer reads; the kind is what a checker counts.",
+      "properties": {
+        "kind": { "enum": ["query_shape", "scale", "derivedness"] },
+        "statement": { "type": "string", "minLength": 40, "description": "The argument, in a sentence a reviewer can disagree with." },
+        "measure": { "type": "string", "minLength": 1, "description": "scale only: the number - documents, bytes per day, writes per second - that the column could not hold beside the transactional rows." }
+      },
+      "required": ["kind", "statement"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "scale" } } },
+          "then": { "required": ["measure"] },
+          "else": { "not": { "required": ["measure"] } }
+        }
+      ]
+    },
+    "system_of_record": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/snakeName" },
+      "description": "DS2, derived only: the relational tables the store is projected from and rebuilt from. The rebuild walks these."
+    },
+    "projection_job": {
+      "$ref": "#/$defs/jobName",
+      "description": "DS8, derived only: the per-event job in the service's pool that upserts documents from the service's own events. The only writer of a derived store."
+    },
+    "rebuild_job": {
+      "$ref": "#/$defs/jobName",
+      "description": "DS8, derived only: the on-demand, single-flight, long, idempotent job (057 JB10) that re-projects every document from the system of record. The store's recovery, and what the backup standard's drill runs."
+    },
+    "reconcile": {
+      "type": "object",
+      "description": "DS8, derived only: the periodic job whose success means the store is fresh, in 057 JB8's pattern.",
+      "properties": {
+        "job": { "$ref": "#/$defs/jobName" },
+        "max_lag": { "$ref": "#/$defs/duration", "description": "How far behind the system of record the store may be for the reconcile job to succeed." },
+        "stale_after": { "$ref": "#/$defs/duration", "description": "JB8: alert when the newest succeeded reconcile run is older than this." }
+      },
+      "required": ["job", "max_lag", "stale_after"],
+      "additionalProperties": false
+    },
+    "backup": {
+      "enum": ["rebuild", "snapshot"],
+      "description": "DS8 / DS2. What the backup standard reads: rebuild means excluded from backup because the rebuild job is the recovery; snapshot means backed up under that standard's declaration. The role fixes the value."
+    },
+    "credentials": {
+      "type": "object",
+      "description": "DS7 / SD3's split carried across. Two environment variable names; the values are secrets delivered by the platform. The runtime credential cannot create collections or indexes; the declaration credential can and lives only in the migrate image. The runner asserts the two names differ.",
+      "properties": {
+        "runtime": { "$ref": "#/$defs/envVar" },
+        "declaration": { "$ref": "#/$defs/envVar" }
+      },
+      "required": ["runtime", "declaration"],
+      "additionalProperties": false
+    },
+    "collections": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/collection" },
+      "description": "DS4-DS7. The catalog the isolation enumeration walks and the declaration step applies."
+    }
+  },
+  "required": ["schema_version", "service", "engine", "role", "reason", "backup", "credentials", "collections"],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "description": "DS2 / DS8: a derived store names what it is derived from, the job that writes it, the job that rebuilds it, and the job that proves it fresh, and its backup is its rebuild.",
+      "if": { "properties": { "role": { "const": "derived" } } },
+      "then": {
+        "required": ["system_of_record", "projection_job", "rebuild_job", "reconcile"],
+        "properties": { "backup": { "const": "rebuild" } }
+      }
+    },
+    {
+      "description": "DS2: a primary store cannot be rebuilt by definition, so it names no rebuild, no projection and no system of record, and it is backed up.",
+      "if": { "properties": { "role": { "const": "primary" } } },
+      "then": {
+        "not": { "anyOf": [ { "required": ["system_of_record"] }, { "required": ["projection_job"] }, { "required": ["rebuild_job"] }, { "required": ["reconcile"] } ] },
+        "properties": { "backup": { "const": "snapshot" } }
+      }
+    }
+  ]
+}

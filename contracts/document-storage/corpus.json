@@ -1,0 +1,607 @@
+{
+  "contract": "document-storage",
+  "schemaVersion": 1,
+  "description": "The conformance corpus for standards/027-document-storage.md. Four parts. 'admissions' is judged by admission.schema.json, plus four checks the schema cannot express and the runner makes, each case saying which judged it in 'judgedBy': the engine's admitted roles against storage-profiles.json, that current_schema_version has a schema, that the runtime and declaration credentials differ, and that every index on a scoped collection leads with the outermost isolation field. 'envelopes' is judged by document-envelope.schema.json, plus two checks made against the collection each case names: a scoped collection's document must carry tenant_id, and a document must be within its collection's max_document_bytes ('bytes' gives the serialised size where it matters). 'evolution' is judged by running a reader (DS6): given a fixture naming each version's required and optional fields and a reader whose window is the current version and the one before it, each document is accepted, upgraded to the current version with defaults applied, or refused with a named reason; unknown fields are ignored and listed. One case is a detector: a current-version document carrying a field the schema does not list, which a reader that closes its schema refuses while passing every other case. 'rollouts' is judged by simulating deployments (DS6's three-release rule): each step deploys a release that writes one version and accepts a set, or backfills the store to a version; a deploy is a rolling one, so the previous release's reader is live while the new release writes; the sequence is unsafe at the first step where a live reader would meet a version it refuses, either from the other live release's writer or from the store after rollout.",
+  "fixtures": {
+    "form_definitions": {
+      "1": { "required": { "title": "string" }, "optional": { "description": "string" } },
+      "2": { "required": { "title": "string", "fields": "array" }, "optional": { "description": "string" }, "defaults": { "fields": [] } },
+      "3": { "required": { "title": "string", "fields": "array", "owner_id": "string" }, "optional": { "description": "string" }, "defaults": { "owner_id": null } }
+    }
+  },
+  "admissions": [
+    {
+      "case": "a-derived-search-index-is-accepted",
+      "valid": true,
+      "why": "DS1, DS2, DS8 in full for the common case: a search engine as a derived store, admitted on query_shape, naming its system of record, its projection, rebuild and reconcile jobs, backup by rebuild, two credentials, one scoped collection whose index leads with tenant_id.",
+      "admission": {
+        "schema_version": 1,
+        "service": "/invoicing",
+        "engine": "opensearch",
+        "role": "derived",
+        "reason": { "kind": "query_shape", "statement": "Users search invoices, contacts and notes by relevance across free text with facets on status and period; the relational engine's text indexing cannot rank or facet over a per-tenant corpus of this shape." },
+        "system_of_record": ["invoices", "contacts", "notes"],
+        "projection_job": "search.project",
+        "rebuild_job": "search.rebuild",
+        "reconcile": { "job": "search.reconcile", "max_lag": "PT5M", "stale_after": "PT2H" },
+        "backup": "rebuild",
+        "credentials": { "runtime": "SEARCH_URL", "declaration": "SEARCH_DECLARATION_URL" },
+        "collections": [
+          {
+            "name": "invoice_search",
+            "scoped": true,
+            "isolation_levels": ["tenant"],
+            "id_source": "entity_public_id",
+            "current_schema_version": 2,
+            "schemas": {
+              "1": "https://contracts.aurumalpha.dev/invoicing/invoice-search/v1.schema.json",
+              "2": "https://contracts.aurumalpha.dev/invoicing/invoice-search/v2.schema.json"
+            },
+            "indexes": [
+              { "name": "by_tenant_issued", "fields": [ { "field": "tenant_id", "order": "asc" }, { "field": "issued_at", "order": "desc" } ] },
+              { "name": "by_tenant_text", "fields": [ { "field": "tenant_id", "order": "asc" }, { "field": "body", "order": "text" } ] }
+            ],
+            "max_document_bytes": 65536
+          }
+        ]
+      }
+    },
+    {
+      "case": "a-primary-form-definition-store-is-accepted",
+      "valid": true,
+      "why": "DS2's primary role: user-authored definitions searched by their interior, the only copy, backed up by snapshot, no rebuild named, ids minted as UUIDv7 because each document is its own entity.",
+      "admission": {
+        "schema_version": 1,
+        "service": "/forms",
+        "engine": "mongodb",
+        "role": "primary",
+        "reason": { "kind": "query_shape", "statement": "The product lists and filters thousands of user-designed form definitions per tenant by field type, label and validation rule; a jsonb column cannot index the interior of a shape each author decides." },
+        "backup": "snapshot",
+        "credentials": { "runtime": "FORMS_DB_URL", "declaration": "FORMS_DB_DECLARATION_URL" },
+        "collections": [
+          {
+            "name": "form_definitions",
+            "scoped": true,
+            "isolation_levels": ["tenant", "client_org"],
+            "id_source": "minted_uuidv7",
+            "current_schema_version": 2,
+            "schemas": {
+              "1": "https://contracts.aurumalpha.dev/forms/form-definition/v1.schema.json",
+              "2": "https://contracts.aurumalpha.dev/forms/form-definition/v2.schema.json"
+            },
+            "indexes": [
+              { "name": "by_tenant_org_updated", "fields": [ { "field": "tenant_id", "order": "asc" }, { "field": "client_org_id", "order": "asc" }, { "field": "updated_at", "order": "desc" } ] }
+            ],
+            "max_document_bytes": 262144
+          }
+        ]
+      }
+    },
+    {
+      "case": "a-primary-archive-admitted-on-scale-carries-its-measure",
+      "valid": true,
+      "why": "DS1's scale test: the reason carries the number the column could not hold beside the transactional rows, so the claim is checkable.",
+      "admission": {
+        "schema_version": 1,
+        "service": "/payments",
+        "engine": "mongodb",
+        "role": "primary",
+        "reason": { "kind": "scale", "statement": "Provider payloads are kept verbatim for dispute and relate to nothing but the payment that caused them; their volume degrades the payments tables' vacuum and backup windows measurably.", "measure": "1.2 million documents per day, 3 KiB median, retained 400 days" },
+        "backup": "snapshot",
+        "credentials": { "runtime": "ARCHIVE_URL", "declaration": "ARCHIVE_DECLARATION_URL" },
+        "collections": [
+          {
+            "name": "provider_payloads",
+            "scoped": true,
+            "isolation_levels": ["tenant"],
+            "id_source": "minted_uuidv7",
+            "current_schema_version": 1,
+            "schemas": { "1": "https://contracts.aurumalpha.dev/payments/provider-payload/v1.schema.json" },
+            "indexes": [ { "name": "by_tenant_received", "fields": [ { "field": "tenant_id", "order": "asc" }, { "field": "received_at", "order": "desc" } ] } ],
+            "max_document_bytes": 131072
+          }
+        ]
+      }
+    },
+    {
+      "case": "a-derived-store-without-a-rebuild-job-is-rejected",
+      "valid": false,
+      "why": "DS2 / DS8: a derived store's recovery is its rebuild, and a derived store with no rebuild job named is a primary store nobody is backing up.",
+      "admission": {
+        "schema_version": 1,
+        "service": "/invoicing",
+        "engine": "opensearch",
+        "role": "derived",
+        "reason": { "kind": "query_shape", "statement": "Users search invoices by relevance across free text with facets, which the relational text index cannot rank or facet." },
+        "system_of_record": ["invoices"],
+        "projection_job": "search.project",
+        "reconcile": { "job": "search.reconcile", "max_lag": "PT5M", "stale_after": "PT2H" },
+        "backup": "rebuild",
+        "credentials": { "runtime": "SEARCH_URL", "declaration": "SEARCH_DECLARATION_URL" },
+        "collections": [
+          { "name": "invoice_search", "scoped": true, "isolation_levels": ["tenant"], "id_source": "entity_public_id", "current_schema_version": 1, "schemas": { "1": "https://contracts.aurumalpha.dev/invoicing/invoice-search/v1.schema.json" }, "indexes": [], "max_document_bytes": 65536 }
+        ]
+      }
+    },
+    {
+      "case": "a-derived-store-with-a-snapshot-backup-is-rejected",
+      "valid": false,
+      "why": "DS8: a derived store that is backed up has two recovery paths, and a restore of a stale copy over a live record is a corruption with a runbook. backup is rebuild, by declaration.",
+      "admission": {
+        "schema_version": 1,
+        "service": "/invoicing",
+        "engine": "opensearch",
+        "role": "derived",
+        "reason": { "kind": "query_shape", "statement": "Users search invoices by relevance across free text with facets, which the relational text index cannot rank or facet." },
+        "system_of_record": ["invoices"],
+        "projection_job": "search.project",
+        "rebuild_job": "search.rebuild",
+        "reconcile": { "job": "search.reconcile", "max_lag": "PT5M", "stale_after": "PT2H" },
+        "backup": "snapshot",
+        "credentials": { "runtime": "SEARCH_URL", "declaration": "SEARCH_DECLARATION_URL" },
+        "collections": [
+          { "name": "invoice_search", "scoped": true, "isolation_levels": ["tenant"], "id_source": "entity_public_id", "current_schema_version": 1, "schemas": { "1": "https://contracts.aurumalpha.dev/invoicing/invoice-search/v1.schema.json" }, "indexes": [], "max_document_bytes": 65536 }
+        ]
+      }
+    },
+    {
+      "case": "a-primary-store-naming-a-rebuild-job-is-rejected",
+      "valid": false,
+      "why": "DS2: a store that can be rebuilt is derived. A primary store naming a rebuild is misdeclared in whichever direction, and the declaration refuses to hold both claims.",
+      "admission": {
+        "schema_version": 1,
+        "service": "/forms",
+        "engine": "mongodb",
+        "role": "primary",
+        "reason": { "kind": "query_shape", "statement": "The product filters thousands of user-designed form definitions per tenant by field type, label and validation rule." },
+        "rebuild_job": "forms.rebuild",
+        "backup": "snapshot",
+        "credentials": { "runtime": "FORMS_DB_URL", "declaration": "FORMS_DB_DECLARATION_URL" },
+        "collections": [
+          { "name": "form_definitions", "scoped": true, "isolation_levels": ["tenant"], "id_source": "minted_uuidv7", "current_schema_version": 1, "schemas": { "1": "https://contracts.aurumalpha.dev/forms/form-definition/v1.schema.json" }, "indexes": [], "max_document_bytes": 262144 }
+        ]
+      }
+    },
+    {
+      "case": "a-scale-reason-without-a-measure-is-rejected",
+      "valid": false,
+      "why": "DS1: 'too big for the column' is a number or it is a preference. The scale test carries its measure.",
+      "admission": {
+        "schema_version": 1,
+        "service": "/payments",
+        "engine": "mongodb",
+        "role": "primary",
+        "reason": { "kind": "scale", "statement": "Provider payloads are kept verbatim for dispute and their volume would degrade the payments tables if held beside them." },
+        "backup": "snapshot",
+        "credentials": { "runtime": "ARCHIVE_URL", "declaration": "ARCHIVE_DECLARATION_URL" },
+        "collections": [
+          { "name": "provider_payloads", "scoped": true, "isolation_levels": ["tenant"], "id_source": "minted_uuidv7", "current_schema_version": 1, "schemas": { "1": "https://contracts.aurumalpha.dev/payments/provider-payload/v1.schema.json" }, "indexes": [], "max_document_bytes": 131072 }
+        ]
+      }
+    },
+    {
+      "case": "a-scoped-collection-without-isolation-levels-is-rejected",
+      "valid": false,
+      "why": "DS4 / SD5: a scoped collection names its levels, outermost first, or the enumeration has nothing to assert and the documents have no fields to carry.",
+      "admission": {
+        "schema_version": 1,
+        "service": "/forms",
+        "engine": "mongodb",
+        "role": "primary",
+        "reason": { "kind": "query_shape", "statement": "The product filters thousands of user-designed form definitions per tenant by field type, label and validation rule." },
+        "backup": "snapshot",
+        "credentials": { "runtime": "FORMS_DB_URL", "declaration": "FORMS_DB_DECLARATION_URL" },
+        "collections": [
+          { "name": "form_definitions", "scoped": true, "id_source": "minted_uuidv7", "current_schema_version": 1, "schemas": { "1": "https://contracts.aurumalpha.dev/forms/form-definition/v1.schema.json" }, "indexes": [], "max_document_bytes": 262144 }
+        ]
+      }
+    },
+    {
+      "case": "an-engine-generated-id-source-is-rejected",
+      "valid": false,
+      "why": "DS4: the document's id is the entity's public id or a minted UUIDv7. The engine's generated identifier is a second id format outside IP2 and cannot be the key a projection upserts by.",
+      "admission": {
+        "schema_version": 1,
+        "service": "/forms",
+        "engine": "mongodb",
+        "role": "primary",
+        "reason": { "kind": "query_shape", "statement": "The product filters thousands of user-designed form definitions per tenant by field type, label and validation rule." },
+        "backup": "snapshot",
+        "credentials": { "runtime": "FORMS_DB_URL", "declaration": "FORMS_DB_DECLARATION_URL" },
+        "collections": [
+          { "name": "form_definitions", "scoped": true, "isolation_levels": ["tenant"], "id_source": "engine_generated", "current_schema_version": 1, "schemas": { "1": "https://contracts.aurumalpha.dev/forms/form-definition/v1.schema.json" }, "indexes": [], "max_document_bytes": 262144 }
+        ]
+      }
+    },
+    {
+      "case": "a-ceiling-over-256-kib-is-rejected",
+      "valid": false,
+      "why": "DS10: a document over 256 KiB is a blob with a reference. A declaration may lower the ceiling and never raise it.",
+      "admission": {
+        "schema_version": 1,
+        "service": "/payments",
+        "engine": "mongodb",
+        "role": "primary",
+        "reason": { "kind": "scale", "statement": "Provider payloads are kept verbatim for dispute and relate to nothing but the payment that caused them; their volume degrades the payments tables measurably.", "measure": "1.2 million documents per day" },
+        "backup": "snapshot",
+        "credentials": { "runtime": "ARCHIVE_URL", "declaration": "ARCHIVE_DECLARATION_URL" },
+        "collections": [
+          { "name": "provider_payloads", "scoped": true, "isolation_levels": ["tenant"], "id_source": "minted_uuidv7", "current_schema_version": 1, "schemas": { "1": "https://contracts.aurumalpha.dev/payments/provider-payload/v1.schema.json" }, "indexes": [], "max_document_bytes": 1048576 }
+        ]
+      }
+    },
+    {
+      "case": "a-camel-case-collection-name-is-rejected",
+      "valid": false,
+      "why": "SD10's naming carried across by DS3: snake_case, decided once. An identifier that case-folds differently in two places is two collections until it is one.",
+      "admission": {
+        "schema_version": 1,
+        "service": "/forms",
+        "engine": "mongodb",
+        "role": "primary",
+        "reason": { "kind": "query_shape", "statement": "The product filters thousands of user-designed form definitions per tenant by field type, label and validation rule." },
+        "backup": "snapshot",
+        "credentials": { "runtime": "FORMS_DB_URL", "declaration": "FORMS_DB_DECLARATION_URL" },
+        "collections": [
+          { "name": "formDefinitions", "scoped": true, "isolation_levels": ["tenant"], "id_source": "minted_uuidv7", "current_schema_version": 1, "schemas": { "1": "https://contracts.aurumalpha.dev/forms/form-definition/v1.schema.json" }, "indexes": [], "max_document_bytes": 262144 }
+        ]
+      }
+    },
+    {
+      "case": "an-engine-with-no-profile-is-rejected",
+      "valid": false,
+      "why": "DS9: no engine is admitted until storage-profiles.json carries its entry, and the schema's enumeration is kept equal to that file's keys.",
+      "admission": {
+        "schema_version": 1,
+        "service": "/forms",
+        "engine": "couchdb",
+        "role": "primary",
+        "reason": { "kind": "query_shape", "statement": "The product filters thousands of user-designed form definitions per tenant by field type, label and validation rule." },
+        "backup": "snapshot",
+        "credentials": { "runtime": "FORMS_DB_URL", "declaration": "FORMS_DB_DECLARATION_URL" },
+        "collections": [
+          { "name": "form_definitions", "scoped": true, "isolation_levels": ["tenant"], "id_source": "minted_uuidv7", "current_schema_version": 1, "schemas": { "1": "https://contracts.aurumalpha.dev/forms/form-definition/v1.schema.json" }, "indexes": [], "max_document_bytes": 262144 }
+        ]
+      }
+    },
+    {
+      "case": "a-search-engine-declared-primary-is-rejected-by-the-profile",
+      "valid": false,
+      "judgedBy": "profile",
+      "why": "DS2 / DS9: the engine's profile admits it as derived only, because a search index is a projection by construction. The schema accepts this declaration; the runner reads storage-profiles.json and refuses it. Recorded so the file does not imply the schema covers it.",
+      "admission": {
+        "schema_version": 1,
+        "service": "/invoicing",
+        "engine": "opensearch",
+        "role": "primary",
+        "reason": { "kind": "query_shape", "statement": "Users search invoices by relevance across free text with facets, which the relational text index cannot rank or facet." },
+        "backup": "snapshot",
+        "credentials": { "runtime": "SEARCH_URL", "declaration": "SEARCH_DECLARATION_URL" },
+        "collections": [
+          { "name": "invoice_search", "scoped": true, "isolation_levels": ["tenant"], "id_source": "entity_public_id", "current_schema_version": 1, "schemas": { "1": "https://contracts.aurumalpha.dev/invoicing/invoice-search/v1.schema.json" }, "indexes": [], "max_document_bytes": 65536 }
+        ]
+      }
+    },
+    {
+      "case": "a-current-version-with-no-schema-is-rejected-by-the-runner",
+      "valid": false,
+      "judgedBy": "runner",
+      "why": "DS6: the writer writes current_schema_version, so that version has a schema the reader validates against. JSON Schema cannot cross-reference an integer to a map key; the runner does.",
+      "admission": {
+        "schema_version": 1,
+        "service": "/forms",
+        "engine": "mongodb",
+        "role": "primary",
+        "reason": { "kind": "query_shape", "statement": "The product filters thousands of user-designed form definitions per tenant by field type, label and validation rule." },
+        "backup": "snapshot",
+        "credentials": { "runtime": "FORMS_DB_URL", "declaration": "FORMS_DB_DECLARATION_URL" },
+        "collections": [
+          { "name": "form_definitions", "scoped": true, "isolation_levels": ["tenant"], "id_source": "minted_uuidv7", "current_schema_version": 3, "schemas": { "1": "https://contracts.aurumalpha.dev/forms/form-definition/v1.schema.json", "2": "https://contracts.aurumalpha.dev/forms/form-definition/v2.schema.json" }, "indexes": [], "max_document_bytes": 262144 }
+        ]
+      }
+    },
+    {
+      "case": "one-credential-for-runtime-and-declaration-is-rejected-by-the-runner",
+      "valid": false,
+      "judgedBy": "runner",
+      "why": "DS7 / SD3's split: the credential that creates collections and indexes is not the one the server holds. Two names that are the same name is one credential, and JSON Schema cannot compare two strings; the runner does.",
+      "admission": {
+        "schema_version": 1,
+        "service": "/forms",
+        "engine": "mongodb",
+        "role": "primary",
+        "reason": { "kind": "query_shape", "statement": "The product filters thousands of user-designed form definitions per tenant by field type, label and validation rule." },
+        "backup": "snapshot",
+        "credentials": { "runtime": "FORMS_DB_URL", "declaration": "FORMS_DB_URL" },
+        "collections": [
+          { "name": "form_definitions", "scoped": true, "isolation_levels": ["tenant"], "id_source": "minted_uuidv7", "current_schema_version": 1, "schemas": { "1": "https://contracts.aurumalpha.dev/forms/form-definition/v1.schema.json" }, "indexes": [], "max_document_bytes": 262144 }
+        ]
+      }
+    },
+    {
+      "case": "a-scoped-index-not-led-by-the-isolation-field-is-rejected-by-the-runner",
+      "valid": false,
+      "judgedBy": "runner",
+      "why": "DS4 / SD10: every index on a scoped collection leads with the outermost isolation field, or the joinless predicate scans every tenant's documents. This is the enumeration gate's first assertion, made here over the declaration.",
+      "admission": {
+        "schema_version": 1,
+        "service": "/forms",
+        "engine": "mongodb",
+        "role": "primary",
+        "reason": { "kind": "query_shape", "statement": "The product filters thousands of user-designed form definitions per tenant by field type, label and validation rule." },
+        "backup": "snapshot",
+        "credentials": { "runtime": "FORMS_DB_URL", "declaration": "FORMS_DB_DECLARATION_URL" },
+        "collections": [
+          { "name": "form_definitions", "scoped": true, "isolation_levels": ["tenant"], "id_source": "minted_uuidv7", "current_schema_version": 1, "schemas": { "1": "https://contracts.aurumalpha.dev/forms/form-definition/v1.schema.json" }, "indexes": [ { "name": "by_updated", "fields": [ { "field": "updated_at", "order": "desc" } ] } ], "max_document_bytes": 262144 }
+        ]
+      }
+    }
+  ],
+  "envelopes": [
+    {
+      "case": "a-complete-scoped-document-is-accepted",
+      "valid": true,
+      "collection": { "scoped": true, "max_document_bytes": 262144 },
+      "why": "DS5 in full: the five fields, a UUIDv7 id, canonical instants, a body beyond the envelope.",
+      "document": {
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "schema_version": 2,
+        "created_at": "2026-03-04T09:12:44.108Z",
+        "updated_at": "2026-03-04T09:12:44.108Z",
+        "title": "Intake form",
+        "fields": []
+      }
+    },
+    {
+      "case": "an-unscoped-document-without-a-tenant-is-accepted",
+      "valid": true,
+      "collection": { "scoped": false, "max_document_bytes": 65536 },
+      "why": "DS5: tenant_id is absent only where the admission marks the collection unscoped, and this one is.",
+      "document": {
+        "id": "cur_V1StGXR8Z5jdHi6B",
+        "schema_version": 1,
+        "created_at": "2026-03-04T09:12:44.108Z",
+        "updated_at": "2026-03-04T09:12:44.108Z",
+        "code": "EUR",
+        "exponent": 2
+      }
+    },
+    {
+      "case": "a-scoped-document-without-a-tenant-is-rejected-by-the-declaration",
+      "valid": false,
+      "judgedBy": "declaration",
+      "why": "DS4: a scoped collection's document carries tenant_id or it is invisible to every isolation predicate and visible to a missed one. The envelope schema cannot know the collection is scoped; the runner reads the collection and refuses.",
+      "collection": { "scoped": true, "max_document_bytes": 262144 },
+      "document": {
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "schema_version": 2,
+        "created_at": "2026-03-04T09:12:44.108Z",
+        "updated_at": "2026-03-04T09:12:44.108Z",
+        "title": "Intake form",
+        "fields": []
+      }
+    },
+    {
+      "case": "an-integer-id-is-rejected",
+      "valid": false,
+      "collection": { "scoped": true, "max_document_bytes": 262144 },
+      "why": "IP1 through DS4: an integer is an internal key, or an engine's counter, and neither is a public id.",
+      "document": {
+        "id": 4711,
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "schema_version": 2,
+        "created_at": "2026-03-04T09:12:44.108Z",
+        "updated_at": "2026-03-04T09:12:44.108Z",
+        "title": "Intake form",
+        "fields": []
+      }
+    },
+    {
+      "case": "an-engine-object-id-string-passes-the-schema",
+      "valid": true,
+      "collection": { "scoped": true, "max_document_bytes": 262144 },
+      "schemaCannotCatch": "DS4's rule against the engine's generated identifier. A 24-character hex ObjectId is a well-formed nanoid to the IP2 pattern, and no schema can tell them apart. Recorded as passing so the file does not imply coverage it lacks; the admission's id_source and the review question are the gate.",
+      "document": {
+        "id": "66b2f0c3e4a1b2c3d4e5f607",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "schema_version": 2,
+        "created_at": "2026-03-04T09:12:44.108Z",
+        "updated_at": "2026-03-04T09:12:44.108Z",
+        "title": "Intake form",
+        "fields": []
+      }
+    },
+    {
+      "case": "an-offset-timestamp-is-rejected",
+      "valid": false,
+      "collection": { "scoped": true, "max_document_bytes": 262144 },
+      "why": "IP4 through DS5: stored instants are UTC with a Z suffix at the pinned precision. An offset form makes equal instants unequal strings.",
+      "document": {
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "schema_version": 2,
+        "created_at": "2026-03-04T11:12:44.108+02:00",
+        "updated_at": "2026-03-04T09:12:44.108Z",
+        "title": "Intake form",
+        "fields": []
+      }
+    },
+    {
+      "case": "a-missing-schema-version-is-rejected",
+      "valid": false,
+      "collection": { "scoped": true, "max_document_bytes": 262144 },
+      "why": "DS6: a document that does not say which schema it was written under cannot be read except on a guess, and a guess is a corruption on the next write.",
+      "document": {
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "created_at": "2026-03-04T09:12:44.108Z",
+        "updated_at": "2026-03-04T09:12:44.108Z",
+        "title": "Intake form",
+        "fields": []
+      }
+    },
+    {
+      "case": "a-zero-schema-version-is-rejected",
+      "valid": false,
+      "collection": { "scoped": true, "max_document_bytes": 262144 },
+      "why": "DS6: versions start at 1. Zero is the value a serialiser writes for an unset integer, which is a missing version wearing a number.",
+      "document": {
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "schema_version": 0,
+        "created_at": "2026-03-04T09:12:44.108Z",
+        "updated_at": "2026-03-04T09:12:44.108Z",
+        "title": "Intake form",
+        "fields": []
+      }
+    },
+    {
+      "case": "body-fields-beyond-the-envelope-are-accepted",
+      "valid": true,
+      "collection": { "scoped": true, "max_document_bytes": 262144 },
+      "why": "DS5: the envelope is open. The body is the collection's own schema's business, and an envelope that closed itself would forbid every document from having content.",
+      "document": {
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "client_org_id": "01923e01-5555-7000-8000-000000000021",
+        "schema_version": 2,
+        "created_at": "2026-03-04T09:12:44.108Z",
+        "updated_at": "2026-03-05T16:40:01.000Z",
+        "title": "Intake form",
+        "description": "Collected at first visit",
+        "fields": [ { "name": "dob", "type": "date", "required": true } ]
+      }
+    },
+    {
+      "case": "a-document-over-its-ceiling-is-rejected-by-the-declaration",
+      "valid": false,
+      "judgedBy": "declaration",
+      "why": "DS10: the collection's ceiling is 64 KiB and this document serialises to 3 MiB. It is a blob that escaped its standard, and the writer refuses it rather than truncating it. The schema cannot weigh a document; the runner compares bytes to the collection's ceiling.",
+      "collection": { "scoped": true, "max_document_bytes": 65536 },
+      "bytes": 3145728,
+      "document": {
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "schema_version": 1,
+        "created_at": "2026-03-04T09:12:44.108Z",
+        "updated_at": "2026-03-04T09:12:44.108Z",
+        "attachment_base64": "<three mebibytes of encoded PDF elided>"
+      }
+    }
+  ],
+  "evolution": [
+    {
+      "case": "a-current-version-document-is-accepted",
+      "fixture": "form_definitions",
+      "reader": { "current": 2 },
+      "document": { "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "schema_version": 2, "created_at": "2026-03-04T09:12:44.108Z", "updated_at": "2026-03-04T09:12:44.108Z", "title": "Intake form", "fields": [] },
+      "expect": { "verdict": "accept", "version": 2, "ignored": [] },
+      "why": "DS6: the version the writer writes, every required field present and typed."
+    },
+    {
+      "case": "a-previous-version-document-is-upgraded-on-read",
+      "fixture": "form_definitions",
+      "reader": { "current": 2 },
+      "document": { "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "schema_version": 1, "created_at": "2026-03-04T09:12:44.108Z", "updated_at": "2026-03-04T09:12:44.108Z", "title": "Intake form" },
+      "expect": { "verdict": "upgrade", "version": 2, "defaults_applied": ["fields"], "ignored": [] },
+      "why": "DS6: the reader accepts N-1 and supplies N's defaults on read. It does not rewrite the document; the backfill (DS7) does."
+    },
+    {
+      "case": "an-unknown-optional-field-is-ignored",
+      "fixture": "form_definitions",
+      "reader": { "current": 2 },
+      "document": { "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "schema_version": 2, "created_at": "2026-03-04T09:12:44.108Z", "updated_at": "2026-03-04T09:12:44.108Z", "title": "Intake form", "fields": [], "layout": "two_column" },
+      "expect": { "verdict": "accept", "version": 2, "ignored": ["layout"] },
+      "why": "DS6 and PC6, and a VERIFIED DETECTOR. Within a version, change is additive: a newer writer of the same version added an optional field this reader has not been taught. A reader that closes its schema - additionalProperties false against the version's field list - refuses this document and passes every other case in this part. That reader has made every additive change a breaking one, and this case fails it by name.",
+      "detector": true
+    },
+    {
+      "case": "a-newer-version-is-refused-by-name",
+      "fixture": "form_definitions",
+      "reader": { "current": 2 },
+      "document": { "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "schema_version": 3, "created_at": "2026-03-04T09:12:44.108Z", "updated_at": "2026-03-04T09:12:44.108Z", "title": "Intake form", "fields": [], "owner_id": "01923e01-7777-7000-8000-000000000042" },
+      "expect": { "verdict": "refuse", "reason": "unknown_schema_version", "version": 3 },
+      "why": "DS6: a version above the window may carry a required field whose meaning the reader cannot know. It is refused with the version named, never read on a guess."
+    },
+    {
+      "case": "a-version-below-the-window-is-refused-by-name",
+      "fixture": "form_definitions",
+      "reader": { "current": 3 },
+      "document": { "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "schema_version": 1, "created_at": "2026-03-04T09:12:44.108Z", "updated_at": "2026-03-04T09:12:44.108Z", "title": "Intake form" },
+      "expect": { "verdict": "refuse", "reason": "unknown_schema_version", "version": 1 },
+      "why": "DS6 / DS7: a reader at 3 accepts 3 and 2. A version-1 document is one the backfill should have rewritten before acceptance of 1 was dropped, and refusing it is what makes that omission visible."
+    },
+    {
+      "case": "a-missing-required-field-is-refused",
+      "fixture": "form_definitions",
+      "reader": { "current": 2 },
+      "document": { "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "schema_version": 2, "created_at": "2026-03-04T09:12:44.108Z", "updated_at": "2026-03-04T09:12:44.108Z", "title": "Intake form" },
+      "expect": { "verdict": "refuse", "reason": "missing_required_field", "field": "fields" },
+      "why": "DS6: the document claims version 2 and lacks a field version 2 requires. It is not a version-1 document mislabelled; it is a document that fails its own schema, and the reader says which field."
+    },
+    {
+      "case": "a-missing-schema-version-is-refused",
+      "fixture": "form_definitions",
+      "reader": { "current": 2 },
+      "document": { "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "created_at": "2026-03-04T09:12:44.108Z", "updated_at": "2026-03-04T09:12:44.108Z", "title": "Intake form", "fields": [] },
+      "expect": { "verdict": "refuse", "reason": "missing_schema_version" },
+      "why": "DS5 / DS6: the envelope is checked before the body. A document with no version is not assumed to be the current one."
+    },
+    {
+      "case": "a-mistyped-required-field-is-refused",
+      "fixture": "form_definitions",
+      "reader": { "current": 2 },
+      "document": { "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "schema_version": 2, "created_at": "2026-03-04T09:12:44.108Z", "updated_at": "2026-03-04T09:12:44.108Z", "title": 42, "fields": [] },
+      "expect": { "verdict": "refuse", "reason": "type_mismatch", "field": "title" },
+      "why": "DS6: the reader validates against the version's schema before the body of any handler runs (057 JB1's rule applied to a document). A retyped field is a new version, not a tolerated variant."
+    }
+  ],
+  "rollouts": [
+    {
+      "case": "a-three-release-version-bump-is-safe",
+      "store": [1],
+      "steps": [
+        { "deploy": { "release": "r1", "writes": 1, "accepts": [1] } },
+        { "deploy": { "release": "r2", "writes": 1, "accepts": [1, 2] } },
+        { "deploy": { "release": "r3", "writes": 2, "accepts": [1, 2] } },
+        { "backfill": { "to": 2 } },
+        { "deploy": { "release": "r4", "writes": 2, "accepts": [2, 3] } }
+      ],
+      "expect": { "safe": true },
+      "why": "DS6's three releases, in order: accept the new version, then write it and backfill, then drop the old one. At no step does a live reader meet a version it refuses."
+    },
+    {
+      "case": "accepting-and-writing-a-new-version-in-one-release-is-unsafe",
+      "store": [1],
+      "steps": [
+        { "deploy": { "release": "r1", "writes": 1, "accepts": [1] } },
+        { "deploy": { "release": "r2", "writes": 2, "accepts": [1, 2] } }
+      ],
+      "expect": { "safe": false, "at": "r2", "reason": "rolling_reader_refuses" },
+      "why": "DS6 / SD4's reason: during r2's rolling deployment r1's replicas are still reading, and r2 is writing a version r1 refuses. The release fails during its own rollout, and the rollback to r1 fails the same way against what r2 wrote."
+    },
+    {
+      "case": "dropping-the-old-version-before-the-backfill-is-unsafe",
+      "store": [1],
+      "steps": [
+        { "deploy": { "release": "r1", "writes": 1, "accepts": [1] } },
+        { "deploy": { "release": "r2", "writes": 1, "accepts": [1, 2] } },
+        { "deploy": { "release": "r3", "writes": 2, "accepts": [1, 2] } },
+        { "deploy": { "release": "r4", "writes": 2, "accepts": [2, 3] } }
+      ],
+      "expect": { "safe": false, "at": "r4", "reason": "store_version_refused" },
+      "why": "DS6 / DS7: the store still holds version-1 documents because the backfill never ran to nothing-left, and r4 refuses them. The third release waits for the backfill's report, not for the calendar."
+    },
+    {
+      "case": "an-additive-field-needs-no-version-and-no-dance",
+      "store": [1],
+      "steps": [
+        { "deploy": { "release": "r1", "writes": 1, "accepts": [1] } },
+        { "deploy": { "release": "r2", "writes": 1, "accepts": [1], "adds_optional_field": "layout" } }
+      ],
+      "expect": { "safe": true },
+      "why": "DS6 / PC6: an optional field is added within the version. r1's readers ignore it (the evolution detector), r2's readers know it, and nothing changes hands."
+    }
+  ]
+}

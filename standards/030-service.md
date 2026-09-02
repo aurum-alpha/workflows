@@ -148,8 +148,7 @@ public id (`020-identifiers.md` IP1), never by dumping its contents. Name the
 field that failed validation, not the personal data that failed it. A
 secret, a token, a credential, a full connection string with its password,
 or protected personal data appearing in a log line is a defect of its own,
-and the redaction rules belong to the [secrets
-standard](000-platform.md#the-capability-roster). *What* failed and *why* is
+and the redaction rules belong to the [`032-secrets.md`](032-secrets.md). *What* failed and *why* is
 almost never the sensitive part; the payload is.
 
 ### SC3. Configuration comes from the environment, and absence blocks serving
@@ -175,8 +174,7 @@ Config lives in environment variables, per
   only its inputs differed. A service that behaves differently because it
   guessed where it was running has an untestable branch in it.
 
-Secrets arrive the same way and are governed by the [secrets
-standard](000-platform.md#the-capability-roster); nothing here permits logging
+Secrets arrive the same way and are governed by the [`032-secrets.md`](032-secrets.md); nothing here permits logging
 one.
 
 ### SC4. SIGTERM means drain
@@ -216,8 +214,7 @@ disclosure: it tells an unauthenticated reader exactly which published
 vulnerabilities to try. It is accepted here because incident response needs
 it more than an attacker does, and because the alternative — provenance
 only in logs — puts it behind exactly the access an incident responder may
-be waiting on. Where a repository's threat model disagrees, the [security
-baseline standard](000-platform.md#the-capability-roster) governs endpoint
+be waiting on. Where a repository's threat model disagrees, the [`085-security-baseline.md`](085-security-baseline.md) governs endpoint
 exposure, and the startup log line still satisfies this rule.
 
 ### SC6. Start fast, degrade rather than block, and never crashloop
@@ -335,8 +332,7 @@ splitting it across two documents is how two answers to one question get
 born. The proposal that raised this standard listed it; this is the
 scope decision, stated rather than silently dropped.
 
-Rate limiting and response headers belong to the [security baseline
-standard](000-platform.md#the-capability-roster) for the same reason.
+Rate limiting and response headers belong to the [`085-security-baseline.md`](085-security-baseline.md) for the same reason.
 
 ## The artifacts
 

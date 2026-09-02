@@ -11,10 +11,10 @@ document says how they are stored.
 This document governs **structured data in a relational store**: how queries
 are written, how the schema changes, how tenants are kept apart, and what the
 running service is allowed to hold in its hand when it talks to the database.
-Blob and file storage is the [blob storage
-standard](000-platform.md#the-capability-roster)'s, and document stores are the
-[document storage standard](000-platform.md#the-capability-roster)'s; neither is
-covered here, and the rules below do not transfer to them by analogy.
+Blob and file storage is [`026-blob-storage.md`](026-blob-storage.md)'s, and
+document stores are [`027-document-storage.md`](027-document-storage.md)'s;
+neither is covered here, and the rules below do not transfer to them by
+analogy; 027 DS3 states which transfer, by argument.
 
 ## Why this exists
 
@@ -420,7 +420,7 @@ short because a longer version would be restating a factor:
 - **The connection string comes from the environment** per
   [factor III](https://12factor.net/config) and
   [`030-service.md`](030-service.md) SC3, and the credential inside it is a
-  secret delivered as the [secrets standard](000-platform.md#the-capability-roster)
+  secret delivered as the [`032-secrets.md`](032-secrets.md)
   says. Nothing in the repository contains one.
 - **The runtime role is the least the service needs.** It cannot create or
   alter tables (SD3), cannot bypass isolation (SD6), and holds only the
@@ -441,7 +441,7 @@ short because a longer version would be restating a factor:
 Backup, restore and recovery objectives are deliberately not here. They span
 every kind of storage a product has — structured, blob and document — and a
 rule stated for one would be restated for the others; they belong to the
-[backup and recovery standard](000-platform.md#the-capability-roster). What this
+[`028-backup-and-recovery.md`](028-backup-and-recovery.md). What this
 document holds is the one dependency: a restore lands the schema at some past
 migration state, and SD2's convergence is what makes running `migrate` against
 it safe.
@@ -542,7 +542,9 @@ then finds nothing to do, which SD2's convergence guarantees is safe.
 ### SD12. A deleted row is gone
 
 **Hard delete is the default.** When a user deletes a thing, the row is
-removed. When a user leaves, their data is removed. The argument is compliance
+removed. When a user leaves, their data is removed. A row that owns an object
+deletes the object with it, through the outbox
+([`026-blob-storage.md`](026-blob-storage.md) BS8). The argument is compliance
 and security before it is engineering: *we do not hold data after its owner
 asked us not to* is a sentence a product can defend to a regulator, an auditor
 and a client, and *we mark it deleted and keep it* is a sentence that has to be
@@ -561,8 +563,7 @@ and why in its **Conventions**, and three rules hold on them:
   a fourth level.
 - **A soft-deleted row is still personal data.** An erasure request reaches it
   as it reaches any other row, in the redaction shape [`080-audit.md`](080-audit.md)
-  AE7 defines and under the [data-subject-rights
-  standard](000-platform.md#the-capability-roster). Soft delete defers deletion;
+  AE7 defines and under the [`082-data-subject-rights.md`](082-data-subject-rights.md). Soft delete defers deletion;
   it does not exempt from it.
 - **Ordinary queries exclude it in the query text**, per SD1 — a
   `WHERE deleted_at IS NULL` a reviewer can see, never a global filter a library

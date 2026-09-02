@@ -128,6 +128,9 @@ share an image; where one differs, the image splits. Applied to workers:
 - The **migrate image**, `<service>-migrate`, stands alone. 025 SD3
   gives it the migration credential and nothing else, and no other job may
   hold that credential.
+- The **recovery image**, `<service>-recovery`, stands alone: it alone holds
+  the restore credential ([`028-backup-and-recovery.md`](028-backup-and-recovery.md)
+  BR3).
 - A service's **ordinary one-shot jobs**, which run against the service's data
   with the service's runtime credential and the service's dependency closure,
   share one one-shot image, `<service>-jobs`, and the job is selected by
@@ -275,8 +278,14 @@ SC3 requires of the server. A worker's configuration surface is the union of
 what its jobs declare they need, which is one of the three things WK2 splits
 images on. The pool and the ordinary one-shot image carry
 the service's runtime credential. The migrate image carries the migration
-credential and no other. No worker image carries a credential for a database
-it does not own, because 057 JB9 gives a job no reason to have one.
+credentials — the relational one and, where
+[`027-document-storage.md`](027-document-storage.md) admits a document store,
+that store's declaration credential (027 DS7) — and no runtime credential. The
+recovery image carries the restore credential and the runtime credential for
+its run record, and no other image carries the restore credential
+([`028-backup-and-recovery.md`](028-backup-and-recovery.md) BR3). No worker
+image carries a credential for a database it does not own, because 057 JB9
+gives a job no reason to have one.
 
 ## The artifacts
 

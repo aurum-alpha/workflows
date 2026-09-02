@@ -355,9 +355,11 @@ presented as if they do. When a data subject's erasure request is honoured, the
 the sequence, the accountability — and what is lost is the identification, which
 is what was asked for. This is the one modification permitted against AE4's
 append-only rule; it is a defined operation with its own audit event, not an
-`UPDATE` available to application code. The request that triggers it belongs to
-the [data-subject-rights
-standard](000-platform.md#the-capability-roster).
+`UPDATE` available to application code. The request that triggers it is
+[`082-data-subject-rights.md`](082-data-subject-rights.md)'s. The redaction is
+re-applied after any restore by the erasure ledger's replay
+([`028-backup-and-recovery.md`](028-backup-and-recovery.md) BR6), so a restore
+from a copy taken before the request does not undo it.
 
 ### AE8. The event is written with the change, or the failure is loud
 

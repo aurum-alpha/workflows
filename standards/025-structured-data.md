@@ -257,7 +257,7 @@ bounded batches, resumable, observable — that fills it while the service keeps
 serving; and a later migration that adds `NOT NULL` once the job reports the
 column full. The migration changes shape, the job moves data, and the shape
 change is what SD3's step applies at rollout, in seconds. How the job itself is
-built, registered and run is the [maintenance jobs
+built, registered and run is the [jobs
 standard](000-platform.md#the-capability-roster)'s; what this rule fixes is that
 rows do not move inside `migrate`.
 

@@ -156,12 +156,13 @@ let four languages interoperate. Factor III says config lives in the
 environment; it does not say what the variables are called. That pinning is
 ours, and it is the only part that is.
 
-**Known departures: none today.** One tension is open and unsettled rather
-than assumed: [factor XII](https://12factor.net/admin-processes) says
-admin and management tasks run as one-off processes, while the maintenance
-jobs capability on the platform roster is heading toward a registered Job
-interface inside the service. Whichever way that lands, the maintenance jobs
-standard states the choice against factor XII rather than around it.
+**Known departures: none today.** One tension that was open is settled the
+way [factor XII](https://12factor.net/admin-processes) states it: admin and
+management tasks run as one-off processes, and the jobs and workers
+capabilities on the platform roster take exactly that shape, a one-shot worker
+built from the same release as the servers, rather than an interface
+registered inside a server. Their standards state that against factor XII
+rather than around it.
 
 ## How these documents are written
 

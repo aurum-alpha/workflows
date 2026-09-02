@@ -161,6 +161,158 @@ while emitting the new. A body of specifications without a change discipline
 re-creates the drift problem one level up, with the added indignity that the
 documents were supposed to be the fix.
 
+## Terms
+
+The words the standards share, defined once. A standard uses these words in
+these senses and defines only the words that are its own. Where a term's rules
+live in a standard, the entry points there; where that standard is not yet
+written, it points at the roster row.
+
+### Structure
+
+- **Platform.** The body of standards, contracts and shared workflows in this
+  repository, together with the tools that enforce them. Not a runtime and not
+  a library (PC1).
+- **Portfolio.** The set of repositories the platform's standards apply to,
+  present and future. A standard is written for the portfolio and never for any
+  member of it (the charter's D4).
+- **Repository.** The unit of versioning and of building. One repository has
+  one version, and one build run produces every artifact it ships at that
+  version ([`010-ci.md`](010-ci.md), Principles 7 and 15). A repository may
+  hold one service or many.
+- **Service.** A collection, never a process: the servers, workers, jobs and
+  backing resources that together provide one capability under one name and
+  one ownership. A service has zero or more servers, zero or more workers, and
+  zero or more backing resources; a service with no database is an ordinary
+  service. Where it owns a database it owns it exclusively, and every process
+  that holds that database's credential belongs to the service
+  ([`025-structured-data.md`](025-structured-data.md) SD13). A service lives
+  in exactly one repository, because every process that touches one schema
+  must be built beside that schema's migrations, in one run, at one version;
+  a repository may hold several services. Services integrate only through a
+  server's interface or through messages, never through one another's
+  resources.
+- **Process.** A running instance of an image, or of a command in one, with a
+  lifecycle of its own: it starts, becomes ready, receives `SIGTERM`, and
+  exits. The unit [`030-service.md`](030-service.md)'s rules bind. A process is
+  of exactly one type, server or worker, never both. Several processes of one
+  type are replicas.
+- **Server.** A long-running process that handles network requests on demand,
+  synchronously, and runs no jobs. A server is **stateless** when nothing it
+  holds needs to survive its restart, because its state lives in backing
+  resources; the servers the portfolio writes are stateless. A server is
+  **stateful** when it maintains state across restarts and is itself where that
+  state lives: a database engine, a cache, an object store. Stateful servers
+  are almost always third-party engines attached as backing resources rather
+  than servers the portfolio writes.
+- **Worker.** A process, long-running or short-running, that executes jobs
+  outside any request, in response to a trigger. The long-running form, the
+  **pool**, consumes a queue and is scaled by replicas against its backlog. The
+  short-running form, the **one-shot**, runs one job and exits with the outcome
+  as its exit code. Workers are the [workers
+  standard](#the-capability-roster)'s.
+- **Client.** Anything that initiates a request to a server: a browser running
+  the web client ([`090-web-client.md`](090-web-client.md)), another service's
+  process, a command-line tool, a third party. A client carries an identity
+  ([`060-auth.md`](060-auth.md)) and is authorized
+  ([`070-rbac.md`](070-rbac.md)); it never holds a credential to a service's
+  resources.
+- **Backing resource.** Anything a process consumes over the network as an
+  attached resource in [factor IV](https://12factor.net/backing-services)'s
+  sense: a database, a cache, a message transport, object storage, a mail
+  relay, a third-party API. Attached by configuration and never by code
+  ([`030-service.md`](030-service.md) SC3).
+- **Database.** The structured store a service owns, if it owns one: one
+  schema, one writer, one credential, private to the service
+  ([`025-structured-data.md`](025-structured-data.md)).
+
+### Delivery
+
+- **Artifact.** Any output of a build run: an image, a browser bundle, a
+  package, a rendered manifest. Every artifact carries the repository's
+  version.
+- **Image.** An OCI container image, the unit of packaging and deployment. An
+  image does one thing: it is a server, or a worker, or the migrate step, and
+  never more than one of those ([`010-ci.md`](010-ci.md); the [workers
+  standard](#the-capability-roster)).
+- **Build run.** One execution of a repository's CI on one commit, producing
+  every artifact the repository ships and testing them together. The artifacts
+  of one run share a provenance and assert compatibility with one another by
+  that fact ([`010-ci.md`](010-ci.md), Principle 7).
+- **Version.** The repository's, in `.version`, SemVer, moved by a release pull
+  request that touches nothing else. Never an artifact's
+  ([`010-ci.md`](010-ci.md), Principle 15).
+- **Release.** The act of putting one version into one environment: the run's
+  artifacts are published, the release-triggered jobs run as steps in declared
+  order with the migrate step first, and the servers and workers roll out. Also
+  the name of that trigger.
+- **Environment.** A deployment target, such as development, staging or
+  production, differing from every other only in configuration
+  ([factor X](https://12factor.net/dev-prod-parity)).
+- **Configuration.** The values a process reads from its environment at start
+  ([factor III](https://12factor.net/config);
+  [`030-service.md`](030-service.md) SC3). A process's configuration surface is
+  the set it reads.
+- **Credential.** A secret that grants a process access to a backing resource.
+  One credential per resource per service; the migration credential separate
+  from the runtime credential; and a database's credential present in the
+  deployables of one repository and no other, which is the checkable edge of a
+  service.
+- **Runner.** The platform component that starts a one-shot worker on a tick,
+  at a release step, or by an operator's hand. The platform states what a
+  runner must do and builds none; every runtime it could sit on supplies one.
+
+### Work
+
+- **Job.** The definition of a bounded task: named, with an input, a key, a
+  declared class, and an outcome. A job is never a process; it is packaged only
+  by being inside a worker. Jobs are the [jobs
+  standard](#the-capability-roster)'s.
+- **Run.** One execution of a job by a worker, with a run id, a trigger, a key,
+  and an outcome, and a record of all four in the service's database.
+- **Trigger.** What causes a run. There are four: a **message** arriving, a
+  **tick** of a schedule, a **release** step, and an **operator**. A stream of
+  triggers, which is only ever messages, goes to a pool; a single invocation
+  goes to a one-shot.
+- **Event.** An occurrence a service reports as a fact: past tense, about one
+  entity. **Message.** An event in its envelope, on a transport, with an
+  identity: a CloudEvent under the profile of
+  [`055-messaging.md`](055-messaging.md) AM1. The two words name the fact and
+  its carriage; 055 says "message" wherever the envelope is meant.
+- **Transport.** The mechanism that carries messages: a broker, a cloud queue,
+  a stream, a table in the service's own database, an HTTP push. The transport
+  is not the contract ([`055-messaging.md`](055-messaging.md) AM2).
+- **Queue.** The buffer, on a transport, from which a pool consumes, delivering
+  each message at least once. A queue belongs to one service.
+- **Outbox.** The table in a service's database where a message is written in
+  the same transaction as the change that caused it, and from which a relay
+  job publishes it ([`055-messaging.md`](055-messaging.md) AM4). **Inbox.**
+  The table where a consumer records each `(source, id)` it has processed, in
+  the same transaction as the effect ([`055-messaging.md`](055-messaging.md)
+  AM3).
+- **Schedule.** A five-field cron expression in UTC, declared beside a job in
+  the repository and rendered to the runner at release. **Tick.** One firing
+  of a schedule at one scheduled instant, identified by the job's name and
+  that instant, so two firings of one tick are one piece of work.
+- **Operator.** A person with the standing to run a job by hand, deploy a
+  release, or intervene in a running system. The fourth trigger.
+- **Migration.** One ordered `.sql` file that moves a database's schema forward
+  and converges if run again. **The migrate step** is the release-triggered
+  job that applies the pending ones, run by a one-shot worker in its own image
+  with its own credential ([`025-structured-data.md`](025-structured-data.md)
+  SD2, SD3).
+- **Backfill.** A job that populates data after an expand migration: long,
+  single-flight, resumable, rate-bounded, and never inside the migration.
+
+### Governance
+
+The charter ([`../README.md`](../README.md)) defines the words about the
+documents themselves: **standard**, **rule**, **contract**, **corpus**,
+**gate**, and the enforcement **tiers**. They are not restated here.
+**Capability**, in this document's sense, is one of the concerns in the roster
+below: something every product needs, nothing in any product's domain has an
+opinion about, and the platform therefore decides once.
+
 ## The capability roster
 
 Every platform capability these standards have an opinion on, or has decided to
@@ -190,7 +342,8 @@ the work is an issue in this repository.
 | Document storage | When a document store is admitted beside the relational store, and which of the structured-data rules do not transfer | not yet written |
 | Backup and recovery | Restore is exercised, not assumed; recovery objectives stated per product; spans structured, blob and document storage | not yet written |
 | Async messaging | CloudEvents 1.0 profile as the envelope; at-least-once with `(source, id)` deduplication through inbox and outbox; workers, never timers; Standard Webhooks signing at the edge | [`055-messaging.md`](055-messaging.md) |
-| Maintenance jobs | The Job interface contract: registration, single-flight, run observability — and where it lands against [factor XII](https://12factor.net/admin-processes) | not yet written |
+| Jobs | The job as an interface: a named, bounded task with an input, a key, a declared class and an outcome; three duplicate policies; a run record; single-flight in the job; absence as the failure of a periodic job | not yet written |
+| Workers | Two worker models, the pool and the one-shot, packaged per service and started by a runner the platform specifies and does not build — [factor XII](https://12factor.net/admin-processes) made specific | not yet written |
 | Audit events | Internal event contract: application data and not a log line; actor separate from target; the action string is the permission string; a stated floor of what must emit; OCSF at the export boundary rather than as the record | [`080-audit.md`](080-audit.md) |
 | Security baseline | Response-header set, scanning, image pinning, secrets doctrine | not yet written |
 | Feature flags | Evaluation contract; standard-first (OpenFeature is the candidate) | not yet written |

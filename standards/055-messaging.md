@@ -14,7 +14,7 @@ later, a webhook that leaves for a third party or arrives from one. It defines
 what a message is, what a consumer owes it, how a producer emits it without
 losing it, and how it is signed at the edge. **What it does not define is the
 schedule.** Work that runs *because it is Tuesday* — a nightly report, a
-retention sweep, a backfill — is the [maintenance jobs
+retention sweep, a backfill — is the [jobs
 standard](000-platform.md#the-capability-roster)'s; that standard says how such
 work is registered and triggered, and the work it triggers is a consumer under
 the rules here. Notifications to people ride this envelope and are the
@@ -298,7 +298,7 @@ which is what at-least-once buys.
 
 Work that runs *on a schedule* rather than *on a message* — the nightly report,
 the retention sweep, the backfill [`025-structured-data.md`](025-structured-data.md)
-SD4 sends here — is triggered by the [maintenance jobs
+SD4 sends here — is triggered by the [jobs
 standard](000-platform.md#the-capability-roster)'s mechanism, and what it
 triggers is a consumer under this rule. The two documents meet at the message:
 that standard says when, this one says how.

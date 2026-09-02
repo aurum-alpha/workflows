@@ -1,0 +1,39 @@
+{
+  "contract": "jobs",
+  "schemaVersion": 1,
+  "description": "standards/057-jobs.md JB5 as data: the one table every service keeps of its job runs, one row per run, written by the worker around the body. Column types come from contracts/structured-data/storage-profiles.json per engine; this file names the primitive each column is and adds only the one primitive that file does not carry, json. The row is the mechanism for JB2's claim, JB6's lock and JB8's freshness check, and it is the authority over any history a runner keeps.",
+  "table": "job_runs",
+  "outcomes": ["succeeded", "failed", "skipped", "unknown", "expired"],
+  "triggers": ["message", "tick", "deployment", "operator"],
+  "workers": ["pool", "one_shot"],
+  "columns": {
+    "run_id": { "primitive": "uuidv7PublicId", "nullable": false, "why": "The run's identity, minted by the worker; the invocation id for an invoked job. Carried as job.run_id in every log line and as faas.invocation_id on the span." },
+    "job_name": { "primitive": "text", "nullable": false, "why": "The declaration's name. With job_key, the unit JB2 deduplicates." },
+    "job_key": { "primitive": "text", "nullable": false, "why": "JB2's key: '<source>:<id>' for a message, '<job>@<tick_at>' for a tick, '<job>@<version>' for a deployment, the supplied or minted key for an operator." },
+    "trigger": { "primitive": "text", "nullable": false, "enum": ["message", "tick", "deployment", "operator"], "why": "Which of the four triggers started the run." },
+    "worker": { "primitive": "text", "nullable": false, "enum": ["pool", "one_shot"], "why": "Which worker model ran it." },
+    "started_at": { "primitive": "instant", "nullable": false, "why": "Opened when the run starts." },
+    "finished_at": { "primitive": "instant", "nullable": true, "why": "Null while running. A row with claimed_at set and finished_at null is an at_most_once claim with no completion." },
+    "outcome": { "primitive": "text", "nullable": true, "enum": ["succeeded", "failed", "skipped", "unknown", "expired"], "why": "JB4. Null while running." },
+    "claimed_at": { "primitive": "instant", "nullable": true, "why": "at_most_once only: the claim, committed before the effect (JB2)." },
+    "touched": { "primitive": "integer", "nullable": true, "why": "The job's own count of what it changed: rows, messages, items." },
+    "checkpoint": { "primitive": "json", "nullable": true, "why": "long jobs only: where a rerun resumes (JB7)." },
+    "trace_id": { "primitive": "text", "nullable": true, "why": "040 OC1: the run's trace, so a row leads to a span." }
+  },
+  "constraints": {
+    "primary_key": ["run_id"],
+    "unique": {
+      "columns": ["job_name", "job_key"],
+      "applies_to_policies": ["idempotent", "at_most_once"],
+      "why": "One row per unit of work for the two policies that promise no repeated effect. An at_least_once job may have several rows per key, one per attempt, and the uniqueness is a partial index or a policy-aware check where the engine allows it."
+    },
+    "indexes": [
+      { "columns": ["job_name", "outcome", "finished_at"], "why": "JB8's freshness query: newest succeeded row per job." },
+      { "columns": ["job_name", "started_at"], "why": "The operator's question: what did last night's run do." }
+    ]
+  },
+  "engines": {
+    "postgres": { "json": "jsonb" },
+    "mysql": { "json": "json" }
+  }
+}

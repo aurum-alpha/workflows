@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/jobs/declaration.schema.json",
+  "title": "Aurum Alpha job declaration",
+  "description": "standards/057-jobs.md JB3: the declaration a job carries beside its code. Read by the worker to construct the input and enforce the class, rendered at deployment into the runner's native form (035 WK6), and read by the alerting (JB8). A job with no declaration does not run. The conditional rules below are the ones prose states and a reviewer would otherwise have to remember: a periodic job has a schedule and a staleness threshold; an at_most_once job names who resolves its unknowns; a per-event job's input is an event and every other job's is an args schema; only a once_ever or on_demand job may block; a run_late missed policy carries a window. Durations are ISO 8601; the schedule is a five-field POSIX cron expression evaluated in UTC.",
+  "type": "object",
+  "$defs": {
+    "duration": {
+      "type": "string",
+      "pattern": "^P(?!$)(\\d+D)?(T(?=\\d)(\\d+H)?(\\d+M)?(\\d+S)?)?$",
+      "description": "ISO 8601 duration, days and time components only: PT30S, PT2H, P2D, P1DT12H."
+    },
+    "cron": {
+      "type": "string",
+      "pattern": "^([-0-9*,/A-Za-z]+\\s+){4}[-0-9*,/A-Za-z]+$",
+      "description": "Five fields: minute hour day-of-month month day-of-week. Evaluated in UTC. Six-field seconds variants and vendor macros are not admitted."
+    },
+    "uri": { "type": "string", "format": "uri", "pattern": "^https?://" }
+  },
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+      "description": "resource.verb, imperative: invoice.send, retention.purge. Distinct from the past-tense event type that may trigger it."
+    },
+    "recurrence": {
+      "enum": ["once_ever", "per_event", "periodic", "on_demand"],
+      "description": "per_event is the only value that means a stream, and therefore a pool; the other three are invocations, and therefore one-shots."
+    },
+    "concurrency": {
+      "enum": ["single_flight", "serial_per_key", "parallel"],
+      "description": "single_flight and serial_per_key take the JB6 lock, on the job name or on the key's partition."
+    },
+    "duration": {
+      "enum": ["short", "long"],
+      "description": "short: inside the transport's redelivery window; a crashed run is simply redelivered. long: the job checkpoints and resumes (JB7)."
+    },
+    "blocking": {
+      "type": "boolean",
+      "description": "Whether the invoker waits for the outcome. Only a deployment does, and it forces a one-shot."
+    },
+    "duplicate_policy": {
+      "enum": ["idempotent", "at_most_once", "at_least_once"],
+      "description": "JB2. What a second run of the same key does."
+    },
+    "input": {
+      "type": "object",
+      "description": "What the body receives, validated before it runs. A per-event job names the event's dataschema; any other job names the schema its arguments must satisfy.",
+      "oneOf": [
+        { "properties": { "event": { "$ref": "#/$defs/uri" } }, "required": ["event"], "additionalProperties": false },
+        { "properties": { "args_schema": { "$ref": "#/$defs/uri" } }, "required": ["args_schema"], "additionalProperties": false }
+      ]
+    },
+    "valid_for": {
+      "$ref": "#/$defs/duration",
+      "description": "The key's validity window. A run whose key is older than this ends expired, neither deduplicated nor repeated."
+    },
+    "deadline": {
+      "$ref": "#/$defs/duration",
+      "description": "The longest a run may take before the runner kills the worker (JB7)."
+    },
+    "grace": {
+      "$ref": "#/$defs/duration",
+      "description": "Time between SIGTERM and SIGKILL, in which a long job checkpoints (JB7)."
+    },
+    "schedule": {
+      "type": "object",
+      "description": "Periodic jobs only. Rendered to the runner (035 WK6); never read by the job.",
+      "properties": {
+        "cron": { "$ref": "#/$defs/cron" },
+        "missed": { "enum": ["run_late", "skip"], "description": "What the runner does with a tick it could not fire on time." },
+        "window": { "$ref": "#/$defs/duration", "description": "How late a run_late tick may still fire." }
+      },
+      "required": ["cron", "missed"],
+      "additionalProperties": false
+    },
+    "stale_after": {
+      "$ref": "#/$defs/duration",
+      "description": "JB8. Alert when the newest succeeded run is older than this. Default twice the cadence; declared here so it lives beside the schedule."
+    },
+    "reconcile": {
+      "type": "string",
+      "minLength": 1,
+      "description": "at_most_once only: the job name or role that resolves unknown outcomes (JB4)."
+    }
+  },
+  "required": ["name", "recurrence", "concurrency", "duration", "blocking", "duplicate_policy", "input", "deadline", "grace"],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": { "properties": { "recurrence": { "const": "periodic" } } },
+      "then": { "required": ["schedule", "stale_after"] },
+      "else": { "not": { "anyOf": [ { "required": ["schedule"] }, { "required": ["stale_after"] } ] } }
+    },
+    {
+      "if": { "properties": { "recurrence": { "const": "per_event" } } },
+      "then": { "properties": { "input": { "required": ["event"] } } },
+      "else": { "properties": { "input": { "required": ["args_schema"] } } }
+    },
+    {
+      "if": { "properties": { "duplicate_policy": { "const": "at_most_once" } } },
+      "then": { "required": ["reconcile"] },
+      "else": { "not": { "required": ["reconcile"] } }
+    },
+    {
+      "if": { "properties": { "blocking": { "const": true } } },
+      "then": { "properties": { "recurrence": { "enum": ["once_ever", "on_demand"] } } }
+    },
+    {
+      "if": { "required": ["schedule"], "properties": { "schedule": { "required": ["missed"], "properties": { "missed": { "const": "run_late" } } } } },
+      "then": { "properties": { "schedule": { "required": ["window"] } } }
+    }
+  ]
+}

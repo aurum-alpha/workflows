@@ -40,7 +40,7 @@ will.
 | 12 | One way per capability | `check-ci-conformance` | gated¹ |
 | 13 | Provenance in every artifact | — | **review only** |
 | 14 | A version is a commit, not a tag | `job-version-gate` + `job-version-release` (partly) | mixed² |
-| 15 | The repo is versioned, not the artifact | — | **review only** |
+| 15 | The repo is versioned, not the artifact; images are cut on dependency closure, credential and configuration surface, and an image does one thing | the image set per repository is readable from the catalog calls; the three criteria are a review question | **review only** |
 | 16 | A version exists only where consumed | — | **review only** |
 | 17 | Release is promotion, not production | `check-ci-conformance` D4, D5 | gated |
 | 18 | One workflow per repo | `check-ci-conformance` P18 | gated |
@@ -493,7 +493,7 @@ grant as a schema fact.
 | SD10 | The schema carries its invariants: `NOT NULL` by default, foreign keys declared and indexed, `UNIQUE`/`CHECK` for domain rules, no native enums, JSON only for unqueried data, isolation columns leading composite indexes, `created_at`/`updated_at` on every table, `snake_case` identifiers, plural tables, `<singular>_id` keys | **catalog-decided by the `schema` corpus** for the mechanical half (unindexed FK, missing timestamps, native enum, non-snake identifier, isolation column not leading an index — proposed `check-schema`); `NOT NULL` intent and the JSON rule stay review questions | **review only** |
 | SD11 | One request, one transaction; no transaction spans a network call or a human; `READ COMMITTED` default with `SERIALIZABLE` opted in per transaction plus retry; statement timeout on the runtime role; `migrate` holds an advisory lock | timeout and lock are configuration facts a checker reads; transaction span is a review question on every handler | **review only** |
 | SD12 | Hard delete is the default; soft delete needs a domain reason in Conventions, and a soft-deleted row stays scoped, stays erasable, and is excluded in the query text | the Conventions declaration is a grep; the default is a review question on every delete path | **review only** |
-| SD13 | The database is private to its service — one schema, one writer, no second credential; tests run against the engine the product runs, never a substitute | privacy is a credential fact (no second role on the database); the real-engine rule is a CI fact — the test job starts the real engine or data-access tests do not run | **review only** |
+| SD13 | The database is private to its service, in all of that service's processes, and every process holding its credential is built from the one repository that holds its migrations — one schema, one writer, no second credential; tests run against the engine the product runs, never a substitute | privacy is a credential fact (no second role on the database); the real-engine rule is a CI fact — the test job starts the real engine or data-access tests do not run | **review only** |
 
 The corpus was run before landing. All ten migration cases, all six
 isolation cases and all six schema cases reproduce their expected findings and visibility against a
@@ -518,10 +518,10 @@ delivery rules are the internal contract and are gated by running a consumer.
 |---|---|---|---|
 | AM1 | A message is a CloudEvents 1.0 event in JSON structured format under this profile: UUIDv7 `id`, logical `source`, past-tense `resource.event` `type`, public-id `subject`, IP4 `time`, `dataschema`, the tracing extension, `tenantid`, closed extension set | **schema-decided** — `envelope.schema.json` under `job-contract-conformance`; ten validity cases. Past tense is the one half the schema cannot tell and stays a review question | **review only** |
 | AM2 | The transport is not the contract; a queue table belongs to one service; the transport is an attached resource | review question, and SD13's credential check covers the shared-table half | **review only** |
-| AM3 | At-least-once; the consumer is idempotent on `(source, id)`, with the inbox row in the effect's transaction, retained past the redelivery horizon; ordering not relied on | **decided by the `delivery` corpus** — deliver the sequence, count the effects. **One case is a verified detector**: the same id from two sources, which a consumer keyed on id alone collapses to one effect | **review only** |
-| AM4 | Produced in the transaction that caused it: the outbox, relayed by a consumer under AM3 | resists a boundary gate honestly — transaction sharing is a call-graph fact (PC4). The observable half (change without message, message without change, each provoked) is a live test | **review only** |
+| AM3 | At-least-once; the inbox deduplicates the delivery on `(source, id)`, with the row in the effect's transaction, retained past the redelivery horizon; the effect's duplicate policy is the job's (057 JB2); ordering not relied on | **decided by the `delivery` corpus** — deliver the sequence, count the effects. **One case is a verified detector**: the same id from two sources, which a consumer keyed on id alone collapses to one effect | **review only** |
+| AM4 | Produced in the transaction that caused it: the outbox, relayed by `outbox.relay`, a job the service's pool runs and the server never does | resists a boundary gate honestly — transaction sharing is a call-graph fact (PC4). The observable half (change without message, message without change, each provoked) is a live test | **review only** |
 | AM5 | Bounded retries with backoff and jitter; dead-letter with envelope, attempts and last error; replayable; poison never blocks; failures logged with the OC4 context block | the dead-letter shape is schema-checkable; the rest is review | **review only** |
-| AM6 | Work outside a request is a consumer in a worker — its own image, built in the same run at the same version — never a timer in the HTTP process; workers drain per SC4 | **static check with no false positives**: no `setInterval`/ticker/cron in the request-serving entrypoint (proposed `check-no-timers`); the worker image is built, started and published like any other image | **review only** |
+| AM6 | Work outside a request is a consumer in a worker — its own image, bound to the service by provenance (the build run) and by ownership (the credential), never by the repository alone — never a timer in the server; workers drain per SC4 | **static check with no false positives**: no `setInterval`/ticker/cron in the request-serving entrypoint (proposed `check-no-timers`); the worker image is built, started and published like any other image | **review only** |
 | AM7 | A webhook leaving is the envelope in structured mode, signed per Standard Webhooks: `webhook-id` = event id, `webhook-timestamp` per attempt, `webhook-signature` `v1,<base64>` HMAC-SHA256 over `id.timestamp.body`; one secret per endpoint, rotated with two signatures; retried per AM5 with the spec's response semantics | **decided by the `signing` corpus** — computed signature values an implementation reproduces byte for byte | **review only** |
 | AM8 | A webhook arriving is verified over the raw body, re-enveloped with the provider as `source` and the provider's event id as `id`, recorded in one transaction, and only then answered `2xx`; the work happens afterwards as a consumer | the rejections are `signing` corpus cases; the re-envelope dedupe is a `delivery` case; the order of the four steps is a review question | **review only** |
 
@@ -535,4 +535,57 @@ not typed, so a verifier in any language proves its HMAC against them.
 One row above changes as a result of this standard: OC1's envelope requirement
 is now met by a standard extension rather than by a field the fleet named, and
 OC1's row points here for the envelope half.
+
+## Workers standard
+
+Rules from [`035-workers.md`](035-workers.md) — the two worker models, how
+their images are cut, the one-shot's command and exit codes, the runner
+contract, and how a declaration reaches the runner. The runner is adopted
+from existing schedulers rather than built, so WK5 is a table of settings a
+renderer emits and a checker can read back.
+
+| # | Rule | Enforced by | Status |
+|---|---|---|---|
+| WK1 | Two worker models, the pool and the one-shot, picked by the trigger; the outbox relay is a job the pool runs; the timer loop, the worker in the server, and work in the boot path are refused | the timer half is AM6's proposed `check-no-timers`; the relay's placement and the boot path are review questions | **review only** |
+| WK2 | A worker is a container image built in the run at the repository's version; images split on dependency closure, credential and configuration surface and on nothing else; the migrate image stands alone; a repository is not a service and a service lives in exactly one repository; the escape hatch for runtimes that cannot run a separate image excludes migrations | the image set is read from the CI catalog calls (a migrate image and a jobs image where one-shot jobs exist, a pool image where per-event jobs exist); the one-repository rule is a credential fact — one database's credential in one repository's deployables — and is checkable once credentials are declared per image; the three-reasons rule is review | **review only** |
+| WK3 | One pool per service by default; partitioning only after a measured reason, recorded in the repository's decisions | review question: the recorded reason | **review only** |
+| WK4 | One command runs any one-shot; the worker constructs the invocation and derives the key by the trigger's rule; outcomes map to exit codes per `exit-codes.json`; long work is a blocking one-shot when a deployment waits and a self-continuing per-event job otherwise | **decided by the `one_shot` corpus** against the repository's one-shot image: nine cases, each an exit code and a run-record outcome | **review only** |
+| WK5 | The runner satisfies seven verbs per `runner-contract.json`; the platform names and builds none; overlap and retry are configured to agree with the job's own lock and no-retry | the rendered runner configuration is compared to the contract's settings per runner; a runner that cannot satisfy a verb is a review finding | **review only** |
+| WK6 | Declarations are rendered to the runner at deployment; the rendered form is an artifact and never hand-edited | every periodic declaration has a rendered counterpart in the deployment output and the two agree — a diff, once the renderer exists | **review only** |
+| WK7 | A pool exposes queue depth and oldest-message age and the SC1 endpoints with readiness meaning connected; a one-shot exposes nothing but logs, the run record and its exit; both carry `job.name` and `job.run_id` | the metric names and the log fields are checkable against the 040 shape; the readiness meaning is review | **review only** |
+| WK8 | A worker's configuration is the least its jobs declare; the pool and the jobs image carry the runtime credential, the migrate image the migration credential and no other; no image carries a credential to a database it does not own | a credential fact, checkable once credentials are declared per image; SD13's row covers the shared-database half | **review only** |
+
+## Jobs standard
+
+Rules from [`057-jobs.md`](057-jobs.md) — the job as an interface, its key
+and duplicate policy, its declaration, its outcomes and run record, the lock,
+cancellation, freshness, and backfills. The invoked input and the declaration
+are schemas; the duplicate policies are decided by running a job runtime
+against the corpus.
+
+| # | Rule | Enforced by | Status |
+|---|---|---|---|
+| JB1 | A job is `run(input, ctx) -> outcome`, named `resource.verb`; the per-event input is the 055 envelope and the invoked input is `invocation.schema.json`; input is validated against the declared schema before the body runs; a job ends and knows nothing of its trigger | **schema-decided** for the invoked input under `job-contract-conformance`; the name grammar is in `declaration.schema.json`; "knows nothing of its trigger" is a review question | **review only** |
+| JB2 | Every job has a key derived by the trigger's rule, distinct from the delivery id, and one of three duplicate policies: `idempotent` (key and effect in one transaction, or a far-side dedup handle), `at_most_once` (claim, act, record; a crash between is `unknown`), `at_least_once` (act, record; the declaration is the consent); a key may carry `valid_for` and a late run is `expired` | **decided by the `keys` and `policies` corpus parts** — five key derivations, eight run sequences. **Two cases are verified detectors**: an implementation that acts before claiming fails `at-most-once-crash-between-act-and-record` and its sibling and passes everything else; an implementation that ignores `valid_for` fails exactly the two validity-window cases. Whether a declared `idempotent` job's effect really has a dedup handle stays a review question | **review only** |
+| JB3 | Every job declares its class beside its code per `declaration.schema.json`, including the conditional fields; a job with no declaration does not run | **schema-decided**: twelve declaration cases, eight of them rejections each naming its rule; the worker's refusal to load an undeclared job is a `one_shot` corpus case | **review only** |
+| JB4 | Five outcomes — `succeeded`, `failed`, `skipped`, `unknown`, `expired` — each with a named owner; `skipped` is a success exit; `unknown` is never aged out | the enumeration is in `run-record.json` and the exit mapping in `exit-codes.json`; that `unknown` rows are resolved is a review question | **review only** |
+| JB5 | Every run leaves a row in `job_runs` per `run-record.json`, in the service's database, and the row is the authority over any runner history; logs and the span carry the job name and run id | the table shape is checkable against the storage profile; the log fields against the OC4 block; the authority claim is review | **review only** |
+| JB6 | Single-flight and serial-per-key are enforced by an advisory lock in the job, whatever the runner or queue is configured to do | a held lock ending `skipped` is a `one_shot` corpus case; that the lock is taken before any work is review | **review only** |
+| JB7 | Every job has a deadline and honours `SIGTERM` within `grace`; a long job checkpoints per unit of work and a rerun resumes; long work over a table is keyset batches, one transaction each | the checkpoint-and-resume behaviour is a `one_shot` corpus case; one-transaction-per-batch is a review question | **review only** |
+| JB8 | For a periodic job absence is the failure: `stale_after` beside the schedule, default twice the cadence, alert when the newest `succeeded` row is older | the declaration requires `stale_after` on every periodic job (schema); the alert itself is platform configuration read from the declaration | **review only** |
+| JB9 | A job produces through the outbox and reads only its own service's state | AM4's and SD13's rows | **review only** |
+| JB10 | A backfill is a long, single-flight, on-demand, idempotent job with a rate bound, never inside a migration, run until it reports nothing left; very large backfills are self-continuing per-event jobs | SD4's expand-only gate keeps data movement out of `migrate`; the rest is review | **review only** |
+
+The corpora were run before landing: twelve declaration cases, five key
+derivations, eight policy sequences and nine one-shot cases all reproduce their
+expected results against a reference runtime, and the two JB2 detectors were
+checked against deliberately weakened runtimes — the act-first runtime fails
+exactly the two claim cases, the dedup-only runtime fails exactly the two
+validity-window cases, and both pass everything else.
+
+Four rows above change as a result of these standards: AM3 now names the
+delivery half as the inbox's and the effect half as the job's; AM4 names the
+relay as a pool job; AM6 states the two bindings, provenance and ownership;
+SD13 states its unit as the service in all its processes and the one-repository
+rule that follows.
 

@@ -1,0 +1,307 @@
+{
+  "contract": "jobs",
+  "schemaVersion": 1,
+  "description": "The conformance corpus for standards/057-jobs.md. Three parts. 'declarations' is judged by declaration.schema.json alone: each case is accepted or rejected, and a rejection names the rule. 'keys' is judged by deriving the key: given a trigger and its input, the string JB2 requires. 'policies' is judged by running a job runtime: each case names a duplicate policy and a sequence of runs of one key, where a run may crash at a named point or arrive late; the runtime must produce exactly the stated number of effects and the stated outcome per run, where 'none' means the run crashed before writing an outcome. Two cases are detectors: 'at-most-once-crash-between-act-and-record' fails an implementation that acts before claiming, and 'validity-window-late-retry' fails an implementation that deduplicates without honouring valid_for.",
+  "declarations": [
+    {
+      "case": "a-periodic-long-idempotent-job",
+      "valid": true,
+      "why": "JB3 in full for a periodic job: schedule with a run_late window, staleness beside it, args schema as input.",
+      "declaration": {
+        "name": "retention.purge",
+        "recurrence": "periodic",
+        "concurrency": "single_flight",
+        "duration": "long",
+        "blocking": false,
+        "duplicate_policy": "idempotent",
+        "input": { "args_schema": "https://contracts.aurumalpha.dev/example/retention-purge-args/v1.schema.json" },
+        "deadline": "PT2H",
+        "grace": "PT30S",
+        "schedule": { "cron": "0 3 * * *", "missed": "run_late", "window": "PT6H" },
+        "stale_after": "P2D"
+      }
+    },
+    {
+      "case": "a-per-event-parallel-idempotent-job",
+      "valid": true,
+      "why": "The plain consumer: per_event, input is the event's dataschema.",
+      "declaration": {
+        "name": "invoice.send",
+        "recurrence": "per_event",
+        "concurrency": "parallel",
+        "duration": "short",
+        "blocking": false,
+        "duplicate_policy": "idempotent",
+        "input": { "event": "https://contracts.aurumalpha.dev/invoicing/invoice-issued/v1.schema.json" },
+        "deadline": "PT1M",
+        "grace": "PT10S"
+      }
+    },
+    {
+      "case": "an-at-most-once-job-names-its-reconciler",
+      "valid": true,
+      "why": "JB2 and JB4: at_most_once with reconcile named, serial per key, validity window carried.",
+      "declaration": {
+        "name": "order.place",
+        "recurrence": "per_event",
+        "concurrency": "serial_per_key",
+        "duration": "short",
+        "blocking": false,
+        "duplicate_policy": "at_most_once",
+        "input": { "event": "https://contracts.aurumalpha.dev/trading/order-requested/v1.schema.json" },
+        "valid_for": "PT1M",
+        "deadline": "PT30S",
+        "grace": "PT5S",
+        "reconcile": "order.reconcile"
+      }
+    },
+    {
+      "case": "a-blocking-once-ever-job",
+      "valid": true,
+      "why": "The migrate step's shape: once_ever, single_flight, blocking, idempotent by SD2.",
+      "declaration": {
+        "name": "schema.migrate",
+        "recurrence": "once_ever",
+        "concurrency": "single_flight",
+        "duration": "short",
+        "blocking": true,
+        "duplicate_policy": "idempotent",
+        "input": { "args_schema": "https://contracts.aurumalpha.dev/jobs/no-args/v1.schema.json" },
+        "deadline": "PT15M",
+        "grace": "PT30S"
+      }
+    },
+    {
+      "case": "a-periodic-job-without-a-schedule-is-rejected",
+      "valid": false,
+      "why": "JB3: a periodic job declares its schedule and its staleness threshold. Without them the runner has nothing to render and JB8 has nothing to alert on.",
+      "declaration": {
+        "name": "partner.poll",
+        "recurrence": "periodic",
+        "concurrency": "single_flight",
+        "duration": "short",
+        "blocking": false,
+        "duplicate_policy": "idempotent",
+        "input": { "args_schema": "https://contracts.aurumalpha.dev/example/partner-poll-args/v1.schema.json" },
+        "deadline": "PT1M",
+        "grace": "PT10S"
+      }
+    },
+    {
+      "case": "an-at-most-once-job-without-a-reconciler-is-rejected",
+      "valid": false,
+      "why": "JB4: unknown is never left to age out, so an at_most_once job names who resolves it.",
+      "declaration": {
+        "name": "device.dispense",
+        "recurrence": "per_event",
+        "concurrency": "serial_per_key",
+        "duration": "short",
+        "blocking": false,
+        "duplicate_policy": "at_most_once",
+        "input": { "event": "https://contracts.aurumalpha.dev/devices/dispense-requested/v1.schema.json" },
+        "deadline": "PT30S",
+        "grace": "PT5S"
+      }
+    },
+    {
+      "case": "a-per-event-job-with-an-args-schema-is-rejected",
+      "valid": false,
+      "why": "JB1: a per-event job's input is the event, validated by its dataschema. An args schema on a per-event job is a job that will parse its own input.",
+      "declaration": {
+        "name": "invoice.send",
+        "recurrence": "per_event",
+        "concurrency": "parallel",
+        "duration": "short",
+        "blocking": false,
+        "duplicate_policy": "idempotent",
+        "input": { "args_schema": "https://contracts.aurumalpha.dev/example/invoice-send-args/v1.schema.json" },
+        "deadline": "PT1M",
+        "grace": "PT10S"
+      }
+    },
+    {
+      "case": "a-blocking-periodic-job-is-rejected",
+      "valid": false,
+      "why": "JB3: only a deployment waits, and a deployment runs once_ever or on_demand jobs. A periodic job has no invoker that could block.",
+      "declaration": {
+        "name": "ledger.reconcile",
+        "recurrence": "periodic",
+        "concurrency": "single_flight",
+        "duration": "short",
+        "blocking": true,
+        "duplicate_policy": "idempotent",
+        "input": { "args_schema": "https://contracts.aurumalpha.dev/example/ledger-reconcile-args/v1.schema.json" },
+        "deadline": "PT10M",
+        "grace": "PT30S",
+        "schedule": { "cron": "0 * * * *", "missed": "skip" },
+        "stale_after": "PT3H"
+      }
+    },
+    {
+      "case": "a-missing-duplicate-policy-is-rejected",
+      "valid": false,
+      "why": "JB2 and JB3: a missing duplicate policy is a missing declaration.",
+      "declaration": {
+        "name": "reminder.push",
+        "recurrence": "per_event",
+        "concurrency": "parallel",
+        "duration": "short",
+        "blocking": false,
+        "input": { "event": "https://contracts.aurumalpha.dev/reminders/reminder-due/v1.schema.json" },
+        "deadline": "PT30S",
+        "grace": "PT5S"
+      }
+    },
+    {
+      "case": "a-name-that-is-not-resource-verb-is-rejected",
+      "valid": false,
+      "why": "JB1: a job is named resource.verb. A bare word or a three-segment name is not a stable identifier in this grammar.",
+      "declaration": {
+        "name": "purge",
+        "recurrence": "on_demand",
+        "concurrency": "single_flight",
+        "duration": "long",
+        "blocking": false,
+        "duplicate_policy": "idempotent",
+        "input": { "args_schema": "https://contracts.aurumalpha.dev/example/purge-args/v1.schema.json" },
+        "deadline": "PT2H",
+        "grace": "PT30S"
+      }
+    },
+    {
+      "case": "a-six-field-cron-is-rejected",
+      "valid": false,
+      "why": "057: a schedule is a five-field POSIX cron expression in UTC. A seconds field is a vendor extension not every runner reads the same way.",
+      "declaration": {
+        "name": "partner.poll",
+        "recurrence": "periodic",
+        "concurrency": "single_flight",
+        "duration": "short",
+        "blocking": false,
+        "duplicate_policy": "idempotent",
+        "input": { "args_schema": "https://contracts.aurumalpha.dev/example/partner-poll-args/v1.schema.json" },
+        "deadline": "PT1M",
+        "grace": "PT10S",
+        "schedule": { "cron": "0 */1 * * * *", "missed": "skip" },
+        "stale_after": "PT5M"
+      }
+    },
+    {
+      "case": "run-late-without-a-window-is-rejected",
+      "valid": false,
+      "why": "JB3: run_late without a window is a tick that may fire arbitrarily late, which is a run at an unknown time nobody declared.",
+      "declaration": {
+        "name": "digest.schedule",
+        "recurrence": "periodic",
+        "concurrency": "single_flight",
+        "duration": "short",
+        "blocking": false,
+        "duplicate_policy": "idempotent",
+        "input": { "args_schema": "https://contracts.aurumalpha.dev/example/digest-schedule-args/v1.schema.json" },
+        "deadline": "PT5M",
+        "grace": "PT10S",
+        "schedule": { "cron": "0 6 * * *", "missed": "run_late" },
+        "stale_after": "P2D"
+      }
+    }
+  ],
+  "keys": [
+    {
+      "case": "a-message-keys-on-source-and-id",
+      "trigger": "message",
+      "input": { "source": "/invoicing", "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99" },
+      "key": "/invoicing:01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+      "why": "JB2: for a per-event job the key is the event's (source, id), which AM3's inbox also keys on; the two coincide only here."
+    },
+    {
+      "case": "a-tick-keys-on-job-and-scheduled-instant",
+      "trigger": "tick",
+      "input": { "job": "retention.purge", "tick_at": "2026-03-04T03:00:00.000Z" },
+      "key": "retention.purge@2026-03-04T03:00:00.000Z",
+      "why": "JB2: two firings of one tick share the key; a late firing of a different tick does not."
+    },
+    {
+      "case": "a-deployment-keys-on-job-and-version",
+      "trigger": "deployment",
+      "input": { "job": "schema.migrate", "version": "2.4.0" },
+      "key": "schema.migrate@2.4.0",
+      "why": "JB2: a retried deployment step of the same release is the same work."
+    },
+    {
+      "case": "an-operator-supplied-key-is-used-as-given",
+      "trigger": "operator",
+      "input": { "job": "column.backfill", "key": "column.backfill@invoices.due_at" },
+      "key": "column.backfill@invoices.due_at",
+      "why": "JB2 and WK4: the operator may name the work so a rerun continues it."
+    },
+    {
+      "case": "an-operator-without-a-key-gets-the-invocation-id",
+      "trigger": "operator",
+      "input": { "job": "deadletter.replay", "id": "01923e8a-8000-7000-8000-000000000042" },
+      "key": "deadletter.replay@01923e8a-8000-7000-8000-000000000042",
+      "why": "JB2 and WK4: minted and printed, so the operator can rerun the same work or deliberately start new work."
+    }
+  ],
+  "policies": [
+    {
+      "case": "idempotent-duplicate-has-no-second-effect",
+      "policy": "idempotent",
+      "runs": [ { "key": "k1" }, { "key": "k1" } ],
+      "expect": { "effects": 1, "outcomes": ["succeeded", "skipped"] },
+      "why": "JB2: the key and the effect commit together; a second run finds the key done."
+    },
+    {
+      "case": "idempotent-crash-before-act-then-rerun",
+      "policy": "idempotent",
+      "runs": [ { "key": "k2", "crash": "before_act" }, { "key": "k2" } ],
+      "expect": { "effects": 1, "outcomes": ["none", "succeeded"] },
+      "why": "JB2: nothing committed, so the rerun does the work."
+    },
+    {
+      "case": "at-most-once-duplicate-meets-the-claim",
+      "policy": "at_most_once",
+      "runs": [ { "key": "k3" }, { "key": "k3" } ],
+      "expect": { "effects": 1, "outcomes": ["succeeded", "skipped"] },
+      "why": "JB2: the first run claimed, acted and recorded; the second meets a completed claim."
+    },
+    {
+      "case": "at-most-once-crash-between-act-and-record",
+      "policy": "at_most_once",
+      "runs": [ { "key": "k4", "crash": "between_act_and_record" }, { "key": "k4" } ],
+      "expect": { "effects": 1, "outcomes": ["none", "unknown"] },
+      "why": "JB2 and JB4, the detector: the effect happened once and the claim has no completion, so the rerun must not act and must report unknown. An implementation that acts before claiming produces two effects here, acts again in the sibling case below, and passes every other case.",
+      "detector": true
+    },
+    {
+      "case": "at-most-once-crash-after-claim-before-act",
+      "policy": "at_most_once",
+      "runs": [ { "key": "k5", "crash": "before_act" }, { "key": "k5" } ],
+      "expect": { "effects": 0, "outcomes": ["none", "unknown"] },
+      "why": "JB2: from the record this is indistinguishable from the case above, which is the point. The rerun reports unknown and reconciliation decides; it never acts on a guess."
+    },
+    {
+      "case": "at-least-once-crash-repeats-the-effect",
+      "policy": "at_least_once",
+      "runs": [ { "key": "k6", "crash": "between_act_and_record" }, { "key": "k6" } ],
+      "expect": { "effects": 2, "outcomes": ["none", "succeeded"] },
+      "why": "JB2: act then record; the declaration consented to the repeat."
+    },
+    {
+      "case": "validity-window-late-retry",
+      "policy": "at_most_once",
+      "valid_for": "PT1M",
+      "runs": [ { "key": "k7" }, { "key": "k7", "late": true } ],
+      "expect": { "effects": 1, "outcomes": ["succeeded", "expired"] },
+      "why": "JB2, the detector: the retry arrives after valid_for and ends expired, not skipped. An implementation that deduplicates without reading valid_for reports skipped here, and acts on the next case.",
+      "detector": true
+    },
+    {
+      "case": "validity-window-late-first-run",
+      "policy": "at_most_once",
+      "valid_for": "PT1M",
+      "runs": [ { "key": "k8", "late": true } ],
+      "expect": { "effects": 0, "outcomes": ["expired"] },
+      "why": "JB2: a key older than valid_for is not acted on even the first time; the meaning of the work has lapsed."
+    }
+  ]
+}

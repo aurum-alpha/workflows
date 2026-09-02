@@ -156,12 +156,13 @@ let four languages interoperate. Factor III says config lives in the
 environment; it does not say what the variables are called. That pinning is
 ours, and it is the only part that is.
 
-**Known departures: none today.** One tension is open and unsettled rather
-than assumed: [factor XII](https://12factor.net/admin-processes) says
-admin and management tasks run as one-off processes, while the maintenance
-jobs capability on the platform roster is heading toward a registered Job
-interface inside the service. Whichever way that lands, the maintenance jobs
-standard states the choice against factor XII rather than around it.
+**Known departures: none today.** One tension that was open is settled the
+way [factor XII](https://12factor.net/admin-processes) states it: admin and
+management tasks run as one-off processes, and the jobs and workers
+capabilities on the platform roster take exactly that shape, a one-shot worker
+built from the same release as the servers, rather than an interface
+registered inside a server. Their standards state that against factor XII
+rather than around it.
 
 ## How these documents are written
 
@@ -271,9 +272,11 @@ more standards land.
 | `020` | IP | [`020-identifiers.md`](standards/020-identifiers.md) | Identifiers and primitive representations: public vs internal ids, the format table, timestamps, money | review, corpus written |
 | `025` | SD | [`025-structured-data.md`](standards/025-structured-data.md) | Structured data: SQL as the query language, migrations as ordered `.sql` files shipped in the image, expand-only, declared isolation levels proven by enumeration, per-engine storage profile, schema invariants, transactions, hard delete by default, one database per service | review, corpus written |
 | `030` | SC | [`030-service.md`](standards/030-service.md) | The service contract: health and readiness, structured logging, configuration, graceful shutdown, runtime provenance | review, live gate available |
+| `035` | WK | [`035-workers.md`](standards/035-workers.md) | Workers: the pool and the one-shot, images cut on closure, credential and configuration, one repository per service, the one-shot's command and exit codes, the seven-verb runner contract, declarations rendered at deployment | review, corpus written |
 | `040` | OC | [`040-observability.md`](standards/040-observability.md) | Observability transport and context propagation: W3C trace context, the id vocabulary, OTLP | review, corpus written |
 | `050` | HA | [`050-http.md`](standards/050-http.md) | Service interfaces: protocol selection (HTTP, gRPC, SSE, WebSocket), OpenAPI, RFC 9457 errors, cursor pagination, versioning, idempotency, backpressure, snake_case wire naming | review, corpus written |
 | `055` | AM | [`055-messaging.md`](standards/055-messaging.md) | Async messaging: CloudEvents 1.0 as the envelope, at-least-once with inbox and outbox, workers not timers, Standard Webhooks signing in and out | review, corpus written |
+| `057` | JB | [`057-jobs.md`](standards/057-jobs.md) | Jobs: the unit of work as an interface, the key as distinct from the delivery, three duplicate policies, the declaration, five outcomes, the run record, single-flight in the job, absence as the failure of a periodic job, backfills | review, corpus written |
 | `060` | AU | [`060-auth.md`](standards/060-auth.md) | Authentication: the identity tier, the proxy-minted identity token, identity linkage, provisioning, sessions, deployment topologies | review, corpus written |
 | `070` | RB | [`070-rbac.md`](standards/070-rbac.md) | Authorization: the permission and role model, scope containment, the check operation, and the decision corpus | review, corpus written |
 | `080` | AE | [`080-audit.md`](standards/080-audit.md) | Audit events: the record of consequential acts — actor separate from target, the action string is the permission string, the floor of what must emit, retention and erasure | review, corpus written |

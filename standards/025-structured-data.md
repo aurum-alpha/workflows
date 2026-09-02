@@ -170,45 +170,54 @@ database someone changed by hand. The version record gives ordering and speed;
 convergence gives recovery. Both are required, because each covers the failure
 the other cannot.
 
-### SD3. Migrations ship in the image and run as a step before rollout
+### SD3. Migrations ship in their own image and run as a step before rollout
 
 A migration is in the repository, and the repository is not present where the
-service runs. So the question *how is a migration applied* has one answer that
-is consistent with [`010-ci.md`](010-ci.md)'s BUILD ONCE: **the migrations are
-in the image.** Go embeds them in the binary; Node and PHP copy them into the
-image; either way the artifact that ships the service is the artifact that
-carries the schema it needs.
+service runs. So the question *how is a migration applied* has one answer:
+**the migrations ship in an image built from the same repository, in the same
+build run, at the same version as the service.** That image is the migration
+runner and the `.sql` files and nothing else — not the listener, not a worker
+— because an image does one thing, and because the migration credential then
+has exactly one home: the runtime image never holds it, and the migrate image
+holds nothing but it. [`010-ci.md`](010-ci.md)'s BUILD ONCE compiles every
+artifact the repository ships in one run, and its versioning of the repository
+rather than the artifact is what binds them — the migrate image and the
+service image at one version carry one schema by construction, because they
+were built from one commit and tested together.
 
-**The image exposes a `migrate` command** — the same image, a different
-argument. It applies every pending migration in order and exits zero, or
-stops at the first failure and exits non-zero having applied nothing further.
-It is idempotent at two levels: the command skips what the version record says
-has applied, and each file converges if run regardless (SD2) — so a second run
-against a current database applies nothing and exits zero, and a run against a
-half-migrated one finishes the job rather than refusing it. This is
-[factor XII](https://12factor.net/admin-processes) made literal — the admin
-process runs in an identical environment to the service because it *is* the
-service's image — and it answers the operator's question in the same breath:
-migrations are run by `docker run <image> migrate`, against any release, with
-nothing but the image reference. A pipeline step and a person at a keyboard
-run the identical command.
+**The migrate image runs to completion and exits.** It applies every pending
+migration in order and exits zero, or stops at the first failure and exits
+non-zero having applied nothing further. It is idempotent at two levels: the
+runner skips what the version record says has applied, and each file converges
+if run regardless (SD2) — so a second run against a current database applies
+nothing and exits zero, and a run against a half-migrated one finishes the job
+rather than refusing it. This is
+[factor XII](https://12factor.net/admin-processes) met in its own terms — the
+admin process carries the service's provenance because it was built beside the
+service from the same commit — and it answers the operator's question in the
+same breath: migrations are run by `docker run <service>-migrate:<version>`,
+against any release, with nothing but the image reference. A pipeline step and
+a person at a keyboard run the identical command.
 
 **It runs as a discrete step before rollout, never at service boot.** Two
 replicas starting together and each applying migrations is a race; a process
 that migrates before it serves is not disposable per
 [factor IX](https://12factor.net/disposability); and a failed migration must
 fail the step rather than leave a half-ready process answering health checks.
-The serve command assumes the schema is current and refuses to start if it is
-not — that refusal is the backstop, not the mechanism.
+The service assumes the schema is current and refuses to start if it is not —
+that refusal is the backstop, not the mechanism.
 
-**The migration credential is not the runtime credential.** The service's
-database role cannot alter the schema; the migrate step's can. This is the
+**The migration credential is not the runtime credential**, and the separate
+image is what makes that enforceable rather than remembered. The service's
+database role cannot alter the schema; the migrate image's can; and because the
+service image contains no migration runner, there is nothing in it that could
+use the stronger credential if it were leaked to it. This is the
 least-privilege split [`080-audit.md`](080-audit.md) AE6 already asks for on
 one table, generalised to all of them.
 
-Where a product isolates by **one database per tenant** (SD6), the `migrate`
-command iterates every tenant database, and a failure in one is reported by
-name and does not stop the others. That iteration, and the from-previous-release
+Where a product isolates by **one database per tenant** (SD6), the migrate
+image iterates every tenant database, and a failure in one is reported by name
+and does not stop the others. That iteration, and the from-previous-release
 gate running once per tenant, is the cost of that isolation pattern, stated
 here so it is chosen with the price known.
 
@@ -511,7 +520,7 @@ the database, set in configuration, and a query that hits it is a defect to fix
 rather than a limit to raise. This is the half of SD9's bounded pool that bounds
 it in time as well as in count.
 
-**The `migrate` command takes an advisory lock for its run.** SD3 keeps
+**The migrate step takes an advisory lock for its run.** SD3 keeps
 migration out of the serve process to avoid the replica race; two deploy steps
 overlapping — a retried pipeline, a person and a pipeline — is the same race
 one layer up. One lock held for the run means the second invocation waits and
@@ -668,10 +677,13 @@ standard is unusual in how many of those gates are cheap:
   into a stuck deploy that a person must unstick by hand. Guards cost a clause
   per statement; the alternative costs the one property a migrate step must
   have, which is that running it again is always safe.
-- **Migrations ship in the image and run as a discrete step** (2026-09-02):
-  the only answer consistent with BUILD ONCE and factor XII at once. The
-  alternatives — migrate at boot, migrate from a source checkout — each fail
-  a rule this repository already has.
+- **Migrations ship in their own image and run as a discrete step**
+  (2026-09-02): the only answer consistent with BUILD ONCE and factor XII at
+  once, and a separate image rather than a subcommand of the service because an
+  image does one thing and the migration credential then has exactly one home.
+  The alternatives — migrate at boot, migrate from a source checkout, a
+  `migrate` mode inside the service image — each fail a rule this repository
+  already has.
 - **Expand-only, with contraction one release later** (2026-09-02): the
   rollback argument is the whole justification. A forward-migrated schema must
   be a superset of what the previous release reads, or redeploying that release

@@ -261,13 +261,32 @@ no retry, no dead letter, no deduplication, no record that it ran; and the
 service standard's lifecycle rules cannot see it — `SIGTERM` drains requests
 and not timers, readiness reports on the listener and not the loop.
 
-**The worker is the same image, with a different argument** — `serve` and
-`worker` from one artifact, exactly as [`025-structured-data.md`](025-structured-data.md)
-SD3 makes `migrate` the same image. BUILD ONCE ([`010-ci.md`](010-ci.md)) is
-the reason: the consumer's code, its schema, its configuration contract are the
-service's, and a second image is a second thing to version. Workers scale
-independently of the listener, which is the other reason to separate them, and
-they obey [`030-service.md`](030-service.md) SC4 in their own terms: on
+**The worker is its own image**, built from the same repository in the same
+build run as the service and carrying the same version. It links the consumer
+and not the listener, so the serve process *cannot* consume and the worker
+*cannot* listen — which makes the timer ban above structural rather than
+remembered. It has its own dependency closure, its own configuration surface,
+its own scaling and its own deployment, because a worker and a listener differ
+in every one of those, and an image that is both has a dependency closure, a
+configuration surface and a failure mode that are the union of the two. An
+image does one thing; two things are two images.
+
+What binds the worker to the service is the version, not the image.
+[`010-ci.md`](010-ci.md) versions the repository rather than the artifact, so
+every image one build run produces shares one provenance, was tested against
+the others in that run, and asserts compatibility with them by construction: a
+worker at one version consuming rows a service at another version migrated is
+not a state the release process can produce. BUILD ONCE is what makes that
+true — one build job compiles every artifact the repository ships, every time,
+whether or not the files under any one of them changed.
+
+A worker that reads this service's database is this service's worker: same
+repository, same version, its own image. A worker with its own database is
+another service — its own repository and release, its data governed by
+[`025-structured-data.md`](025-structured-data.md) SD13 — and the messages
+between them are the only thing they share.
+
+Workers obey [`030-service.md`](030-service.md) SC4 in their own terms: on
 `SIGTERM` a worker stops taking messages, finishes what it holds within the
 stated timeout, and exits — and any message it held past that is redelivered,
 which is what at-least-once buys.
@@ -373,8 +392,9 @@ standard". Every rule lands review-only with its gate named:
   must make.
 - **AM6's timer rule is a static check with no false positives** — no
   `setInterval`, `setTimeout` loop, ticker or cron expression in the
-  request-serving entrypoint — and its worker-command half is a fact about
-  the image, checkable where `job-image-starts` already runs it.
+  request-serving entrypoint — and its worker-image half is a fact of the build: the worker image is built,
+  started and published like any other image, one call to each image job per
+  image.
 - **AM4's outbox resists a boundary gate**, honestly: whether the event row
   and the state change share a transaction is a fact about a call graph, which
   PC4 says a gate may not read. The observable half is reachable — a change
@@ -418,7 +438,10 @@ standard". Every rule lands review-only with its gate named:
   effect is possible without a distributed transaction, which nothing here
   offers. The relay is a consumer like any other, which is why the two
   patterns are one rule seen from both ends.
-- **Timers in the HTTP process are refused** (2026-09-02): they multiply by
-  the replica count, die with every deploy, and are invisible to every
-  lifecycle rule already in force. The worker is the same image because the
-  code is the same code.
+- **Timers in the HTTP process are refused, and the worker is its own image**
+  (2026-09-02): a timer multiplies by the replica count, dies with every
+  deploy, and is invisible to every lifecycle rule in force. The worker is a
+  separate image because an image does one thing — its dependencies, its
+  configuration surface, its scaling and its failure mode are its own — and
+  because compatibility with the service comes from the shared version and
+  build run, not from sharing bytes.

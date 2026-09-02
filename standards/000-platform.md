@@ -217,8 +217,7 @@ written, it points at the roster row.
   outside any request, in response to a trigger. The long-running form, the
   **pool**, consumes a queue and is scaled by replicas against its backlog. The
   short-running form, the **one-shot**, runs one job and exits with the outcome
-  as its exit code. Workers are the [workers
-  standard](#the-capability-roster)'s.
+  as its exit code. Workers are [`035-workers.md`](035-workers.md)'s.
 - **Client.** Anything that initiates a request to a server: a browser running
   the web client ([`090-web-client.md`](090-web-client.md)), another service's
   process, a command-line tool, a third party. A client carries an identity
@@ -241,8 +240,8 @@ written, it points at the roster row.
   version.
 - **Image.** An OCI container image, the unit of packaging and deployment. An
   image does one thing: it is a server, or a worker, or the migrate step, and
-  never more than one of those ([`010-ci.md`](010-ci.md); the [workers
-  standard](#the-capability-roster)).
+  never more than one of those ([`010-ci.md`](010-ci.md);
+  [`035-workers.md`](035-workers.md) WK2).
 - **Build run.** One execution of a repository's CI on one commit, producing
   every artifact the repository ships and testing them together. The artifacts
   of one run share a provenance and assert compatibility with one another by
@@ -280,8 +279,7 @@ written, it points at the roster row.
 
 - **Job.** The definition of a bounded task: named, with an input, a key, a
   declared class, and an outcome. A job is never a process; it is packaged only
-  by being inside a worker. Jobs are the [jobs
-  standard](#the-capability-roster)'s.
+  by being inside a worker. Jobs are [`057-jobs.md`](057-jobs.md)'s.
 - **Run.** One execution of a job by a worker, with a run id, a trigger, a key,
   and an outcome, and a record of all four in the service's database.
 - **Trigger.** What causes a run. There are four: a **message** arriving, a
@@ -356,8 +354,8 @@ the work is an issue in this repository.
 | Document storage | When a document store is admitted beside the relational store, and which of the structured-data rules do not transfer | not yet written |
 | Backup and recovery | Restore is exercised, not assumed; recovery objectives stated per product; spans structured, blob and document storage | not yet written |
 | Async messaging | CloudEvents 1.0 profile as the envelope; at-least-once with `(source, id)` deduplication through inbox and outbox; workers, never timers; Standard Webhooks signing at the edge | [`055-messaging.md`](055-messaging.md) |
-| Jobs | The job as an interface: a named, bounded task with an input, a key, a declared class and an outcome; three duplicate policies; a run record; single-flight in the job; absence as the failure of a periodic job | not yet written |
-| Workers | Two worker models, the pool and the one-shot, packaged per service and started by a runner the platform specifies and does not build — [factor XII](https://12factor.net/admin-processes) made specific | not yet written |
+| Jobs | The job as an interface: a named, bounded task with an input, a key, a declared class and an outcome; three duplicate policies; a run record; single-flight in the job; absence as the failure of a periodic job | [`057-jobs.md`](057-jobs.md) |
+| Workers | Two worker models, the pool and the one-shot, packaged per service and started by a runner the platform specifies and does not build — [factor XII](https://12factor.net/admin-processes) made specific | [`035-workers.md`](035-workers.md) |
 | Audit events | Internal event contract: application data and not a log line; actor separate from target; the action string is the permission string; a stated floor of what must emit; OCSF at the export boundary rather than as the record | [`080-audit.md`](080-audit.md) |
 | Security baseline | Response-header set, scanning, image pinning, secrets doctrine | not yet written |
 | Feature flags | Evaluation contract; standard-first (OpenFeature is the candidate) | not yet written |

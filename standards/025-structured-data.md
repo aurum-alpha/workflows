@@ -202,6 +202,14 @@ same breath: migrations are run by `docker run <service>-migrate:<version>`,
 against any release, with nothing but the image reference. A pipeline step and
 a person at a keyboard run the identical command.
 
+The migrate image is the first one-shot worker of
+[`035-workers.md`](035-workers.md), and the migration is a job under
+[`057-jobs.md`](057-jobs.md): `once_ever`, single-flight, blocking, idempotent
+by SD2, triggered by the deployment. Those documents state the general shape
+and this rule states the migration's specifics; neither restates the other. A
+repository that holds several services has one migrate image per service,
+because each holds a different credential.
+
 **It runs as a discrete step before rollout, never at service boot.** Two
 replicas starting together and each applying migrations is a race; a process
 that migrates before it serves is not disposable per
@@ -523,7 +531,9 @@ the database, set in configuration, and a query that hits it is a defect to fix
 rather than a limit to raise. This is the half of SD9's bounded pool that bounds
 it in time as well as in count.
 
-**The migrate step takes an advisory lock for its run.** SD3 keeps
+**The migrate step takes an advisory lock for its run** — it is a
+`single_flight` job, and this is [`057-jobs.md`](057-jobs.md) JB6's lock in
+its first instance. SD3 keeps
 migration out of the serve process to avoid the replica race; two deploy steps
 overlapping — a retried pipeline, a person and a pipeline — is the same race
 one layer up. One lock held for the run means the second invocation waits and
@@ -572,9 +582,12 @@ through the service's interface — its API per [`050-http.md`](050-http.md), or
 the events of the [messaging standard](055-messaging.md) — never through a shared
 database. A table read by two services is an interface with no contract, no
 version and no owner: the moment one service changes a column the other breaks
-at runtime, and neither has a test that could have shown it. The database is an
-attached resource of exactly one process, in the sense
-[factor IV](https://12factor.net/backing-services) means it.
+at runtime, and neither has a test that could have shown it. The database is a
+backing service of exactly one service, in all of that service's processes —
+its server, its pool, its one-shots, its migrate step — in the sense
+[factor IV](https://12factor.net/backing-services) means it; and every process
+that holds its credential is built from the one repository that holds its
+migrations ([`000-platform.md`](000-platform.md#terms), *Service*).
 
 **Tests run against the engine the product runs.** Postgres in a container,
 MySQL in a container, never SQLite standing in for either. This follows from

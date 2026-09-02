@@ -13,11 +13,13 @@ service emits and another consumes, a job a service hands to itself to do
 later, a webhook that leaves for a third party or arrives from one. It defines
 what a message is, what a consumer owes it, how a producer emits it without
 losing it, and how it is signed at the edge. **What it does not define is the
-schedule.** Work that runs *because it is Tuesday* — a nightly report, a
-retention sweep, a backfill — is the [jobs
-standard](000-platform.md#the-capability-roster)'s; that standard says how such
-work is registered and triggered, and the work it triggers is a consumer under
-the rules here. Notifications to people ride this envelope and are the
+schedule, or the job.** Work that runs *because it is Tuesday* — a nightly
+report, a retention sweep, a backfill — is a job under
+[`057-jobs.md`](057-jobs.md), invoked as a one-shot worker under
+[`035-workers.md`](035-workers.md); where such work fans out, the messages it
+produces are consumed under the rules here. A consumer under this document is a
+pool worker running a per-event job, and what that job promises about a
+repeated delivery is its duplicate policy under 057 JB2. Notifications to people ride this envelope and are the
 [notifications standard](000-platform.md#the-capability-roster)'s.
 
 ## Why this exists
@@ -191,6 +193,18 @@ So **the consumer is idempotent, and the standard says how**:
   without an inbox at all, and the inbox becomes the backstop rather than the
   mechanism.
 
+**The inbox deduplicates the delivery; the job's duplicate policy governs the
+effect.** [`057-jobs.md`](057-jobs.md) JB2 gives every job one of three
+policies. For an `idempotent` job the inbox row and the effect commit together
+and the rules above are the whole story. For an `at_most_once` job — an effect
+across a boundary with no dedup handle: a plain SMTP send, a device command, a
+payment rail without an idempotency key — the consumer claims the key before
+acting and records after, so a redelivery meets the claim and a crash between
+the two is reported as `unknown` rather than repeated. For an `at_least_once`
+job the declaration itself is the consent to a repeat. A message may therefore
+trigger a job of any policy; what it may not trigger is a job that has not
+declared one.
+
 **Ordering is not guaranteed, and a consumer does not depend on it.** Two
 messages about different subjects arrive in any order; two about the same
 subject arrive in order only where the transport promises it for that key —
@@ -214,8 +228,10 @@ succeeds.
 envelope, to an outbox table in its own database inside the same transaction
 as the state change — [`025-structured-data.md`](025-structured-data.md) SD11
 again, one transaction — and a relay reads the outbox and publishes to the
-transport, marking each row published. The relay is itself a consumer of the
-outbox under AM3, which is why it may publish a row twice and why AM3's
+transport, marking each row published. The relay is a per-event job,
+`outbox.relay`, run by the service's pool worker
+([`035-workers.md`](035-workers.md) WK1) and never by the server; it is itself
+a consumer of the outbox under AM3, which is why it may publish a row twice and why AM3's
 deduplication is what makes that harmless. This is the same reasoning
 [`080-audit.md`](080-audit.md) AE8 applies to the audit row: the inference
 *no message, therefore no change* is only sound if the two cannot separate.
@@ -239,8 +255,9 @@ silently, and does not stop the messages behind it.
   intact, the attempt count, and the last error. A dead letter is a fact for a
   person to look at; a message discarded after N failures is a fact nobody
   will.
-- **Dead letters are replayable.** Replay redelivers the same envelope, id
-  and all; AM3 makes that safe, which is the second reason AM3 keys on the
+- **Dead letters are replayable.** Replay is an operator-triggered job
+  (`deadletter.replay`, [`057-jobs.md`](057-jobs.md)) that redelivers the same
+  envelope, id and all; AM3 makes that safe, which is the second reason AM3 keys on the
   envelope's identity rather than on a delivery attempt's.
 - **A poison message never blocks the queue.** A consumer that stops on the
   first message it cannot process has converted one bad payload into an
@@ -261,35 +278,33 @@ no retry, no dead letter, no deduplication, no record that it ran; and the
 service standard's lifecycle rules cannot see it — `SIGTERM` drains requests
 and not timers, readiness reports on the listener and not the loop.
 
-**The worker is its own image**, built from the same repository in the same
-build run as the service and carrying the same version. It links the consumer
-and not the listener, so the serve process *cannot* consume and the worker
-*cannot* listen — which makes the timer ban above structural rather than
-remembered. It has its own dependency closure, its own configuration surface,
-its own scaling and its own deployment, because a worker and a listener differ
-in every one of those, and an image that is both has a dependency closure, a
-configuration surface and a failure mode that are the union of the two. An
-image does one thing; two things are two images.
+**The worker is its own image**, built in the same build run as the server and
+carrying the same version. It links the consumer and not the listener, so the
+server *cannot* consume and the worker *cannot* listen — which makes the timer
+ban above structural rather than remembered. It has its own dependency
+closure, its own configuration surface, its own scaling and its own
+deployment, because a worker and a server differ in every one of those, and an
+image that is both has a dependency closure, a configuration surface and a
+failure mode that are the union of the two. An image does one thing; two
+things are two images. The two worker models, the pool and the one-shot, and
+how their images are cut, are [`035-workers.md`](035-workers.md)'s; the
+consumer here is the pool.
 
-What binds the worker to the service is the version, not the image.
-[`010-ci.md`](010-ci.md) versions the repository rather than the artifact, so
-every image one build run produces shares one provenance, was tested against
-the others in that run, and asserts compatibility with them by construction: a
-worker at one version consuming rows a service at another version migrated is
-not a state the release process can produce. Two rules of that document make
-it true. BUILD ONCE: the build job is the only compiler in the run, so each
-artifact is compiled exactly once, stored, and every image is assembled from
-what that job stored — the image build never recompiles. Versioning the
-repository: that one build job builds every artifact the repository ships,
-every time, whether or not the files under any one of them changed, so the
-worker image and the service image at one version came out of one run that
-compiled and tested them together.
-
-A worker that reads this service's database is this service's worker: same
-repository, same version, its own image. A worker with its own database is
-another service — its own repository and release, its data governed by
-[`025-structured-data.md`](025-structured-data.md) SD13 — and the messages
-between them are the only thing they share.
+Two things bind the worker to the service, and they are different things.
+**Provenance** is the build run: [`010-ci.md`](010-ci.md) versions the
+repository rather than the artifact, so every image one build run produces was
+compiled once (BUILD ONCE: the build job is the only compiler in the run, and
+the image build never recompiles), built every time whether or not its files
+changed, tested against the others in that run, and asserts compatibility with
+them by construction — a worker at one version consuming rows a server at
+another version migrated is not a state a deployment can produce.
+**Ownership** is the credential: a worker that holds this service's database
+credential and is migrated by this service's migrations is this service's
+worker, whatever else the repository holds. A worker with its own state is
+another service, with its own credential and its own images, whether or not
+it shares the repository; its data is
+[`025-structured-data.md`](025-structured-data.md) SD13's, and the messages
+between the two services are the only thing they share.
 
 Workers obey [`030-service.md`](030-service.md) SC4 in their own terms: on
 `SIGTERM` a worker stops taking messages, finishes what it holds within the
@@ -298,10 +313,13 @@ which is what at-least-once buys.
 
 Work that runs *on a schedule* rather than *on a message* — the nightly report,
 the retention sweep, the backfill [`025-structured-data.md`](025-structured-data.md)
-SD4 sends here — is triggered by the [jobs
-standard](000-platform.md#the-capability-roster)'s mechanism, and what it
-triggers is a consumer under this rule. The two documents meet at the message:
-that standard says when, this one says how.
+SD4 sends here — is a job under [`057-jobs.md`](057-jobs.md), invoked as a
+one-shot worker by the platform's runner on a tick
+([`035-workers.md`](035-workers.md) WK5); the tick is an invocation, not a
+message. Where that job's work is a fan-out, it produces messages through the
+outbox and the pool consumes them under this rule. The documents meet at the
+message: 057 says what the work is, 035 says what runs it, this one says how
+the message travels.
 
 ### AM7. A webhook leaving is a signed CloudEvent
 

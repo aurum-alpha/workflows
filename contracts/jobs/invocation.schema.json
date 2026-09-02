@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/jobs/invocation.schema.json",
+  "title": "Aurum Alpha job invocation",
+  "description": "standards/057-jobs.md JB1: the input of a job started by a tick, a deployment step, or an operator. It is deliberately not a CloudEvent (057 Decisions): a CloudEvent is a past-tense fact about an entity with a public id, and none of these triggers is that. The attribute names are borrowed so a job sees one shape either way. The worker constructs it (035 WK4); a job never builds its own. The key is derived by the trigger's rule and carried, so the job does not derive it: tick -> '<job>@<tick_at>', deployment -> '<job>@<version>', operator -> the key supplied, else '<job>@<id>'. For a per-event job the input is the 055 AM1 envelope itself and the key is '<source>:<id>'.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/uuidv7",
+      "description": "Minted by the worker for this invocation. Also the run id."
+    },
+    "source": {
+      "type": "string",
+      "pattern": "^/[a-z][a-z0-9-]*$",
+      "description": "The service, named logically as 055 AM1 names it: /invoicing."
+    },
+    "job": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+      "description": "The declaration's name."
+    },
+    "trigger": {
+      "enum": ["tick", "deployment", "operator"],
+      "description": "The three invocation triggers. A message is the fourth trigger and arrives as an event, not an invocation."
+    },
+    "time": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp",
+      "description": "When the invocation was constructed."
+    },
+    "traceparent": {
+      "$ref": "https://contracts.aurumalpha.dev/observability/context.schema.json#/$defs/traceparent",
+      "description": "Started by the worker or handed to it in the environment (040 OC1)."
+    },
+    "key": {
+      "type": "string",
+      "minLength": 1,
+      "description": "057 JB2's key, derived by the trigger's rule."
+    },
+    "args": {
+      "type": "object",
+      "description": "The job's arguments, validated by the worker against the declaration's args_schema before the body runs."
+    },
+    "tick_at": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp",
+      "description": "tick only: the scheduled instant, supplied by the runner as --at. Two firings of one tick share it and therefore share a key."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "deployment only: the release version being deployed."
+    },
+    "operator": {
+      "type": "string",
+      "minLength": 1,
+      "description": "operator only: who ran it, as the audit standard would name the actor."
+    }
+  },
+  "required": ["id", "source", "job", "trigger", "time", "traceparent", "key", "args"],
+  "additionalProperties": false,
+  "allOf": [
+    { "if": { "properties": { "trigger": { "const": "tick" } } }, "then": { "required": ["tick_at"] }, "else": { "not": { "required": ["tick_at"] } } },
+    { "if": { "properties": { "trigger": { "const": "deployment" } } }, "then": { "required": ["version"] }, "else": { "not": { "required": ["version"] } } },
+    { "if": { "properties": { "trigger": { "const": "operator" } } }, "then": { "required": ["operator"] }, "else": { "not": { "required": ["operator"] } } }
+  ]
+}

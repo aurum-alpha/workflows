@@ -1,0 +1,84 @@
+{
+  "contract": "workers",
+  "schemaVersion": 1,
+  "description": "standards/035-workers.md WK5 as data: what the platform's runner must do to start a one-shot worker, stated as seven verbs, each with the declaration fields (057 JB3) it consumes and the setting that satisfies it in each runner the standard names. The platform builds no runner; a renderer (WK6) targets this file and a checker reads it. A runner is admitted by satisfying every verb; a runtime whose runner cannot is not a runtime the platform deploys one-shots on.",
+  "verbs": [
+    {
+      "id": "run_to_completion",
+      "requirement": "Run an image, or a command in one, to completion with the declared arguments and environment, and expose the exit code to whatever invoked it.",
+      "consumes": ["name", "input.args_schema"],
+      "satisfied_by": {
+        "kubernetes": "batch/v1 Job with restartPolicy: Never; status carries the container exit code",
+        "systemd": "Type=oneshot with ExecStart=; systemctl reports the result",
+        "container_cli": "docker run returns the exit code",
+        "managed": "ECS RunTask, Cloud Run Jobs, Nomad type=batch"
+      }
+    },
+    {
+      "id": "graceful_stop",
+      "requirement": "Deliver SIGTERM and wait the declared grace before SIGKILL.",
+      "consumes": ["grace"],
+      "satisfied_by": {
+        "kubernetes": "terminationGracePeriodSeconds",
+        "systemd": "TimeoutStopSec=",
+        "container_cli": "docker stop -t",
+        "managed": "task stop timeout"
+      }
+    },
+    {
+      "id": "deadline",
+      "requirement": "Kill a run that exceeds the declared deadline.",
+      "consumes": ["deadline"],
+      "satisfied_by": {
+        "kubernetes": "activeDeadlineSeconds",
+        "systemd": "RuntimeMaxSec=",
+        "container_cli": "timeout around the run",
+        "managed": "task timeout"
+      }
+    },
+    {
+      "id": "schedule",
+      "requirement": "Fire a five-field cron expression evaluated in UTC, passing the scheduled instant to the one-shot as --at.",
+      "consumes": ["schedule.cron"],
+      "satisfied_by": {
+        "kubernetes": "CronJob.spec.schedule with timeZone: Etc/UTC",
+        "systemd": "OnCalendar=, translated from the cron expression",
+        "container_cli": "not a scheduler; the deployment and the operator are the other two triggers",
+        "managed": "EventBridge Scheduler, Cloud Scheduler, Nomad periodic.cron"
+      }
+    },
+    {
+      "id": "no_overlap",
+      "requirement": "Never start a second run of one schedule while one is running. The job locks anyway (057 JB6); this setting exists so the two never disagree.",
+      "consumes": ["concurrency"],
+      "satisfied_by": {
+        "kubernetes": "concurrencyPolicy: Forbid",
+        "systemd": "a timer never starts a unit that is already active",
+        "container_cli": "not applicable",
+        "managed": "prohibit_overlap and equivalents"
+      }
+    },
+    {
+      "id": "no_retry",
+      "requirement": "Never retry a failed run; the next tick is the retry, and 057 JB8 catches a job whose every tick fails.",
+      "consumes": [],
+      "satisfied_by": {
+        "kubernetes": "backoffLimit: 0",
+        "systemd": "no Restart= on the oneshot unit",
+        "container_cli": "not applicable",
+        "managed": "retry count zero"
+      }
+    },
+    {
+      "id": "missed_tick",
+      "requirement": "Handle a tick that could not fire on time by the declared policy: run once, late, within the window, or skip it.",
+      "consumes": ["schedule.missed", "schedule.window"],
+      "satisfied_by": {
+        "kubernetes": "startingDeadlineSeconds",
+        "systemd": "Persistent=",
+        "container_cli": "not applicable",
+        "managed": "catch-up settings"
+      }
+    }
+  ]
+}

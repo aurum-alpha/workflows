@@ -1,0 +1,13 @@
+{
+  "contract": "workers",
+  "schemaVersion": 1,
+  "description": "standards/035-workers.md WK4 as data: how a one-shot worker maps a run's outcome, or a condition that prevented a run, to its exit code. Consumed by the deployment step, which blocks on a non-zero exit from a blocking job, and by the workers corpus. Usage and configuration errors take the codes shells and runners already know from sysexits.h; outcomes take small distinct integers because each calls for a different response.",
+  "codes": {
+    "0": { "means": ["succeeded", "skipped"], "why": "The work is done, or is being done by another run. A deployment waiting on a blocking job proceeds." },
+    "1": { "means": ["failed"], "why": "The conventional general failure. A deployment stops." },
+    "2": { "means": ["unknown"], "why": "An at_most_once claim with no completion. Reconcile; do not rerun blindly." },
+    "3": { "means": ["expired"], "why": "The key was older than valid_for. A decision about the work's meaning, not a retry." },
+    "64": { "means": ["bad_arguments", "unknown_job", "undeclared_job"], "why": "EX_USAGE. The invocation could not be constructed: arguments failed the args schema, or no declaration exists for the job named." },
+    "78": { "means": ["missing_configuration"], "why": "EX_CONFIG. The same condition 030 SC3 makes a server refuse to serve on." }
+  }
+}

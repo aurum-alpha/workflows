@@ -1,0 +1,61 @@
+{
+  "contract": "workers",
+  "schemaVersion": 1,
+  "description": "The conformance corpus for standards/035-workers.md. One part, 'one_shot', judged by running a repository's one-shot worker image against a job runtime: each case states the situation the worker is started in and the exit code, the run outcome recorded (or 'none' when no run row is written), and any further observable the worker must produce. Cases that start the same key twice list one expectation per start, in order.",
+  "one_shot": [
+    {
+      "case": "an-undeclared-job-does-not-run",
+      "given": { "job": "nobody.declared", "declared": false },
+      "expect": { "exit": 64, "outcome": "none", "run_row": false },
+      "why": "057 JB3: a job with no declaration does not run, and the worker is where that is enforced. No run row, because no run happened."
+    },
+    {
+      "case": "arguments-that-fail-the-schema-do-not-run",
+      "given": { "job": "column.backfill", "declared": true, "args_valid": false },
+      "expect": { "exit": 64, "outcome": "none", "run_row": false },
+      "why": "057 JB1: input is validated before the body runs. EX_USAGE, and nothing recorded."
+    },
+    {
+      "case": "missing-configuration-blocks-starting",
+      "given": { "job": "retention.purge", "declared": true, "config_missing": true },
+      "expect": { "exit": 78, "outcome": "none", "run_row": false },
+      "why": "WK8 and 030 SC3: absence blocks starting. EX_CONFIG, before any run exists."
+    },
+    {
+      "case": "a-held-lock-is-skipped-and-exits-zero",
+      "given": { "job": "retention.purge", "declared": true, "lock_held": true },
+      "expect": { "exit": 0, "outcome": "skipped", "run_row": true },
+      "why": "057 JB6 and JB4: somebody else is doing the work. The overrun, not the skip, is what alerts."
+    },
+    {
+      "case": "the-same-tick-twice-is-one-piece-of-work",
+      "given": { "job": "retention.purge", "declared": true, "trigger": "tick", "at": "2026-03-04T03:00:00.000Z", "starts": 2 },
+      "expect": [ { "exit": 0, "outcome": "succeeded", "effects": 1 }, { "exit": 0, "outcome": "skipped", "effects": 0 } ],
+      "why": "WK4 and 057 JB2: the key is the job name and --at, so a duplicate firing meets the first run's record."
+    },
+    {
+      "case": "a-failed-blocking-job-exits-one",
+      "given": { "job": "schema.migrate", "declared": true, "trigger": "deployment", "version": "2.4.0", "body": "fails" },
+      "expect": { "exit": 1, "outcome": "failed", "run_row": true },
+      "why": "WK4 and 057 JB4: the deployment stops on the exit code, which is the only outcome a pipeline can wait on."
+    },
+    {
+      "case": "sigterm-during-a-long-job-checkpoints-and-exits-within-grace",
+      "given": { "job": "column.backfill", "declared": true, "duration": "long", "grace": "PT30S", "signal": "SIGTERM", "after_batches": 3 },
+      "expect": { "exit": 1, "outcome": "failed", "run_row": true, "checkpoint_written": true, "exited_within_grace": true, "rerun_resumes_from_batch": 4 },
+      "why": "057 JB7: on SIGTERM a long job writes its last checkpoint and exits within grace; the rerun of the same key continues rather than starting over. The interrupted run records failed, so the freshness rule counts only completions."
+    },
+    {
+      "case": "an-at-most-once-claim-with-no-completion-exits-two",
+      "given": { "job": "payments.submit_file", "declared": true, "duplicate_policy": "at_most_once", "prior_claim_without_completion": true },
+      "expect": { "exit": 2, "outcome": "unknown", "run_row": true },
+      "why": "057 JB4 and WK4: unknown is a different response from failed, so it is a different code."
+    },
+    {
+      "case": "a-key-past-its-validity-window-exits-three",
+      "given": { "job": "order.place", "declared": true, "valid_for": "PT1M", "key_age": "PT5M" },
+      "expect": { "exit": 3, "outcome": "expired", "run_row": true },
+      "why": "057 JB2 and WK4: neither deduplicated nor repeated; the response is a decision about the work's meaning."
+    }
+  ]
+}

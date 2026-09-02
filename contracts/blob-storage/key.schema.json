@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/blob-storage/key.schema.json",
+  "title": "Aurum Alpha object key grammar",
+  "description": "standards/026-blob-storage.md BS3: the grammar of an object key. A key is <tenant public id>/<entity>/<object public id> where the service is tenant-scoped, and <entity>/<object public id> where it is not. The object public id is a UUIDv7 per 020 IP2, the entity is a snake_case noun in the form 025 SD10 gives table names, and the tenant segment is any admitted public id. The key carries no filename, no extension, no date path and no personal data: the original filename and the content type are metadata on the object reference, never bytes in the key. The prefix is a convenience for lifecycle rules and enumeration; the tenant boundary is the row and the authorization check (BS10). schemaVersion 1 - evolves additively per PC6.",
+  "$defs": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "entity": {
+      "type": "string",
+      "description": "BS3. The kind of thing the object belongs to, as the owning service names it: snake_case, lowercase, the same grammar as a table name (025 SD10). One stable segment per entity type, declared in the service's upload policy (BS6).",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "objectId": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/uuidv7",
+      "description": "BS3. The object's public id, minted by the server at intent time (BS6); the final segment of the key and the id of the object reference. UUIDv7 so the keys of one entity sort by creation, which is what a keyset sweep over the bucket (BS8) relies on."
+    },
+    "tenantScopedKey": {
+      "type": "string",
+      "description": "BS3. <tenant public id>/<entity>/<object public id>: the tenant segment is any admitted IP2 format, the entity is snake_case, the object id is a UUIDv7. Exactly three segments; nothing after the id.",
+      "pattern": "^(?:[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|[a-z][a-z0-9]{0,7}_[A-Za-z0-9]{12,64}|[A-Za-z0-9_-]{12,64})/[a-z][a-z0-9_]*/[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "unscopedKey": {
+      "type": "string",
+      "description": "BS3. <entity>/<object public id>, for a service with no tenant level. Exactly two segments.",
+      "pattern": "^[a-z][a-z0-9_]*/[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "key": {
+      "description": "BS3. Either admitted key form. Which form a service uses is fixed by tenant_scoped in its upload policy; this union is what a reference's key must match regardless.",
+      "anyOf": [
+        { "$ref": "#/$defs/tenantScopedKey" },
+        { "$ref": "#/$defs/unscopedKey" }
+      ]
+    }
+  }
+}

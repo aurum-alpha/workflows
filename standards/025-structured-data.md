@@ -97,6 +97,21 @@ A thin row mapper is not an ORM. Scanning a result row into a struct or a
 record is the driver's job and is what "map result rows onto a language type"
 means. The line is whether the library *wrote the query*.
 
+**Pagination is keyset, never `OFFSET`.** [`050-http.md`](050-http.md) HA4
+makes the wire form an opaque cursor; the storage form that makes that honest
+is `WHERE key > $1 ORDER BY key LIMIT $2` over a key that is unique, indexed and
+monotonic. `OFFSET n` fails on both counts that matter: it is O(n), because the
+engine walks and discards n rows on every page, and it is unstable, because a
+row inserted or deleted while a client pages makes the next page repeat or skip.
+The key with all three properties already exists on every addressable row by
+construction — the UUIDv7 public id of [`020-identifiers.md`](020-identifiers.md)
+IP2 is time-ordered, unique and indexed, and time-ordering is precisely why IP2
+chose v7 over v4. The internal identity key is also monotonic and serves keyset
+paging *inside* the service, but never inside a cursor a client holds, because
+IP1 says it never leaves — and a base64 wrapper is not opacity. A listing sorted
+by something other than creation order keys on `(sort_column, public_id)`, the
+id breaking ties so the order is total.
+
 ### SD2. A migration is an ordered `.sql` file, and never code
 
 **A schema change outside local development is a migration**: a file of SQL,
@@ -221,6 +236,18 @@ a comment on it.
 production.** A down migration for a dropped column restores the column and
 not the data; the down path is a convenience for a developer's disposable
 database, and nothing in a deploy path runs one.
+
+**A backfill is a job, not a migration.** A migration that rewrites fifty
+million rows holds a lock for the duration, and the deploy step times out with
+the table half-written. A data change that touches many rows is therefore three
+artifacts, not one: a migration that adds the column nullable; a batched job —
+bounded batches, resumable, observable — that fills it while the service keeps
+serving; and a later migration that adds `NOT NULL` once the job reports the
+column full. The migration changes shape, the job moves data, and the shape
+change is what SD3's step applies at rollout, in seconds. How the job itself is
+built, registered and run is the [maintenance jobs
+standard](000-platform.md#the-capability-roster)'s; what this rule fixes is that
+rows do not move inside `migrate`.
 
 ### SD5. Isolation levels are declared, and they are the RBAC scope types
 
@@ -391,6 +418,161 @@ short because a longer version would be restating a factor:
   point where it is most often broken, because a driver's debug mode logs
   everything and someone will turn it on in production once.
 
+Backup, restore and recovery objectives are deliberately not here. They span
+every kind of storage a product has — structured, blob and document — and a
+rule stated for one would be restated for the others; they belong to the
+[backup and recovery standard](000-platform.md#the-capability-roster). What this
+document holds is the one dependency: a restore lands the schema at some past
+migration state, and SD2's convergence is what makes running `migrate` against
+it safe.
+
+### SD10. The schema carries its invariants
+
+Code paths multiply. A rule enforced in one of them — the write handler, the
+import job, the admin script, the backfill — is a rule enforced in the paths
+someone remembered. The database is the one place every write goes through, so
+**an invariant of the data is declared in the schema, and code is the second
+line, never the only one.**
+
+- **`NOT NULL` is the default; nullable is a decision.** A column admits `NULL`
+  because the domain genuinely has an absent case, stated in the migration that
+  adds it — never because the author did not decide. A sentinel standing in for
+  absence (an empty string, a zero, a date in 1970) is a `NULL` that lies about
+  itself, and every query that touches it has to know the lie.
+- **Foreign keys are declared.** A reference the code promises to honour is
+  honoured in the paths that remember to; a declared constraint is honoured in
+  all of them, including the one that runs at three in the morning. **And every
+  foreign-key column is indexed** — the engine does not do this for you, and an
+  unindexed foreign key turns every delete of a parent row into a scan of the
+  child table, which is a table lock in a trench coat.
+- **Uniqueness and domain rules are `UNIQUE` and `CHECK` constraints.** An email
+  unique per tenant is `UNIQUE (tenant_id, email)`, not a `SELECT` before the
+  `INSERT`, which races. A status that takes four values is a `CHECK`, not a
+  comment.
+- **No native `ENUM` types.** A `CHECK` constraint or a lookup table instead. A
+  native enum cannot have a value removed, cannot have one added inside a
+  transaction on the majority engine, and turns a rename into an exercise nobody
+  wants; the `CHECK` does the same job and migrates like any other constraint.
+- **A JSON column holds what the application does not query by field.** A
+  per-tenant configuration blob, an external payload kept verbatim — fine,
+  because nothing filters or joins on their insides. A field the application
+  filters, joins, sorts or indexes on is a column, and a `jsonb` column that
+  accumulates such fields is a schema someone did not want to write, carrying
+  none of the invariants above.
+- **Isolation columns lead the composite index** on every scoped table (SD5).
+  The joinless predicate is only fast if the index starts where the predicate
+  does; an index on `(created_at)` alone makes `WHERE tenant_id = $1 ORDER BY
+  created_at` a scan of every tenant's rows.
+- **Every table carries `created_at` and `updated_at`**, both `NOT NULL`, both
+  instants per IP4, `updated_at` maintained on every write — by the write or by a
+  trigger, decided once per repository. They are the two questions asked of
+  every row on every support call.
+
+**Identifiers are `snake_case`, decided once.** The argument
+[`050-http.md`](050-http.md) HA8 made for the wire is sharper in the schema: an
+unquoted SQL identifier case-folds *silently*, so `createdAt` becomes
+`createdat` in one reference and stays `createdAt` in a quoted one, and they are
+two columns until they are the same one. Table names are plural nouns
+(`invoices`, `tenants`); a foreign key is the singular of the referenced table
+plus `_id` (`tenant_id`), which is the form SD5 already assumes. None of these
+three choices is better than its alternative in any way that matters — which is
+exactly why each is made here, once, rather than per repository.
+
+### SD11. One request, one transaction, and nothing waits inside it
+
+**A request's writes commit or vanish together.** One handler opens one
+transaction, does its work, and commits or rolls back once. Two writes that
+must agree — the change and its audit event, per [`080-audit.md`](080-audit.md)
+AE8; the order and its lines — are one transaction, or they are a bug waiting
+for the failure between them.
+
+**A transaction never spans a network call or a human.** Not an HTTP request to
+another service, not a queue publish, not a wait for the user's next click. A
+transaction holds locks and a pooled connection for its lifetime; one that
+waits on the network holds them for the network's worst case, and one that
+waits on a person holds them until the person comes back from lunch. Gather the
+external inputs first, then open the transaction, then commit.
+
+**`READ COMMITTED` is the default isolation level; `SERIALIZABLE` is opted into
+per transaction where the domain needs it, with a retry.** The default should
+be the one that does not surprise a developer with a failure mode they did not
+write for, and `READ COMMITTED` is that: it never aborts a transaction for a
+conflict the developer did not know could happen. `SERIALIZABLE` is the correct
+choice where two concurrent transactions must not both succeed — a balance that
+must not go negative, a seat that must not be sold twice — and it is chosen
+deliberately there, with the serialization-failure retry written alongside,
+because a `SERIALIZABLE` transaction without a retry fails a small fraction of
+the time for no reason a user can see.
+
+**A statement timeout is set on the runtime role.** A query that runs for
+minutes holds a pooled connection for minutes, and under load the pool is the
+resource that runs out first. The timeout is the ceiling a request may spend in
+the database, set in configuration, and a query that hits it is a defect to fix
+rather than a limit to raise. This is the half of SD9's bounded pool that bounds
+it in time as well as in count.
+
+**The `migrate` command takes an advisory lock for its run.** SD3 keeps
+migration out of the serve process to avoid the replica race; two deploy steps
+overlapping — a retried pipeline, a person and a pipeline — is the same race
+one layer up. One lock held for the run means the second invocation waits and
+then finds nothing to do, which SD2's convergence guarantees is safe.
+
+### SD12. A deleted row is gone
+
+**Hard delete is the default.** When a user deletes a thing, the row is
+removed. When a user leaves, their data is removed. The argument is compliance
+and security before it is engineering: *we do not hold data after its owner
+asked us not to* is a sentence a product can defend to a regulator, an auditor
+and a client, and *we mark it deleted and keep it* is a sentence that has to be
+followed by an explanation. Data that is not held cannot leak, cannot be
+compelled, and cannot be the subject of an erasure request that the interface
+already told the user was granted.
+
+**Soft delete is the exception, and it needs a domain reason.** Some things must
+be retained past the user's intent to remove them: a financial record inside
+its statutory period, a message the other party still holds, an object whose
+history other rows reference. Where that is so, the product says which tables
+and why in its **Conventions**, and three rules hold on them:
+
+- **A soft-deleted row is still isolation-scoped.** It carries its isolation
+  columns like any other row and SD6's predicate still applies. Deleted is not
+  a fourth level.
+- **A soft-deleted row is still personal data.** An erasure request reaches it
+  as it reaches any other row, in the redaction shape [`080-audit.md`](080-audit.md)
+  AE7 defines and under the [data-subject-rights
+  standard](000-platform.md#the-capability-roster). Soft delete defers deletion;
+  it does not exempt from it.
+- **Ordinary queries exclude it in the query text**, per SD1 — a
+  `WHERE deleted_at IS NULL` a reviewer can see, never a global filter a library
+  applies invisibly.
+
+What survives a hard delete is the audit trail, by construction:
+[`080-audit.md`](080-audit.md) AE4 requires the audit row to carry the deleted
+target's public id and display text and to be unreachable by cascade. *The
+invoice is gone and the record that it was voided on the fourth is not* is the
+intended state, and it is what makes hard delete safe as the default.
+
+### SD13. The database is private to its service, and is tested as the real thing
+
+**One service, one schema, one writer.** No other service reads this service's
+tables, and no other service holds a credential to them. Integration happens
+through the service's interface — its API per [`050-http.md`](050-http.md), or
+the events of the [async messaging
+standard](000-platform.md#the-capability-roster) — never through a shared
+database. A table read by two services is an interface with no contract, no
+version and no owner: the moment one service changes a column the other breaks
+at runtime, and neither has a test that could have shown it. The database is an
+attached resource of exactly one process, in the sense
+[factor IV](https://12factor.net/backing-services) means it.
+
+**Tests run against the engine the product runs.** Postgres in a container,
+MySQL in a container, never SQLite standing in for either. This follows from
+SD1: the query text is the contract, and that text is engine-specific — its
+placeholders, its `RETURNING`, its `ON CONFLICT`, its date arithmetic. A query
+proven against a different dialect is a different query proven. A test suite
+that cannot obtain a real engine does not run the data-access tests; it does
+not run them against a substitute and report green.
+
 ## The artifacts
 
 Per PC3, under [`contracts/structured-data/`](../contracts/structured-data/):
@@ -398,14 +580,16 @@ Per PC3, under [`contracts/structured-data/`](../contracts/structured-data/):
 - **`storage-profiles.json`** — SD7's table as data: for each admitted engine,
   the column type per primitive, so a schema checker reads it rather than a
   human re-deriving it from prose.
-- **`corpus.json`** — two parts. `migrations`: given a migrations directory as
+- **`corpus.json`** — three parts. `migrations`: given a migrations directory as
   a listing of names and contents, the expected findings — a non-`.sql` file,
   an unordered name, an expand-only violation with and without its marker, a
   `db:push` in a reachable script. `isolation`: given a declared hierarchy, a
   set of tables with their columns, and a set of queries each issued in a
   stated context, the expected findings and the expected visibility of each
-  row. Both are pure functions of their inputs, which is what makes them
-  writable as data and runnable in any language.
+  row. `schema`: given a declared schema — tables, columns with types and
+  nullability, indexes, foreign keys, declared types — the SD10 findings a
+  checker must report. All three are pure functions of their inputs, which is
+  what makes them writable as data and runnable in any language.
 
 ## Enforcement
 
@@ -447,6 +631,19 @@ standard is unusual in how many of those gates are cheap:
   the one authorization uses, whether a fixture could reach production, and
   whether a role is genuinely least-privilege are judgments about intent,
   stated as questions rather than left as assumptions.
+- **SD10 is mostly catalog facts**, and the `schema` corpus decides them: a
+  foreign-key column with no index leading on it, a table without its two
+  timestamps, a native enum type, an identifier that is not `snake_case`, a
+  scoped table with no index led by its outermost isolation column. `NOT NULL`
+  by default and the JSON rule are intent, and stay review questions.
+- **SD11's timeout and lock are configuration facts**; that a transaction spans
+  no network call is a review question on every handler, and one worth asking
+  in those words.
+- **SD12's default is a review question** on every delete path; that a
+  soft-deleted table is declared in Conventions with a reason is a grep.
+- **SD13's privacy is a credential fact** — no second service holds a role on
+  this database — and its real-engine rule is a CI fact: the test job starts
+  the engine the product runs, or the data-access tests do not run.
 
 ## Decisions
 
@@ -498,3 +695,29 @@ standard is unusual in how many of those gates are cheap:
   deferral for Postgres and leaves the table open for the next engine, which
   is admitted by filling in its column rather than by an argument about
   whether it should exist.
+- **Hard delete is the default; soft delete is the exception** (2026-09-02):
+  the reverse was considered — soft by default, hard only for security — and
+  rejected because the default should be the one that is easiest to defend
+  without explanation. *We do not hold data after its owner asked us not to* is
+  that sentence. Soft delete stays available where a domain reason exists, and
+  the three rules on it keep a retained row scoped, erasable and visibly
+  excluded.
+- **`READ COMMITTED` by default, `SERIALIZABLE` by choice** (2026-09-02): the
+  default is the level that never fails a transaction for a reason the
+  developer did not write for; the stricter level is chosen where two
+  concurrent successes would be wrong, and the retry it demands is written in
+  the same change.
+- **No native enums; `CHECK` or a lookup table** (2026-09-02): the enum's
+  only advantage is brevity, and its costs — no removal, no transactional add
+  on the majority engine, a painful rename — are all paid at migration time,
+  which is when nobody wants a surprise.
+- **Plural table names, `<singular>_id` foreign keys, `snake_case` throughout**
+  (2026-09-02): none of the three is better than its alternative, and that is
+  the whole reason to decide them here once. The `snake_case` half has a
+  technical argument as well — unquoted identifiers case-fold silently — and
+  it is the same argument HA8 made for the wire.
+- **Backfills are jobs, backups are elsewhere** (2026-09-02): a backfill moves
+  rows and a migration changes shape, and conflating them is how a deploy step
+  times out holding a lock. Backup and recovery span every kind of storage and
+  get their own document rather than a paragraph here that would be restated
+  twice.

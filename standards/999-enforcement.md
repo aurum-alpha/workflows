@@ -490,9 +490,13 @@ grant as a schema fact.
 | SD7 | IP1's public-id column beside the internal key; per-engine storage profile from `storage-profiles.json`; session time zone UTC | **catalog check against the profile** (proposed `check-storage-profile`) — this is the check IP1's row has been waiting for | **review only** |
 | SD8 | Seeds are idempotent SQL through the migrate path; fixtures are never production rows and no deploy path can load one | seeds: the from-previous-release run applies them twice, so a non-idempotent seed fails SD3's gate. Fixtures: reachability is a grep; that a fixture carries no real personal data is a judgment | **review only** |
 | SD9 | Connection from the environment; least-privilege runtime role; TLS; bounded pool from config, exhaustion visible in readiness; SQL parameters never in telemetry | role privileges are a catalog fact once a checker connects as the runtime role and attempts `ALTER`; the rest is review | **review only** |
+| SD10 | The schema carries its invariants: `NOT NULL` by default, foreign keys declared and indexed, `UNIQUE`/`CHECK` for domain rules, no native enums, JSON only for unqueried data, isolation columns leading composite indexes, `created_at`/`updated_at` on every table, `snake_case` identifiers, plural tables, `<singular>_id` keys | **catalog-decided by the `schema` corpus** for the mechanical half (unindexed FK, missing timestamps, native enum, non-snake identifier, isolation column not leading an index — proposed `check-schema`); `NOT NULL` intent and the JSON rule stay review questions | **review only** |
+| SD11 | One request, one transaction; no transaction spans a network call or a human; `READ COMMITTED` default with `SERIALIZABLE` opted in per transaction plus retry; statement timeout on the runtime role; `migrate` holds an advisory lock | timeout and lock are configuration facts a checker reads; transaction span is a review question on every handler | **review only** |
+| SD12 | Hard delete is the default; soft delete needs a domain reason in Conventions, and a soft-deleted row stays scoped, stays erasable, and is excluded in the query text | the Conventions declaration is a grep; the default is a review question on every delete path | **review only** |
+| SD13 | The database is private to its service — one schema, one writer, no second credential; tests run against the engine the product runs, never a substitute | privacy is a credential fact (no second role on the database); the real-engine rule is a CI fact — the test job starts the real engine or data-access tests do not run | **review only** |
 
-The corpus was run before landing. All ten migration cases and all six
-isolation cases reproduce their expected findings and visibility against a
+The corpus was run before landing. All ten migration cases, all six
+isolation cases and all six schema cases reproduce their expected findings and visibility against a
 reference implementation, and the SD5 detector was checked against a
 deliberately weakened suite that inspects only the innermost isolation
 column: it passes five of the six isolation cases and fails exactly the one

@@ -1,7 +1,7 @@
 {
   "contract": "structured-data",
   "schemaVersion": 1,
-  "description": "The conformance corpus for standards/025-structured-data.md. Two parts, both pure functions of their inputs so they can be written as data and run in any language. 'migrations': given a migrations directory (file names and contents) and the scripts a deploy path can reach, the findings a checker must report (SD2, SD4). 'isolation': given a product's declared isolation levels, its tables with their columns, and queries each issued in a stated context, the schema findings the checker must report (SD5) and the rows each query must and must not see (SD6). A finding is reported by kind and subject; an implementation reproduces every expected finding and no others, or names the case it failed.",
+  "description": "The conformance corpus for standards/025-structured-data.md. Three parts, all pure functions of their inputs so they can be written as data and run in any language. 'migrations': given a migrations directory (file names and contents) and the scripts a deploy path can reach, the findings a checker must report (SD2, SD4). 'isolation': given a product's declared isolation levels, its tables with their columns, and queries each issued in a stated context, the schema findings the checker must report (SD5) and the rows each query must and must not see (SD6). 'schema': given a declared schema - tables with typed, nullability-marked columns, indexes as ordered column lists, foreign keys, and declared types - the findings the SD10 checker must report. A finding is reported by kind and subject; an implementation reproduces every expected finding and no others, or names the case it failed.",
 
   "migrations": [
     {
@@ -193,6 +193,74 @@
         { "context": {}, "table": "invoices", "rows": [ { "id": 1 }, { "id": 2 } ], "visible": [0, 1] }
       ],
       "why": "SD5 fixes no depth, including zero. A single-tenant product declares no levels, nothing is scoped, and the suite has nothing to enumerate - which is a pass, not a gap."
+    }
+  ],
+
+  "schema": [
+    {
+      "case": "a-well-formed-schema-is-clean",
+      "levels": ["tenant"],
+      "tables": {
+        "tenants":  { "columns": { "id": "bigint", "public_id": "uuid", "name": "text", "created_at": "timestamptz", "updated_at": "timestamptz" },
+                      "indexes": [ ["id"], ["public_id"] ], "foreignKeys": {} },
+        "invoices": { "columns": { "id": "bigint", "public_id": "uuid", "tenant_id": "bigint", "status": "text", "created_at": "timestamptz", "updated_at": "timestamptz" },
+                      "indexes": [ ["id"], ["public_id"], ["tenant_id", "created_at"] ], "foreignKeys": { "tenant_id": "tenants.id" } }
+      },
+      "types": [],
+      "expect": { "findings": [] },
+      "why": "SD10 satisfied: every foreign key leads an index, every table carries both timestamps, no native enum, every identifier snake_case, and the scoped table's outermost isolation column leads a composite index."
+    },
+    {
+      "case": "an-unindexed-foreign-key-is-a-finding",
+      "levels": ["tenant"],
+      "tables": {
+        "tenants":  { "columns": { "id": "bigint", "created_at": "timestamptz", "updated_at": "timestamptz" }, "indexes": [ ["id"] ], "foreignKeys": {} },
+        "invoices": { "columns": { "id": "bigint", "tenant_id": "bigint", "created_at": "timestamptz", "updated_at": "timestamptz" },
+                      "indexes": [ ["id"], ["created_at", "tenant_id"] ], "foreignKeys": { "tenant_id": "tenants.id" } }
+      },
+      "types": [],
+      "expect": { "findings": [ { "kind": "fk-not-indexed", "subject": "invoices", "column": "tenant_id" }, { "kind": "isolation-column-not-leading", "subject": "invoices", "column": "tenant_id" } ] },
+      "why": "SD10. tenant_id appears in an index but does not lead one, which is the case people miss: an index on (created_at, tenant_id) helps neither the foreign key nor the isolation predicate. Two findings, because the same column fails two rules."
+    },
+    {
+      "case": "a-table-without-row-timestamps-is-a-finding",
+      "levels": [],
+      "tables": {
+        "settings": { "columns": { "id": "bigint", "key": "text", "value": "text", "created_at": "timestamptz" }, "indexes": [ ["id"] ], "foreignKeys": {} }
+      },
+      "types": [],
+      "expect": { "findings": [ { "kind": "missing-row-timestamps", "subject": "settings", "column": "updated_at" } ] },
+      "why": "SD10. created_at without updated_at answers one of the two questions every support call asks and not the other."
+    },
+    {
+      "case": "a-native-enum-type-is-a-finding",
+      "levels": [],
+      "tables": {
+        "invoices": { "columns": { "id": "bigint", "status": "invoice_status", "created_at": "timestamptz", "updated_at": "timestamptz" }, "indexes": [ ["id"] ], "foreignKeys": {} }
+      },
+      "types": [ "invoice_status" ],
+      "expect": { "findings": [ { "kind": "native-enum", "subject": "invoice_status" } ] },
+      "why": "SD10. The type exists in the catalog, so the checker sees it without parsing anything. A CHECK constraint on a text column does the same job and migrates like any other constraint."
+    },
+    {
+      "case": "a-camel-case-identifier-is-a-finding",
+      "levels": [],
+      "tables": {
+        "invoices": { "columns": { "id": "bigint", "createdAt": "timestamptz", "updated_at": "timestamptz" }, "indexes": [ ["id"] ], "foreignKeys": {} }
+      },
+      "types": [],
+      "expect": { "findings": [ { "kind": "identifier-not-snake-case", "subject": "invoices", "column": "createdAt" }, { "kind": "missing-row-timestamps", "subject": "invoices", "column": "created_at" } ] },
+      "why": "SD10. createdAt is not snake_case, and because an unquoted reference would fold it to createdat, it also fails to be the created_at the timestamp rule looks for. One mistake, two findings, which is roughly what it costs in production too."
+    },
+    {
+      "case": "a-single-tenant-schema-has-no-isolation-index-to-check",
+      "levels": [],
+      "tables": {
+        "invoices": { "columns": { "id": "bigint", "public_id": "uuid", "created_at": "timestamptz", "updated_at": "timestamptz" }, "indexes": [ ["id"], ["public_id"] ], "foreignKeys": {} }
+      },
+      "types": [],
+      "expect": { "findings": [] },
+      "why": "SD5 fixes no depth, including zero, and SD10's isolation-index rule therefore has nothing to enumerate. A pass, not a gap."
     }
   ]
 }

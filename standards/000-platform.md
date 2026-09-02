@@ -187,6 +187,7 @@ the work is an issue in this repository.
 | Identifiers & primitives | Internal keys never exposed; public-id format table; RFC 3339 UTC; integer minor-unit money | [`020-identifiers.md`](020-identifiers.md) |
 | Structured data | SQL as the query language with no runtime generation; migrations as ordered `.sql` files shipped in the image and run as a step before rollout; expand-only; declared isolation levels that are the RBAC scope types, proven by enumeration; per-engine storage profile | [`025-structured-data.md`](025-structured-data.md) |
 | Document storage | When a document store is admitted beside the relational store, and which of the structured-data rules do not transfer | not yet written |
+| Backup and recovery | Restore is exercised, not assumed; recovery objectives stated per product; spans structured, blob and document storage | not yet written |
 | Async jobs & messaging | Internal envelope contract; at-least-once plus dedupe; signed webhooks | not yet written |
 | Maintenance jobs | The Job interface contract: registration, single-flight, run observability — and where it lands against [factor XII](https://12factor.net/admin-processes) | not yet written |
 | Audit events | Internal event contract: application data and not a log line; actor separate from target; the action string is the permission string; a stated floor of what must emit; OCSF at the export boundary rather than as the record | [`080-audit.md`](080-audit.md) |

@@ -202,9 +202,14 @@ written, it points at the roster row.
   holds needs to survive its restart, because its state lives in backing
   resources; the servers the portfolio writes are stateless. A server is
   **stateful** when it maintains state across restarts and is itself where that
-  state lives: a database engine, a cache, an object store. Stateful servers
-  are almost always third-party engines attached as backing resources rather
-  than servers the portfolio writes.
+  state lives. **Databases and storage backends are themselves stateful
+  servers**: a database engine, a cache, an object store, a message broker each
+  is a long-running process answering requests and keeping state across its
+  restarts. The portfolio attaches them as backing resources rather than
+  writing them, and keeps its own servers stateless by putting their state
+  there. So a service that owns a database contains a stateful server it did
+  not write, and the rules that bind it are the data standard's, not the
+  service contract's.
 - **Worker.** A process, long-running or short-running, that executes jobs
   outside any request, in response to a trigger. The long-running form, the
   **pool**, consumes a queue and is scaled by replicas against its backlog. The
@@ -224,7 +229,9 @@ written, it points at the roster row.
   ([`030-service.md`](030-service.md) SC3).
 - **Database.** The structured store a service owns, if it owns one: one
   schema, one writer, one credential, private to the service
-  ([`025-structured-data.md`](025-structured-data.md)).
+  ([`025-structured-data.md`](025-structured-data.md)). The engine behind it
+  is a stateful server; the service owns the schema and the credential, never
+  the engine.
 
 ### Delivery
 

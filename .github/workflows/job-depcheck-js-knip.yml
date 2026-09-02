@@ -107,6 +107,22 @@ on:
           repo genuinely needs — with a comment at the call site saying why.
         type: string
         default: ""
+      ignore_binaries:
+        description: >-
+          Command names for knip's `ignoreBinaries`, one per line or
+          comma-separated. For an executable a script or test invokes that is
+          neither an npm binary nor one of the system commands knip knows —
+          `mysql`, say — with a comment at the call site saying why.
+
+          A SEPARATE LIST FROM ignore_dependencies, and not a stylistic
+          split: knip resolves binaries and packages against different
+          registries, so naming a command in ignoreDependencies silences
+          nothing and knip answers with "Remove from ignoreDependencies" —
+          a finding about the config, on top of the finding it was meant to
+          clear. Measured against event-manager's `mysql`, which is invoked
+          by tests/e2e/registration-db.ts behind a commandExists guard.
+        type: string
+        default: ""
 
 jobs:
   depcheck:
@@ -211,6 +227,7 @@ jobs:
       - name: Generate knip config
         env:
           EXTRA: ${{ inputs.ignore_dependencies }}
+          BINS: ${{ inputs.ignore_binaries }}
           ENTRY: ${{ inputs.entry }}
           CONFIG: ${{ inputs.workdir }}/.knip.generated.json
         run: |
@@ -246,6 +263,14 @@ jobs:
               [ -n "$pkg" ] || continue
               printf ', "%s"' "$pkg"
             done
+            printf '],\n'
+            # Built by the same helper as `entry`, and starting from an empty
+            # array rather than a seeded one: there is no portfolio baseline of
+            # ignored binaries, and an empty ignoreBinaries is inert -- unlike
+            # an empty `entry`, which prunes the whole tree and is guarded
+            # below.
+            printf '  "ignoreBinaries": ['
+            emit_list "$BINS"
             printf ']\n}\n'
           } > "$CONFIG"
           echo "Generated knip config:"

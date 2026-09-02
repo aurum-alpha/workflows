@@ -557,8 +557,7 @@ intended state, and it is what makes hard delete safe as the default.
 **One service, one schema, one writer.** No other service reads this service's
 tables, and no other service holds a credential to them. Integration happens
 through the service's interface — its API per [`050-http.md`](050-http.md), or
-the events of the [async messaging
-standard](000-platform.md#the-capability-roster) — never through a shared
+the events of the [messaging standard](055-messaging.md) — never through a shared
 database. A table read by two services is an interface with no contract, no
 version and no owner: the moment one service changes a column the other breaks
 at runtime, and neither has a test that could have shown it. The database is an

@@ -44,7 +44,7 @@ those and rebuilding them.
 | Request/response between internal services, high volume or strongly typed | **gRPC** | Binary protobuf, generated clients, real streaming. **Requires HTTP/2 end to end.** Costs: not browser-native (needs a proxy and grpc-web), opaque on the wire to anyone debugging, and a schema pipeline to own. Admitted **service-to-service only**. |
 | Server pushes to client, one direction | **SSE** | Plain HTTP: it inherits authentication, proxies, the error envelope, observability and automatic reconnection for free. **Requires HTTP/2 to survive contact with a real browser** (see below) **and OpenAPI 3.2 to be describable** (HA2). |
 | Both ends push, low latency, genuinely conversational | **WebSocket** | Full duplex. Costs are large and listed below. |
-| Fire-and-forget, durable, retried | **Not a synchronous protocol at all** — the [async messaging standard](000-platform.md#the-capability-roster)'s envelope. |
+| Fire-and-forget, durable, retried | **Not a synchronous protocol at all** — the [messaging standard](055-messaging.md)'s envelope. |
 
 **HTTP/2 is not on that list because it is not an interface — but it is a
 prerequisite for two things on it, and that is the part to get right.** You

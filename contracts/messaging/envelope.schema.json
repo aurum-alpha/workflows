@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/messaging/envelope.schema.json",
+  "title": "Aurum Alpha message envelope (CloudEvents 1.0 profile)",
+  "description": "standards/055-messaging.md AM1: a CloudEvents 1.0 event in JSON structured format, with the choices the specification leaves open pinned. This schema does not restate CloudEvents; it constrains it. Ids, timestamps and trace fields are $refs into the identifiers and observability contracts. Extension attributes are closed: a new one is added here, in its own change, per PC6 - which is why additionalProperties is false.",
+  "type": "object",
+  "properties": {
+    "specversion": { "const": "1.0" },
+    "id": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/uuidv7",
+      "description": "Minted by the producer. With source, the event's identity and the consumer's deduplication key (AM3) - which CloudEvents guarantees unique per event."
+    },
+    "source": {
+      "type": "string",
+      "pattern": "^/[a-z][a-z0-9-]*$",
+      "description": "The producing service, named LOGICALLY and identically in every environment: /invoicing. Never a hostname - source is half of the event's identity, and an identity that differed between staging and production would make one event two. A third party's events are re-enveloped with the provider as source (/stripe), per AM8."
+    },
+    "type": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+      "description": "resource.event, snake_case, PAST TENSE: invoice.voided. The service is not repeated because source names it. A type's meaning never changes; a different meaning is a different type. The past-tense half is not mechanically checkable - invoice.void matches this pattern and is wrong - and stays a review question."
+    },
+    "subject": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/publicId",
+      "description": "The public id of the entity the event is about, per IP1. Never an internal key."
+    },
+    "time": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp",
+      "description": "When the occurrence happened, not when it was published. RFC 3339 UTC Z per IP4."
+    },
+    "datacontenttype": { "const": "application/json" },
+    "dataschema": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https?://",
+      "description": "The JSON Schema data conforms to, carrying its version in the URI. Additive change under one URI; breaking change under a new one (PC6)."
+    },
+    "traceparent": {
+      "$ref": "https://contracts.aurumalpha.dev/observability/context.schema.json#/$defs/traceparent",
+      "description": "The CloudEvents distributed-tracing extension, required by this profile: the trace of the request or job that produced the event, per OC1."
+    },
+    "tracestate": {
+      "type": "string",
+      "description": "Forwarded when present, never parsed, never logged - per OC1."
+    },
+    "tenantid": {
+      "$ref": "https://contracts.aurumalpha.dev/observability/context.schema.json#/$defs/tenantId",
+      "description": "The tenant public id where tenant context exists - the same value the producer logs as tenant_id. Spelled without the underscore because the CloudEvents attribute grammar admits only lowercase letters and digits; the standard's grammar is adopted rather than fought (PC2)."
+    },
+    "data": {
+      "type": "object",
+      "description": "The payload: what a consumer needs to act, never a copy of the whole aggregate. snake_case keys per HA8; primitives per the identifiers contract."
+    }
+  },
+  "required": ["specversion", "id", "source", "type", "subject", "time", "datacontenttype", "dataschema", "traceparent", "data"],
+  "additionalProperties": false
+}

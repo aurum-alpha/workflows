@@ -197,7 +197,7 @@ fields and the async envelope both build on.
 
 | # | Rule | Enforced by | Status |
 |---|---|---|---|
-| OC1 | W3C trace context on every boundary — HTTP calls and the job envelope; continue valid inbound context, start fresh otherwise; no parallel correlation scheme | propagation corpus under `job-contract-conformance` (proposed) | **review only** |
+| OC1 | W3C trace context on every boundary — HTTP calls and the job envelope; continue valid inbound context, start fresh otherwise; no parallel correlation scheme | propagation corpus under `job-contract-conformance` (proposed); the envelope half is met by the CloudEvents tracing extension, gated by [`055-messaging.md`](055-messaging.md)'s schema | **review only** |
 | OC2 | One id vocabulary: `trace_id`, `span_id`, `request_id`, `tenant_id` — same snake_case names and formats in every log line and audit event, every language | corpus validity cases (same job, proposed) | **review only** |
 | OC3 | Traces and metrics leave as OTLP to an endpoint from the OTel env vars; no vendor exporter in application code; logs stay stdout per the service baseline | env presence checkable; wire half proven where the corpus runs live; vendor-exporter half a review question | **review only** |
 | OC4 | The context block is present on lines and events emitted within request context | startup-line assertion in `job-image-starts` (proposed) + propagation corpus | **review only** |
@@ -506,3 +506,33 @@ Three rows above are now buildable that were not: IP1 (a public id column in
 an admitted format), AE4 and AE6 (the audit table's grant excludes `UPDATE`
 and `DELETE`). Each of those rows says it was waiting on this standard, and
 each now has a schema to read.
+
+## Messaging standard
+
+Rules from [`055-messaging.md`](055-messaging.md) — the envelope, delivery
+semantics, and webhooks. The envelope is a CloudEvents profile, so AM1 is
+gated by a schema over a standard rather than over an invention; the
+delivery rules are the internal contract and are gated by running a consumer.
+
+| # | Rule | Enforced by | Status |
+|---|---|---|---|
+| AM1 | A message is a CloudEvents 1.0 event in JSON structured format under this profile: UUIDv7 `id`, logical `source`, past-tense `resource.event` `type`, public-id `subject`, IP4 `time`, `dataschema`, the tracing extension, `tenantid`, closed extension set | **schema-decided** — `envelope.schema.json` under `job-contract-conformance`; ten validity cases. Past tense is the one half the schema cannot tell and stays a review question | **review only** |
+| AM2 | The transport is not the contract; a queue table belongs to one service; the transport is an attached resource | review question, and SD13's credential check covers the shared-table half | **review only** |
+| AM3 | At-least-once; the consumer is idempotent on `(source, id)`, with the inbox row in the effect's transaction, retained past the redelivery horizon; ordering not relied on | **decided by the `delivery` corpus** — deliver the sequence, count the effects. **One case is a verified detector**: the same id from two sources, which a consumer keyed on id alone collapses to one effect | **review only** |
+| AM4 | Produced in the transaction that caused it: the outbox, relayed by a consumer under AM3 | resists a boundary gate honestly — transaction sharing is a call-graph fact (PC4). The observable half (change without message, message without change, each provoked) is a live test | **review only** |
+| AM5 | Bounded retries with backoff and jitter; dead-letter with envelope, attempts and last error; replayable; poison never blocks; failures logged with the OC4 context block | the dead-letter shape is schema-checkable; the rest is review | **review only** |
+| AM6 | Work outside a request is a consumer in a worker — the same image, a different argument — never a timer in the HTTP process; workers drain per SC4 | **static check with no false positives**: no `setInterval`/ticker/cron in the request-serving entrypoint (proposed `check-no-timers`); the worker command is an image fact where `job-image-starts` runs it | **review only** |
+| AM7 | A webhook leaving is the envelope in structured mode, signed per Standard Webhooks: `webhook-id` = event id, `webhook-timestamp` per attempt, `webhook-signature` `v1,<base64>` HMAC-SHA256 over `id.timestamp.body`; one secret per endpoint, rotated with two signatures; retried per AM5 with the spec's response semantics | **decided by the `signing` corpus** — computed signature values an implementation reproduces byte for byte | **review only** |
+| AM8 | A webhook arriving is verified over the raw body, re-enveloped with the provider as `source` and the provider's event id as `id`, recorded in one transaction, and only then answered `2xx`; the work happens afterwards as a consumer | the rejections are `signing` corpus cases; the re-envelope dedupe is a `delivery` case; the order of the four steps is a review question | **review only** |
+
+The corpus was run before landing: ten validity cases, six delivery cases and
+six signing cases all reproduce their expected results against a reference
+implementation, and the AM3 detector was checked against a consumer that
+deduplicates on `id` alone — it passes five of the six delivery cases and
+fails exactly the one it exists to catch. The signing values were computed,
+not typed, so a verifier in any language proves its HMAC against them.
+
+One row above changes as a result of this standard: OC1's envelope requirement
+is now met by a standard extension rather than by a field the fleet named, and
+OC1's row points here for the envelope half.
+

@@ -30,8 +30,7 @@ trace at its edge. No parallel correlation scheme is invented — a bespoke
 correlation header beside `traceparent` is a second answer to a solved
 question.
 
-The async boundary is not an exception: the job envelope (the [async
-messaging standard](000-platform.md#the-capability-roster)) carries the same
+The async boundary is not an exception: the job envelope (the [messaging standard](055-messaging.md)) carries the same
 `traceparent`/`tracestate` as envelope fields, and the worker that dequeues continues the trace that
 enqueued. A background job with no trace identity is unattributable work —
 the exact failure this rule exists to remove.

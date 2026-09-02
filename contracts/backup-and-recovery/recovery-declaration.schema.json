@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/backup-and-recovery/recovery-declaration.schema.json",
+  "title": "Aurum Alpha recovery declaration",
+  "description": "standards/028-backup-and-recovery.md BR1: the file a service keeps in its repository declaring, for every stateful backing service it owns, its recovery objectives, the mechanism that copies it, where and how long the copy is kept, how restorability is drilled, and how a derived store is rebuilt. Read by the platform to configure the engine's mechanism and the retention lifecycle, by the drill (BR4) to know what to restore and assert, and by the deployment to know whether the drill is fresh. A store with no declaration is a store with no backup. The conditional rules below are the ones prose states and a reviewer would otherwise remember: a primary store carries objectives, a mechanism admitted for its kind, encryption, a failure domain, retention, a drill and a verification list that includes readiness; a derived store carries a rebuild and none of those; a cache is always derived; a relational store's mechanism is point-in-time recovery. Four arithmetic relations JSON Schema cannot express are stated in corpus.json and checked by the runner: retention.floor <= retention.ceiling, retention.ceiling <= erasure_horizon, drill.cadence <= retention.floor, drill.cadence <= drill.stale_after. Durations are ISO 8601. schemaVersion 1 - evolves additively per PC6.",
+  "type": "object",
+  "$defs": {
+    "duration": {
+      "type": "string",
+      "pattern": "^P(?!$)(\\d+D)?(T(?=\\d)(\\d+H)?(\\d+M)?(\\d+S)?)?$",
+      "description": "ISO 8601 duration, days and time components only: PT15M, PT1H, P7D, P90D. The same grammar as the jobs declaration's."
+    },
+    "jobName": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+      "description": "A job name in 057 JB1's resource.verb grammar; the rebuild job must carry a declaration under 057 JB3."
+    },
+    "check": {
+      "description": "BR4 step 5: one assertion the drill makes against the restored store in the scratch environment.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "check": { "const": "readiness", "description": "The service's own server image is started against the scratch and must answer /readyz with 200 (030 SC1). Required in every primary store's list: a store that restored but that the service cannot serve from is not recovered." }
+          },
+          "required": ["check"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "check": { "const": "query" },
+            "sql": { "type": "string", "minLength": 1, "description": "Authored SQL text per 025 SD1, run against the restored store." },
+            "min_rows": { "type": "integer", "minimum": 1, "description": "The fewest rows the query may return for the restore to count as whole." }
+          },
+          "required": ["check", "sql", "min_rows"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "check": { "const": "object_sample" },
+            "sample": { "type": "integer", "minimum": 1, "description": "How many object references are sampled from the restored relational store; each referenced object must exist in the restored object store and match its stored checksum." }
+          },
+          "required": ["check", "sample"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "rebuild": {
+      "type": "object",
+      "description": "BR2: how a derived store is regained without a backup. by=job names the 057 job the drill and the restore run against the restored primaries; by=reads means ordinary traffic repopulates it, which is admitted for a cache and nothing else.",
+      "properties": {
+        "by": { "enum": ["job", "reads"] },
+        "job": { "$ref": "#/$defs/jobName" }
+      },
+      "required": ["by"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": { "properties": { "by": { "const": "job" } } },
+          "then": { "required": ["job"] },
+          "else": { "not": { "required": ["job"] } }
+        }
+      ]
+    },
+    "store": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "description": "The store as the service's configuration names it (030 SC3), stable across environments."
+        },
+        "kind": {
+          "enum": ["relational", "object", "document", "filesystem", "cache"],
+          "description": "BR2: which mechanisms are admitted. Every kind is a stateful server in 000's sense; the kind names the shape of what it persists."
+        },
+        "role": {
+          "enum": ["primary", "derived"],
+          "description": "BR2: primary is the only copy of what it holds and is backed up; derived is rebuildable from a primary by a job and is not."
+        },
+        "rpo": {
+          "$ref": "#/$defs/duration",
+          "description": "BR1: recovery point objective, the longest span of committed state the service may lose. Primary stores only; a derived store loses nothing that cannot be rebuilt. The drill measures the achieved value against this (BR4)."
+        },
+        "rto": {
+          "$ref": "#/$defs/duration",
+          "description": "BR1: recovery time objective, the longest the store may be unavailable while regained. Required on every store: a rebuild takes time too. The drill measures the achieved value against this (BR4)."
+        },
+        "mechanism": {
+          "enum": ["pitr", "versioning", "snapshot", "rebuild"],
+          "description": "BR2: pitr is the engine's continuous log archive restorable to any instant (relational, document); versioning is object versioning with replication to the failure domain (object); snapshot is the engine's consistent point copy (document, filesystem); rebuild is the derived store's declared job or reads. The service never performs its own backup."
+        },
+        "encrypted": {
+          "const": true,
+          "description": "BR5: the copy is encrypted at rest and in transit under a key the runtime credential cannot use. Stated so it is reviewable rather than inherited from a default."
+        },
+        "failure_domain": {
+          "enum": ["region", "account", "region_and_account"],
+          "description": "BR5: where the copy lives relative to the source in production. A different region survives the region; a different account survives the compromise or deletion of the source account. Nothing weaker is admitted; a snapshot beside its source is availability."
+        },
+        "retention": {
+          "type": "object",
+          "description": "BR5: how long a copy is kept. floor is the shortest and is at least the drill cadence; ceiling is the longest and is at most the service's erasure_horizon. Deletion past the ceiling is the destination's lifecycle rule, never a job of the service.",
+          "properties": {
+            "floor": { "$ref": "#/$defs/duration" },
+            "ceiling": { "$ref": "#/$defs/duration" }
+          },
+          "required": ["floor", "ceiling"],
+          "additionalProperties": false
+        },
+        "drill": {
+          "type": "object",
+          "description": "BR4: how often recovery.drill restores this store into a scratch environment and verifies it, and when the absence of a succeeded drill alerts (057 JB8) and blocks a deployment.",
+          "properties": {
+            "cadence": { "$ref": "#/$defs/duration", "description": "The schedule's period. At most the retention floor." },
+            "stale_after": { "$ref": "#/$defs/duration", "description": "Alert and block deployment when the newest succeeded drill is older than this. At least the cadence; twice it is the JB8 default." }
+          },
+          "required": ["cadence", "stale_after"],
+          "additionalProperties": false
+        },
+        "verification": {
+          "type": "array",
+          "description": "BR4 step 5: the checks the drill runs against the restored store. A primary store's list includes readiness.",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/check" }
+        },
+        "rebuild": { "$ref": "#/$defs/rebuild" }
+      },
+      "required": ["name", "kind", "role", "rto", "mechanism"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": { "properties": { "role": { "const": "primary" } } },
+          "then": {
+            "required": ["rpo", "encrypted", "failure_domain", "retention", "drill", "verification"],
+            "not": { "required": ["rebuild"] },
+            "properties": {
+              "mechanism": { "enum": ["pitr", "versioning", "snapshot"] },
+              "verification": {
+                "contains": { "properties": { "check": { "const": "readiness" } }, "required": ["check"] }
+              }
+            }
+          },
+          "else": {
+            "required": ["rebuild"],
+            "properties": { "mechanism": { "const": "rebuild" } },
+            "not": {
+              "anyOf": [
+                { "required": ["rpo"] },
+                { "required": ["encrypted"] },
+                { "required": ["failure_domain"] },
+                { "required": ["retention"] },
+                { "required": ["drill"] },
+                { "required": ["verification"] }
+              ]
+            }
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "relational" } } },
+          "then": { "properties": { "mechanism": { "enum": ["pitr", "rebuild"] } } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "object" } } },
+          "then": { "properties": { "mechanism": { "enum": ["versioning", "rebuild"] } } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "document" } } },
+          "then": { "properties": { "mechanism": { "enum": ["snapshot", "pitr", "rebuild"] } } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "filesystem" } } },
+          "then": { "properties": { "mechanism": { "enum": ["snapshot", "rebuild"] } } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "cache" } } },
+          "then": { "properties": { "role": { "const": "derived" }, "rebuild": { "properties": { "by": { "const": "reads" } } } } }
+        },
+        {
+          "if": { "properties": { "kind": { "not": { "const": "cache" } } }, "required": ["rebuild"] },
+          "then": { "properties": { "rebuild": { "properties": { "by": { "const": "job" } } } } }
+        }
+      ]
+    }
+  },
+  "properties": {
+    "schema_version": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/schemaVersion",
+      "description": "PC6."
+    },
+    "service": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "BR1: the service that owns every store below, one declaration per service (025 SD13). A repository holding several services holds several declarations."
+    },
+    "erasure_horizon": {
+      "$ref": "#/$defs/duration",
+      "description": "BR5, BR6: the longest an erased subject's data may persist in any copy. Every store's retention ceiling is at most this, and the erasure ledger is retained exactly this long. Ninety days is the recommended default; longer is a statement to data subjects that needs a recorded reason."
+    },
+    "runbook": {
+      "type": "string",
+      "pattern": "^(?!/)[A-Za-z0-9._/-]+\\.md$",
+      "description": "BR8: the repository-relative path of the operations document whose commands the drill executes."
+    },
+    "stores": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/store" },
+      "description": "BR1: every stateful backing service the service owns. A store the configuration attaches and this list omits is the review finding."
+    }
+  },
+  "required": ["schema_version", "service", "erasure_horizon", "runbook", "stores"],
+  "additionalProperties": false
+}

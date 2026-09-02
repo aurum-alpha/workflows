@@ -1,0 +1,1384 @@
+{
+  "contract": "backup-and-recovery",
+  "schemaVersion": 1,
+  "description": "The conformance corpus for standards/028-backup-and-recovery.md. Three parts. 'declarations' is judged by recovery-declaration.schema.json plus four arithmetic relations the schema cannot express and a runner checks, each named in the case that exercises it: retention.floor <= retention.ceiling, retention.ceiling <= erasure_horizon, drill.cadence <= retention.floor, drill.cadence <= drill.stale_after; a case is accepted or rejected, and a rejection names its rule. 'ledger' is judged by erasure-ledger.schema.json alone. 'drills' is judged by running a recovery implementation and has three scenarios: 'freshness' gives the drill's cadence and staleness threshold, the first copy's instant and the drill's run records, and expects whether the store is stale and whether a deployment proceeds (BR4); 'objectives' gives the declared RPO and RTO and the drill's instants and expects the achieved values and the drill's outcome (BR4 step 6); 'restore' gives a copy with its as_of, rows, audit events and restored ledger table, the release's schema version and the ledger's copy from the backup domain, and expects the state at readiness and after (BR6, BR7). Two cases are detectors: 'restore-then-replay-leaves-erased-rows-absent' fails an implementation that reads the ledger from the restored table, and 'erased-rows-are-absent-at-readiness-not-only-afterwards' fails an implementation that reports ready before replay.",
+  "declarations": [
+    {
+      "case": "a-relational-primary-store-under-pitr",
+      "valid": true,
+      "why": "BR1 and BR2 in full for the common case: a primary relational store under point-in-time recovery, objectives declared, encrypted, in a separate region and account, retained between a floor and a ceiling within the erasure horizon, drilled weekly with a query and readiness.",
+      "declaration": {
+        "schema_version": 1,
+        "service": "invoicing",
+        "erasure_horizon": "P90D",
+        "runbook": "docs/operations/recovery.md",
+        "stores": [
+          {
+            "name": "invoicing-db",
+            "kind": "relational",
+            "role": "primary",
+            "rpo": "PT15M",
+            "rto": "PT2H",
+            "mechanism": "pitr",
+            "encrypted": true,
+            "failure_domain": "region_and_account",
+            "retention": {
+              "floor": "P30D",
+              "ceiling": "P90D"
+            },
+            "drill": {
+              "cadence": "P7D",
+              "stale_after": "P14D"
+            },
+            "verification": [
+              {
+                "check": "query",
+                "sql": "SELECT 1 FROM invoices WHERE tenant_id IS NOT NULL LIMIT 1",
+                "min_rows": 1
+              },
+              {
+                "check": "readiness"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case": "a-service-with-primary-and-derived-stores",
+      "valid": true,
+      "why": "BR2: a relational primary, an object primary under versioning, a derived search index rebuilt by a job, and a cache rebuilt by reads - each with only the fields its role admits.",
+      "declaration": {
+        "schema_version": 1,
+        "service": "invoicing",
+        "erasure_horizon": "P90D",
+        "runbook": "docs/operations/recovery.md",
+        "stores": [
+          {
+            "name": "invoicing-db",
+            "kind": "relational",
+            "role": "primary",
+            "rpo": "PT15M",
+            "rto": "PT2H",
+            "mechanism": "pitr",
+            "encrypted": true,
+            "failure_domain": "region_and_account",
+            "retention": {
+              "floor": "P30D",
+              "ceiling": "P90D"
+            },
+            "drill": {
+              "cadence": "P7D",
+              "stale_after": "P14D"
+            },
+            "verification": [
+              {
+                "check": "query",
+                "sql": "SELECT 1 FROM invoices WHERE tenant_id IS NOT NULL LIMIT 1",
+                "min_rows": 1
+              },
+              {
+                "check": "readiness"
+              }
+            ]
+          },
+          {
+            "name": "invoicing-uploads",
+            "kind": "object",
+            "role": "primary",
+            "rpo": "PT1H",
+            "rto": "PT4H",
+            "mechanism": "versioning",
+            "encrypted": true,
+            "failure_domain": "region",
+            "retention": {
+              "floor": "P30D",
+              "ceiling": "P90D"
+            },
+            "drill": {
+              "cadence": "P7D",
+              "stale_after": "P14D"
+            },
+            "verification": [
+              {
+                "check": "object_sample",
+                "sample": 100
+              },
+              {
+                "check": "readiness"
+              }
+            ]
+          },
+          {
+            "name": "invoicing-search",
+            "kind": "document",
+            "role": "derived",
+            "rto": "PT1H",
+            "mechanism": "rebuild",
+            "rebuild": {
+              "by": "job",
+              "job": "search.reindex"
+            }
+          },
+          {
+            "name": "invoicing-cache",
+            "kind": "cache",
+            "role": "derived",
+            "rto": "PT5M",
+            "mechanism": "rebuild",
+            "rebuild": {
+              "by": "reads"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "case": "a-primary-document-store-under-snapshot",
+      "valid": true,
+      "why": "BR2: a document store that is the only copy of what it holds is declared primary and backed up like a database.",
+      "declaration": {
+        "schema_version": 1,
+        "service": "invoicing",
+        "erasure_horizon": "P90D",
+        "runbook": "docs/operations/recovery.md",
+        "stores": [
+          {
+            "name": "invoicing-db",
+            "kind": "relational",
+            "role": "primary",
+            "rpo": "PT15M",
+            "rto": "PT2H",
+            "mechanism": "pitr",
+            "encrypted": true,
+            "failure_domain": "region_and_account",
+            "retention": {
+              "floor": "P30D",
+              "ceiling": "P90D"
+            },
+            "drill": {
+              "cadence": "P7D",
+              "stale_after": "P14D"
+            },
+            "verification": [
+              {
+                "check": "query",
+                "sql": "SELECT 1 FROM invoices WHERE tenant_id IS NOT NULL LIMIT 1",
+                "min_rows": 1
+              },
+              {
+                "check": "readiness"
+              }
+            ]
+          },
+          {
+            "name": "invoicing-forms",
+            "kind": "document",
+            "role": "primary",
+            "rpo": "PT15M",
+            "rto": "PT2H",
+            "mechanism": "snapshot",
+            "encrypted": true,
+            "failure_domain": "region_and_account",
+            "retention": {
+              "floor": "P30D",
+              "ceiling": "P90D"
+            },
+            "drill": {
+              "cadence": "P7D",
+              "stale_after": "P14D"
+            },
+            "verification": [
+              {
+                "check": "query",
+                "sql": "SELECT 1 FROM form_definitions LIMIT 1",
+                "min_rows": 1
+              },
+              {
+                "check": "readiness"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case": "a-derived-store-with-a-backup-declared-is-rejected",
+      "valid": false,
+      "why": "BR2: a derived store is rebuilt, never backed up. Retention, a drill, a mechanism other than rebuild and an rpo on a derived store are a second copy of data that already has a source, and a restore step that can disagree with it.",
+      "declaration": {
+        "schema_version": 1,
+        "service": "invoicing",
+        "erasure_horizon": "P90D",
+        "runbook": "docs/operations/recovery.md",
+        "stores": [
+          {
+            "name": "invoicing-db",
+            "kind": "relational",
+            "role": "primary",
+            "rpo": "PT15M",
+            "rto": "PT2H",
+            "mechanism": "pitr",
+            "encrypted": true,
+            "failure_domain": "region_and_account",
+            "retention": {
+              "floor": "P30D",
+              "ceiling": "P90D"
+            },
+            "drill": {
+              "cadence": "P7D",
+              "stale_after": "P14D"
+            },
+            "verification": [
+              {
+                "check": "query",
+                "sql": "SELECT 1 FROM invoices WHERE tenant_id IS NOT NULL LIMIT 1",
+                "min_rows": 1
+              },
+              {
+                "check": "readiness"
+              }
+            ]
+          },
+          {
+            "name": "invoicing-search",
+            "kind": "document",
+            "role": "derived",
+            "rto": "PT1H",
+            "mechanism": "snapshot",
+            "rebuild": {
+              "by": "job",
+              "job": "search.reindex"
+            },
+            "rpo": "PT1H",
+            "retention": {
+              "floor": "P30D",
+              "ceiling": "P90D"
+            },
+            "drill": {
+              "cadence": "P7D",
+              "stale_after": "P14D"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "case": "a-primary-store-with-a-rebuild-is-rejected",
+      "valid": false,
+      "why": "BR2: a store that can be rebuilt from another is derived by definition; a primary store declaring a rebuild has two recovery paths and no statement of which is the truth.",
+      "declaration": {
+        "schema_version": 1,
+        "service": "invoicing",
+        "erasure_horizon": "P90D",
+        "runbook": "docs/operations/recovery.md",
+        "stores": [
+          {
+            "name": "invoicing-db",
+            "kind": "relational",
+            "role": "primary",
+            "rpo": "PT15M",
+            "rto": "PT2H",
+            "mechanism": "pitr",
+            "encrypted": true,
+            "failure_domain": "region_and_account",
+            "retention": {
+              "floor": "P30D",
+              "ceiling": "P90D"
+            },
+            "drill": {
+              "cadence": "P7D",
+              "stale_after": "P14D"
+            },
+            "verification": [
+              {
+                "check": "query",
+                "sql": "SELECT 1 FROM invoices WHERE tenant_id IS NOT NULL LIMIT 1",
+                "min_rows": 1
+              },
+              {
+                "check": "readiness"
+              }
+            ],
+            "rebuild": {
+              "by": "job",
+              "job": "invoices.reload"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "case": "a-ceiling-past-the-erasure-horizon-is-rejected",
+      "valid": false,
+      "arithmetic": "retention.ceiling <= erasure_horizon",
+      "why": "BR5: a copy older than the erasure horizon is erased data still held. The schema cannot compare durations; the runner enforces retention.ceiling <= erasure_horizon and this case is what it catches.",
+      "declaration": {
+        "schema_version": 1,
+        "service": "invoicing",
+        "erasure_horizon": "P90D",
+        "runbook": "docs/operations/recovery.md",
+        "stores": [
+          {
+            "name": "invoicing-db",
+            "kind": "relational",
+            "role": "primary",
+            "rpo": "PT15M",
+            "rto": "PT2H",
+            "mechanism": "pitr",
+            "encrypted": true,
+            "failure_domain": "region_and_account",
+            "retention": {
+              "floor": "P30D",
+              "ceiling": "P365D"
+            },
+            "drill": {
+              "cadence": "P7D",
+              "stale_after": "P14D"
+            },
+            "verification": [
+              {
+                "check": "query",
+                "sql": "SELECT 1 FROM invoices WHERE tenant_id IS NOT NULL LIMIT 1",
+                "min_rows": 1
+              },
+              {
+                "check": "readiness"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case": "a-floor-above-the-ceiling-is-rejected",
+      "valid": false,
+      "arithmetic": "retention.floor <= retention.ceiling",
+      "why": "BR5: a floor above the ceiling is a retention window that is empty. Arithmetic rule.",
+      "declaration": {
+        "schema_version": 1,
+        "service": "invoicing",
+        "erasure_horizon": "P90D",
+        "runbook": "docs/operations/recovery.md",
+        "stores": [
+          {
+            "name": "invoicing-db",
+            "kind": "relational",
+            "role": "primary",
+            "rpo": "PT15M",
+            "rto": "PT2H",
+            "mechanism": "pitr",
+            "encrypted": true,
+            "failure_domain": "region_and_account",
+            "retention": {
+              "floor": "P60D",
+              "ceiling": "P30D"
+            },
+            "drill": {
+              "cadence": "P7D",
+              "stale_after": "P14D"
+            },
+            "verification": [
+              {
+                "check": "query",
+                "sql": "SELECT 1 FROM invoices WHERE tenant_id IS NOT NULL LIMIT 1",
+                "min_rows": 1
+              },
+              {
+                "check": "readiness"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case": "a-drill-rarer-than-the-retention-floor-is-rejected",
+      "valid": false,
+      "arithmetic": "drill.cadence <= retention.floor",
+      "why": "BR5: if drills are rarer than the floor, a mechanism that broke can leave no restorable copy within retention by the time a drill notices. Arithmetic rule.",
+      "declaration": {
+        "schema_version": 1,
+        "service": "invoicing",
+        "erasure_horizon": "P90D",
+        "runbook": "docs/operations/recovery.md",
+        "stores": [
+          {
+            "name": "invoicing-db",
+            "kind": "relational",
+            "role": "primary",
+            "rpo": "PT15M",
+            "rto": "PT2H",
+            "mechanism": "pitr",
+            "encrypted": true,
+            "failure_domain": "region_and_account",
+            "retention": {
+              "floor": "P30D",
+              "ceiling": "P90D"
+            },
+            "drill": {
+              "cadence": "P60D",
+              "stale_after": "P120D"
+            },
+            "verification": [
+              {
+                "check": "query",
+                "sql": "SELECT 1 FROM invoices WHERE tenant_id IS NOT NULL LIMIT 1",
+                "min_rows": 1
+              },
+              {
+                "check": "readiness"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case": "a-stale-after-shorter-than-the-cadence-is-rejected",
+      "valid": false,
+      "arithmetic": "drill.cadence <= drill.stale_after",
+      "why": "BR4 and 057 JB8: a staleness threshold shorter than the cadence alerts between every pair of drills. Arithmetic rule.",
+      "declaration": {
+        "schema_version": 1,
+        "service": "invoicing",
+        "erasure_horizon": "P90D",
+        "runbook": "docs/operations/recovery.md",
+        "stores": [
+          {
+            "name": "invoicing-db",
+            "kind": "relational",
+            "role": "primary",
+            "rpo": "PT15M",
+            "rto": "PT2H",
+            "mechanism": "pitr",
+            "encrypted": true,
+            "failure_domain": "region_and_account",
+            "retention": {
+              "floor": "P30D",
+              "ceiling": "P90D"
+            },
+            "drill": {
+              "cadence": "P7D",
+              "stale_after": "P3D"
+            },
+            "verification": [
+              {
+                "check": "query",
+                "sql": "SELECT 1 FROM invoices WHERE tenant_id IS NOT NULL LIMIT 1",
+                "min_rows": 1
+              },
+              {
+                "check": "readiness"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case": "a-relational-store-under-snapshot-is-rejected",
+      "valid": false,
+      "why": "BR2: a relational store's mechanism is point-in-time recovery; a scheduled snapshot has an RPO of its cadence and the engine already offers better.",
+      "declaration": {
+        "schema_version": 1,
+        "service": "invoicing",
+        "erasure_horizon": "P90D",
+        "runbook": "docs/operations/recovery.md",
+        "stores": [
+          {
+            "name": "invoicing-db",
+            "kind": "relational",
+            "role": "primary",
+            "rpo": "PT15M",
+            "rto": "PT2H",
+            "mechanism": "snapshot",
+            "encrypted": true,
+            "failure_domain": "region_and_account",
+            "retention": {
+              "floor": "P30D",
+              "ceiling": "P90D"
+            },
+            "drill": {
+              "cadence": "P7D",
+              "stale_after": "P14D"
+            },
+            "verification": [
+              {
+                "check": "query",
+                "sql": "SELECT 1 FROM invoices WHERE tenant_id IS NOT NULL LIMIT 1",
+                "min_rows": 1
+              },
+              {
+                "check": "readiness"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case": "a-primary-store-without-a-drill-is-rejected",
+      "valid": false,
+      "why": "BR4: a backup that is not restored on a schedule is a hypothesis. A primary store declares its drill or it is not backed up.",
+      "declaration": {
+        "schema_version": 1,
+        "service": "invoicing",
+        "erasure_horizon": "P90D",
+        "runbook": "docs/operations/recovery.md",
+        "stores": [
+          {
+            "name": "invoicing-db",
+            "kind": "relational",
+            "role": "primary",
+            "rpo": "PT15M",
+            "rto": "PT2H",
+            "mechanism": "pitr",
+            "encrypted": true,
+            "failure_domain": "region_and_account",
+            "retention": {
+              "floor": "P30D",
+              "ceiling": "P90D"
+            },
+            "verification": [
+              {
+                "check": "query",
+                "sql": "SELECT 1 FROM invoices WHERE tenant_id IS NOT NULL LIMIT 1",
+                "min_rows": 1
+              },
+              {
+                "check": "readiness"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case": "a-verification-without-readiness-is-rejected",
+      "valid": false,
+      "why": "BR4 step 5: a store that restored but that the service cannot serve from is not recovered, so readiness is required in every primary store's list.",
+      "declaration": {
+        "schema_version": 1,
+        "service": "invoicing",
+        "erasure_horizon": "P90D",
+        "runbook": "docs/operations/recovery.md",
+        "stores": [
+          {
+            "name": "invoicing-db",
+            "kind": "relational",
+            "role": "primary",
+            "rpo": "PT15M",
+            "rto": "PT2H",
+            "mechanism": "pitr",
+            "encrypted": true,
+            "failure_domain": "region_and_account",
+            "retention": {
+              "floor": "P30D",
+              "ceiling": "P90D"
+            },
+            "drill": {
+              "cadence": "P7D",
+              "stale_after": "P14D"
+            },
+            "verification": [
+              {
+                "check": "query",
+                "sql": "SELECT 1 FROM invoices LIMIT 1",
+                "min_rows": 1
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case": "an-unencrypted-copy-is-rejected",
+      "valid": false,
+      "why": "BR5: the copy is encrypted under a key the runtime credential cannot use, and the declaration states it so the property is reviewable.",
+      "declaration": {
+        "schema_version": 1,
+        "service": "invoicing",
+        "erasure_horizon": "P90D",
+        "runbook": "docs/operations/recovery.md",
+        "stores": [
+          {
+            "name": "invoicing-db",
+            "kind": "relational",
+            "role": "primary",
+            "rpo": "PT15M",
+            "rto": "PT2H",
+            "mechanism": "pitr",
+            "encrypted": false,
+            "failure_domain": "region_and_account",
+            "retention": {
+              "floor": "P30D",
+              "ceiling": "P90D"
+            },
+            "drill": {
+              "cadence": "P7D",
+              "stale_after": "P14D"
+            },
+            "verification": [
+              {
+                "check": "query",
+                "sql": "SELECT 1 FROM invoices WHERE tenant_id IS NOT NULL LIMIT 1",
+                "min_rows": 1
+              },
+              {
+                "check": "readiness"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case": "a-cache-declared-primary-is-rejected",
+      "valid": false,
+      "why": "BR2: a cache that cannot be lost is a database with the wrong name. A cache is always derived and rebuilt by reads.",
+      "declaration": {
+        "schema_version": 1,
+        "service": "invoicing",
+        "erasure_horizon": "P90D",
+        "runbook": "docs/operations/recovery.md",
+        "stores": [
+          {
+            "name": "invoicing-db",
+            "kind": "relational",
+            "role": "primary",
+            "rpo": "PT15M",
+            "rto": "PT2H",
+            "mechanism": "pitr",
+            "encrypted": true,
+            "failure_domain": "region_and_account",
+            "retention": {
+              "floor": "P30D",
+              "ceiling": "P90D"
+            },
+            "drill": {
+              "cadence": "P7D",
+              "stale_after": "P14D"
+            },
+            "verification": [
+              {
+                "check": "query",
+                "sql": "SELECT 1 FROM invoices WHERE tenant_id IS NOT NULL LIMIT 1",
+                "min_rows": 1
+              },
+              {
+                "check": "readiness"
+              }
+            ]
+          },
+          {
+            "name": "invoicing-cache",
+            "kind": "cache",
+            "role": "primary",
+            "rto": "PT5M",
+            "mechanism": "snapshot",
+            "rpo": "PT5M",
+            "encrypted": true,
+            "failure_domain": "region",
+            "retention": {
+              "floor": "P30D",
+              "ceiling": "P90D"
+            },
+            "drill": {
+              "cadence": "P7D",
+              "stale_after": "P14D"
+            },
+            "verification": [
+              {
+                "check": "readiness"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case": "a-derived-store-without-a-rebuild-is-rejected",
+      "valid": false,
+      "why": "BR2: a derived store's recovery is its rebuild; without one named there is no recovery path at all.",
+      "declaration": {
+        "schema_version": 1,
+        "service": "invoicing",
+        "erasure_horizon": "P90D",
+        "runbook": "docs/operations/recovery.md",
+        "stores": [
+          {
+            "name": "invoicing-db",
+            "kind": "relational",
+            "role": "primary",
+            "rpo": "PT15M",
+            "rto": "PT2H",
+            "mechanism": "pitr",
+            "encrypted": true,
+            "failure_domain": "region_and_account",
+            "retention": {
+              "floor": "P30D",
+              "ceiling": "P90D"
+            },
+            "drill": {
+              "cadence": "P7D",
+              "stale_after": "P14D"
+            },
+            "verification": [
+              {
+                "check": "query",
+                "sql": "SELECT 1 FROM invoices WHERE tenant_id IS NOT NULL LIMIT 1",
+                "min_rows": 1
+              },
+              {
+                "check": "readiness"
+              }
+            ]
+          },
+          {
+            "name": "invoicing-search",
+            "kind": "document",
+            "role": "derived",
+            "rto": "PT1H",
+            "mechanism": "rebuild"
+          }
+        ]
+      }
+    },
+    {
+      "case": "a-declaration-without-a-runbook-is-rejected",
+      "valid": false,
+      "why": "BR8: the procedure the drill executes lives in the repository's operations documentation, at a path the declaration names.",
+      "declaration": {
+        "schema_version": 1,
+        "service": "invoicing",
+        "erasure_horizon": "P90D",
+        "stores": [
+          {
+            "name": "invoicing-db",
+            "kind": "relational",
+            "role": "primary",
+            "rpo": "PT15M",
+            "rto": "PT2H",
+            "mechanism": "pitr",
+            "encrypted": true,
+            "failure_domain": "region_and_account",
+            "retention": {
+              "floor": "P30D",
+              "ceiling": "P90D"
+            },
+            "drill": {
+              "cadence": "P7D",
+              "stale_after": "P14D"
+            },
+            "verification": [
+              {
+                "check": "query",
+                "sql": "SELECT 1 FROM invoices WHERE tenant_id IS NOT NULL LIMIT 1",
+                "min_rows": 1
+              },
+              {
+                "check": "readiness"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "ledger": [
+    {
+      "case": "a-complete-entry-is-accepted",
+      "valid": true,
+      "why": "BR6 in full: subject and request by public id, the instant, and every entity touched with its treatment and count.",
+      "entry": {
+        "schema_version": 1,
+        "entry_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "subject_id": "01923e01-1111-7000-8000-000000000001",
+        "subject_type": "user",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "request_id": "01923e8a-0000-7000-8000-000000000077",
+        "erased_at": "2026-08-31T10:00:00.000Z",
+        "entities": [
+          {
+            "entity": "users",
+            "treatment": "delete",
+            "count": 1
+          },
+          {
+            "entity": "invoices",
+            "treatment": "anonymise",
+            "count": 12
+          },
+          {
+            "entity": "audit_events",
+            "treatment": "redact",
+            "count": 40
+          }
+        ],
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736"
+      }
+    },
+    {
+      "case": "an-entry-without-a-tenant-is-accepted",
+      "valid": true,
+      "why": "BR6: tenant context exists where the product is multi-tenant; a single-tenant product's entries carry none.",
+      "entry": {
+        "schema_version": 1,
+        "entry_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "subject_id": "01923e01-1111-7000-8000-000000000001",
+        "subject_type": "user",
+        "request_id": "01923e8a-0000-7000-8000-000000000077",
+        "erased_at": "2026-08-31T10:00:00.000Z",
+        "entities": [
+          {
+            "entity": "users",
+            "treatment": "delete",
+            "count": 1
+          },
+          {
+            "entity": "invoices",
+            "treatment": "anonymise",
+            "count": 12
+          },
+          {
+            "entity": "audit_events",
+            "treatment": "redact",
+            "count": 40
+          }
+        ],
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736"
+      }
+    },
+    {
+      "case": "an-internal-key-as-subject-is-rejected",
+      "valid": false,
+      "why": "020 IP1 through BR6: the subject is a public id. An integer is an internal key that never leaves the service, and a ledger copied to the backup domain has left it.",
+      "entry": {
+        "schema_version": 1,
+        "entry_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "subject_id": "4711",
+        "subject_type": "user",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "request_id": "01923e8a-0000-7000-8000-000000000077",
+        "erased_at": "2026-08-31T10:00:00.000Z",
+        "entities": [
+          {
+            "entity": "users",
+            "treatment": "delete",
+            "count": 1
+          },
+          {
+            "entity": "invoices",
+            "treatment": "anonymise",
+            "count": 12
+          },
+          {
+            "entity": "audit_events",
+            "treatment": "redact",
+            "count": 40
+          }
+        ],
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736"
+      }
+    },
+    {
+      "case": "an-offset-instant-is-rejected",
+      "valid": false,
+      "why": "020 IP4 through BR6: erased_at is compared with the copy's as_of, and both are UTC with a Z suffix.",
+      "entry": {
+        "schema_version": 1,
+        "entry_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "subject_id": "01923e01-1111-7000-8000-000000000001",
+        "subject_type": "user",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "request_id": "01923e8a-0000-7000-8000-000000000077",
+        "erased_at": "2026-08-31T12:00:00.000+02:00",
+        "entities": [
+          {
+            "entity": "users",
+            "treatment": "delete",
+            "count": 1
+          },
+          {
+            "entity": "invoices",
+            "treatment": "anonymise",
+            "count": 12
+          },
+          {
+            "entity": "audit_events",
+            "treatment": "redact",
+            "count": 40
+          }
+        ],
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736"
+      }
+    },
+    {
+      "case": "a-retain-treatment-is-rejected",
+      "valid": false,
+      "why": "BR6: the ledger records what was done. A row retained under a legal basis had nothing done to it and does not appear; the treatments are delete, anonymise and redact.",
+      "entry": {
+        "schema_version": 1,
+        "entry_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "subject_id": "01923e01-1111-7000-8000-000000000001",
+        "subject_type": "user",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "request_id": "01923e8a-0000-7000-8000-000000000077",
+        "erased_at": "2026-08-31T10:00:00.000Z",
+        "entities": [
+          {
+            "entity": "ledger_lines",
+            "treatment": "retain",
+            "count": 3
+          }
+        ],
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736"
+      }
+    },
+    {
+      "case": "an-entry-with-no-entities-is-rejected",
+      "valid": false,
+      "why": "BR6: an erasure that touched nothing is not an erasure, and a replay would have nothing to verify.",
+      "entry": {
+        "schema_version": 1,
+        "entry_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "subject_id": "01923e01-1111-7000-8000-000000000001",
+        "subject_type": "user",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "request_id": "01923e8a-0000-7000-8000-000000000077",
+        "erased_at": "2026-08-31T10:00:00.000Z",
+        "entities": [],
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736"
+      }
+    },
+    {
+      "case": "a-personal-field-is-rejected",
+      "valid": false,
+      "why": "BR6: the entry is kept for the whole erasure horizon and carries identifiers only; the property set is closed so a name or an email cannot be added to it.",
+      "entry": {
+        "schema_version": 1,
+        "entry_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "subject_id": "01923e01-1111-7000-8000-000000000001",
+        "subject_type": "user",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "request_id": "01923e8a-0000-7000-8000-000000000077",
+        "erased_at": "2026-08-31T10:00:00.000Z",
+        "entities": [
+          {
+            "entity": "users",
+            "treatment": "delete",
+            "count": 1
+          },
+          {
+            "entity": "invoices",
+            "treatment": "anonymise",
+            "count": 12
+          },
+          {
+            "entity": "audit_events",
+            "treatment": "redact",
+            "count": 40
+          }
+        ],
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        "email": "dana@example.com"
+      }
+    }
+  ],
+  "drills": [
+    {
+      "case": "a-fresh-drill-neither-alerts-nor-blocks",
+      "scenario": "freshness",
+      "given": {
+        "now": "2026-09-02T00:00:00.000Z",
+        "cadence": "P7D",
+        "stale_after": "P14D",
+        "first_backup_at": "2026-06-01T00:00:00.000Z",
+        "runs": [
+          {
+            "outcome": "succeeded",
+            "finished_at": "2026-08-30T03:10:00.000Z"
+          }
+        ]
+      },
+      "expect": {
+        "stale": false,
+        "deployment": "proceeds"
+      },
+      "why": "BR4: the newest succeeded drill is three days old against a fourteen-day threshold."
+    },
+    {
+      "case": "a-drill-older-than-stale-after-alerts-and-blocks",
+      "scenario": "freshness",
+      "given": {
+        "now": "2026-09-02T00:00:00.000Z",
+        "cadence": "P7D",
+        "stale_after": "P14D",
+        "first_backup_at": "2026-06-01T00:00:00.000Z",
+        "runs": [
+          {
+            "outcome": "succeeded",
+            "finished_at": "2026-08-10T03:10:00.000Z"
+          }
+        ]
+      },
+      "expect": {
+        "stale": true,
+        "deployment": "blocked"
+      },
+      "why": "BR4 and 057 JB8: absence is the failure. Twenty-three days without a succeeded drill alerts, and recovery.assert_drilled exits failed so the release does not roll out over a store nobody has proven restorable."
+    },
+    {
+      "case": "failed-drills-do-not-refresh-the-clock",
+      "scenario": "freshness",
+      "given": {
+        "now": "2026-09-02T00:00:00.000Z",
+        "cadence": "P7D",
+        "stale_after": "P14D",
+        "first_backup_at": "2026-06-01T00:00:00.000Z",
+        "runs": [
+          {
+            "outcome": "succeeded",
+            "finished_at": "2026-08-10T03:10:00.000Z"
+          },
+          {
+            "outcome": "failed",
+            "finished_at": "2026-08-17T03:10:00.000Z"
+          },
+          {
+            "outcome": "failed",
+            "finished_at": "2026-08-24T03:10:00.000Z"
+          },
+          {
+            "outcome": "failed",
+            "finished_at": "2026-08-31T03:10:00.000Z"
+          }
+        ]
+      },
+      "expect": {
+        "stale": true,
+        "deployment": "blocked"
+      },
+      "why": "BR4: the signal is success, not attempts. A drill that runs weekly and fails weekly is stale; an implementation reading the newest row of any outcome passes the case above and fails this one."
+    },
+    {
+      "case": "a-service-with-no-copy-older-than-the-cadence-is-not-stale",
+      "scenario": "freshness",
+      "given": {
+        "now": "2026-09-02T00:00:00.000Z",
+        "cadence": "P7D",
+        "stale_after": "P14D",
+        "first_backup_at": "2026-08-31T00:00:00.000Z",
+        "runs": []
+      },
+      "expect": {
+        "stale": false,
+        "deployment": "proceeds"
+      },
+      "why": "BR4: the clock starts at the first copy. A store first backed up two days ago has nothing to drill yet and its first deployment is not blocked by its own newness."
+    },
+    {
+      "case": "a-copy-older-than-stale-after-with-no-drill-is-stale",
+      "scenario": "freshness",
+      "given": {
+        "now": "2026-09-02T00:00:00.000Z",
+        "cadence": "P7D",
+        "stale_after": "P14D",
+        "first_backup_at": "2026-08-01T00:00:00.000Z",
+        "runs": []
+      },
+      "expect": {
+        "stale": true,
+        "deployment": "blocked"
+      },
+      "why": "BR4: a month of copies and no drill is the checkbox failure this standard exists for, and it blocks."
+    },
+    {
+      "case": "a-drill-within-both-objectives-succeeds",
+      "scenario": "objectives",
+      "given": {
+        "rpo": "PT15M",
+        "rto": "PT2H",
+        "as_of": "2026-09-02T02:55:00.000Z",
+        "drill_started_at": "2026-09-02T03:00:00.000Z",
+        "ready_at": "2026-09-02T04:10:00.000Z"
+      },
+      "expect": {
+        "achieved_rpo": "PT5M",
+        "achieved_rto": "PT1H10M",
+        "outcome": "succeeded"
+      },
+      "why": "BR4 step 6: five minutes of lag against a fifteen-minute RPO, seventy minutes to readiness against a two-hour RTO."
+    },
+    {
+      "case": "an-achieved-rto-over-the-declared-one-fails-the-drill",
+      "scenario": "objectives",
+      "given": {
+        "rpo": "PT15M",
+        "rto": "PT2H",
+        "as_of": "2026-09-02T02:55:00.000Z",
+        "drill_started_at": "2026-09-02T03:00:00.000Z",
+        "ready_at": "2026-09-02T05:30:00.000Z"
+      },
+      "expect": {
+        "achieved_rpo": "PT5M",
+        "achieved_rto": "PT2H30M",
+        "outcome": "failed"
+      },
+      "why": "BR4 step 6: the data came back whole and too slowly. The declaration was a promise and the drill is where it is tested, so a slow restore is a failed drill and not a note."
+    },
+    {
+      "case": "an-achieved-rpo-over-the-declared-one-fails-the-drill",
+      "scenario": "objectives",
+      "given": {
+        "rpo": "PT15M",
+        "rto": "PT2H",
+        "as_of": "2026-09-02T01:00:00.000Z",
+        "drill_started_at": "2026-09-02T03:00:00.000Z",
+        "ready_at": "2026-09-02T03:40:00.000Z"
+      },
+      "expect": {
+        "achieved_rpo": "PT2H",
+        "achieved_rto": "PT40M",
+        "outcome": "failed"
+      },
+      "why": "BR4 step 6: the newest copy is two hours behind. The archive is lagging, and the drill is the only thing that would notice before an incident does."
+    },
+    {
+      "case": "restore-then-replay-leaves-erased-rows-absent",
+      "scenario": "restore",
+      "detector": true,
+      "given": {
+        "as_of": "2026-08-30T00:00:00.000Z",
+        "backup": {
+          "schema_version": 41,
+          "rows": [
+            {
+              "entity": "users",
+              "subject_id": "01923e01-1111-7000-8000-000000000001"
+            },
+            {
+              "entity": "invoices",
+              "subject_id": "01923e01-1111-7000-8000-000000000001"
+            },
+            {
+              "entity": "users",
+              "subject_id": "01923e01-2222-7000-8000-000000000002"
+            },
+            {
+              "entity": "invoices",
+              "subject_id": "01923e01-2222-7000-8000-000000000002"
+            }
+          ],
+          "audit_events": [
+            {
+              "event_id": "01923e8a-aaaa-7000-8000-000000000001",
+              "subject_id": "01923e01-1111-7000-8000-000000000001",
+              "display": "Dana Okoye <dana@example.com>"
+            },
+            {
+              "event_id": "01923e8a-aaaa-7000-8000-000000000002",
+              "subject_id": "01923e01-2222-7000-8000-000000000002",
+              "display": "Sam Reyes <sam@example.com>"
+            }
+          ],
+          "ledger_table": [
+            {
+              "subject_id": "01923e01-3333-7000-8000-000000000003",
+              "erased_at": "2026-08-01T09:00:00.000Z",
+              "entities": [
+                {
+                  "entity": "users",
+                  "treatment": "delete"
+                },
+                {
+                  "entity": "invoices",
+                  "treatment": "delete"
+                },
+                {
+                  "entity": "audit_events",
+                  "treatment": "redact"
+                }
+              ]
+            }
+          ]
+        },
+        "release_schema_version": 43,
+        "ledger_copy": [
+          {
+            "subject_id": "01923e01-3333-7000-8000-000000000003",
+            "erased_at": "2026-08-01T09:00:00.000Z",
+            "entities": [
+              {
+                "entity": "users",
+                "treatment": "delete"
+              },
+              {
+                "entity": "invoices",
+                "treatment": "delete"
+              },
+              {
+                "entity": "audit_events",
+                "treatment": "redact"
+              }
+            ]
+          },
+          {
+            "subject_id": "01923e01-1111-7000-8000-000000000001",
+            "erased_at": "2026-08-31T10:00:00.000Z",
+            "entities": [
+              {
+                "entity": "users",
+                "treatment": "delete"
+              },
+              {
+                "entity": "invoices",
+                "treatment": "delete"
+              },
+              {
+                "entity": "audit_events",
+                "treatment": "redact"
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "schema_version_at_replay": 43,
+        "final": {
+          "rows_for_erased_subjects": 0,
+          "rows": [
+            {
+              "entity": "users",
+              "subject_id": "01923e01-2222-7000-8000-000000000002"
+            },
+            {
+              "entity": "invoices",
+              "subject_id": "01923e01-2222-7000-8000-000000000002"
+            }
+          ],
+          "audit_events": [
+            {
+              "event_id": "01923e8a-aaaa-7000-8000-000000000001",
+              "subject_id": "01923e01-1111-7000-8000-000000000001",
+              "display": "[erased]"
+            },
+            {
+              "event_id": "01923e8a-aaaa-7000-8000-000000000002",
+              "subject_id": "01923e01-2222-7000-8000-000000000002",
+              "display": "Sam Reyes <sam@example.com>"
+            }
+          ]
+        }
+      },
+      "why": "BR6 and BR7, a VERIFIED DETECTOR. The copy predates the erasure of the first subject, so the restored rows hold that subject and the restored ledger table does not hold the entry. Replay reads the ledger's copy in the backup domain, re-runs the erasure, and leaves only the never-erased subject's rows; the erased subject's audit events stay, redacted per 080 AE7, and the schema is at the release's version before replay runs (025 SD3). An implementation that reads the ledger from the restored table finds only the entry that predates as_of, replays nothing that matters, and fails this case and the one below while passing every case that does not restore."
+    },
+    {
+      "case": "erased-rows-are-absent-at-readiness-not-only-afterwards",
+      "scenario": "restore",
+      "detector": true,
+      "given": {
+        "as_of": "2026-08-30T00:00:00.000Z",
+        "backup": {
+          "schema_version": 41,
+          "rows": [
+            {
+              "entity": "users",
+              "subject_id": "01923e01-1111-7000-8000-000000000001"
+            },
+            {
+              "entity": "invoices",
+              "subject_id": "01923e01-1111-7000-8000-000000000001"
+            },
+            {
+              "entity": "users",
+              "subject_id": "01923e01-2222-7000-8000-000000000002"
+            },
+            {
+              "entity": "invoices",
+              "subject_id": "01923e01-2222-7000-8000-000000000002"
+            }
+          ],
+          "audit_events": [
+            {
+              "event_id": "01923e8a-aaaa-7000-8000-000000000001",
+              "subject_id": "01923e01-1111-7000-8000-000000000001",
+              "display": "Dana Okoye <dana@example.com>"
+            },
+            {
+              "event_id": "01923e8a-aaaa-7000-8000-000000000002",
+              "subject_id": "01923e01-2222-7000-8000-000000000002",
+              "display": "Sam Reyes <sam@example.com>"
+            }
+          ],
+          "ledger_table": [
+            {
+              "subject_id": "01923e01-3333-7000-8000-000000000003",
+              "erased_at": "2026-08-01T09:00:00.000Z",
+              "entities": [
+                {
+                  "entity": "users",
+                  "treatment": "delete"
+                },
+                {
+                  "entity": "invoices",
+                  "treatment": "delete"
+                },
+                {
+                  "entity": "audit_events",
+                  "treatment": "redact"
+                }
+              ]
+            }
+          ]
+        },
+        "release_schema_version": 43,
+        "ledger_copy": [
+          {
+            "subject_id": "01923e01-3333-7000-8000-000000000003",
+            "erased_at": "2026-08-01T09:00:00.000Z",
+            "entities": [
+              {
+                "entity": "users",
+                "treatment": "delete"
+              },
+              {
+                "entity": "invoices",
+                "treatment": "delete"
+              },
+              {
+                "entity": "audit_events",
+                "treatment": "redact"
+              }
+            ]
+          },
+          {
+            "subject_id": "01923e01-1111-7000-8000-000000000001",
+            "erased_at": "2026-08-31T10:00:00.000Z",
+            "entities": [
+              {
+                "entity": "users",
+                "treatment": "delete"
+              },
+              {
+                "entity": "invoices",
+                "treatment": "delete"
+              },
+              {
+                "entity": "audit_events",
+                "treatment": "redact"
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "at_readiness": {
+          "rows_for_erased_subjects": 0
+        }
+      },
+      "why": "BR6, a VERIFIED DETECTOR: replay completes before readiness. The state is observed at the instant /readyz first answers 200. An implementation that readmits the service and then replays serves the erased subject's rows in that window, fails exactly this case, and passes every other case in this file - which is why the case exists."
+    }
+  ]
+}

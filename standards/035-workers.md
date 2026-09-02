@@ -141,38 +141,18 @@ image splits. So:
 - The **pool**, `<service>-pool`, is one image per queue, and WK3 says there is
   one queue by default.
 
-**A repository is not a service, and images never cross the service line.** A
-service is the set of processes that share one state under one credential and
-one migration history, and a repository may hold several. Two services in one
-repository have two credentials, so the credential criterion above gives each
-its own pool image, its own jobs image, and its own migrate image, built in
-the same run at the same version. The shared version is provenance: everything
-in the run was tested together. It is not ownership. What makes a worker
-*this* service's worker is that it holds this service's credential and is
-migrated by this service's migrations, and a worker for the service next door
-reaches this one through its interface or its messages, as 025 SD13 requires
-of any other service.
-
-**The converse holds too: a service lives in exactly one repository.** Every
-process that holds a service's credential is built from the repository that
-holds that service's migrations, in one run, at one version. The schema is
-defined by the migrations and every query is coupled to it; a process built
-elsewhere that reads the database gives one schema two release trains, and the
-failure SD13 names for two services sharing a table becomes possible between
-two halves of one service. Provenance binds only what was built together, so
-one state means one repository. The credential is the checkable edge: a
-database's credential appears in the deployables of one repository and no
-other, which is what lets this rule be read from the build rather than from a
-review. It also rules out a relay built elsewhere that reads the service's
-tables through the change stream; the outbox relay is a job in the service's
-pool.
+**A repository may hold several services, and a service lives in exactly one
+repository** ([`000-platform.md`](000-platform.md#terms), *Service*; 025
+SD13). The credential criterion above therefore gives each service in a shared
+repository its own pool, jobs and migrate images, built in the same run at the
+same version, and gives no image a credential to another service's state.
 
 **Where a runtime cannot run a separate image**, the one-shot is a command in
-the service's server image, run to completion by the runner, with the same
-interface and exit codes as any one-shot. It is never a request handler and
-never the boot path, and the repository records in its own decisions that it
-uses this form. Migrations are excluded from it: the credential separation SD3
-requires cannot be had inside the server image.
+the server image, run to completion by the runner, with the same interface and
+exit codes as any one-shot. It is never a request handler and never the boot
+path, and the repository records in its own decisions that it uses this form.
+Migrations are excluded: the credential separation SD3 requires cannot be had
+inside the server image.
 
 ### WK3. One pool per service by default; partitioning is a measured optimisation
 

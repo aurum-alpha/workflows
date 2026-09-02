@@ -1,164 +1,43 @@
 #!/usr/bin/env python3
-"""Verify every repo's shared lint configs are byte-identical to the catalog's.
+"""Deprecated name for tools/check-lint-configs. Delete in wave 2.
 
-The config's own header says:
+This file exists for exactly one reason, and it is the reason the rename was
+deferred for so long: job-ci-conformance takes its BODY from the caller's
+`uses:` pin but its TOOLS from `standard_ref`, and those move at different
+times. A commit that renamed the tool and flipped the invocation together
+would ship a job calling a name the pinned checkout does not have -- exit 127,
+which is what the first attempt at this rename did to gofast.
 
-    DO NOT EDIT IN ONE REPO. Change it in every repo at once; the byte-identity
-    checker fails the build otherwise.
+So the rename is three waves, and waves 1 and 2 are done:
 
-That checker did not exist. Six repos carried the file, all six happened to
-match, and the sentence enforcing it was decoration — which is worse than no
-rule, because it reads as a guarantee. A rule nothing enforces is a rule
-already broken; nobody has just noticed yet.
+  1. DONE (8e4070a). `check-lint-configs` became the real file; this name kept
+     working. A main carrying both names is the precondition the original
+     docstring named and could not satisfy from inside itself.
+  2. DONE. job-ci-conformance now invokes `check-lint-configs`, with
+     `standard_ref` moved to 8e4070a -- the first commit whose tools/ carries
+     that name. Nothing selects this shim by default any more.
+  3. NOT YET. Delete this file once no released tag ships a job body that
+     invokes the old name. Until then a caller pinned at a pre-wave-2 tag can
+     still reach it, which is the whole reason it is a shim and not a
+     deletion.
 
-This is the checker. The canonical copies live in config/ in this repository,
-so there is one place to change and one thing to compare against, rather than
-six copies agreeing by luck.
+WHY THE NAME CHANGED. The checker never checked an eslint config in the sense
+its name implied: it enforces byte-identity of SHARED LINT CONFIGS against the
+catalog's canonical copies, and that list is a tuple precisely so entries can
+come and go. eslint's retirement shortened it to `.oxlintrc.json` and changed
+nothing else about the rule -- which is the argument for the name being about
+the rule rather than about whichever linter is current. Leaving it as
+`check-eslint-config` after eslint left the portfolio names a tool nobody runs
+and reads as guidance nobody has revisited.
 
-It covered two files and now covers one. `.oxlintrc.json` arrived alongside
-`eslint.config.mjs` with the same claim in its own header and the same way of
-failing: oxlint's config was one repo's local file, and the argument the portfolio
-had been having about oxlint's coverage turned out to be an argument with that
-file rather than with the tool. A second shared config enforced the same way
-was one checker with a longer list, not a second checker -- the rule is about
-shared configs, not about eslint. That is why eslint's retirement shortened the
-list and changed nothing else here, and why the list is written as a tuple
-rather than a constant.
-
-The comparison is bytes, not semantics, and deliberately so. The point is not
-that the configs behave alike — it is that they are ONE config, so that
-collapsing them into a published package later is a mechanical move rather
-than a merge.
-
-Run against local clones:  tools/check-eslint-config --root /workspace
-Run against one repo:      tools/check-eslint-config --root DIR --repo NAME
-
-THE NAME IS NARROWER THAN THE JOB, and deliberately so for now. Renaming this
-file to check-lint-configs is a two-wave operation, not a tidy-up: the calling
-job takes its body from the caller's `uses:` pin but its tools from
-`standard_ref`, which lags one commit by design, so the commit that renames the
-tool ships a job invoking a name the previous main does not have -- exit 127,
-which is what the first attempt at this change did to gofast. The rename waits
-until a main exists that already carries both names. Until then this file
-checks every shared lint config, whatever its name says.
-
-ADDING a shared config is safe; EDITING one is a portfolio-wide event. The
-canonical copy is read from the catalog's default branch, not from the caller's
-pinned standard_ref (see AURUM_CATALOG_ROOT below), so the moment an edit lands
-on main every repo still carrying the old bytes fails -- including repos that
-changed nothing and are pinned to an older catalog. A new file has no such
-blast radius, because a repo without it passes. So a new shared config can ship
-with one pilot repo; a change to an existing one ships with all of them or not
-at all, which is what its "DO NOT EDIT IN ONE REPO" header has always meant.
-
-Naming a repo with no such config is a pass, not an error, for the same
-reason check-dependency-versions passes a repo with no Node app: a checker that
-only runs when someone remembers to exclude the right repos is a checker that
-stops being run.
+`os.execv` rather than an import so that argv, exit codes and stderr pass
+through unchanged; anything reading this job's output sees the real checker's
+words, not a wrapper's paraphrase of them.
 """
 
-import argparse
-import hashlib
 import os
 import pathlib
 import sys
 
-# eslint.config.mjs left this list one wave before it left config/, and the gap
-# was the whole point. The canonical is read from the catalog's default branch
-# while the checker itself comes from the caller's pinned standard_ref, so the
-# two move at different times: delete the file in the same commit that drops it
-# here and every repo still on the previous standard_ref runs a checker that
-# looks for a canonical which no longer exists -- "canonical config not found",
-# exit 2, for repos that changed nothing. That is the same shape as the rename
-# described above, which is what exit-127'd gofast.
-#
-# The condition that released the file was "a standard_ref carrying this list
-# has reached the portfolio", and it was checked rather than assumed: all nine JS
-# repos pin job-ci-conformance at v2.2.5, whose standard_ref default is the
-# v2.2.4 commit, which contains the wave that shortened this tuple. So every
-# caller was already running the one-entry list before the file was removed.
-CONFIGS = (".oxlintrc.json",)
-
-# Where a repo may keep its copy, in order. Repo root covers the repos whose JS
-# project IS the repo; client/ covers the ones whose React app is its own pnpm
-# project inside a Go or PHP tree. Those are the same two shapes job-lint-js-*
-# already distinguishes with its `workdir` input, so this is not a new
-# convention -- it is the checker catching up to one the catalog already has.
-#
-# Root-only was a silent hole rather than a strict rule: a missing file is a
-# pass, so gofast and client-manager -- the two repos with a client/ -- were
-# never checked at all, and the run still printed PASS. A checker that reports
-# success for a repo it did not look at is worse than one that fails, because
-# it answers the question it was asked without ever asking it.
-SEARCH_DIRS = ("", "client")
-
-
-def digest(path: pathlib.Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--root", default="/workspace", type=pathlib.Path)
-    ap.add_argument("--repo", action="append", help="limit to specific repo(s)")
-    args = ap.parse_args()
-
-    # Same override as check-ci-conformance's catalog_roots: a caller's
-    # conformance run takes its RULES from a pinned standard_ref, which is
-    # right, but "what is the current canonical config" is a question about the
-    # catalog as it is now. Pinning that answer would report a config the portfolio
-    # has already moved past.
-    here = pathlib.Path(os.environ.get("AURUM_CATALOG_ROOT")
-                        or pathlib.Path(__file__).resolve().parent.parent)
-    want = {}
-    for config in CONFIGS:
-        canonical = here / "config" / config
-        if not canonical.is_file():
-            print(f"canonical config not found at {canonical}", file=sys.stderr)
-            return 2
-        want[config] = digest(canonical)
-
-    if args.repo:
-        repos = args.repo
-    else:
-        repos = sorted(p.name for p in args.root.iterdir() if p.is_dir())
-
-    failures = 0
-    checked = 0
-    for repo in repos:
-        for config in CONFIGS:
-            found = [
-                args.root / repo / sub / config if sub else args.root / repo / config
-                for sub in SEARCH_DIRS
-            ]
-            found = [c for c in found if c.is_file()]
-            if not found:
-                if args.repo:
-                    print(f"{repo}: no {config} — nothing to check")
-                continue
-            for path in found:
-                checked += 1
-                where = path.relative_to(args.root / repo)
-                got = digest(path)
-                if got == want[config]:
-                    print(f"{repo}: identical ({where})")
-                else:
-                    failures += 1
-                    print(f"{repo}: DIFFERS from config/{config} ({where})")
-                    print(f"  catalog {want[config][:12]}  repo {got[:12]}")
-
-    if failures:
-        print(
-            f"\nFAIL: {failures} shared config(s) edited locally. Change the "
-            "file in config/ and roll the whole portfolio, or if the change is "
-            "genuinely repo-specific, say so out loud — these files are shared "
-            "on the claim that no repo needs its own."
-        )
-        return 1
-
-    print(f"\nPASS: {checked} shared config(s) match the catalog")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+target = pathlib.Path(__file__).resolve().parent / "check-lint-configs"
+os.execv(sys.executable, [sys.executable, str(target), *sys.argv[1:]])

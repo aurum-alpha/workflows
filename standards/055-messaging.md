@@ -22,36 +22,38 @@ the rules here. Notifications to people ride this envelope and are the
 
 ## Why this exists
 
-No repository in the portfolio has a queue. Not one carries a message broker
-client, a job library, or a worker process. That is a more interesting fact
-than it first appears, because background work exists — it simply has nowhere
-to live, so it lives in the wrong place:
+Every product eventually has work that does not belong inside a request: a
+cleanup that runs after the response has gone, a call to an upstream system
+that must not hold a user waiting, a notification, a webhook a payment provider
+sends when a charge settles, an event another service needs to know about. The
+need arrives one case at a time, and each case has a cheapest possible answer
+that is wrong in a way that does not show until later:
 
-- **Two repositories run background work on a timer inside the HTTP process.**
-  A `setInterval` in the routes file sweeps orphaned uploads every five
-  minutes in one; another polls an upstream API on a timer, pausing when no
-  client is connected. Both are reasonable things to want done. Both, as
-  written, run once per replica, die with the process, retry nothing, record
-  nothing, and are invisible to every rule the [service
-  standard](030-service.md) states about a running process — a timer does not
-  drain on `SIGTERM`, and a health check does not know it exists.
-- **One repository receives webhooks from a payment provider.** It verifies
-  the signature over the raw body before trusting the payload and records the
-  provider's event id so a redelivery is skipped — both correct, and both
-  decided inside that one handler. It then does the work inline, before
-  responding, so a slow write is a provider timeout, and a provider timeout is
-  a redelivery of work already half done. The next handler someone writes will
-  make all three decisions again, from scratch, and there is nothing to say
-  which way.
-- **No repository emits an event another service could consume.** Every
-  integration between products, where one exists, is a synchronous call, which
-  means every product's availability is the product of its dependencies'.
+- **A timer inside the request-serving process** is the cheapest way to run
+  something periodically, and it is wrong for reasons that hold regardless of
+  who writes it. It runs once per replica, so scaling out multiplies the work
+  or races it. It dies with the process, so every deploy interrupts it. It
+  retries nothing, records nothing, and is invisible to every rule the
+  [service standard](030-service.md) states about a running process — a timer
+  does not drain on `SIGTERM`, and a health check does not know it exists.
+- **Doing a webhook's work inline before responding** is the cheapest way to
+  handle one, and it converts every slow write into a provider timeout, and
+  every provider timeout into a redelivery of work already half done.
+  Verifying the signature and remembering the provider's event id are the
+  right first two decisions; the third — respond, *then* work — is the one
+  that is not obvious until a redelivery has doubled a charge.
+- **A synchronous call between services** is the cheapest integration, and it
+  makes each product's availability the product of its dependencies'. An event
+  the consumer picks up when it is ready is the shape that does not.
 
-The absence is not a gap in tooling. It is that nobody has said what a message
-*is* — what identifies it, what a consumer may assume about how many times it
-arrives, what a producer owes it before the transaction commits — and without
-those answers the cheapest thing to do with background work is a timer, and
-the cheapest thing to do with a webhook is to process it inline and hope.
+None of those is a failure of judgment. Each is what happens when the
+questions have not been asked: what a message *is*, what identifies it, how
+many times a consumer may see it, what a producer owes it before the
+transaction commits, how work outside a request is meant to run at all.
+Without answers, the cheapest option is taken, per product, and each product
+pays for it separately and later. This document answers the questions once,
+from the properties the answers must have, so that the cheapest option and the
+right one are the same option.
 
 ### The standard evaluated first, per PC2
 

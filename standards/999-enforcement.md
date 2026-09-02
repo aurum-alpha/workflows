@@ -219,6 +219,7 @@ written" and "The foundation: twelve-factor".
 | D1 | No document carries a status header; a merged document is binding | `check-standards-docs` (proposed): no `Status:` line in a standard | **review only** |
 | D2 | Documents reference documents by working relative link — never a tracker number, never a bare name; a standard not yet written is linked at its roster row | `check-standards-docs` (proposed): no issue or pull-request reference in a standard's prose, and every relative link resolves | **review only** |
 | D3 | A rule restating a twelve-factor factor cites it; a rule departing from one says so, in the rule, with the reason | — resists honestly: whether a citation is apt, or a departure argued, is judgment | **review only** |
+| D4 | A rule is argued from principle, never from precedent: its reason is a property of the rule, checkable without knowledge of this organisation's history; an incident may show a rule is needed but never that an answer is right | — resists honestly: a grep finds the word and not the fallacy. The review question on every Decisions entry: *would this reason hold if the repository it came from did not exist?* | **review only** |
 
 D1 and D2 are the cheapest gates in this ledger — a grep each, no false
 positives — and they are the kind of rule that regresses silently, because a
@@ -228,6 +229,10 @@ than after.
 D3 resists a checker: a grep can find the word "twelve-factor" but not
 whether the citation is apt or the departure argued, so it stays a review
 question, stated in the charter's *The foundation: twelve-factor*.
+D4 resists one the same way and is the convention most likely to be broken
+in good faith, because copying a good answer feels like diligence. Two merged
+standards carry passages written before it was stated; bringing them to it is
+its own change.
 One carve-out is unsettled and left visible rather than assumed: the CI
 standard's decisions log cites the change that settled each row, which is
 history rather than a live reference, and whether D2 admits that is a review

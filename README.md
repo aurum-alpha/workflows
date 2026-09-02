@@ -165,7 +165,7 @@ standard states the choice against factor XII rather than around it.
 
 ## How these documents are written
 
-Two conventions, because both failures are quiet ones.
+Three conventions, because all three failures are quiet ones.
 
 **A merged document is binding, and says nothing about its own status.** No
 document carries a `Status: proposed` or `Status: agreed` header. Review happens
@@ -189,6 +189,26 @@ written", and becomes a direct link to the document when one lands. A bare
 name is not a reference and a link to a file that does not exist is a 404;
 this is the form that is neither. Pending work is still tracked as issues
 here; the documents just do not cite them.
+
+**A rule is argued from principle, never from precedent.** Every rule carries
+its reason, and the reason is a property of the rule — what it prevents, what
+it costs, why the alternative fails — stated so that a reader with no knowledge
+of this organisation's history could check it. *Another repository already does
+this* is not a reason. It is a report that a decision was once made, and it
+says nothing about whether the decision was right; a rule resting on it
+inherits every mistake of the place it was copied from and cannot be examined
+without going there. Where an existing implementation has a good argument, the
+document makes the argument and drops the attribution. The argument stands on
+its own or it does not stand.
+
+This is not a ban on history, and the carve-out below for incident citations
+holds. *We watched this fail, in this run* is evidence that a rule is
+**needed**, and it is the strongest such evidence there is. What it can never be
+is evidence that a particular answer is **right**. History motivates a rule;
+logic justifies it; a document that confuses the two has written down a habit
+and called it a standard. The Decisions log at the foot of every standard is
+where this bites hardest: each entry is the reason a choice went one way, and an
+entry that reads *as done in …* is a decision nobody made.
 
 ## Non-compliance is tracked where the code is
 

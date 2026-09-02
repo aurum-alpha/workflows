@@ -101,7 +101,7 @@ import sys
 # AURUM_CATALOG_ROOT escape? dependency-versions.json is the only file in
 # this repo that does, verified by reading every checker rather than by
 # assumption --
-# check-caller-permissions, check-eslint-config and check-ci-conformance all
+# check-caller-permissions, check-lint-configs and check-ci-conformance all
 # take the override, so in CI they read the CURRENT catalog and are immune to
 # this staleness by construction.
 #

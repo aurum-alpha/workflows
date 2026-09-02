@@ -171,7 +171,19 @@ on:
         # Bumped to v2.3.1 for the `entry` input on job-depcheck-js-knip. The
         # job file is caller-consumed, so a caller pinning this change would
         # otherwise fetch checkers from f254ede -- a tree without it.
-        default: 7a25f11d84004db7ef6db54230f530e0106b40d6
+        #
+        # Bumped again for wave 1 of the check-eslint-config ->
+        # check-lint-configs rename. NOTE WHAT THIS BUMP DOES AND DOES NOT DO:
+        # it points at this pull request's BASE, which does not carry the
+        # rename either, and that is not a mistake -- standard_ref can never
+        # name the commit being created (see the note above about the catalog
+        # listing). The one-commit lag is designed; this gate exists to keep it
+        # at one rather than letting it grow to twenty. Wave 2, which flips the
+        # invocation below to check-lint-configs, is what needs a standard_ref
+        # that actually carries the new name, and it will bump to the wave-1
+        # merge commit for exactly that reason. Until then line 323 calls the
+        # old name deliberately, and the shim answers to it.
+        default: 1cc13b9314c5735a6b9648d3d8f8703dad0cd12d
 
 jobs:
   ci-conformance:

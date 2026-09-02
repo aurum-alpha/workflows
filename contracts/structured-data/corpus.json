@@ -7,8 +7,8 @@
     {
       "case": "an-ordered-sql-only-directory-is-clean",
       "directory": {
-        "00001_init.sql": "-- +goose Up\nCREATE TABLE tenants (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, public_id uuid NOT NULL UNIQUE);\n-- +goose Down\nDROP TABLE tenants;",
-        "00002_invoices.sql": "-- +goose Up\nCREATE TABLE invoices (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, tenant_id bigint NOT NULL REFERENCES tenants(id), total_amount bigint NOT NULL, total_currency char(3) NOT NULL);\n-- +goose Down\nDROP TABLE invoices;"
+        "00001_init.sql": "-- +goose Up\nCREATE TABLE IF NOT EXISTS tenants (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, public_id uuid NOT NULL UNIQUE);\n-- +goose Down\nDROP TABLE tenants;",
+        "00002_invoices.sql": "-- +goose Up\nCREATE TABLE IF NOT EXISTS invoices (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, tenant_id bigint NOT NULL REFERENCES tenants(id), total_amount bigint NOT NULL, total_currency char(3) NOT NULL);\n-- +goose Down\nDROP TABLE invoices;"
       },
       "reachableScripts": { "migrate": "app migrate", "start": "app serve" },
       "expect": { "findings": [] },
@@ -17,7 +17,7 @@
     {
       "case": "a-migration-written-as-code-is-a-finding",
       "directory": {
-        "00001_init.sql": "-- +goose Up\nCREATE TABLE tenants (id bigint PRIMARY KEY);\n-- +goose Down\nDROP TABLE tenants;",
+        "00001_init.sql": "-- +goose Up\nCREATE TABLE IF NOT EXISTS tenants (id bigint PRIMARY KEY);\n-- +goose Down\nDROP TABLE tenants;",
         "0002_add_invoices.ts": "export async function up(db) { await db.schema.createTable('invoices')... }"
       },
       "reachableScripts": { "migrate": "app migrate" },
@@ -27,9 +27,9 @@
     {
       "case": "an-unordered-name-is-a-finding",
       "directory": {
-        "00001_init.sql": "-- +goose Up\nCREATE TABLE tenants (id bigint PRIMARY KEY);\n-- +goose Down\n",
-        "add_invoices.sql": "-- +goose Up\nCREATE TABLE invoices (id bigint PRIMARY KEY);\n-- +goose Down\n",
-        "00002_roles.sql": "-- +goose Up\nCREATE TABLE roles (id bigint PRIMARY KEY);\n-- +goose Down\n"
+        "00001_init.sql": "-- +goose Up\nCREATE TABLE IF NOT EXISTS tenants (id bigint PRIMARY KEY);\n-- +goose Down\n",
+        "add_invoices.sql": "-- +goose Up\nCREATE TABLE IF NOT EXISTS invoices (id bigint PRIMARY KEY);\n-- +goose Down\n",
+        "00002_roles.sql": "-- +goose Up\nCREATE TABLE IF NOT EXISTS roles (id bigint PRIMARY KEY);\n-- +goose Down\n"
       },
       "reachableScripts": {},
       "expect": { "findings": [ { "kind": "unordered-name", "subject": "add_invoices.sql" } ] },
@@ -38,7 +38,7 @@
     {
       "case": "a-drop-column-in-the-up-section-is-a-finding",
       "directory": {
-        "00007_retire_legacy_ref.sql": "-- +goose Up\nALTER TABLE invoices DROP COLUMN legacy_ref;\n-- +goose Down\nALTER TABLE invoices ADD COLUMN legacy_ref text;"
+        "00007_retire_legacy_ref.sql": "-- +goose Up\nALTER TABLE invoices DROP COLUMN IF EXISTS legacy_ref;\n-- +goose Down\nALTER TABLE invoices ADD COLUMN IF NOT EXISTS legacy_ref text;"
       },
       "reachableScripts": {},
       "expect": { "findings": [ { "kind": "expand-only-violation", "subject": "00007_retire_legacy_ref.sql", "statement": "DROP COLUMN" } ] },
@@ -47,7 +47,7 @@
     {
       "case": "a-drop-column-with-a-release-named-is-admitted",
       "directory": {
-        "00007_retire_legacy_ref.sql": "-- +goose Up\n-- expand-only-ok: 2.4.0 stopped reading legacy_ref\nALTER TABLE invoices DROP COLUMN legacy_ref;\n-- +goose Down\n"
+        "00007_retire_legacy_ref.sql": "-- +goose Up\n-- expand-only-ok: 2.4.0 stopped reading legacy_ref\nALTER TABLE invoices DROP COLUMN IF EXISTS legacy_ref;\n-- +goose Down\n"
       },
       "reachableScripts": {},
       "expect": { "findings": [] },
@@ -56,7 +56,7 @@
     {
       "case": "a-marker-with-no-release-named-is-still-a-finding",
       "directory": {
-        "00007_retire_legacy_ref.sql": "-- +goose Up\n-- expand-only-ok:\nALTER TABLE invoices DROP COLUMN legacy_ref;\n-- +goose Down\n"
+        "00007_retire_legacy_ref.sql": "-- +goose Up\n-- expand-only-ok:\nALTER TABLE invoices DROP COLUMN IF EXISTS legacy_ref;\n-- +goose Down\n"
       },
       "reachableScripts": {},
       "expect": { "findings": [ { "kind": "expand-only-marker-without-release", "subject": "00007_retire_legacy_ref.sql" } ] },
@@ -74,11 +74,29 @@
     {
       "case": "a-reachable-push-beside-a-migrations-directory-is-a-finding",
       "directory": {
-        "00001_init.sql": "-- +goose Up\nCREATE TABLE tenants (id bigint PRIMARY KEY);\n-- +goose Down\n"
+        "00001_init.sql": "-- +goose Up\nCREATE TABLE IF NOT EXISTS tenants (id bigint PRIMARY KEY);\n-- +goose Down\n"
       },
       "reachableScripts": { "migrate": "drizzle-kit push", "db:push": "drizzle-kit push", "start": "node server.js" },
       "expect": { "findings": [ { "kind": "push-reachable", "subject": "migrate" }, { "kind": "push-reachable", "subject": "db:push" } ] },
       "why": "SD2. Two answers to one question inside one tree, and the script named migrate is the wrong one. This is the shape found in the portfolio, not a hypothetical."
+    },
+    {
+      "case": "an-unguarded-create-table-is-a-finding",
+      "directory": {
+        "00003_projects.sql": "-- +goose Up\nCREATE TABLE projects (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, tenant_id bigint NOT NULL);\n-- +goose Down\nDROP TABLE IF EXISTS projects;"
+      },
+      "reachableScripts": {},
+      "expect": { "findings": [ { "kind": "not-idempotent", "subject": "00003_projects.sql", "statement": "CREATE TABLE" } ] },
+      "why": "SD2's convergence rule. Re-run against a database where the table exists, this file errors instead of exiting zero - and it will be re-run, after an interrupted migrate on an engine whose DDL cannot roll back, or against a restore taken between apply and record. IF NOT EXISTS costs three words."
+    },
+    {
+      "case": "an-unguarded-seed-insert-is-a-finding",
+      "directory": {
+        "00004_seed_roles.sql": "-- +goose Up\nINSERT INTO roles (name) VALUES ('viewer'), ('approver');\n-- +goose Down\nDELETE FROM roles WHERE name IN ('viewer', 'approver');"
+      },
+      "reachableScripts": {},
+      "expect": { "findings": [ { "kind": "not-idempotent", "subject": "00004_seed_roles.sql", "statement": "INSERT" } ] },
+      "why": "SD8 through SD2: a seed is a migration, so it converges. Without ON CONFLICT DO NOTHING (or the engine's equivalent) the second run either duplicates the rows or fails a unique constraint, and either way the migrate step is no longer safe to repeat."
     }
   ],
 

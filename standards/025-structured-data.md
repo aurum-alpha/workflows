@@ -131,6 +131,30 @@ a file's statements commit or roll back together and the version record is
 written only on success. A statement that cannot run inside a transaction —
 `CREATE INDEX CONCURRENTLY` — opts out explicitly in the file, and says so.
 
+**Every migration converges.** Run against a database where it has already
+applied — in whole, or in part after an interrupted run — a migration produces
+the same end state and exits zero. `CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF
+NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, `DROP … IF EXISTS`, and
+`INSERT … ON CONFLICT DO NOTHING` for seed rows. Where the engine has no guard
+for a statement — Postgres has none for `ADD CONSTRAINT`, MySQL has none for
+`ADD COLUMN` — the statement is wrapped in a conditional that checks the catalog
+first.
+
+The version record is not a substitute for this, because the record and the
+schema can disagree. A migration interrupted after its first statement leaves
+the schema changed and the version row unwritten — and on MySQL every DDL
+statement commits on its own, so an interrupted multi-statement migration there
+is *always* half-applied. The next run cannot skip it, because it is not
+recorded, and if its statements error on what already exists it cannot apply it
+either. The migrate step is now stuck, and the way out is a person editing a
+version table by hand at exactly the moment nobody should be. A migration whose
+statements converge turns that into a re-run that succeeds. The same holds for
+a database restored from a backup taken between apply and record, for a
+per-tenant iteration that stopped on the seventh tenant, and for a development
+database someone changed by hand. The version record gives ordering and speed;
+convergence gives recovery. Both are required, because each covers the failure
+the other cannot.
+
 ### SD3. Migrations ship in the image and run as a step before rollout
 
 A migration is in the repository, and the repository is not present where the
@@ -143,7 +167,10 @@ carries the schema it needs.
 **The image exposes a `migrate` command** — the same image, a different
 argument. It applies every pending migration in order and exits zero, or
 stops at the first failure and exits non-zero having applied nothing further.
-It is idempotent: a second run applies nothing and exits zero. This is
+It is idempotent at two levels: the command skips what the version record says
+has applied, and each file converges if run regardless (SD2) — so a second run
+against a current database applies nothing and exits zero, and a run against a
+half-migrated one finishes the job rather than refusing it. This is
 [factor XII](https://12factor.net/admin-processes) made literal — the admin
 process runs in an identical environment to the service because it *is* the
 service's image — and it answers the operator's question in the same breath:
@@ -389,14 +416,22 @@ standard is unusual in how many of those gates are cheap:
 - **SD2's shape is two greps with no false positives**: nothing but `*.sql` in
   the migrations directory, and no merged migration's bytes changed — the
   second is reachable from history. The `db:push` reachability check is a third.
+  Convergence gets a fourth, static and partial: the unguarded common forms —
+  `CREATE TABLE`, `CREATE INDEX`, `ADD COLUMN`, `DROP …`, a seed `INSERT` — with
+  the guard absent. It catches the ordinary mistake and not the exotic one; the
+  live replay below is the proof.
 - **SD4's gate is a regular expression** over each file's up section for the
   three statement kinds and the marker. It is small enough that the corpus is
   most of the design, and the corpus already covers the violation, the marker,
   and the marker with no release named.
 - **SD3's live gate is the from-empty and from-previous-release run**: apply
   the image's migrations to an empty database, then apply the current image's
-  to a database the previous release's image migrated. `job-image-starts`
-  already runs the image; this is a sibling job with a database beside it.
+  to a database the previous release's image migrated; then **replay every
+  file against the migrated database, bypassing the version record**, and
+  require exit zero and an unchanged schema. That replay is the convergence
+  check, and it is the only test that proves SD2's guarantee rather than
+  assuming it. `job-image-starts` already runs the image; this is a sibling job
+  with a database beside it.
 - **SD6's gate is the generative isolation suite**, and it is the one worth the
   most, in the same way AE5's enumeration is: it discovers scoped tables from
   the catalog, so a table added tomorrow is covered the day it lands.
@@ -428,6 +463,15 @@ standard is unusual in how many of those gates are cheap:
   bound the authoring instead of the artifact. What matters is that an ordered
   `.sql` file is on disk for a reviewer to read; how it got there is the
   developer's business.
+- **Every migration converges, and the version record is not a substitute**
+  (2026-09-02): the record answers *has this applied* and the schema answers *is
+  this present*, and there are ordinary events — an interrupted run on an engine
+  whose DDL cannot roll back, a restore from between apply and record, a
+  per-tenant iteration that stopped partway — after which they give different
+  answers. A migration that errors on what already exists turns each of those
+  into a stuck deploy that a person must unstick by hand. Guards cost a clause
+  per statement; the alternative costs the one property a migrate step must
+  have, which is that running it again is always safe.
 - **Migrations ship in the image and run as a discrete step** (2026-09-02):
   the only answer consistent with BUILD ONCE and factor XII at once. The
   alternatives — migrate at boot, migrate from a source checkout — each fail

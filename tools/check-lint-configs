@@ -42,11 +42,22 @@ that renamed the tool AND flipped the invocation would ship a job calling a
 name the pinned checkout does not have -- exit 127, which is what the first
 attempt at this change did to gofast.
 
-The condition the old note set was "a main exists that already carries both
-names", and this is that main: `tools/check-eslint-config` survives as an
-execv shim whose own docstring carries the three waves. Wave 2 flips
-job-ci-conformance's invocation and bumps `standard_ref`; wave 3 deletes the
+It landed in three waves. Wave 1 made this the real file and left
+`check-eslint-config` as an execv shim, so a main existed carrying both names.
+Wave 2 pointed job-ci-conformance here and moved `standard_ref` onto the
+wave-1 commit, which is the bump that made the flip legal. Wave 3 deleted the
 shim. Nothing about the rule changed -- only what the file is called.
+
+THE SHIM WAS KEPT ONE WAVE LONGER THAN IT NEEDED TO BE, on a misreading worth
+recording because it is the same misreading that makes this rename delicate in
+the first place. It was held on the theory that callers pinned at older tags
+would still reach it. They do not: a caller takes its job BODY from its own
+pinned tag and its TOOLS from THAT TAG'S OWN `standard_ref`, so a repo at
+v2.3.2 runs a body naming check-eslint-config against a commit where that file
+is the real checker. Nothing reads `tools/` from main. The shim's one genuine
+job was to keep wave 1's own worktree check passing while the job still named
+the old file, and wave 2 ended it. Established by resolving the pin and
+standard_ref of all eleven callers, not by reasoning about them.
 
 ADDING a shared config is safe; EDITING one is a portfolio-wide event. The
 canonical copy is read from the catalog's default branch, not from the caller's

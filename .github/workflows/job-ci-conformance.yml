@@ -178,14 +178,24 @@ on:
         # standard_ref can never name the commit being created, and the
         # one-commit lag is designed.
         #
-        # WAVE 2 IS THIS BUMP, and it is the one that matters. 8e4070a is the
-        # wave-1 merge commit, so it is the first commit where tools/ carries
-        # check-lint-configs. Only now can the invocation below name it: the
-        # step runs the checker out of the standard_ref clone, so flipping the
-        # name without this bump is precisely the exit 127 that #126 shipped
-        # and that this repo's own "Every checker job-ci-conformance invokes
-        # exists" step now catches in both trees.
-        default: 8e4070a36702b511bbfd6bb0bd1991a5da03a7fd
+        # WAVE 2 WAS THE BUMP TO 8e4070a, the wave-1 merge commit and the
+        # first commit whose tools/ carried check-lint-configs -- which is what
+        # allowed the invocation below to name it. The step runs the checker
+        # out of the standard_ref clone, so flipping the name without that bump
+        # is precisely the exit 127 that #126 shipped, and that this repo's own
+        # "Every checker job-ci-conformance invokes exists" step now catches in
+        # both trees.
+        #
+        # Now at 850a32b for wave 3, which deleted the check-eslint-config
+        # shim. The deletion is invisible to every existing caller and the
+        # reason is worth writing down, because the shim was kept on a
+        # misreading of it: a caller takes its job BODY from its own pinned
+        # tag and its TOOLS from that tag's own standard_ref, so a repo
+        # pinned at v2.3.2 runs a body naming check-eslint-config against
+        # f254ede/7a25f11/e54835c -- commits where that file is the real
+        # checker, not this one. Nothing reads tools/ from main. Checked
+        # against all eleven callers rather than reasoned about.
+        default: 850a32bfbb68ad908823bea7970fd576b6ef3415
 
 jobs:
   ci-conformance:

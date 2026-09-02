@@ -1,0 +1,1201 @@
+{
+  "contract": "notifications",
+  "schemaVersion": 1,
+  "description": "The conformance corpus for standards/058-notifications.md. Four parts. 'records' is judged by the schema each case names (notification, preference, channel-address, category-declaration): accepted or rejected, a rejection naming its rule. 'decide' is judged by running notify.decide (NF2, NF5, NF6, NF7, NF9, NF10): given the fixture declaration, an event, recipients by fixture name with their addresses and preferences, any existing records and the instant, the implementation must produce exactly the stated rows - recipient, channel, status, reason, not_before, address_id - and exactly the stated number of notification.requested messages; rows are compared sorted by recipient_id, channel, address_id. One case is a detector: 'a-preference-cannot-suppress-the-security-floor' fails an implementation that consults preferences before checking whether the category is the floor, and that implementation passes every other decide case. 'unsubscribe' is judged two ways: header sets against the RFC 8058 and RFC 3834 profile of NF5, and requests against the one-click endpoint's behaviour, where 'a-get-on-the-unsubscribe-link-changes-nothing' is a second detector - an implementation that withdraws consent on GET passes every other unsubscribe case and fails that one. 'render_authorization' is judged by rendering (NF9): given a template's field permissions and the permissions the recipient holds in the subject's scope, the payload the implementation may produce, or that it produces nothing.",
+  "fixtures": {
+    "declaration": {
+      "schema_version": 1,
+      "quiet_hours": { "start": "22:00", "end": "08:00" },
+      "rate_limits": { "email": 10, "sms": 3, "push": 20, "chat": 20 },
+      "categories": {
+        "security": {
+          "class": "transactional",
+          "description": "Sign-ins, credential and contact changes, privileged grants, export and deletion requests.",
+          "channels": [ { "channel": "email", "default": true }, { "channel": "sms", "default": true } ]
+        },
+        "billing": {
+          "class": "transactional",
+          "description": "Invoices, receipts and payment failures.",
+          "channels": [ { "channel": "email", "default": true }, { "channel": "in_app", "default": true } ],
+          "collapse_window": "PT15M",
+          "retention": "P1Y"
+        },
+        "mentions": {
+          "class": "optional",
+          "description": "Someone mentioned you in a comment.",
+          "channels": [ { "channel": "in_app", "default": true }, { "channel": "email", "default": true }, { "channel": "push", "default": false } ],
+          "retention": "P90D"
+        },
+        "marketing": {
+          "class": "optional",
+          "description": "Product news and offers.",
+          "channels": [ { "channel": "email", "default": false } ]
+        }
+      }
+    },
+    "recipients": {
+      "berlin_all_channels": {
+        "recipient_id": "01923e01-1111-7000-8000-000000000001",
+        "time_zone": "Europe/Berlin",
+        "addresses": [
+          { "address_id": "01923e02-2222-7000-8000-000000000011", "channel": "email", "verified": true },
+          { "address_id": "01923e02-2222-7000-8000-000000000012", "channel": "sms", "verified": true },
+          { "address_id": "01923e02-2222-7000-8000-000000000013", "channel": "push", "verified": true }
+        ]
+      },
+      "los_angeles_email_only": {
+        "recipient_id": "01923e01-1111-7000-8000-000000000002",
+        "time_zone": "America/Los_Angeles",
+        "addresses": [
+          { "address_id": "01923e02-2222-7000-8000-000000000021", "channel": "email", "verified": true }
+        ]
+      },
+      "bounced_email_with_sms": {
+        "recipient_id": "01923e01-1111-7000-8000-000000000003",
+        "time_zone": "Europe/Berlin",
+        "addresses": [
+          { "address_id": "01923e02-2222-7000-8000-000000000031", "channel": "email", "verified": true, "suppression": { "reason": "hard_bounce" } },
+          { "address_id": "01923e02-2222-7000-8000-000000000032", "channel": "sms", "verified": true }
+        ]
+      },
+      "complained_email": {
+        "recipient_id": "01923e01-1111-7000-8000-000000000004",
+        "time_zone": "Europe/Berlin",
+        "addresses": [
+          { "address_id": "01923e02-2222-7000-8000-000000000041", "channel": "email", "verified": true, "suppression": { "reason": "complaint" } }
+        ]
+      },
+      "unverified_email": {
+        "recipient_id": "01923e01-1111-7000-8000-000000000005",
+        "time_zone": "Europe/Berlin",
+        "addresses": [
+          { "address_id": "01923e02-2222-7000-8000-000000000051", "channel": "email", "verified": false }
+        ]
+      },
+      "erased": {
+        "recipient_id": "01923e01-1111-7000-8000-000000000006",
+        "time_zone": "UTC",
+        "erased": true,
+        "addresses": [
+          { "address_id": "01923e02-2222-7000-8000-000000000061", "channel": "email", "verified": true }
+        ]
+      }
+    },
+    "events": {
+      "invoice_issued": { "source": "/invoicing", "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a01", "type": "invoice.issued", "category": "billing", "subject": "01923e01-3333-7000-8000-000000000003" },
+      "comment_mentioned": { "source": "/collab", "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a02", "type": "comment.mentioned", "category": "mentions", "subject": "01923e01-4444-7000-8000-000000000004" },
+      "signin_new_device": { "source": "/identity", "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a03", "type": "signin.new_device", "category": "security", "subject": "01923e01-1111-7000-8000-000000000001" },
+      "campaign_published": { "source": "/growth", "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a04", "type": "campaign.published", "category": "marketing", "subject": "01923e01-5555-7000-8000-000000000005" },
+      "email_changed": { "source": "/identity", "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a05", "type": "identity.email_changed", "category": "security", "subject": "01923e01-1111-7000-8000-000000000001", "previous_address_id": "01923e02-2222-7000-8000-0000000000aa" },
+      "undeclared": { "source": "/growth", "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a06", "type": "survey.opened", "category": "surveys", "subject": "01923e01-5555-7000-8000-000000000005" }
+    },
+    "templates": {
+      "invoice.issued": {
+        "subject_permission": "invoice.read",
+        "fields": [
+          { "name": "invoice_number", "requires": null, "required": true },
+          { "name": "due_on", "requires": null, "required": true },
+          { "name": "total", "requires": "invoice.read_totals", "required": false },
+          { "name": "customer_name", "requires": "customer.read", "required": false }
+        ]
+      },
+      "invoice.approval_requested": {
+        "subject_permission": "invoice.read",
+        "fields": [
+          { "name": "invoice_number", "requires": null, "required": true },
+          { "name": "approval_path", "requires": "invoice.approve", "required": true }
+        ]
+      }
+    }
+  },
+  "records": [
+    {
+      "case": "a-queued-transactional-email-record-is-accepted",
+      "schema": "notification",
+      "valid": true,
+      "why": "NF3 in full: a reference to the recipient, the event's identity, template and version, locale and zone, the payload, status queued as notify.decide leaves it.",
+      "record": {
+        "schema_version": 1,
+        "notification_id": "01923e9a-0000-7000-8000-000000000001",
+        "recipient_id": "01923e01-1111-7000-8000-000000000001",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "channel": "email",
+        "class": "transactional",
+        "category": "billing",
+        "event": { "source": "/invoicing", "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a01", "type": "invoice.issued" },
+        "template": { "id": "invoice.issued", "version": 3 },
+        "locale": "de-AT",
+        "time_zone": "Europe/Vienna",
+        "payload": { "invoice_number": "INV-2026-0142", "due_on": "2026-03-18", "total": { "amount": 129900, "currency": "EUR" } },
+        "collapse_key": "invoice:01923e01-3333-7000-8000-000000000003",
+        "status": "queued",
+        "attempts": 0,
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        "created_at": "2026-03-04T17:00:00.000Z",
+        "updated_at": "2026-03-04T17:00:00.000Z"
+      }
+    },
+    {
+      "case": "a-delivered-record-carries-the-provider-message-id",
+      "schema": "notification",
+      "valid": true,
+      "why": "NF3 and NF11: once a provider accepted the message the row names the adapter and the provider's id, which is what a status webhook is matched back by.",
+      "record": {
+        "schema_version": 1,
+        "notification_id": "01923e9a-0000-7000-8000-000000000002",
+        "recipient_id": "01923e01-1111-7000-8000-000000000001",
+        "channel": "email",
+        "class": "transactional",
+        "category": "billing",
+        "event": { "source": "/invoicing", "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a01", "type": "invoice.issued" },
+        "template": { "id": "invoice.issued", "version": 3 },
+        "locale": "en-GB",
+        "time_zone": "Europe/London",
+        "payload": { "invoice_number": "INV-2026-0142", "due_on": "2026-03-18" },
+        "status": "delivered",
+        "provider": { "name": "mailrelay", "message_id": "0100019380a1b2c3-7f4e-4cc3-9a2b-3f8d2c1b0a99-000000" },
+        "attempts": 1,
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        "created_at": "2026-03-04T17:00:00.000Z",
+        "sent_at": "2026-03-04T17:00:01.412Z",
+        "delivered_at": "2026-03-04T17:00:04.007Z",
+        "updated_at": "2026-03-04T17:00:05.100Z"
+      }
+    },
+    {
+      "case": "a-suppressed-optional-record-names-its-reason",
+      "schema": "notification",
+      "valid": true,
+      "why": "NF5 and NF7: a row is written for the channel that was declined, so 'why did they not get it' is a query.",
+      "record": {
+        "schema_version": 1,
+        "notification_id": "01923e9a-0000-7000-8000-000000000003",
+        "recipient_id": "01923e01-1111-7000-8000-000000000004",
+        "channel": "email",
+        "class": "optional",
+        "category": "mentions",
+        "event": { "source": "/collab", "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a02", "type": "comment.mentioned" },
+        "template": { "id": "comment.mentioned", "version": 1 },
+        "locale": "en",
+        "time_zone": "UTC",
+        "payload": { "comment_id": "01923e01-4444-7000-8000-000000000004" },
+        "status": "suppressed",
+        "suppressed_reason": "complained_address",
+        "attempts": 0,
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        "created_at": "2026-03-04T17:00:00.000Z",
+        "updated_at": "2026-03-04T17:00:00.000Z"
+      }
+    },
+    {
+      "case": "an-in-app-record-is-delivered-on-write-and-carries-read-state",
+      "schema": "notification",
+      "valid": true,
+      "why": "NF12: in_app has no provider - the row is the delivery - and read_at is the per-record read state the service's API sets.",
+      "record": {
+        "schema_version": 1,
+        "notification_id": "01923e9a-0000-7000-8000-000000000004",
+        "recipient_id": "01923e01-1111-7000-8000-000000000001",
+        "channel": "in_app",
+        "class": "optional",
+        "category": "mentions",
+        "event": { "source": "/collab", "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a02", "type": "comment.mentioned" },
+        "template": { "id": "comment.mentioned", "version": 1 },
+        "locale": "en",
+        "time_zone": "Europe/Berlin",
+        "payload": { "comment_id": "01923e01-4444-7000-8000-000000000004" },
+        "status": "delivered",
+        "attempts": 0,
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        "created_at": "2026-03-04T17:00:00.000Z",
+        "delivered_at": "2026-03-04T17:00:00.000Z",
+        "read_at": "2026-03-04T17:42:10.550Z",
+        "updated_at": "2026-03-04T17:42:10.550Z"
+      }
+    },
+    {
+      "case": "a-deferred-record-states-when-it-may-go",
+      "schema": "notification",
+      "valid": true,
+      "why": "NF10: quiet hours produce a deferred row with not_before computed in the recipient's zone, released by notification.release.",
+      "record": {
+        "schema_version": 1,
+        "notification_id": "01923e9a-0000-7000-8000-000000000005",
+        "recipient_id": "01923e01-1111-7000-8000-000000000001",
+        "channel": "push",
+        "class": "optional",
+        "category": "mentions",
+        "event": { "source": "/collab", "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a02", "type": "comment.mentioned" },
+        "template": { "id": "comment.mentioned", "version": 1 },
+        "locale": "de",
+        "time_zone": "Europe/Berlin",
+        "payload": { "comment_id": "01923e01-4444-7000-8000-000000000004" },
+        "status": "deferred",
+        "not_before": "2026-03-05T07:00:00.000Z",
+        "attempts": 0,
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        "created_at": "2026-03-04T23:30:00.000Z",
+        "updated_at": "2026-03-04T23:30:00.000Z"
+      }
+    },
+    {
+      "case": "a-security-record-suppressed-by-a-dead-address-is-accepted",
+      "schema": "notification",
+      "valid": true,
+      "why": "NF6 and NF7: the floor can still be stopped by a hard bounce, because there is nowhere to send; the row says so and the transactional failure alerts.",
+      "record": {
+        "schema_version": 1,
+        "notification_id": "01923e9a-0000-7000-8000-000000000006",
+        "recipient_id": "01923e01-1111-7000-8000-000000000003",
+        "channel": "email",
+        "class": "transactional",
+        "category": "security",
+        "event": { "source": "/identity", "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a03", "type": "signin.new_device" },
+        "template": { "id": "signin.new_device", "version": 2 },
+        "locale": "en",
+        "time_zone": "Europe/Berlin",
+        "payload": { "device": "Firefox on Linux", "approximate_location": "Berlin, DE", "at": "2026-03-04T16:59:58.000Z" },
+        "status": "suppressed",
+        "suppressed_reason": "bounced_address",
+        "attempts": 0,
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        "created_at": "2026-03-04T17:00:00.000Z",
+        "updated_at": "2026-03-04T17:00:00.000Z"
+      }
+    },
+    {
+      "case": "a-record-carrying-an-email-address-is-rejected",
+      "schema": "notification",
+      "valid": false,
+      "why": "NF4: the recipient is a public id and the address is resolved at send time from the identity record. A copied address is a second source of truth that goes stale, and personal data in a table that did not need it.",
+      "record": {
+        "schema_version": 1,
+        "notification_id": "01923e9a-0000-7000-8000-000000000007",
+        "recipient_id": "01923e01-1111-7000-8000-000000000001",
+        "to": "someone@example.test",
+        "channel": "email",
+        "class": "transactional",
+        "category": "billing",
+        "event": { "source": "/invoicing", "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a01", "type": "invoice.issued" },
+        "template": { "id": "invoice.issued", "version": 3 },
+        "locale": "en",
+        "time_zone": "UTC",
+        "payload": { "invoice_number": "INV-2026-0142", "due_on": "2026-03-18" },
+        "status": "queued",
+        "attempts": 0,
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        "created_at": "2026-03-04T17:00:00.000Z",
+        "updated_at": "2026-03-04T17:00:00.000Z"
+      }
+    },
+    {
+      "case": "a-record-carrying-the-rendered-body-is-rejected",
+      "schema": "notification",
+      "valid": false,
+      "why": "NF8: what was sent is reproducible from template id, version, locale and payload. A stored body is a copy that cannot be re-rendered, cannot be redacted field by field, and doubles the storage of every notification.",
+      "record": {
+        "schema_version": 1,
+        "notification_id": "01923e9a-0000-7000-8000-000000000008",
+        "recipient_id": "01923e01-1111-7000-8000-000000000001",
+        "channel": "email",
+        "class": "transactional",
+        "category": "billing",
+        "event": { "source": "/invoicing", "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a01", "type": "invoice.issued" },
+        "template": { "id": "invoice.issued", "version": 3 },
+        "locale": "en",
+        "time_zone": "UTC",
+        "payload": { "invoice_number": "INV-2026-0142", "due_on": "2026-03-18" },
+        "body": "<html>Your invoice INV-2026-0142 is due on 18 March 2026.</html>",
+        "status": "queued",
+        "attempts": 0,
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        "created_at": "2026-03-04T17:00:00.000Z",
+        "updated_at": "2026-03-04T17:00:00.000Z"
+      }
+    },
+    {
+      "case": "a-sent-email-without-a-provider-message-id-is-rejected",
+      "schema": "notification",
+      "valid": false,
+      "why": "NF11: sent means the provider accepted it and said what it called it. Without the provider's id no status webhook can ever be matched to this row, and the row will read sent forever.",
+      "record": {
+        "schema_version": 1,
+        "notification_id": "01923e9a-0000-7000-8000-000000000009",
+        "recipient_id": "01923e01-1111-7000-8000-000000000001",
+        "channel": "email",
+        "class": "transactional",
+        "category": "billing",
+        "event": { "source": "/invoicing", "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a01", "type": "invoice.issued" },
+        "template": { "id": "invoice.issued", "version": 3 },
+        "locale": "en",
+        "time_zone": "UTC",
+        "payload": { "invoice_number": "INV-2026-0142", "due_on": "2026-03-18" },
+        "status": "sent",
+        "attempts": 1,
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        "created_at": "2026-03-04T17:00:00.000Z",
+        "sent_at": "2026-03-04T17:00:01.412Z",
+        "updated_at": "2026-03-04T17:00:01.412Z"
+      }
+    },
+    {
+      "case": "a-suppressed-record-without-a-reason-is-rejected",
+      "schema": "notification",
+      "valid": false,
+      "why": "NF3: a suppression with no reason is an investigation deferred to whoever gets the support ticket.",
+      "record": {
+        "schema_version": 1,
+        "notification_id": "01923e9a-0000-7000-8000-00000000000a",
+        "recipient_id": "01923e01-1111-7000-8000-000000000004",
+        "channel": "email",
+        "class": "optional",
+        "category": "mentions",
+        "event": { "source": "/collab", "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a02", "type": "comment.mentioned" },
+        "template": { "id": "comment.mentioned", "version": 1 },
+        "locale": "en",
+        "time_zone": "UTC",
+        "payload": { "comment_id": "01923e01-4444-7000-8000-000000000004" },
+        "status": "suppressed",
+        "attempts": 0,
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        "created_at": "2026-03-04T17:00:00.000Z",
+        "updated_at": "2026-03-04T17:00:00.000Z"
+      }
+    },
+    {
+      "case": "a-posix-locale-is-rejected",
+      "schema": "notification",
+      "valid": false,
+      "why": "NF8: the locale is a BCP 47 tag. en_US is the POSIX spelling; a template tree keyed on BCP 47 will not find it and will silently render the default language.",
+      "record": {
+        "schema_version": 1,
+        "notification_id": "01923e9a-0000-7000-8000-00000000000b",
+        "recipient_id": "01923e01-1111-7000-8000-000000000001",
+        "channel": "email",
+        "class": "transactional",
+        "category": "billing",
+        "event": { "source": "/invoicing", "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a01", "type": "invoice.issued" },
+        "template": { "id": "invoice.issued", "version": 3 },
+        "locale": "en_US",
+        "time_zone": "America/New_York",
+        "payload": { "invoice_number": "INV-2026-0142", "due_on": "2026-03-18" },
+        "status": "queued",
+        "attempts": 0,
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        "created_at": "2026-03-04T17:00:00.000Z",
+        "updated_at": "2026-03-04T17:00:00.000Z"
+      }
+    },
+    {
+      "case": "a-fixed-offset-time-zone-is-rejected",
+      "schema": "notification",
+      "valid": false,
+      "why": "NF8 and 090 WC4: a zone is an IANA name. A fixed offset is right for half the year and computes the wrong quiet hours for the other half.",
+      "record": {
+        "schema_version": 1,
+        "notification_id": "01923e9a-0000-7000-8000-00000000000c",
+        "recipient_id": "01923e01-1111-7000-8000-000000000001",
+        "channel": "email",
+        "class": "transactional",
+        "category": "billing",
+        "event": { "source": "/invoicing", "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a01", "type": "invoice.issued" },
+        "template": { "id": "invoice.issued", "version": 3 },
+        "locale": "de",
+        "time_zone": "+02:00",
+        "payload": { "invoice_number": "INV-2026-0142", "due_on": "2026-03-18" },
+        "status": "queued",
+        "attempts": 0,
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        "created_at": "2026-03-04T17:00:00.000Z",
+        "updated_at": "2026-03-04T17:00:00.000Z"
+      }
+    },
+    {
+      "case": "an-internal-key-as-recipient-is-rejected",
+      "schema": "notification",
+      "valid": false,
+      "why": "020 IP1 through NF4: the recipient is a public id; an integer is a storage key that never leaves the service.",
+      "record": {
+        "schema_version": 1,
+        "notification_id": "01923e9a-0000-7000-8000-00000000000d",
+        "recipient_id": "4711",
+        "channel": "email",
+        "class": "transactional",
+        "category": "billing",
+        "event": { "source": "/invoicing", "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a01", "type": "invoice.issued" },
+        "template": { "id": "invoice.issued", "version": 3 },
+        "locale": "en",
+        "time_zone": "UTC",
+        "payload": { "invoice_number": "INV-2026-0142", "due_on": "2026-03-18" },
+        "status": "queued",
+        "attempts": 0,
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        "created_at": "2026-03-04T17:00:00.000Z",
+        "updated_at": "2026-03-04T17:00:00.000Z"
+      }
+    },
+    {
+      "case": "a-deferred-record-without-not-before-is-rejected",
+      "schema": "notification",
+      "valid": false,
+      "why": "NF10: deferred until when. Without the instant, notification.release has nothing to compare and the row is deferred forever.",
+      "record": {
+        "schema_version": 1,
+        "notification_id": "01923e9a-0000-7000-8000-00000000000e",
+        "recipient_id": "01923e01-1111-7000-8000-000000000001",
+        "channel": "push",
+        "class": "optional",
+        "category": "mentions",
+        "event": { "source": "/collab", "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a02", "type": "comment.mentioned" },
+        "template": { "id": "comment.mentioned", "version": 1 },
+        "locale": "de",
+        "time_zone": "Europe/Berlin",
+        "payload": { "comment_id": "01923e01-4444-7000-8000-000000000004" },
+        "status": "deferred",
+        "attempts": 0,
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        "created_at": "2026-03-04T23:30:00.000Z",
+        "updated_at": "2026-03-04T23:30:00.000Z"
+      }
+    },
+    {
+      "case": "a-security-record-suppressed-by-preference-is-rejected",
+      "schema": "notification",
+      "valid": false,
+      "why": "NF6: the floor admits no preference, so a row claiming one was applied records a violation as if it were a decision. The schema refuses the row; the decide corpus refuses the behaviour.",
+      "record": {
+        "schema_version": 1,
+        "notification_id": "01923e9a-0000-7000-8000-00000000000f",
+        "recipient_id": "01923e01-1111-7000-8000-000000000001",
+        "channel": "email",
+        "class": "transactional",
+        "category": "security",
+        "event": { "source": "/identity", "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a03", "type": "signin.new_device" },
+        "template": { "id": "signin.new_device", "version": 2 },
+        "locale": "en",
+        "time_zone": "Europe/Berlin",
+        "payload": { "device": "Firefox on Linux" },
+        "status": "suppressed",
+        "suppressed_reason": "preference",
+        "attempts": 0,
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        "created_at": "2026-03-04T17:00:00.000Z",
+        "updated_at": "2026-03-04T17:00:00.000Z"
+      }
+    },
+    {
+      "case": "an-in-app-record-with-a-provider-is-rejected",
+      "schema": "notification",
+      "valid": false,
+      "why": "NF12: in_app has no provider. A provider on an in_app row means the implementation routed the in-app inbox through a vendor, which puts a backing service between the service and its own table.",
+      "record": {
+        "schema_version": 1,
+        "notification_id": "01923e9a-0000-7000-8000-000000000010",
+        "recipient_id": "01923e01-1111-7000-8000-000000000001",
+        "channel": "in_app",
+        "class": "optional",
+        "category": "mentions",
+        "event": { "source": "/collab", "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a02", "type": "comment.mentioned" },
+        "template": { "id": "comment.mentioned", "version": 1 },
+        "locale": "en",
+        "time_zone": "Europe/Berlin",
+        "payload": { "comment_id": "01923e01-4444-7000-8000-000000000004" },
+        "status": "delivered",
+        "provider": { "name": "inboxvendor", "message_id": "m_1" },
+        "attempts": 0,
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        "created_at": "2026-03-04T17:00:00.000Z",
+        "delivered_at": "2026-03-04T17:00:00.000Z",
+        "updated_at": "2026-03-04T17:00:00.000Z"
+      }
+    },
+    {
+      "case": "a-one-click-preference-is-accepted",
+      "schema": "preference",
+      "valid": true,
+      "why": "NF5: consent per category per channel, with how it came to be.",
+      "record": {
+        "schema_version": 1,
+        "recipient_id": "01923e01-1111-7000-8000-000000000001",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "category": "marketing",
+        "channel": "email",
+        "allowed": false,
+        "source": "one_click",
+        "updated_at": "2026-03-04T17:05:00.000Z"
+      }
+    },
+    {
+      "case": "a-preference-on-the-security-category-is-rejected",
+      "schema": "preference",
+      "valid": false,
+      "why": "NF6: the floor has no preference. A stored row would tell a settings screen to offer a switch that does nothing, and tell notify.decide something it must not read.",
+      "record": {
+        "schema_version": 1,
+        "recipient_id": "01923e01-1111-7000-8000-000000000001",
+        "category": "security",
+        "channel": "email",
+        "allowed": false,
+        "source": "settings",
+        "updated_at": "2026-03-04T17:05:00.000Z"
+      }
+    },
+    {
+      "case": "a-preference-carrying-an-address-is-rejected",
+      "schema": "preference",
+      "valid": false,
+      "why": "NF4: the address lives on the identity record. A preference keyed or annotated by address stops matching the person when the address changes.",
+      "record": {
+        "schema_version": 1,
+        "recipient_id": "01923e01-1111-7000-8000-000000000001",
+        "email": "someone@example.test",
+        "category": "marketing",
+        "channel": "email",
+        "allowed": true,
+        "source": "settings",
+        "updated_at": "2026-03-04T17:05:00.000Z"
+      }
+    },
+    {
+      "case": "a-bounced-channel-address-is-accepted",
+      "schema": "channel-address",
+      "valid": true,
+      "why": "NF7: suppression is a state on the identity's channel address, set by the status event and read by notify.decide.",
+      "record": {
+        "address_id": "01923e02-2222-7000-8000-000000000031",
+        "channel": "email",
+        "verified": true,
+        "verified_at": "2025-11-02T08:15:00.000Z",
+        "suppression": { "reason": "hard_bounce", "at": "2026-03-01T04:20:11.900Z", "provider": "mailrelay" }
+      }
+    },
+    {
+      "case": "a-verified-address-without-verified-at-is-rejected",
+      "schema": "channel-address",
+      "valid": false,
+      "why": "NF4: verified is a fact with a time. A boolean alone cannot say whether verification predates the address's last change.",
+      "record": {
+        "address_id": "01923e02-2222-7000-8000-000000000011",
+        "channel": "email",
+        "verified": true
+      }
+    },
+    {
+      "case": "the-fixture-declaration-is-accepted",
+      "schema": "category-declaration",
+      "valid": true,
+      "why": "NF5 in full: security transactional, marketing opt-in, an optional category with a mixed default per channel, a transactional category with a collapse window and retention.",
+      "record": { "$fixture": "declaration" }
+    },
+    {
+      "case": "a-declaration-of-only-the-floor-is-accepted",
+      "schema": "category-declaration",
+      "valid": true,
+      "why": "NF6: the smallest legal declaration is the floor alone; a product that sends nothing else still sends that.",
+      "record": {
+        "schema_version": 1,
+        "categories": {
+          "security": {
+            "class": "transactional",
+            "description": "Account security.",
+            "channels": [ { "channel": "email", "default": true } ]
+          }
+        }
+      }
+    },
+    {
+      "case": "a-declaration-without-security-is-rejected",
+      "schema": "category-declaration",
+      "valid": false,
+      "why": "NF6: the floor must have somewhere to go. A product with no security category has decided, by omission, not to tell people about sign-ins and credential changes.",
+      "record": {
+        "schema_version": 1,
+        "categories": {
+          "billing": {
+            "class": "transactional",
+            "description": "Invoices.",
+            "channels": [ { "channel": "email", "default": true } ]
+          }
+        }
+      }
+    },
+    {
+      "case": "an-optional-security-category-is-rejected",
+      "schema": "category-declaration",
+      "valid": false,
+      "why": "NF6: security is the floor and the floor is transactional; declared optional it would acquire a preference.",
+      "record": {
+        "schema_version": 1,
+        "categories": {
+          "security": {
+            "class": "optional",
+            "description": "Account security.",
+            "channels": [ { "channel": "email", "default": true } ]
+          }
+        }
+      }
+    },
+    {
+      "case": "an-opt-out-marketing-default-is-rejected",
+      "schema": "category-declaration",
+      "valid": false,
+      "why": "NF5: marketing is opt-in. A default of true is a consent nobody gave.",
+      "record": {
+        "schema_version": 1,
+        "categories": {
+          "security": {
+            "class": "transactional",
+            "description": "Account security.",
+            "channels": [ { "channel": "email", "default": true } ]
+          },
+          "marketing": {
+            "class": "optional",
+            "description": "Offers.",
+            "channels": [ { "channel": "email", "default": true } ]
+          }
+        }
+      }
+    },
+    {
+      "case": "a-transactional-channel-with-an-opt-out-default-is-rejected",
+      "schema": "category-declaration",
+      "valid": false,
+      "why": "NF5: a transactional category has no consent default, so a false reads as an unsubscribe that NF5 says cannot exist.",
+      "record": {
+        "schema_version": 1,
+        "categories": {
+          "security": {
+            "class": "transactional",
+            "description": "Account security.",
+            "channels": [ { "channel": "email", "default": true } ]
+          },
+          "billing": {
+            "class": "transactional",
+            "description": "Invoices.",
+            "channels": [ { "channel": "email", "default": true }, { "channel": "sms", "default": false } ]
+          }
+        }
+      }
+    }
+  ],
+  "decide": [
+    {
+      "case": "a-transactional-event-reaches-every-declared-channel",
+      "event": "invoice_issued",
+      "recipients": ["berlin_all_channels"],
+      "now": "2026-03-04T17:00:00.000Z",
+      "expect": {
+        "records": [
+          { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "email", "status": "queued" },
+          { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "in_app", "status": "queued" }
+        ],
+        "messages": 2
+      },
+      "why": "NF2 and NF5: billing is transactional, no preference is consulted, one row and one notification.requested per declared channel."
+    },
+    {
+      "case": "an-optional-event-honours-the-declared-default-when-no-preference-exists",
+      "event": "comment_mentioned",
+      "recipients": ["berlin_all_channels"],
+      "now": "2026-03-04T17:00:00.000Z",
+      "expect": {
+        "records": [
+          { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "email", "status": "queued" },
+          { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "in_app", "status": "queued" },
+          { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "push", "status": "suppressed", "suppressed_reason": "preference" }
+        ],
+        "messages": 2
+      },
+      "why": "NF5: absent a stored preference the category declaration's default per channel is the consent; push defaults false for mentions and is written as suppressed by preference."
+    },
+    {
+      "case": "a-preference-withdraws-an-optional-channel",
+      "event": "comment_mentioned",
+      "recipients": ["berlin_all_channels"],
+      "preferences": [ { "recipient_id": "01923e01-1111-7000-8000-000000000001", "category": "mentions", "channel": "email", "allowed": false } ],
+      "now": "2026-03-04T17:00:00.000Z",
+      "expect": {
+        "records": [
+          { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "email", "status": "suppressed", "suppressed_reason": "preference" },
+          { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "in_app", "status": "queued" },
+          { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "push", "status": "suppressed", "suppressed_reason": "preference" }
+        ],
+        "messages": 1
+      },
+      "why": "NF5: a stored preference overrides the default for that category on that channel and nothing else."
+    },
+    {
+      "case": "marketing-is-opt-in",
+      "event": "campaign_published",
+      "recipients": ["berlin_all_channels"],
+      "now": "2026-03-04T17:00:00.000Z",
+      "expect": {
+        "records": [
+          { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "email", "status": "suppressed", "suppressed_reason": "preference" }
+        ],
+        "messages": 0
+      },
+      "why": "NF5: no consent, no message. The declaration schema already forces marketing's default to false; this is that default doing its work."
+    },
+    {
+      "case": "marketing-with-consent-is-sent",
+      "event": "campaign_published",
+      "recipients": ["berlin_all_channels"],
+      "preferences": [ { "recipient_id": "01923e01-1111-7000-8000-000000000001", "category": "marketing", "channel": "email", "allowed": true } ],
+      "now": "2026-03-04T17:00:00.000Z",
+      "expect": {
+        "records": [
+          { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "email", "status": "queued" }
+        ],
+        "messages": 1
+      },
+      "why": "NF5: the positive case, so the opt-in above is shown to be a check rather than a refusal of all marketing."
+    },
+    {
+      "case": "a-preference-cannot-suppress-the-security-floor",
+      "detector": true,
+      "event": "signin_new_device",
+      "recipients": ["berlin_all_channels"],
+      "preferences": [
+        { "recipient_id": "01923e01-1111-7000-8000-000000000001", "category": "security", "channel": "email", "allowed": false }
+      ],
+      "now": "2026-03-04T17:00:00.000Z",
+      "expect": {
+        "records": [
+          { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "email", "status": "queued" },
+          { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "sms", "status": "queued" }
+        ],
+        "messages": 2
+      },
+      "why": "NF6, and a VERIFIED DETECTOR. The floor is sent on every declared channel whatever preference exists: the phone may be in the hands of whoever signed in from the new device, and the email is the channel that reaches the owner. preference.schema.json refuses a row for security, but rows arrive anyway - an import, a product-wide 'mute all email' switch, a bug - and notify.decide must not read them for this category. The plausible wrong implementation treats security as one more transactional category and channel-switches: it writes email as suppressed by preference, sends sms alone, and passes every other decide case, including the two channel-switch cases. This one fails it by name."
+    },
+    {
+      "case": "a-transactional-preference-switches-channel-while-one-remains",
+      "event": "invoice_issued",
+      "recipients": ["berlin_all_channels"],
+      "preferences": [ { "recipient_id": "01923e01-1111-7000-8000-000000000001", "category": "billing", "channel": "email", "allowed": false } ],
+      "now": "2026-03-04T17:00:00.000Z",
+      "expect": {
+        "records": [
+          { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "email", "status": "suppressed", "suppressed_reason": "preference" },
+          { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "in_app", "status": "queued" }
+        ],
+        "messages": 1
+      },
+      "why": "NF5: transactional cannot be unsubscribed but may be channel-switched. The preference on email is honoured because in_app still carries the notification."
+    },
+    {
+      "case": "a-transactional-preference-cannot-leave-the-recipient-unreachable",
+      "event": "invoice_issued",
+      "recipients": ["berlin_all_channels"],
+      "preferences": [
+        { "recipient_id": "01923e01-1111-7000-8000-000000000001", "category": "billing", "channel": "email", "allowed": false },
+        { "recipient_id": "01923e01-1111-7000-8000-000000000001", "category": "billing", "channel": "in_app", "allowed": false }
+      ],
+      "now": "2026-03-04T17:00:00.000Z",
+      "expect": {
+        "records": [
+          { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "email", "status": "queued" },
+          { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "in_app", "status": "queued" }
+        ],
+        "messages": 2
+      },
+      "why": "NF5: honouring both preferences would be an unsubscribe from a transactional category, so neither is honoured. A switch needs somewhere to switch to."
+    },
+    {
+      "case": "a-hard-bounce-suppresses-the-floor-and-the-floor-falls-through-to-sms",
+      "event": "signin_new_device",
+      "recipients": ["bounced_email_with_sms"],
+      "now": "2026-03-04T17:00:00.000Z",
+      "expect": {
+        "records": [
+          { "recipient_id": "01923e01-1111-7000-8000-000000000003", "channel": "email", "status": "suppressed", "suppressed_reason": "bounced_address" },
+          { "recipient_id": "01923e01-1111-7000-8000-000000000003", "channel": "sms", "status": "queued" }
+        ],
+        "messages": 1
+      },
+      "why": "NF7: a hard bounce suppresses the address for every class, the floor included - there is nowhere to send. The row says why, and sms still carries it."
+    },
+    {
+      "case": "a-hard-bounce-suppresses-optional-as-bounced-not-as-preference",
+      "event": "comment_mentioned",
+      "recipients": ["bounced_email_with_sms"],
+      "now": "2026-03-04T17:00:00.000Z",
+      "expect": {
+        "records": [
+          { "recipient_id": "01923e01-1111-7000-8000-000000000003", "channel": "email", "status": "suppressed", "suppressed_reason": "bounced_address" },
+          { "recipient_id": "01923e01-1111-7000-8000-000000000003", "channel": "in_app", "status": "queued" },
+          { "recipient_id": "01923e01-1111-7000-8000-000000000003", "channel": "push", "status": "suppressed", "suppressed_reason": "no_address" }
+        ],
+        "messages": 1
+      },
+      "why": "NF7: address state is checked before consent, so the reason names the address and a support engineer looks at the identity record rather than the settings screen. push has no address at all and says so."
+    },
+    {
+      "case": "a-complaint-suppresses-optional",
+      "event": "comment_mentioned",
+      "recipients": ["complained_email"],
+      "now": "2026-03-04T17:00:00.000Z",
+      "expect": {
+        "records": [
+          { "recipient_id": "01923e01-1111-7000-8000-000000000004", "channel": "email", "status": "suppressed", "suppressed_reason": "complained_address" },
+          { "recipient_id": "01923e01-1111-7000-8000-000000000004", "channel": "in_app", "status": "queued" },
+          { "recipient_id": "01923e01-1111-7000-8000-000000000004", "channel": "push", "status": "suppressed", "suppressed_reason": "no_address" }
+        ],
+        "messages": 1
+      },
+      "why": "NF7: a complaint is the recipient saying stop to everything they did not need; optional stops on that address."
+    },
+    {
+      "case": "a-complaint-does-not-suppress-transactional",
+      "event": "invoice_issued",
+      "recipients": ["complained_email"],
+      "now": "2026-03-04T17:00:00.000Z",
+      "expect": {
+        "records": [
+          { "recipient_id": "01923e01-1111-7000-8000-000000000004", "channel": "email", "status": "queued" },
+          { "recipient_id": "01923e01-1111-7000-8000-000000000004", "channel": "in_app", "status": "queued" }
+        ],
+        "messages": 2
+      },
+      "why": "NF7: the address still works and the relationship still needs operating; the invoice goes."
+    },
+    {
+      "case": "an-unverified-address-receives-no-optional-notification",
+      "event": "comment_mentioned",
+      "recipients": ["unverified_email"],
+      "now": "2026-03-04T17:00:00.000Z",
+      "expect": {
+        "records": [
+          { "recipient_id": "01923e01-1111-7000-8000-000000000005", "channel": "email", "status": "suppressed", "suppressed_reason": "unverified_address" },
+          { "recipient_id": "01923e01-1111-7000-8000-000000000005", "channel": "in_app", "status": "queued" },
+          { "recipient_id": "01923e01-1111-7000-8000-000000000005", "channel": "push", "status": "suppressed", "suppressed_reason": "no_address" }
+        ],
+        "messages": 1
+      },
+      "why": "NF4: nobody proved they own the address, so nothing optional goes to it - a typo'd address would otherwise receive a stranger's mentions."
+    },
+    {
+      "case": "an-unverified-address-still-receives-transactional",
+      "event": "invoice_issued",
+      "recipients": ["unverified_email"],
+      "now": "2026-03-04T17:00:00.000Z",
+      "expect": {
+        "records": [
+          { "recipient_id": "01923e01-1111-7000-8000-000000000005", "channel": "email", "status": "queued" },
+          { "recipient_id": "01923e01-1111-7000-8000-000000000005", "channel": "in_app", "status": "queued" }
+        ],
+        "messages": 2
+      },
+      "why": "NF4: the verification message is itself transactional, so transactional must be able to reach an unverified address or nothing ever becomes verified."
+    },
+    {
+      "case": "an-erased-subject-produces-no-record",
+      "event": "invoice_issued",
+      "recipients": ["erased"],
+      "now": "2026-03-04T17:00:00.000Z",
+      "expect": { "records": [], "messages": 0 },
+      "why": "NF7: erasure suppresses everything and leaves nothing - a suppressed row naming the subject would be new data about a person who asked to be forgotten."
+    },
+    {
+      "case": "an-email-change-notifies-the-previous-address-too",
+      "event": "email_changed",
+      "recipients": ["berlin_all_channels"],
+      "now": "2026-03-04T17:00:00.000Z",
+      "expect": {
+        "records": [
+          { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "email", "status": "queued" },
+          { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "email", "status": "queued", "address_id": "01923e02-2222-7000-8000-0000000000aa" },
+          { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "sms", "status": "queued" }
+        ],
+        "messages": 3
+      },
+      "why": "NF6: a contact change is sent to both the old and the new address, because the person who can read the new one may be the person who made the change without permission. The extra row references the previous address by id and copies nothing."
+    },
+    {
+      "case": "a-repeat-within-the-collapse-window-is-collapsed",
+      "event": "invoice_issued",
+      "collapse_key": "invoice:01923e01-3333-7000-8000-000000000003",
+      "recipients": ["berlin_all_channels"],
+      "existing": [
+        { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "email", "category": "billing", "collapse_key": "invoice:01923e01-3333-7000-8000-000000000003", "status": "sent", "created_at": "2026-03-04T16:55:00.000Z" },
+        { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "in_app", "category": "billing", "collapse_key": "invoice:01923e01-3333-7000-8000-000000000003", "status": "delivered", "created_at": "2026-03-04T16:55:00.000Z" }
+      ],
+      "now": "2026-03-04T17:00:00.000Z",
+      "expect": {
+        "records": [
+          { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "email", "status": "collapsed" },
+          { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "in_app", "status": "collapsed" }
+        ],
+        "messages": 0
+      },
+      "why": "NF10: the same key to the same recipient on the same channel five minutes after the last is one message. The row is kept so the repeat is visible."
+    },
+    {
+      "case": "a-repeat-after-the-collapse-window-is-sent",
+      "event": "invoice_issued",
+      "collapse_key": "invoice:01923e01-3333-7000-8000-000000000003",
+      "recipients": ["berlin_all_channels"],
+      "existing": [
+        { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "email", "category": "billing", "collapse_key": "invoice:01923e01-3333-7000-8000-000000000003", "status": "sent", "created_at": "2026-03-04T16:40:00.000Z" },
+        { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "in_app", "category": "billing", "collapse_key": "invoice:01923e01-3333-7000-8000-000000000003", "status": "delivered", "created_at": "2026-03-04T16:40:00.000Z" }
+      ],
+      "now": "2026-03-04T17:00:00.000Z",
+      "expect": {
+        "records": [
+          { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "email", "status": "queued" },
+          { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "in_app", "status": "queued" }
+        ],
+        "messages": 2
+      },
+      "why": "NF10: billing declares PT15M and twenty minutes have passed; the window is the declaration's, not a constant."
+    },
+    {
+      "case": "quiet-hours-defer-optional-in-the-recipients-zone",
+      "event": "comment_mentioned",
+      "recipients": ["berlin_all_channels"],
+      "now": "2026-03-04T23:30:00.000Z",
+      "expect": {
+        "records": [
+          { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "email", "status": "deferred", "not_before": "2026-03-05T07:00:00.000Z" },
+          { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "in_app", "status": "queued" },
+          { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "push", "status": "suppressed", "suppressed_reason": "preference" }
+        ],
+        "messages": 1
+      },
+      "why": "NF10 and 090 WC4: 23:30Z is 00:30 in Berlin, inside 22:00-08:00, so email waits until 08:00 Berlin, which is 07:00Z the next day in March. in_app rings nothing and is not deferred."
+    },
+    {
+      "case": "quiet-hours-are-the-recipients-not-the-servers",
+      "event": "comment_mentioned",
+      "recipients": ["los_angeles_email_only"],
+      "now": "2026-03-04T23:30:00.000Z",
+      "expect": {
+        "records": [
+          { "recipient_id": "01923e01-1111-7000-8000-000000000002", "channel": "email", "status": "queued" },
+          { "recipient_id": "01923e01-1111-7000-8000-000000000002", "channel": "in_app", "status": "queued" },
+          { "recipient_id": "01923e01-1111-7000-8000-000000000002", "channel": "push", "status": "suppressed", "suppressed_reason": "no_address" }
+        ],
+        "messages": 2
+      },
+      "why": "NF10: the same instant is 15:30 in Los Angeles. An implementation evaluating quiet hours in UTC or in the server's zone defers this one and sends the Berlin one."
+    },
+    {
+      "case": "quiet-hours-never-defer-transactional",
+      "event": "invoice_issued",
+      "recipients": ["berlin_all_channels"],
+      "now": "2026-03-04T23:30:00.000Z",
+      "expect": {
+        "records": [
+          { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "email", "status": "queued" },
+          { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "in_app", "status": "queued" }
+        ],
+        "messages": 2
+      },
+      "why": "NF10: a receipt or a sign-in alert at midnight is wanted at midnight."
+    },
+    {
+      "case": "the-daily-rate-limit-suppresses-optional",
+      "event": "comment_mentioned",
+      "recipients": ["berlin_all_channels"],
+      "existing": [
+        { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "email", "category": "mentions", "status": "sent", "created_at": "2026-03-04T09:00:00.000Z", "count": 10 }
+      ],
+      "now": "2026-03-04T17:00:00.000Z",
+      "expect": {
+        "records": [
+          { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "email", "status": "suppressed", "suppressed_reason": "rate_limited" },
+          { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "in_app", "status": "queued" },
+          { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "push", "status": "suppressed", "suppressed_reason": "preference" }
+        ],
+        "messages": 1
+      },
+      "why": "NF10: ten optional emails already went to this person today, which is the declared limit; the eleventh is suppressed and says so. in_app is unbounded."
+    },
+    {
+      "case": "the-rate-limit-does-not-count-transactional-and-does-not-bind-it",
+      "event": "invoice_issued",
+      "recipients": ["berlin_all_channels"],
+      "existing": [
+        { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "email", "category": "mentions", "status": "sent", "created_at": "2026-03-04T09:00:00.000Z", "count": 10 }
+      ],
+      "now": "2026-03-04T17:00:00.000Z",
+      "expect": {
+        "records": [
+          { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "email", "status": "queued" },
+          { "recipient_id": "01923e01-1111-7000-8000-000000000001", "channel": "in_app", "status": "queued" }
+        ],
+        "messages": 2
+      },
+      "why": "NF10: the limit exists to stop a product nagging, and an invoice is not a nag."
+    },
+    {
+      "case": "an-undeclared-category-is-refused",
+      "event": "undeclared",
+      "recipients": ["berlin_all_channels"],
+      "now": "2026-03-04T17:00:00.000Z",
+      "expect": { "error": "undeclared_category" },
+      "why": "NF5: the declaration is the closed set, as 070 RB1's permissions are. A category that is not declared has no class, no channels and no default, and notify.decide refuses rather than guessing."
+    }
+  ],
+  "unsubscribe": [
+    {
+      "case": "an-optional-email-with-https-and-mailto-and-the-post-header-is-conformant",
+      "class": "optional",
+      "headers": {
+        "List-Unsubscribe": "<https://notify.example.test/u/1c/9f2k7Qw3RtZ8m>, <mailto:unsubscribe@example.test?subject=9f2k7Qw3RtZ8m>",
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        "Auto-Submitted": "auto-generated"
+      },
+      "expect": { "conformant": true },
+      "why": "NF5 in full: RFC 8058 one-click (an HTTPS URI in List-Unsubscribe plus List-Unsubscribe-Post) and RFC 3834's Auto-Submitted so autoresponders stay quiet."
+    },
+    {
+      "case": "an-https-uri-alone-is-conformant",
+      "class": "optional",
+      "headers": {
+        "List-Unsubscribe": "<https://notify.example.test/u/1c/9f2k7Qw3RtZ8m>",
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        "Auto-Submitted": "auto-generated"
+      },
+      "expect": { "conformant": true },
+      "why": "NF5: RFC 8058 requires the HTTPS URI; the mailto form of RFC 2369 is admitted beside it and not required."
+    },
+    {
+      "case": "a-mailto-only-list-unsubscribe-is-not-one-click",
+      "class": "optional",
+      "headers": {
+        "List-Unsubscribe": "<mailto:unsubscribe@example.test?subject=9f2k7Qw3RtZ8m>",
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        "Auto-Submitted": "auto-generated"
+      },
+      "expect": { "conformant": false },
+      "why": "NF5: RFC 8058 section 3.1 requires an HTTPS URI for one-click; a mail client cannot POST to a mailto."
+    },
+    {
+      "case": "a-missing-list-unsubscribe-post-is-not-one-click",
+      "class": "optional",
+      "headers": {
+        "List-Unsubscribe": "<https://notify.example.test/u/1c/9f2k7Qw3RtZ8m>",
+        "Auto-Submitted": "auto-generated"
+      },
+      "expect": { "conformant": false },
+      "why": "NF5: without List-Unsubscribe-Post the client shows a link, not a button, and the unsubscribe needs a page the recipient has to finish."
+    },
+    {
+      "case": "a-plain-http-uri-is-refused",
+      "class": "optional",
+      "headers": {
+        "List-Unsubscribe": "<http://notify.example.test/u/1c/9f2k7Qw3RtZ8m>",
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        "Auto-Submitted": "auto-generated"
+      },
+      "expect": { "conformant": false },
+      "why": "NF5: RFC 8058 requires HTTPS, and a consent token over plain HTTP is a consent token anyone on the path can replay."
+    },
+    {
+      "case": "a-wrong-post-header-value-is-refused",
+      "class": "optional",
+      "headers": {
+        "List-Unsubscribe": "<https://notify.example.test/u/1c/9f2k7Qw3RtZ8m>",
+        "List-Unsubscribe-Post": "One-Click",
+        "Auto-Submitted": "auto-generated"
+      },
+      "expect": { "conformant": false },
+      "why": "NF5: the header's value is fixed by RFC 8058 as the literal List-Unsubscribe=One-Click; anything else is ignored by clients."
+    },
+    {
+      "case": "an-optional-email-without-auto-submitted-is-refused",
+      "class": "optional",
+      "headers": {
+        "List-Unsubscribe": "<https://notify.example.test/u/1c/9f2k7Qw3RtZ8m>",
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
+      },
+      "expect": { "conformant": false },
+      "why": "NF11: every notification email carries Auto-Submitted: auto-generated per RFC 3834, so an out-of-office reply does not answer a machine and a vacation loop does not start."
+    },
+    {
+      "case": "a-transactional-email-carries-no-unsubscribe-headers",
+      "class": "transactional",
+      "headers": {
+        "Auto-Submitted": "auto-generated"
+      },
+      "expect": { "conformant": true },
+      "why": "NF5: transactional cannot be unsubscribed, so the client is not offered a button that would have to be refused."
+    },
+    {
+      "case": "a-transactional-email-carrying-list-unsubscribe-is-refused",
+      "class": "transactional",
+      "headers": {
+        "List-Unsubscribe": "<https://notify.example.test/u/1c/9f2k7Qw3RtZ8m>",
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        "Auto-Submitted": "auto-generated"
+      },
+      "expect": { "conformant": false },
+      "why": "NF5: a receipt with an unsubscribe button is a promise the product cannot keep; a client honouring it would suppress the next receipt, or the product would ignore the POST and lie."
+    },
+    {
+      "case": "a-one-click-post-withdraws-consent-without-interaction",
+      "request": { "method": "POST", "body": "List-Unsubscribe=One-Click", "token": "9f2k7Qw3RtZ8m" },
+      "token_binds": { "recipient_id": "01923e01-1111-7000-8000-000000000001", "category": "marketing", "channel": "email" },
+      "expect": { "status": 200, "preference": { "allowed": false, "source": "one_click" } },
+      "why": "NF5: RFC 8058 section 3.2 - the POST completes the unsubscribe with no further interaction, no login and no confirmation page. The token names the recipient, the category and the channel, and grants nothing else."
+    },
+    {
+      "case": "a-get-on-the-unsubscribe-link-changes-nothing",
+      "detector": true,
+      "request": { "method": "GET", "token": "9f2k7Qw3RtZ8m" },
+      "token_binds": { "recipient_id": "01923e01-1111-7000-8000-000000000001", "category": "marketing", "channel": "email" },
+      "expect": { "status": 200, "preference_changed": false },
+      "why": "NF5, and a VERIFIED DETECTOR. Mail security gateways and link previewers GET every URI in a message before the recipient sees it. An implementation that withdraws consent on GET unsubscribes every recipient behind such a gateway from every category, on delivery, and passes every other case in this part. GET renders the page a human finishes with a button; only the RFC 8058 POST, or that button's own POST, changes state."
+    },
+    {
+      "case": "a-post-without-the-one-click-body-changes-nothing",
+      "request": { "method": "POST", "body": "confirm=later", "token": "9f2k7Qw3RtZ8m" },
+      "token_binds": { "recipient_id": "01923e01-1111-7000-8000-000000000001", "category": "marketing", "channel": "email" },
+      "expect": { "preference_changed": false },
+      "why": "NF5: the one-click body is the signal; a POST without it is not the mail client speaking RFC 8058 and is treated as the page's own form, which has its own button."
+    },
+    {
+      "case": "a-second-one-click-post-is-absorbed",
+      "request": { "method": "POST", "body": "List-Unsubscribe=One-Click", "token": "9f2k7Qw3RtZ8m", "repeat": 2 },
+      "token_binds": { "recipient_id": "01923e01-1111-7000-8000-000000000001", "category": "marketing", "channel": "email" },
+      "expect": { "status": 200, "preference": { "allowed": false, "source": "one_click" } },
+      "why": "NF5: the token lives as long as the email sits in an inbox and a client may POST more than once; withdrawing consent twice is withdrawing it once."
+    }
+  ],
+  "render_authorization": [
+    {
+      "case": "a-recipient-holding-every-permission-gets-the-full-payload",
+      "template": "invoice.issued",
+      "granted": ["invoice.read", "invoice.read_totals", "customer.read"],
+      "payload": { "invoice_number": "INV-2026-0142", "due_on": "2026-03-18", "total": { "amount": 129900, "currency": "EUR" }, "customer_name": "Example GmbH" },
+      "expect": { "produced": true, "payload": { "invoice_number": "INV-2026-0142", "due_on": "2026-03-18", "total": { "amount": 129900, "currency": "EUR" }, "customer_name": "Example GmbH" } },
+      "why": "NF9: the positive case. 070's check against the subject's scope allowed every field."
+    },
+    {
+      "case": "a-field-the-recipient-may-not-read-is-omitted",
+      "template": "invoice.issued",
+      "granted": ["invoice.read", "invoice.read_totals"],
+      "payload": { "invoice_number": "INV-2026-0142", "due_on": "2026-03-18", "total": { "amount": 129900, "currency": "EUR" }, "customer_name": "Example GmbH" },
+      "expect": { "produced": true, "payload": { "invoice_number": "INV-2026-0142", "due_on": "2026-03-18", "total": { "amount": 129900, "currency": "EUR" } } },
+      "why": "NF9: the notification carries no data the recipient could not read on the screen it links to. customer_name requires customer.read, which this recipient lacks in this scope, so it is dropped and the rest goes."
+    },
+    {
+      "case": "a-recipient-who-may-not-read-the-subject-gets-nothing",
+      "template": "invoice.issued",
+      "granted": ["customer.read"],
+      "payload": { "invoice_number": "INV-2026-0142", "due_on": "2026-03-18" },
+      "expect": { "produced": false, "suppressed_reason": "unauthorized" },
+      "why": "NF9: the subject permission is the gate on the whole notification. A grant revoked between the event and the send is the ordinary case this catches - the check runs at render time, against the subject, with the grants as they are then."
+    },
+    {
+      "case": "a-required-field-the-recipient-may-not-read-stops-the-notification",
+      "template": "invoice.approval_requested",
+      "granted": ["invoice.read"],
+      "payload": { "invoice_number": "INV-2026-0142", "approval_path": "/v1/invoices/01923e01-3333-7000-8000-000000000003/approve" },
+      "expect": { "produced": false, "suppressed_reason": "unauthorized" },
+      "why": "NF9: an approval request without the approval link is not the notification the template describes, and a recipient who cannot approve should not be asked to. A required field that fails its check fails the notification rather than rendering a hole."
+    }
+  ]
+}

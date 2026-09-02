@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/notifications/preference.schema.json",
+  "title": "Aurum Alpha notification preference, and the channel-address state it is checked beside",
+  "description": "standards/058-notifications.md NF5 and NF7. The root shape is one recipient's consent for one category on one channel, as the product stores it and notify.decide reads it. The $defs carry the second thing notify.decide reads: channelAddress, the verification and suppression state a channel address on the identity record (060 AU3, AU4) must carry for this standard's rules to be decidable. Neither shape holds an address value - the address lives on the identity record and is resolved at send time (NF4). schemaVersion 1 - evolves additively per PC6.",
+  "type": "object",
+  "$defs": {
+    "channelAddress": {
+      "type": "object",
+      "description": "NF4 and NF7. The state this standard needs of one channel address on the identity record. verified gates optional notifications; suppression is set by a hard bounce (every class) or a complaint (optional only) arriving as a status event, and cleared only by re-verification. in_app has no address and is not represented.",
+      "properties": {
+        "address_id": {
+          "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/publicId",
+          "description": "The address's own public id, so a record can reference a previous address (NF6) without copying it."
+        },
+        "channel": {
+          "enum": ["email", "sms", "push", "chat"],
+          "description": "Which channel this address serves. in_app is deliberately absent."
+        },
+        "verified": {
+          "type": "boolean",
+          "description": "NF4. True once the recipient proved control of the address. Optional notifications never go to an unverified address; the verification message itself is transactional."
+        },
+        "verified_at": {
+          "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp"
+        },
+        "suppression": {
+          "type": "object",
+          "description": "NF7. Present while the address is suppressed. hard_bounce suppresses every class; complaint suppresses optional only.",
+          "properties": {
+            "reason": { "enum": ["hard_bounce", "complaint"] },
+            "at": { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp" },
+            "provider": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$",
+              "description": "The adapter whose status event set it."
+            }
+          },
+          "required": ["reason", "at"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["address_id", "channel", "verified"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": { "properties": { "verified": { "const": true } } },
+          "then": { "required": ["verified_at"] }
+        }
+      ]
+    }
+  },
+  "properties": {
+    "schema_version": { "const": 1, "description": "PC6." },
+    "recipient_id": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/publicId",
+      "description": "The recipient's user public id (020 IP1)."
+    },
+    "tenant_id": {
+      "$ref": "https://contracts.aurumalpha.dev/observability/context.schema.json#/$defs/tenantId",
+      "description": "Where preferences are held per tenant membership."
+    },
+    "category": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "not": { "const": "security" },
+      "description": "NF5. A category from the product's declaration. NEVER security: the NF6 floor admits no preference, and a stored row that looked like one would mislead whoever read it."
+    },
+    "channel": {
+      "enum": ["email", "sms", "push", "in_app", "chat"]
+    },
+    "allowed": {
+      "type": "boolean",
+      "description": "NF5. Whether this category may reach this recipient on this channel. Absent a row, the category declaration's default applies."
+    },
+    "source": {
+      "enum": ["settings", "one_click", "administrator"],
+      "description": "NF5. How the consent state came to be: the recipient in the product's settings, an RFC 8058 one-click POST, or an administrator acting for them (audited under 080 AE5 where the product's floor says so). Recorded so a dispute about consent is answerable."
+    },
+    "updated_at": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp"
+    }
+  },
+  "required": ["schema_version", "recipient_id", "category", "channel", "allowed", "source", "updated_at"],
+  "additionalProperties": false
+}

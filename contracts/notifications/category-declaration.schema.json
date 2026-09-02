@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/notifications/category-declaration.schema.json",
+  "title": "Aurum Alpha notification category declaration",
+  "description": "standards/058-notifications.md NF5, NF6 and NF10: the declaration a repository commits beside its notification code, naming every category it sends, the class of each, the channels it goes on in order of preference, the default consent per channel, and the collapse window and retention. notify.decide reads it; a notification for an undeclared category is not produced. The conditional rules are the ones prose states and a reviewer would otherwise carry in their head: security is declared (the floor cannot be sent otherwise) and is transactional; marketing is optional and opt-in on every channel; a transactional category's channels carry no opt-out default. schemaVersion 1 - evolves additively per PC6.",
+  "type": "object",
+  "$defs": {
+    "duration": {
+      "type": "string",
+      "pattern": "^P(?!$)(\\d+Y)?(\\d+M)?(\\d+D)?(T(?=\\d)(\\d+H)?(\\d+M)?(\\d+S)?)?$",
+      "description": "ISO 8601 duration: PT15M, P90D, P1Y. Retention is calendar-sized, so years and months are admitted here where 057's job durations admit days and below."
+    },
+    "channelEntry": {
+      "type": "object",
+      "properties": {
+        "channel": { "enum": ["email", "sms", "push", "in_app", "chat"] },
+        "default": {
+          "type": "boolean",
+          "description": "NF5. The consent assumed when the recipient has stored no preference for this category on this channel. Meaningless for a transactional category, so it must read true there; must read false for marketing."
+        }
+      },
+      "required": ["channel", "default"],
+      "additionalProperties": false
+    },
+    "category": {
+      "type": "object",
+      "properties": {
+        "class": { "enum": ["transactional", "optional"] },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What the recipient is told this category is, in the settings screen and on the unsubscribe page."
+        },
+        "channels": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/channelEntry" },
+          "description": "NF2 and NF5. Every channel the category goes on, in the order a transactional category falls back through when a channel is unusable."
+        },
+        "collapse_window": {
+          "$ref": "#/$defs/duration",
+          "description": "NF10. Repeats of one collapse key to one recipient on one channel within this window are one message. Default PT15M."
+        },
+        "retention": {
+          "$ref": "#/$defs/duration",
+          "description": "NF3. How long records of this category are kept before the retention job deletes them (025 SD12). Default P1Y for transactional and P90D for optional."
+        }
+      },
+      "required": ["class", "description", "channels"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": { "properties": { "class": { "const": "transactional" } } },
+          "then": { "properties": { "channels": { "items": { "properties": { "default": { "const": true } } } } } }
+        }
+      ]
+    }
+  },
+  "properties": {
+    "schema_version": { "const": 1, "description": "PC6." },
+    "quiet_hours": {
+      "type": "object",
+      "description": "NF10. The local window in which optional notifications are deferred, evaluated in the recipient's zone. Default 22:00 to 08:00.",
+      "properties": {
+        "start": { "type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$" },
+        "end": { "type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$" }
+      },
+      "required": ["start", "end"],
+      "additionalProperties": false
+    },
+    "rate_limits": {
+      "type": "object",
+      "description": "NF10. The most optional notifications one recipient receives on one channel in a rolling day; transactional is exempt and in_app is unbounded. Defaults: email 10, sms 3, push 20, chat 20.",
+      "properties": {
+        "email": { "type": "integer", "minimum": 1 },
+        "sms": { "type": "integer", "minimum": 1 },
+        "push": { "type": "integer", "minimum": 1 },
+        "chat": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "categories": {
+      "type": "object",
+      "description": "Keyed by category name (NF5 grammar). security is required because the NF6 floor must have somewhere to go.",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
+      "additionalProperties": { "$ref": "#/$defs/category" },
+      "required": ["security"],
+      "properties": {
+        "security": {
+          "$ref": "#/$defs/category",
+          "properties": { "class": { "const": "transactional" } },
+          "description": "NF6. Reserved: the floor. Transactional, every channel listed is used, no preference applies."
+        },
+        "marketing": {
+          "$ref": "#/$defs/category",
+          "properties": {
+            "class": { "const": "optional" },
+            "channels": { "items": { "properties": { "default": { "const": false } } } }
+          },
+          "description": "NF5. Reserved: optional by definition and opt-in on every channel."
+        }
+      }
+    }
+  },
+  "required": ["schema_version", "categories"],
+  "additionalProperties": false
+}

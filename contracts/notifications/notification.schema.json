@@ -1,0 +1,219 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/notifications/notification.schema.json",
+  "title": "Aurum Alpha notification record",
+  "description": "standards/058-notifications.md NF3: one row per recipient per channel per notified event, written by notify.decide in the service's own database and updated by notify.send.<channel> and by the provider's status events. The row is the answer to 'did we tell them' - the provider's dashboard is not. It carries a REFERENCE to the recipient (a user public id) and never an address (NF4), and a reference to the template plus the payload and never the rendered body (NF8) - which is why additionalProperties is false: a field for either has no legal place here. Ids, timestamps, tenant and trace fields are $refs into the identifiers and observability contracts. schemaVersion 1 - evolves additively per PC6.",
+  "type": "object",
+  "$defs": {
+    "channel": {
+      "enum": ["email", "sms", "push", "in_app", "chat"],
+      "description": "NF1. The five admitted channels. chat is a webhook to a destination a person or tenant configured; in_app has no provider and no address - the record itself is the delivery (NF12)."
+    },
+    "class": {
+      "enum": ["transactional", "optional"],
+      "description": "NF5. transactional is needed to operate the relationship and cannot be unsubscribed; optional requires a preference that permits it."
+    },
+    "category": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "NF5. The product-declared topic a preference is held against (billing, mentions, marketing). security is reserved by NF6 and marketing by NF5; both are constrained in category-declaration.schema.json."
+    },
+    "locale": {
+      "type": "string",
+      "pattern": "^[a-z]{2,3}(-[A-Z][a-z]{3})?(-([A-Z]{2}|[0-9]{3}))?(-([a-zA-Z0-9]{5,8}|[0-9][a-zA-Z0-9]{3}))*$",
+      "description": "NF8. A BCP 47 language tag as RFC 5646 spells it: en, en-GB, de-AT, zh-Hant-TW, es-419. Never the POSIX form en_US - a template lookup keyed on the wrong spelling silently falls back to the default language."
+    },
+    "timeZone": {
+      "type": "string",
+      "pattern": "^(UTC|[A-Z][A-Za-z]+(/[A-Za-z0-9_+-]+){1,2})$",
+      "description": "NF8 and NF10. An IANA time zone database name (Europe/Berlin, America/Argentina/Buenos_Aires). Never a fixed offset - an offset is wrong twice a year - and never inferred from an address, per 090 WC4."
+    },
+    "templateId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+      "description": "NF8. resource.name, snake_case: invoice.issued, signin.new_device. Names a file tree in the repository, one file per locale and channel, versioned with the code."
+    },
+    "status": {
+      "enum": ["deferred", "queued", "sent", "delivered", "bounced", "complained", "failed", "suppressed", "collapsed", "unknown"],
+      "description": "NF3. deferred/queued/suppressed/collapsed are written by notify.decide; sent/failed/unknown by notify.send.<channel>; delivered/bounced/complained by the provider's status events under 055 AM8. Transitions are in status-events.json."
+    },
+    "suppressedReason": {
+      "enum": ["preference", "bounced_address", "complained_address", "unverified_address", "no_address", "rate_limited", "unauthorized"],
+      "description": "NF5, NF7, NF9, NF10. Why notify.decide produced no message for this recipient and channel. A suppressed row exists so 'why did they not get it' is a query rather than an investigation; the one case that writes no row at all is an erased subject (NF7), because a row naming them would be data about a person who asked to be forgotten."
+    }
+  },
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "description": "PC6."
+    },
+    "notification_id": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/uuidv7",
+      "description": "NF3. The record's public id, minted by notify.decide. It is the provider idempotency key (NF11), the subject of notification.requested and of every status event, and the value every log line about this notification carries."
+    },
+    "recipient_id": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/publicId",
+      "description": "NF4. The recipient's user public id. The address is resolved from the identity record at send time (060 AU4) and is never stored here."
+    },
+    "address_id": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/publicId",
+      "description": "NF4 and NF6. Optional: the public id of a specific channel address on the identity record, set only when the notification must go to an address other than the recipient's current one - the previous address on an email or phone change, per the NF6 floor. Absent, the send job resolves the recipient's current address for the channel. A reference, never the address."
+    },
+    "tenant_id": {
+      "$ref": "https://contracts.aurumalpha.dev/observability/context.schema.json#/$defs/tenantId",
+      "description": "The tenant the notified event happened in, per 040 OC2, where tenant context exists."
+    },
+    "channel": { "$ref": "#/$defs/channel" },
+    "class": { "$ref": "#/$defs/class" },
+    "category": { "$ref": "#/$defs/category" },
+    "event": {
+      "type": "object",
+      "description": "NF2. The identity and type of the domain event this notification tells the recipient about - the (source, id) that is notify.decide's job key under 057 JB2.",
+      "properties": {
+        "source": {
+          "type": "string",
+          "pattern": "^/[a-z][a-z0-9-]*$",
+          "description": "The producing service, logically named, per 055 AM1."
+        },
+        "id": {
+          "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/uuidv7",
+          "description": "The event's id per 055 AM1."
+        },
+        "type": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+          "description": "The event's type, past tense, per 055 AM1."
+        }
+      },
+      "required": ["source", "id", "type"],
+      "additionalProperties": false
+    },
+    "template": {
+      "type": "object",
+      "description": "NF8. Which template, at which version, renders this notification. With locale and payload it makes what was sent reproducible without storing the body.",
+      "properties": {
+        "id": { "$ref": "#/$defs/templateId" },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The template's version as committed with the code; bumped whenever the template's meaning changes, so an old record renders as it did."
+        }
+      },
+      "required": ["id", "version"],
+      "additionalProperties": false
+    },
+    "locale": { "$ref": "#/$defs/locale" },
+    "time_zone": { "$ref": "#/$defs/timeZone" },
+    "payload": {
+      "type": "object",
+      "description": "NF8 and NF9. The values the template renders: snake_case keys per 050 HA8, primitives per 020, AFTER the render-time authorization check has removed every field the recipient may not read. Never a credential, never a rendered string."
+    },
+    "collapse_key": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "NF10. Repeats of one key to one recipient on one channel within the category's collapse window produce one message; the later rows are written as collapsed."
+    },
+    "status": { "$ref": "#/$defs/status" },
+    "suppressed_reason": { "$ref": "#/$defs/suppressedReason" },
+    "not_before": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp",
+      "description": "NF10. For a deferred row: the instant the send may happen, computed in the recipient's zone (quiet hours, digest slot). notification.release produces the message when it passes."
+    },
+    "provider": {
+      "type": "object",
+      "description": "NF11. Which adapter sent it and what the provider called it - the key every status webhook is matched back to the row by.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "description": "The adapter's logical name; the same value is the source of re-enveloped status events (/<name>) under 055 AM8."
+        },
+        "message_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The provider's own id for the accepted message."
+        }
+      },
+      "required": ["name", "message_id"],
+      "additionalProperties": false
+    },
+    "attempts": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "NF11. Provider calls made for this row, across retries under 055 AM5."
+    },
+    "trace_id": {
+      "$ref": "https://contracts.aurumalpha.dev/observability/context.schema.json#/$defs/traceId",
+      "description": "040 OC1: the trace of the notify.decide run that wrote the row, continued from the event's traceparent."
+    },
+    "created_at": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp",
+      "description": "When notify.decide wrote the row. 020 IP4."
+    },
+    "sent_at": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp",
+      "description": "When the provider accepted the message (status sent). Null until then."
+    },
+    "delivered_at": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp",
+      "description": "The occurred_at of the notification.delivered event, not its arrival. For in_app, equal to created_at: the row is the delivery."
+    },
+    "read_at": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp",
+      "description": "NF12. in_app only: when the recipient marked the record read through the service's API. Absent while unread."
+    },
+    "updated_at": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp",
+      "description": "025 SD10: every table carries it."
+    }
+  },
+  "required": ["schema_version", "notification_id", "recipient_id", "channel", "class", "category", "event", "template", "locale", "time_zone", "payload", "status", "attempts", "trace_id", "created_at", "updated_at"],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "suppressed" } } },
+      "then": { "required": ["suppressed_reason"] },
+      "else": { "not": { "required": ["suppressed_reason"] } }
+    },
+    {
+      "if": { "properties": { "status": { "const": "deferred" } } },
+      "then": { "required": ["not_before"] }
+    },
+    {
+      "if": { "properties": { "status": { "const": "collapsed" } } },
+      "then": { "required": ["collapse_key"] }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": { "enum": ["sent", "delivered", "bounced", "complained"] },
+          "channel": { "not": { "const": "in_app" } }
+        }
+      },
+      "then": { "required": ["provider"] }
+    },
+    {
+      "if": { "properties": { "channel": { "const": "in_app" } } },
+      "then": { "not": { "required": ["provider"] } },
+      "else": { "not": { "required": ["read_at"] } }
+    },
+    {
+      "if": { "properties": { "category": { "const": "security" } } },
+      "then": {
+        "properties": {
+          "class": { "const": "transactional" },
+          "suppressed_reason": { "enum": ["bounced_address", "no_address"] }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "class": { "const": "transactional" } } },
+      "then": {
+        "properties": {
+          "suppressed_reason": { "not": { "enum": ["complained_address", "unverified_address", "rate_limited"] } }
+        }
+      }
+    }
+  ]
+}

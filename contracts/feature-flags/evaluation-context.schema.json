@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/feature-flags/evaluation-context.schema.json",
+  "title": "Aurum Alpha feature flag evaluation context",
+  "description": "standards/038-feature-flags.md FF6: what an application sends to a flag provider as targeting context. The provider is a backing service and stores what it receives, so the context is closed to the platform's id vocabulary plus a flat map of declared, non-personal attributes. The id keys $ref the identifiers and observability contracts. The attribute-key denylist and the no-@ rule on string values catch the common spellings of personal data, never the property; whether an attribute would identify a person stays the review question. schemaVersion 1 — evolves additively per PC6.",
+  "type": "object",
+  "$defs": {
+    "schemaVersion": { "const": 1 },
+    "attributeKey": {
+      "type": "string",
+      "description": "FF6: snake_case, and none of the spellings under which personal data usually arrives — email, phone, name (including user_name, full_name, display_name), address, birth dates, ip addresses, national identifiers.",
+      "allOf": [
+        { "pattern": "^[a-z][a-z0-9_]{0,63}$" },
+        { "pattern": "^(?!.*(email|phone|mobile|name|address|birth|dob|ssn|passport|ip_addr|_ip$|^ip$|geo_point|lat_|_lng|_lon|zip|postcode|postal)).*$" }
+      ]
+    },
+    "attributeValue": {
+      "description": "FF6: a short scalar. No nested objects (a nested object is how a whole record travels), no arrays, and no string containing @ (which is an email address in almost every case).",
+      "oneOf": [
+        { "type": "string", "maxLength": 128, "pattern": "^[^@]*$" },
+        { "type": "number" },
+        { "type": "boolean" }
+      ]
+    }
+  },
+  "properties": {
+    "targeting_key": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/publicId",
+      "description": "FF6: the public id the flag's scope names — the user's for a user-scoped flag, the tenant's for a tenant-scoped one. Absent for a global flag. OpenFeature's targetingKey; the feature_flag.context.id on the span; the input to an experiment's assignment (FF10)."
+    },
+    "tenant_id": {
+      "$ref": "https://contracts.aurumalpha.dev/observability/context.schema.json#/$defs/tenantId",
+      "description": "FF6: the authenticated tenant's public id, established by the authorization layer and copied here; never read from a header a caller controls."
+    },
+    "user_id": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/publicId",
+      "description": "FF6: the user's public id per 020 IP1. Never an internal key, never an email."
+    },
+    "environment": {
+      "enum": ["development", "test", "staging", "production"],
+      "description": "FF6: which environment is evaluating, spelled as the web client's bootstrap document spells it. Rules keyed on it replace the environment detection 030 SC3 forbids in code."
+    },
+    "release_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$",
+      "description": "FF6: the repository's SemVer version (010, Principle 15), for rules that turn on at a release."
+    },
+    "service": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,63}$",
+      "description": "FF6: the service's logical name, for rules scoped to one service in a repository holding several."
+    },
+    "attributes": {
+      "type": "object",
+      "description": "FF6: a flat map of declared, non-personal attributes a rule may read — a plan tier, a region code, a device class.",
+      "propertyNames": { "$ref": "#/$defs/attributeKey" },
+      "additionalProperties": { "$ref": "#/$defs/attributeValue" },
+      "maxProperties": 32
+    }
+  },
+  "required": ["environment"],
+  "additionalProperties": false
+}

@@ -123,8 +123,7 @@ the planet, permanently.
 Storage profile: MySQL columns are `DATETIME(3)` holding UTC — `DATETIME(6)`
 where the repository pins six digits — and never `TIMESTAMP`, whose 2038
 ceiling and session-zone conversion are both traps; `DATE` for calendar
-dates. Other engines state their profile in the [data-layer
-standard](000-platform.md#the-capability-roster) as they are admitted.
+dates. Other engines state their profile in the [structured-data standard](025-structured-data.md) as they are admitted.
 
 ### IP5. Money is integer minor units plus an explicit currency
 
@@ -171,8 +170,7 @@ getting are the platform contract's own mechanisms —
 `job-contract-conformance` runs `corpus.json` against an implementation
 once that shared job exists. IP1 is the one rule with a capability-specific
 gate to name: a schema-level check that externally addressable tables carry
-a public id column in an admitted format, buildable once the [data-layer
-standard](000-platform.md#the-capability-roster) gives a checker a schema to
+a public id column in an admitted format, buildable once the [structured-data standard](025-structured-data.md) gives a checker a schema to
 read. Until then IP1 is the review question on every API-shaped diff: *does
 anything in this payload count rows?*
 

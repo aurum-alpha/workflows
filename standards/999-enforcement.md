@@ -176,7 +176,7 @@ against.
 
 | # | Rule | Enforced by | Status |
 |---|---|---|---|
-| IP1 | Internal integer keys never leave the service; addressable rows carry a separate opaque public id | schema-level column check, buildable once the [data-layer standard](000-platform.md#the-capability-roster) defines a readable schema; until then the stated review question | **review only** |
+| IP1 | Internal integer keys never leave the service; addressable rows carry a separate opaque public id | schema-level column check, buildable once the [structured-data standard](025-structured-data.md) defines a readable schema; until then the stated review question | **review only** |
 | IP2 | Public ids use an admitted format from the table (UUIDv7, nanoid profile, prefixed handle); UUIDv4-in-an-index needs a written defence | `job-contract-conformance` running `contracts/identifiers/corpus.json` (proposed) | **review only** |
 | IP3 | Ids are opaque — equality only, no parsing meaning out of them | — resists honestly; review question on consumers | **review only** |
 | IP4 | Instants are RFC 3339 UTC `Z` at one pinned fractional precision (default three digits, extendable to six or nine, never fewer); calendar dates are `full-date`; MySQL profile `DATETIME(3)` | corpus validity + canonical cases (proposed, same job) | **review only** |
@@ -185,8 +185,7 @@ against.
 IP2, IP4 and IP5 are exactly what a corpus can hold: their gate is the
 platform contract's own `job-contract-conformance`, and the corpus already
 exists, so promoting them is building the job, not writing the cases. IP1's
-mechanical gate is named but waits on the [data-layer
-standard](000-platform.md#the-capability-roster). IP3 resists a checker — what a
+mechanical gate is named but waits on the [structured-data standard](025-structured-data.md). IP3 resists a checker — what a
 consumer does with an id after receiving it is not a fact on disk — and the
 document states the review question instead.
 
@@ -220,6 +219,7 @@ written" and "The foundation: twelve-factor".
 | D1 | No document carries a status header; a merged document is binding | `check-standards-docs` (proposed): no `Status:` line in a standard | **review only** |
 | D2 | Documents reference documents by working relative link — never a tracker number, never a bare name; a standard not yet written is linked at its roster row | `check-standards-docs` (proposed): no issue or pull-request reference in a standard's prose, and every relative link resolves | **review only** |
 | D3 | A rule restating a twelve-factor factor cites it; a rule departing from one says so, in the rule, with the reason | — resists honestly: whether a citation is apt, or a departure argued, is judgment | **review only** |
+| D4 | A rule is argued from principle, never from precedent: its reason is a property of the rule, checkable without knowledge of this organisation's history; an incident may show a rule is needed but never that an answer is right | — resists honestly: a grep finds the word and not the fallacy. The review question on every Decisions entry: *would this reason hold if the repository it came from did not exist?* | **review only** |
 
 D1 and D2 are the cheapest gates in this ledger — a grep each, no false
 positives — and they are the kind of rule that regresses silently, because a
@@ -229,6 +229,10 @@ than after.
 D3 resists a checker: a grep can find the word "twelve-factor" but not
 whether the citation is apt or the departure argued, so it stays a review
 question, stated in the charter's *The foundation: twelve-factor*.
+D4 resists one the same way and is the convention most likely to be broken
+in good faith, because copying a good answer feels like diligence. Two merged
+standards carry passages written before it was stated; bringing them to it is
+its own change.
 One carve-out is unsettled and left visible rather than assumed: the CI
 standard's decisions log cites the change that settled each row, which is
 history rather than a live reference, and whether D2 admits that is a review
@@ -435,9 +439,9 @@ audit event fails those contracts' rules too, from this file's schema.
 | AE1 | An audit event is application data in the product's own durable, queryable, tenant-scoped store — never a log line, and the log stream is never the system of record | resists a checker honestly: whether a store is the system of record or a convenience is intent, not shape. The review question is whether a history screen could be built from it | **review only** |
 | AE2 | One event shape, and **actor and target are separate required objects** — the failure the portfolio's one existing audit table demonstrates, plus `outcome`, an `impersonator` where one acted, and public ids never internal keys | **schema-decided** — `event.schema.json` under `job-contract-conformance`; sixteen validity cases already reach their stated verdict against it | **review only** |
 | AE3 | `action` is `resource.verb`, and where a permission authorized the act the action string **is** that permission; `auth.*` is this standard's reserved namespace for acts with no permission behind them | the format half is schema-decided. The identity half gets **a static check worth writing early**: read the product's declared permission set, assert every emitted action is one of them or a reserved `auth.*` action (proposed `check-audit-actions`) | **review only** |
-| AE4 | An event is self-contained, immutable and outlives its subject: display denormalized at write time, append-only, no cascade from the target's deletion, values not references, never a credential | the shape half is schema-decided. That the store is genuinely append-only and uncascaded is a schema fact once the [data-layer standard](000-platform.md#the-capability-roster) gives a checker a schema to read; that no credential reaches `changes` is SC2's judgment again | **review only** |
+| AE4 | An event is self-contained, immutable and outlives its subject: display denormalized at write time, append-only, no cascade from the target's deletion, values not references, never a credential | the shape half is schema-decided. That the store is genuinely append-only and uncascaded is a schema fact once the [structured-data standard](025-structured-data.md) gives a checker a schema to read; that no credential reaches `changes` is SC2's judgment again | **review only** |
 | AE5 | The floor of what must emit: authentication and session lifecycle, authorization changes, identity lifecycle, destructive writes, security-posture configuration, bulk personal-data export — and reads otherwise **not** audited | **the generative gate, and the one worth the most here** — enumerate the routes guarded by a destructive permission, exercise each, assert an event carrying that permission as its action. Fourteen `floor` cases in the corpus describe the acts; two of them are negative | **review only** |
-| AE6 | Append-only discipline is required — `INSERT` and `SELECT`, retention deletion under a separate credential. Hash chaining is **not** required; tamper-evidence needs an anchor outside the writer's reach | the grant is a schema fact, readable once the data-layer standard lands. That the request path holds no update is a review question | **review only** |
+| AE6 | Append-only discipline is required — `INSERT` and `SELECT`, retention deletion under a separate credential. Hash chaining is **not** required; tamper-evidence needs an anchor outside the writer's reach | the grant is a schema fact, readable against [`025-structured-data.md`](025-structured-data.md) SD3's credential split. That the request path holds no update is a review question | **review only** |
 | AE7 | Retention has a floor of one year and a stated ceiling; audit rows are tenant-scoped data; erasure **redacts the event rather than deleting it**, keeping the act and losing the identification | the erasure half is corpus-decided by `redaction` cases; `erased_at` and `erased_subjects` travelling together is schema-decided. That a retention period was chosen rather than defaulted is a judgment | **review only** |
 | AE8 | The event is written in the change's own transaction where they share a store; otherwise after the change, with a failed write logged at `error` with the payload inline, and never fire-and-forget | **resists a checker at the rule's own level** — whether a write shares a transaction is a fact about a call graph, and a gate reading source for it is the PC4 violation. The corpus reaches the observable half: a failed change produces no event, a successful one produces exactly one | **review only** |
 
@@ -466,3 +470,39 @@ rots the day someone adds a route, which is how the portfolio's existing audit t
 came to be a well-designed table nothing writes to. An enumeration over the
 permission set cannot rot that way, and AE3's identity rule — the action string
 *is* the permission string — exists largely to make that enumeration possible.
+
+## Structured data standard
+
+Rules from [`025-structured-data.md`](025-structured-data.md) — the query
+language, migrations, isolation, and how the identifiers contract's primitives
+are stored. This standard resolves three deferrals other rows above made to it:
+IP1's schema check, IP4's non-MySQL storage profile, and AE4/AE6's append-only
+grant as a schema fact.
+
+| # | Rule | Enforced by | Status |
+|---|---|---|---|
+| SD1 | SQL is the query language: authored text, bound through native placeholders, no runtime generation from an object model or builder; codegen *from* SQL admitted | **resists a clean gate honestly** — checking imports is checking the implementation (PC4). The boundary gate is a driver-level capture in the conformance job asserting every executed statement matches committed text; it does not exist yet. Until then: *can I paste this into a console?* | **review only** |
+| SD2 | A migration is an ordered `.sql` file, immutable once merged, never code; authoring unconstrained; every statement converges (guarded DDL, `ON CONFLICT` seeds) so a re-run against an applied or half-applied database exits zero; `db:push` absent from any deploy-reachable script | **three greps with no false positives**: only `*.sql` in the migrations directory, no merged file's bytes changed (from history), no push command reachable — plus a static, partial fourth for unguarded common forms. Ten corpus cases (proposed `check-migrations`); the live replay in SD3's gate is the proof of convergence | **review only** |
+| SD3 | Migrations ship in the image, run by a `migrate` command as a discrete step before rollout, never at boot; idempotent at the command level (version record) and the file level (SD2); migration credential ≠ runtime credential | **live gate**: apply from empty, apply from the previous release's image, then replay every file against the migrated database bypassing the version record and require exit zero and an unchanged schema — as a sibling of `job-image-starts` (proposed `job-migrate`). Boot-time migration is a review question | **review only** |
+| SD4 | Migrations expand; `DROP COLUMN`, `DROP TABLE`, `ALTER … TYPE` need `-- expand-only-ok: <release>`; down never trusted | a regex over each file's up section for the three statement kinds and the marker; the corpus covers the violation, the marker, and the marker with no release named (proposed `check-migrations`) | **review only** |
+| SD5 | Isolation levels are declared and are the RB5 scope types; every scoped table carries the column for every containing level, denormalized; predicates are joinless | schema-decided by the isolation corpus; **one case is a verified detector** — a table carrying the inner column but not the outer one, which a suite checking only the innermost column passes wrongly | **review only** |
+| SD6 | Isolation is a behaviour with three admitted mechanisms; a missing context denies; no bypass role on scoped tables; the gate enumerates scoped tables from the catalog | **the generative gate worth the most here** — discover scoped tables from `information_schema`, assert columns, types, keys and coverage; a table added tomorrow is covered the day it lands, and a table added without its columns is the finding | **review only** |
+| SD7 | IP1's public-id column beside the internal key; per-engine storage profile from `storage-profiles.json`; session time zone UTC | **catalog check against the profile** (proposed `check-storage-profile`) — this is the check IP1's row has been waiting for | **review only** |
+| SD8 | Seeds are idempotent SQL through the migrate path; fixtures are never production rows and no deploy path can load one | seeds: the from-previous-release run applies them twice, so a non-idempotent seed fails SD3's gate. Fixtures: reachability is a grep; that a fixture carries no real personal data is a judgment | **review only** |
+| SD9 | Connection from the environment; least-privilege runtime role; TLS; bounded pool from config, exhaustion visible in readiness; SQL parameters never in telemetry | role privileges are a catalog fact once a checker connects as the runtime role and attempts `ALTER`; the rest is review | **review only** |
+| SD10 | The schema carries its invariants: `NOT NULL` by default, foreign keys declared and indexed, `UNIQUE`/`CHECK` for domain rules, no native enums, JSON only for unqueried data, isolation columns leading composite indexes, `created_at`/`updated_at` on every table, `snake_case` identifiers, plural tables, `<singular>_id` keys | **catalog-decided by the `schema` corpus** for the mechanical half (unindexed FK, missing timestamps, native enum, non-snake identifier, isolation column not leading an index — proposed `check-schema`); `NOT NULL` intent and the JSON rule stay review questions | **review only** |
+| SD11 | One request, one transaction; no transaction spans a network call or a human; `READ COMMITTED` default with `SERIALIZABLE` opted in per transaction plus retry; statement timeout on the runtime role; `migrate` holds an advisory lock | timeout and lock are configuration facts a checker reads; transaction span is a review question on every handler | **review only** |
+| SD12 | Hard delete is the default; soft delete needs a domain reason in Conventions, and a soft-deleted row stays scoped, stays erasable, and is excluded in the query text | the Conventions declaration is a grep; the default is a review question on every delete path | **review only** |
+| SD13 | The database is private to its service — one schema, one writer, no second credential; tests run against the engine the product runs, never a substitute | privacy is a credential fact (no second role on the database); the real-engine rule is a CI fact — the test job starts the real engine or data-access tests do not run | **review only** |
+
+The corpus was run before landing. All ten migration cases, all six
+isolation cases and all six schema cases reproduce their expected findings and visibility against a
+reference implementation, and the SD5 detector was checked against a
+deliberately weakened suite that inspects only the innermost isolation
+column: it passes five of the six isolation cases and fails exactly the one
+it exists to catch.
+
+Three rows above are now buildable that were not: IP1 (a public id column in
+an admitted format), AE4 and AE6 (the audit table's grant excludes `UPDATE`
+and `DELETE`). Each of those rows says it was waiting on this standard, and
+each now has a schema to read.

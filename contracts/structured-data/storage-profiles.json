@@ -1,0 +1,36 @@
+{
+  "contract": "structured-data",
+  "schemaVersion": 1,
+  "description": "standards/025-structured-data.md SD7 as data: for each admitted engine, the column type each identifiers-contract primitive lands in, so a schema checker reads this rather than a person re-deriving it from prose. An engine is admitted by adding its object here, in its own change, with every primitive filled in and every 'why' answered. No engine is mandated (SD7); an engine absent from this file is not yet admitted.",
+  "primitives": {
+    "uuidv7PublicId": "IP2. The public id for machine-scale entities. Never the primary key (IP1) - it is a separate, indexed, immutable column beside the internal key.",
+    "handle": "IP2. A nanoid or prefixed handle. The CHECK constraint carries the IP2 pattern so the column cannot admit a value the contract would reject.",
+    "instant": "IP4. An instant in time, stored UTC at the repository's pinned precision (three digits by default; six or nine where the repository's Conventions say so).",
+    "date": "IP4. A calendar date with no time and no zone. Never an instant at midnight.",
+    "moneyAmount": "IP5. Integer minor units. Travels with moneyCurrency; neither column is nullable when the other is present.",
+    "moneyCurrency": "IP5. ISO 4217 uppercase code, exactly three characters.",
+    "internalKey": "IP1. The join key. Never leaves the service, never appears in a URL, payload, event or log."
+  },
+  "engines": {
+    "postgres": {
+      "uuidv7PublicId": { "type": "uuid", "why": "Native 16-byte type with index support. A text UUID indexes at more than twice the width for no benefit." },
+      "handle": { "type": "text CHECK (col ~ '<IP2 pattern>')", "why": "An unconstrained text column admits anything; the CHECK makes the contract's pattern the column's." },
+      "instant": { "type": "timestamptz(3)", "why": "timestamptz stores an absolute instant. timestamp WITHOUT time zone stores a wall-clock reading and reinterprets it under whatever the session zone is - the exact trap IP4 names." },
+      "date": { "type": "date", "why": "A calendar date. An instant at midnight is off by a day for half the planet." },
+      "moneyAmount": { "type": "bigint NOT NULL", "why": "numeric invites fractional cents; float is the whole argument against floats." },
+      "moneyCurrency": { "type": "char(3) NOT NULL", "why": "Fixed width, and the amount is meaningless without it." },
+      "internalKey": { "type": "bigint GENERATED ALWAYS AS IDENTITY", "why": "Insert-ordered and narrow. A UUID primary key on a high-insert table fragments the index; the public id carries the UUID, the internal key carries the joins." },
+      "sessionTimeZone": "UTC, set at connection open. The engine's own casts and now() must agree with the profile, and relying on the server default is one configuration change from shifting every stored timestamp."
+    },
+    "mysql": {
+      "uuidv7PublicId": { "type": "BINARY(16), or CHAR(36) where readability in the console outweighs the index cost", "why": "MySQL has no native uuid type; BINARY(16) is the compact form and CHAR(36) the readable one. Either is a deliberate choice, recorded in the repository's Conventions." },
+      "handle": { "type": "VARCHAR(n) with a CHECK on the IP2 pattern", "why": "As Postgres: the pattern belongs to the column, not to the code that writes it." },
+      "instant": { "type": "DATETIME(3) holding UTC", "why": "TIMESTAMP ends in 2038 and converts through the session zone; DATETIME stores what it is given, so the profile stores UTC and the session is pinned to UTC." },
+      "date": { "type": "DATE", "why": "As Postgres." },
+      "moneyAmount": { "type": "BIGINT NOT NULL", "why": "As Postgres." },
+      "moneyCurrency": { "type": "CHAR(3) NOT NULL", "why": "As Postgres." },
+      "internalKey": { "type": "BIGINT UNSIGNED AUTO_INCREMENT", "why": "As Postgres." },
+      "sessionTimeZone": "UTC, set at connection open, for the same reason."
+    }
+  }
+}

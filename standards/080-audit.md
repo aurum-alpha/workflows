@@ -328,8 +328,7 @@ AE8.
 ### AE7. Retention has a floor, a ceiling, and survives erasure
 
 **Audit events are tenant-scoped data**, held under the same isolation rules as
-any other tenant data — the [data-layer
-standard](000-platform.md#the-capability-roster)'s, when it lands. A query that can
+any other tenant data — the [structured-data standard](025-structured-data.md)'s, when it lands. A query that can
 read another tenant's audit rows is the same defect as one that can read their
 invoices, and worse in disclosure terms, because audit rows are a map of who
 does what inside that organisation.
@@ -429,8 +428,8 @@ commitments.
   permission as its action. A list of routes to audit rots the day someone adds
   a route; an enumeration cannot.
 - **AE6's discipline is partly a schema fact**: that the audit table's grant
-  excludes `UPDATE` and `DELETE` is readable once the data-layer standard gives
-  a checker a schema to read. That the code path has no update is a review
+  excludes `UPDATE` and `DELETE` is readable against the [structured-data
+  standard](025-structured-data.md)'s schema rules. That the code path has no update is a review
   question.
 - **AE8 resists a checker and stays a review question**, honestly — whether a
   write shares the change's transaction is a fact about a call graph, not about

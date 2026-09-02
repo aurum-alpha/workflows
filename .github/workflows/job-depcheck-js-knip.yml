@@ -66,6 +66,39 @@ on:
           at the bottom for why that separation is the point.
         type: boolean
         default: false
+      entry:
+        description: >-
+          knip `entry` patterns for this unit, one per line or comma-separated,
+          relative to the workdir. REPLACES the portfolio default rather than
+          adding to it — unlike `ignore_dependencies`, which adds. The two
+          differ on purpose: an ignore list is cumulative because every entry
+          on it names a real cause that still applies, while an entry list
+          describes ONE tree's shape and a pattern from a different shape is
+          not a harmless extra. knip reports each non-matching pattern as a
+          "Refine entry pattern (no matches)" hint, so carrying the defaults
+          into a repo they do not fit buys nothing and prints noise.
+
+          The default suits the eight units on the Replit-derived layout and
+          the two client-only ones. Set it where the tree differs, and say at
+          the call site what the entries are.
+
+          WHY THIS IS AN INPUT AT ALL: the value was hardcoded, and on
+          event-manager it produced a WRONG ANSWER WITH NO ERROR. That repo
+          builds four React apps whose vite.config.ts declares its inputs as
+          `path.resolve(reactRoot, 'org-admin.html')` — computed paths knip's
+          vite plugin cannot fully resolve statically. None of the three
+          hardcoded patterns matched either, so knip fell back to the partial
+          set the plugin did resolve, pruned the org-admin app as unreachable,
+          and reported `react-hook-form` and `@mui/x-date-pickers` as unused.
+          Both are imported by that app. 20 findings against the 17 the correct
+          entries give.
+
+          That is the same failure this job has now hit three times — a config
+          that resolves to less than intended, producing a plausible list
+          nothing flags as suspect. It is survivable while every caller is
+          `warn_only`; it is a package deletion once one is not.
+        type: string
+        default: "server/index.ts, client/src/main.tsx, src/main.tsx"
       ignore_dependencies:
         description: >-
           Extra package names for knip's `ignoreDependencies`, one per line or
@@ -178,19 +211,36 @@ jobs:
       - name: Generate knip config
         env:
           EXTRA: ${{ inputs.ignore_dependencies }}
+          ENTRY: ${{ inputs.entry }}
           CONFIG: ${{ inputs.workdir }}/.knip.generated.json
         run: |
           set -euo pipefail
+          # Both lists are built by the same loop, and the trailing newline
+          # in `printf '%s\n'` is load-bearing in both: `while read` drops a
+          # final line that has none, so `printf '%s'` here silently discarded
+          # the LAST entry of every list -- a one-item list produced no entries
+          # at all. Caught by testing the generator against a one-item and a
+          # multi-item value; both were wrong.
+          #
+          # `entry` REPLACES the default (see the input's description) while
+          # the ignore list ADDS to the baseline, which is why one loop starts
+          # from an empty array and the other from two seeded names.
+          emit_list() {
+            local first=1 item
+            printf '%s\n' "$1" | tr ',' '\n' | while IFS= read -r item; do
+              item="$(printf '%s' "$item" | tr -d '[:space:]')"
+              [ -n "$item" ] || continue
+              if [ "$first" -eq 1 ]; then first=0; else printf ', '; fi
+              printf '"%s"' "$item"
+            done
+          }
           {
             printf '{\n'
             printf '  "drizzle": false,\n'
-            printf '  "entry": ["server/index.ts", "client/src/main.tsx", "src/main.tsx"],\n'
+            printf '  "entry": ['
+            emit_list "$ENTRY"
+            printf '],\n'
             printf '  "ignoreDependencies": ["oxlint", "oxlint-tsgolint"'
-            # The trailing newline is load-bearing: `while read` drops a final
-            # line that has none, so `printf '%s'` here silently discarded the
-            # LAST entry of every list -- a one-package list produced no
-            # entries at all. Caught by testing the generator against a
-            # one-item and a multi-item value; both were wrong.
             printf '%s\n' "$EXTRA" | tr ',' '\n' | while IFS= read -r pkg; do
               pkg="$(printf '%s' "$pkg" | tr -d '[:space:]')"
               [ -n "$pkg" ] || continue
@@ -200,6 +250,19 @@ jobs:
           } > "$CONFIG"
           echo "Generated knip config:"
           cat "$CONFIG"
+
+          # An empty entry list is the failure this input exists to prevent,
+          # arriving through the input itself: knip with no entry points prunes
+          # the whole tree as unreachable and reports every dependency unused,
+          # with no error. That reads as a catastrophic finding rather than as
+          # a broken config, and under warn_only it reads as nothing at all.
+          # Fail here, where the cause is one line up.
+          if grep -q '"entry": \[\]' "$CONFIG"; then
+            echo "::error::the 'entry' input resolved to no patterns." \
+                 "knip with no entry points reports every dependency unused." \
+                 "Give at least one pattern, relative to the workdir."
+            exit 1
+          fi
 
       # knip is run through `pnpm dlx` at a pinned version rather than declared
       # as a devDependency in each repo, and the pin is here for the same

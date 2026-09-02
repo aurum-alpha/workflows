@@ -167,7 +167,11 @@ on:
         # --portfolio flag with --fleet as an alias. No rule changed, but the
         # bytes every caller reads did, and CHECKER_INPUT_FILES does not
         # distinguish -- which is the point of it.
-        default: f254ede5c54298a58de10c0b6f066b2ab0ba5d23
+        #
+        # Bumped to v2.3.1 for the `entry` input on job-depcheck-js-knip. The
+        # job file is caller-consumed, so a caller pinning this change would
+        # otherwise fetch checkers from f254ede -- a tree without it.
+        default: 7a25f11d84004db7ef6db54230f530e0106b40d6
 
 jobs:
   ci-conformance:

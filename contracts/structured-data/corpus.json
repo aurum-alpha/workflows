@@ -1,0 +1,180 @@
+{
+  "contract": "structured-data",
+  "schemaVersion": 1,
+  "description": "The conformance corpus for standards/025-structured-data.md. Two parts, both pure functions of their inputs so they can be written as data and run in any language. 'migrations': given a migrations directory (file names and contents) and the scripts a deploy path can reach, the findings a checker must report (SD2, SD4). 'isolation': given a product's declared isolation levels, its tables with their columns, and queries each issued in a stated context, the schema findings the checker must report (SD5) and the rows each query must and must not see (SD6). A finding is reported by kind and subject; an implementation reproduces every expected finding and no others, or names the case it failed.",
+
+  "migrations": [
+    {
+      "case": "an-ordered-sql-only-directory-is-clean",
+      "directory": {
+        "00001_init.sql": "-- +goose Up\nCREATE TABLE tenants (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, public_id uuid NOT NULL UNIQUE);\n-- +goose Down\nDROP TABLE tenants;",
+        "00002_invoices.sql": "-- +goose Up\nCREATE TABLE invoices (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, tenant_id bigint NOT NULL REFERENCES tenants(id), total_amount bigint NOT NULL, total_currency char(3) NOT NULL);\n-- +goose Down\nDROP TABLE invoices;"
+      },
+      "reachableScripts": { "migrate": "app migrate", "start": "app serve" },
+      "expect": { "findings": [] },
+      "why": "SD2's shape and SD4's rule both satisfied. The Down sections contain DROP TABLE and are ignored: down migrations are for local iteration and are never trusted in production."
+    },
+    {
+      "case": "a-migration-written-as-code-is-a-finding",
+      "directory": {
+        "00001_init.sql": "-- +goose Up\nCREATE TABLE tenants (id bigint PRIMARY KEY);\n-- +goose Down\nDROP TABLE tenants;",
+        "0002_add_invoices.ts": "export async function up(db) { await db.schema.createTable('invoices')... }"
+      },
+      "reachableScripts": { "migrate": "app migrate" },
+      "expect": { "findings": [ { "kind": "non-sql-file", "subject": "0002_add_invoices.ts" } ] },
+      "why": "SD2. A migration is never code: an up() function puts a translation layer between the reviewer and the statement, and ties the history to a language runtime."
+    },
+    {
+      "case": "an-unordered-name-is-a-finding",
+      "directory": {
+        "00001_init.sql": "-- +goose Up\nCREATE TABLE tenants (id bigint PRIMARY KEY);\n-- +goose Down\n",
+        "add_invoices.sql": "-- +goose Up\nCREATE TABLE invoices (id bigint PRIMARY KEY);\n-- +goose Down\n",
+        "00002_roles.sql": "-- +goose Up\nCREATE TABLE roles (id bigint PRIMARY KEY);\n-- +goose Down\n"
+      },
+      "reachableScripts": {},
+      "expect": { "findings": [ { "kind": "unordered-name", "subject": "add_invoices.sql" } ] },
+      "why": "SD2. The name is the order. A file with no ordering prefix applies at whatever position the tool's sort puts it, which differs between tools."
+    },
+    {
+      "case": "a-drop-column-in-the-up-section-is-a-finding",
+      "directory": {
+        "00007_retire_legacy_ref.sql": "-- +goose Up\nALTER TABLE invoices DROP COLUMN legacy_ref;\n-- +goose Down\nALTER TABLE invoices ADD COLUMN legacy_ref text;"
+      },
+      "reachableScripts": {},
+      "expect": { "findings": [ { "kind": "expand-only-violation", "subject": "00007_retire_legacy_ref.sql", "statement": "DROP COLUMN" } ] },
+      "why": "SD4. The previous release may still read legacy_ref; rolling back to it against this schema is a data-loss event wearing a tag change."
+    },
+    {
+      "case": "a-drop-column-with-a-release-named-is-admitted",
+      "directory": {
+        "00007_retire_legacy_ref.sql": "-- +goose Up\n-- expand-only-ok: 2.4.0 stopped reading legacy_ref\nALTER TABLE invoices DROP COLUMN legacy_ref;\n-- +goose Down\n"
+      },
+      "reachableScripts": {},
+      "expect": { "findings": [] },
+      "why": "SD4. The marker names the release after which the statement became safe. That is the third release of the three the rule requires, and the reviewer can check the claim."
+    },
+    {
+      "case": "a-marker-with-no-release-named-is-still-a-finding",
+      "directory": {
+        "00007_retire_legacy_ref.sql": "-- +goose Up\n-- expand-only-ok:\nALTER TABLE invoices DROP COLUMN legacy_ref;\n-- +goose Down\n"
+      },
+      "reachableScripts": {},
+      "expect": { "findings": [ { "kind": "expand-only-marker-without-release", "subject": "00007_retire_legacy_ref.sql" } ] },
+      "why": "SD4. The marker is a reason, not a permission. An empty marker is a violation with a comment on it, and a checker that accepts the token without its argument has turned the rule into a magic word."
+    },
+    {
+      "case": "an-alter-type-is-a-finding-and-a-drop-in-down-is-not",
+      "directory": {
+        "00009_widen_amount.sql": "-- +goose Up\nALTER TABLE invoices ALTER COLUMN total_amount TYPE numeric(20,4);\n-- +goose Down\nDROP TABLE invoices;"
+      },
+      "reachableScripts": {},
+      "expect": { "findings": [ { "kind": "expand-only-violation", "subject": "00009_widen_amount.sql", "statement": "ALTER TYPE" } ] },
+      "why": "SD4 names three statement kinds, and ALTER ... TYPE is the one people forget is destructive. The DROP TABLE in the Down section is not a finding: Down is never trusted and never gated."
+    },
+    {
+      "case": "a-reachable-push-beside-a-migrations-directory-is-a-finding",
+      "directory": {
+        "00001_init.sql": "-- +goose Up\nCREATE TABLE tenants (id bigint PRIMARY KEY);\n-- +goose Down\n"
+      },
+      "reachableScripts": { "migrate": "drizzle-kit push", "db:push": "drizzle-kit push", "start": "node server.js" },
+      "expect": { "findings": [ { "kind": "push-reachable", "subject": "migrate" }, { "kind": "push-reachable", "subject": "db:push" } ] },
+      "why": "SD2. Two answers to one question inside one tree, and the script named migrate is the wrong one. This is the shape found in the portfolio, not a hypothetical."
+    }
+  ],
+
+  "isolation": [
+    {
+      "case": "every-scoped-table-carries-every-containing-level",
+      "levels": ["tenant", "client_org"],
+      "tables": {
+        "tenants":      ["id", "public_id", "name"],
+        "client_orgs":  ["id", "public_id", "tenant_id", "name"],
+        "invoices":     ["id", "public_id", "tenant_id", "client_org_id", "total_amount", "total_currency"],
+        "currencies":   ["code", "exponent"]
+      },
+      "expect": { "findings": [] },
+      "queries": [
+        { "context": { "tenant_id": "t1", "client_org_id": "c1" }, "table": "invoices",
+          "rows": [ { "tenant_id": "t1", "client_org_id": "c1" }, { "tenant_id": "t1", "client_org_id": "c2" }, { "tenant_id": "t2", "client_org_id": "c9" } ],
+          "visible": [0] },
+        { "context": { "tenant_id": "t1" }, "table": "client_orgs",
+          "rows": [ { "tenant_id": "t1" }, { "tenant_id": "t2" } ],
+          "visible": [0] },
+        { "context": { "tenant_id": "t1" }, "table": "currencies",
+          "rows": [ { "code": "USD" }, { "code": "JPY" } ],
+          "visible": [0, 1] }
+      ],
+      "why": "SD5 and SD6 in their correct shape. currencies carries no isolation column and is unscoped by declaration: reference data every tenant sees. invoices is scoped at client_org and carries tenant_id too, so its predicate needs no join."
+    },
+    {
+      "case": "a-table-scoped-below-a-level-it-does-not-carry-is-a-finding",
+      "levels": ["tenant", "client_org"],
+      "tables": {
+        "client_orgs": ["id", "public_id", "tenant_id"],
+        "deliverables": ["id", "public_id", "client_org_id", "title"]
+      },
+      "expect": { "findings": [ { "kind": "missing-containing-column", "subject": "deliverables", "column": "tenant_id" } ] },
+      "queries": [],
+      "why": "SD5's denormalization rule, and a VERIFIED DETECTOR. deliverables is scoped at client_org and so must also carry tenant_id, because containment is declared upward and the tenant predicate must be joinless. A suite that checks only the innermost column passes this table and fails the rule; this case fails such a suite by name."
+    },
+    {
+      "case": "a-missing-isolation-context-sees-nothing-scoped",
+      "levels": ["tenant"],
+      "tables": {
+        "tenants":  ["id", "public_id", "name"],
+        "invoices": ["id", "public_id", "tenant_id", "total_amount", "total_currency"],
+        "currencies": ["code", "exponent"]
+      },
+      "expect": { "findings": [] },
+      "queries": [
+        { "context": {}, "table": "invoices",
+          "rows": [ { "tenant_id": "t1" }, { "tenant_id": "t2" } ],
+          "visible": [] },
+        { "context": {}, "table": "currencies",
+          "rows": [ { "code": "USD" } ],
+          "visible": [0] }
+      ],
+      "why": "SD6. The platform host, an unauthenticated path, a job with no tenant bound: no context resolved means no scoped rows, by construction. Unscoped reference data is unaffected. An implementation that treats a null context as a wildcard fails the first query."
+    },
+    {
+      "case": "an-outer-context-does-not-see-across-inner-siblings-without-an-inner-context",
+      "levels": ["tenant", "client_org"],
+      "tables": {
+        "invoices": ["id", "public_id", "tenant_id", "client_org_id", "total_amount", "total_currency"]
+      },
+      "expect": { "findings": [] },
+      "queries": [
+        { "context": { "tenant_id": "t1" }, "table": "invoices",
+          "rows": [ { "tenant_id": "t1", "client_org_id": "c1" }, { "tenant_id": "t1", "client_org_id": "c2" }, { "tenant_id": "t2", "client_org_id": "c9" } ],
+          "visible": [0, 1] }
+      ],
+      "why": "SD5 containment: a tenant-level context sees every row in the tenant, across its client organisations, and nothing in another tenant. Whether a particular tenant USER may see across client orgs is the authorization layer's question (RB5); the isolation layer's question is only which tenant the rows belong to."
+    },
+    {
+      "case": "a-context-at-the-wrong-tenant-for-its-client-org-sees-nothing",
+      "levels": ["tenant", "client_org"],
+      "tables": {
+        "invoices": ["id", "public_id", "tenant_id", "client_org_id", "total_amount", "total_currency"]
+      },
+      "expect": { "findings": [] },
+      "queries": [
+        { "context": { "tenant_id": "t2", "client_org_id": "c1" }, "table": "invoices",
+          "rows": [ { "tenant_id": "t1", "client_org_id": "c1" } ],
+          "visible": [] }
+      ],
+      "why": "SD5's reason for the redundant column. c1 belongs to t1; a context claiming c1 under t2 matches on the inner column and fails on the outer one. A predicate that checked only client_org_id would return the row - which is the joinless-predicate rule protecting against a forged or stale context."
+    },
+    {
+      "case": "a-single-tenant-product-declares-no-levels-and-has-no-scoped-tables",
+      "levels": [],
+      "tables": {
+        "invoices": ["id", "public_id", "total_amount", "total_currency"]
+      },
+      "expect": { "findings": [] },
+      "queries": [
+        { "context": {}, "table": "invoices", "rows": [ { "id": 1 }, { "id": 2 } ], "visible": [0, 1] }
+      ],
+      "why": "SD5 fixes no depth, including zero. A single-tenant product declares no levels, nothing is scoped, and the suite has nothing to enumerate - which is a pass, not a gap."
+    }
+  ]
+}

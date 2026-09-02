@@ -183,7 +183,7 @@ document citing its own paperwork.
 
 Where a rule depends on a standard **not yet written**, the reference still
 has to be a working link, so it points at the row that tracks it:
-`[the data-layer standard](standards/000-platform.md#the-capability-roster)`.
+`[the secrets standard](standards/000-platform.md#the-capability-roster)`.
 That link resolves today, lands the reader on a row that says "not yet
 written", and becomes a direct link to the document when one lands. A bare
 name is not a reference and a link to a file that does not exist is a 404;
@@ -242,6 +242,7 @@ more standards land.
 | `000` | PC | [`000-platform.md`](standards/000-platform.md) | The platform contract: application-layer opinions as protocols and interface specs, never tools | review, gates named |
 | `010` | 1–18 | [`010-ci.md`](standards/010-ci.md) | Pipeline doctrine, the shared job catalog, build/release/publish | largely gated |
 | `020` | IP | [`020-identifiers.md`](standards/020-identifiers.md) | Identifiers and primitive representations: public vs internal ids, the format table, timestamps, money | review, corpus written |
+| `025` | SD | [`025-structured-data.md`](standards/025-structured-data.md) | Structured data: SQL as the query language, migrations as ordered `.sql` files shipped in the image, expand-only, declared isolation levels proven by enumeration, per-engine storage profile | review, corpus written |
 | `030` | SC | [`030-service.md`](standards/030-service.md) | The service contract: health and readiness, structured logging, configuration, graceful shutdown, runtime provenance | review, live gate available |
 | `040` | OC | [`040-observability.md`](standards/040-observability.md) | Observability transport and context propagation: W3C trace context, the id vocabulary, OTLP | review, corpus written |
 | `050` | HA | [`050-http.md`](standards/050-http.md) | Service interfaces: protocol selection (HTTP, gRPC, SSE, WebSocket), OpenAPI, RFC 9457 errors, cursor pagination, versioning, idempotency, backpressure, snake_case wire naming | review, corpus written |

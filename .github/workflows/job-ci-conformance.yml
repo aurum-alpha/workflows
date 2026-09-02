@@ -195,7 +195,11 @@ on:
         # f254ede/7a25f11/e54835c -- commits where that file is the real
         # checker, not this one. Nothing reads tools/ from main. Checked
         # against all eleven callers rather than reasoned about.
-        default: 850a32bfbb68ad908823bea7970fd576b6ef3415
+        #
+        # Bumped again for the ignore_binaries input on job-depcheck-js-knip.
+        # The job file is caller-consumed, so a caller pinning that change
+        # would otherwise fetch checkers from 850a32b.
+        default: af2fafc97021753245864e94907d99ab433e4c9d
 
 jobs:
   ci-conformance:

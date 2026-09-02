@@ -19,8 +19,8 @@ platform's runner starts a worker on a tick, at a deployment step, or by an
 operator's hand, how a job's declaration reaches that runner, and what a
 worker exposes about itself. **What it does not define is the job**: its key,
 its duplicate policy, its outcomes, its run record. A worker is the thing that
-knows about triggers, images, exit codes, and schedulers, precisely so that a
-job never has to.
+knows about triggers, images, exit codes, and schedulers, so that a job never
+has to.
 
 ## Why this exists
 
@@ -66,13 +66,25 @@ job.
 
 ### WK1. There are two worker models, and the trigger picks one
 
-**The pool** is long-lived. It connects to the service's transport (055 AM2),
-consumes the service's queue, dispatches each message to the per-event job the
-message's `type` routes to, and is scaled by replica count against the
-backlog. Its readiness is its connection to the transport; its shutdown is 030
-SC4: on `SIGTERM` it stops taking messages, finishes what it holds within the
-declared grace, and exits, and anything it held past that is redelivered. The
-pool is 055 AM6's worker, named here for what it runs.
+A worker takes one of two shapes:
+
+1. **The pool.** A long-running process that consumes the service's queue and
+   runs one per-event job per message, scaled by replicas against the backlog.
+2. **The one-shot.** A short-running process that runs one job and exits with
+   the outcome as its exit code, started on a tick, at a deployment step, or by
+   an operator.
+
+A stream of triggers, which is only ever a stream of messages, goes to the
+pool. A single invocation, which is a tick, a deployment step, or an operator,
+goes to a one-shot.
+
+**The pool** connects to the service's transport (055 AM2), dispatches each
+message to the per-event job the message's `type` routes to, and is scaled by
+replica count against the backlog. Its readiness is its connection to the
+transport; its shutdown is 030 SC4: on `SIGTERM` it stops taking messages,
+finishes what it holds within the declared grace, and exits, and anything it
+held past that is redelivered. The pool is 055 AM6's worker, named here for
+what it runs.
 
 **The outbox relay is a job the pool runs, never the server.** 055 AM4 has a
 producer write its event to an outbox table inside the state change's
@@ -89,19 +101,16 @@ inside the server, for every reason AM6 gives against a timer there: it runs
 per replica, it dies with every deployment, and the service contract's
 lifecycle rules cannot see it.
 
-**The one-shot** is short-lived. It starts, constructs the invocation for one
-job from its arguments (WK4), runs that job, writes the run record around it,
-maps the outcome to an exit code, and exits. It is started by the runner (WK5)
-on a tick, by the deployment at a deployment step, or by an operator. The
-migrate step of 025 SD3 is a one-shot, and was the first one written down.
+**The one-shot** starts, constructs the invocation for one job from its
+arguments (WK4), runs that job, writes the run record around it, maps the
+outcome to an exit code, and exits. It is started by the runner (WK5) on a
+tick, by the deployment at a deployment step, or by an operator. The migrate
+step of 025 SD3 is a one-shot, and was the first one written down.
 
-**The trigger picks the model**, and nothing else does. A stream of triggers,
-which is only ever a stream of messages, goes to the pool. A single invocation,
-which is a tick, a deployment step, or an operator, goes to a one-shot. Three
-shapes are refused by name: the timer loop, which is a scheduler fused with a
-job; the worker inside the server, which 055 AM6 already refuses; and work in
-the boot path, which runs once per replica rather than once, for the reason
-025 SD3 refuses migrate-at-boot.
+**Three shapes are refused by name**: the timer loop, which is a scheduler
+fused with a job; the worker inside the server, which 055 AM6 already refuses;
+and work in the boot path, which runs once per replica rather than once, for
+the reason 025 SD3 refuses migrate-at-boot.
 
 ### WK2. A worker is packaged as the platform packages everything, and a job is not an image
 
@@ -111,12 +120,12 @@ the repository's version, under [`010-ci.md`](010-ci.md)'s Principles 7 and
 artifact of that run. The job it runs is code under 057's contract, and is
 packaged only by being inside a worker.
 
-**Which jobs share a worker image is decided by three things, and by nothing
-else**: the dependency closure, the credential, and the configuration surface.
+**Which jobs share a worker image is decided by three things**: the dependency
+closure, the credential, and the configuration surface.
 Where all three are the same, jobs share an image. Where one differs, the
 image splits. So:
 
-- The **migrate image**, `<service>-migrate`, stands alone, always. 025 SD3
+- The **migrate image**, `<service>-migrate`, stands alone. 025 SD3
   gives it the migration credential and nothing else, and no other job may
   hold that credential.
 - A service's **ordinary one-shot jobs**, which run against the service's data
@@ -156,7 +165,7 @@ database's credential appears in the deployables of one repository and no
 other, which is what lets this rule be read from the build rather than from a
 review. It also rules out a relay built elsewhere that reads the service's
 tables through the change stream; the outbox relay is a job in the service's
-pool, and nothing else.
+pool.
 
 **Where a runtime cannot run a separate image**, the one-shot is a command in
 the service's server image, run to completion by the runner, with the same
@@ -174,8 +183,7 @@ external, its outbox, unless it has measured two workloads on that queue with
 scaling properties that fight each other, a slow job starving a fast one, a
 burst of one type delaying every other. Then it partitions, moves the job to
 its own queue and its own pool by changing the job's declaration, and records
-why in its own decisions. Partitioning is something a repository does with a
-reason in hand, not a rule it follows in advance.
+why in its own decisions.
 
 ### WK4. The one-shot's interface is one command, and it constructs the invocation
 
@@ -284,8 +292,8 @@ side to the same span.
 
 Configuration comes from the environment, and absence blocks starting, as 030
 SC3 requires of the server. A worker's configuration surface is the union of
-what its jobs declare they need and nothing more, which is one of the three
-things WK2 splits images on. The pool and the ordinary one-shot image carry
+what its jobs declare they need, which is one of the three things WK2 splits
+images on. The pool and the ordinary one-shot image carry
 the service's runtime credential. The migrate image carries the migration
 credential and no other. No worker image carries a credential for a database
 it does not own, because 057 JB9 gives a job no reason to have one.
@@ -316,7 +324,7 @@ has per-event jobs (WK2, read from the CI catalog calls); that every periodic
 declaration has a rendered counterpart in the deployment output and the two
 agree (WK6); and the corpus against the one-shot image (WK4). Review
 questions, said so in the ledger row: that no timer loop exists anywhere
-(WK1), that images are split for the three reasons and no others (WK2), and
+(WK1), that images are split for the three reasons (WK2), and
 that a partition was measured before it was made (WK3).
 
 ## Decisions

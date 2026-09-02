@@ -61,8 +61,8 @@ profile, with its identity in `(source, id)`, its payload's schema in
 takes that event as its input, unchanged. Nothing is invented for the majority
 case.
 
-**The input of an invoked job is not a CloudEvent, and the reason is stated
-rather than fudged.** A CloudEvent is a fact about an entity: past tense, with
+**The input of an invoked job is not a CloudEvent.** A CloudEvent is a fact
+about an entity: past tense, with
 a subject that is a public id. A tick, a deployment step, and an operator's
 command are none of those things. Forcing them into the envelope produces a
 type that is not past tense and a subject that is not an id, which is the
@@ -115,8 +115,7 @@ input   an Event (055 AM1) for a per-event job, or an Invocation
         job's declared schema.
 
 ctx     run_id (UUIDv7), the checkpoint store, the run record writer,
-        and the deadline as an instant. Nothing else. A job that needs
-        more than this is asking for something a job does not get.
+        and the deadline as an instant. Nothing else.
 
 outcome one of: succeeded | failed | skipped | unknown | expired (JB4)
 ```
@@ -124,10 +123,9 @@ outcome one of: succeeded | failed | skipped | unknown | expired (JB4)
 A job **ends**. It has no loop, no sleep waiting for its next turn, and no
 knowledge of what started it. The same job body runs unchanged when a pool
 dispatches to it for a message, when a one-shot runs it for a tick, and when
-an engineer runs it from a laptop against a development database. That is not
-an aspiration: JB3's declaration is what lets a worker construct the input for
-any trigger, and a job that can tell the difference has read something it
-should not have.
+an engineer runs it from a laptop against a development database. JB3's
+declaration is what lets a worker construct the input for any trigger, and a
+job that can tell the difference has read something it should not have.
 
 The job's payload or arguments are validated against a JSON Schema the job
 names, before the body runs. For a per-event job that is the event's
@@ -208,9 +206,9 @@ rule.
 | `reconcile` | the job or role that resolves `unknown`, `at_most_once` only | JB4. An `at_most_once` job with nobody named to resolve its unknowns is misdeclared. |
 
 The declaration is the whole of what a repository decides about a job's
-operation. Everything else follows from it mechanically, which is the point:
-the decisions that are not the domain's are made by filling in a form whose
-every field has a defined consequence.
+operation. Everything else follows from it mechanically: the decisions that
+are not the domain's are made by filling in a form whose every field has a
+defined consequence.
 
 ### JB4. A run ends in one of five outcomes, and each has an owner
 
@@ -254,7 +252,7 @@ The row is the mechanism for three other rules, not a report beside them:
 JB2's claim is the row with `claimed_at` set and `finished_at` null; JB6's lock
 is taken against it; JB8's freshness check is a query over it. Whatever runs
 the worker may keep its own history of runs, and that history is a
-convenience. This table is what is believed.
+convenience.
 
 Every log line a run writes carries `job.name` and `job.run_id` in the 040 OC4
 context block, and the run's span carries the OpenTelemetry attributes named
@@ -304,8 +302,7 @@ more, and the two numbers are read together because they are written
 together.
 
 The signal is *success*, not attempts. A job that runs every night and fails
-every night is stale under this rule, which is what an operator would want to
-know.
+every night is stale under this rule.
 
 ### JB9. A job produces through the outbox and reads only its own service's database
 
@@ -313,9 +310,7 @@ Anything a job needs another service to know becomes a message under 055 AM4,
 written to the outbox in the same transaction as the effect, so a job's
 fan-out is exactly as reliable as its work. Anything another service owns is
 reached through that service's interface or its messages, never its state
-(025 SD13). A job that reconciles two services is two jobs and a queue, and
-the reason is the same as everywhere else in the platform: one owner per
-table.
+(025 SD13). A job that reconciles two services is two jobs and a queue.
 
 ### JB10. A backfill is a long, single-flight, on-demand, idempotent job, and never a migration
 

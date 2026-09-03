@@ -1,0 +1,5 @@
+# The eleven checkers under tools/ are Python. Running one locally, or importing
+# one to test a predicate, leaves a __pycache__ beside it — an untracked
+# directory in `git status` that belongs to nobody's change.
+__pycache__/
+*.py[cod]

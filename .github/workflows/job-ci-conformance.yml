@@ -208,7 +208,13 @@ on:
         # Doing both in one commit is the exit-127 shape: the job body reaches
         # a caller from its own pin, the tools reach it from here, and an
         # invocation that arrives before the file is a command not found.
-        default: 5d73b58dd264e28031b738ac5b9e745a4646c4f8
+        #
+        # Bumped again for the retirement of the adoption-state lists. Both
+        # checkers are caller-consumed and both changed what they report: a
+        # caller pinning that change while this pointed at 5d73b58 would fetch
+        # checkers that still filter on a repository name, and get the old
+        # verdict from the new body.
+        default: ceaf7528d81096dd2afd30ef3ae06ec197618b83
 
 jobs:
   ci-conformance:
@@ -381,10 +387,10 @@ jobs:
       # has seven. Nothing happened: the trees sat there agreeing by luck, and
       # the one that had drifted was the one carrying content the others lacked.
       #
-      # A repo not yet in the checker's ADOPTED list still gets every finding
-      # printed here — it just does not fail on them. That is the same contract
-      # check-ci-conformance gives an UNCONVERTED repo, and it exists so an
-      # unadopted repo is visibly a known gap rather than silently unchecked.
+      # Every caller is checked the same way. Calling this job IS the adoption,
+      # so there is no list of adopting repositories to consult and no repo this
+      # step knows by name; standing debt runs under warn_only above, which the
+      # caller declares in its own ci.yml.
       - name: One source of agent guidance
         if: ${{ !cancelled() }}
         env:

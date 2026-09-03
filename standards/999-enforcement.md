@@ -53,7 +53,8 @@ will.
 | — | `workdir` names a shape, not a path | `check-ci-conformance` WD | gated |
 | — | Every upload declares `retention-days` | `check-ci-conformance` RET | gated³ |
 | — | Per-stack DAG in multi-codebase repos | — | **review only** |
-| — | SHA pinning | `check-ci-conformance` PIN | gated |
+| — | Third-party actions SHA-pinned with a version comment | `check-ci-conformance` PIN | gated |
+| — | First-party catalog referenced at `@main`, never pinned | `check-ci-conformance` PIN | gated |
 | — | `ci-ok` is the only required check | branch protection | gated |
 | — | Branches up to date before merging | branch protection | gated |
 | — | The `ci-ok` body is the one the pull request ships | — | **review only** |

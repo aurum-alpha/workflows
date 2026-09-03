@@ -212,7 +212,10 @@ stays a review question.
 ## Charter: document conventions
 
 Rules from [`../README.md`](../README.md)'s "How these documents are
-written" and "The foundation: twelve-factor".
+written", "The foundation: twelve-factor" and "Acceptable solutions: the
+register of what satisfies a standard". D5 to D9 govern the registers under
+`solutions/`, which state no rules of their own and are therefore governed
+entirely from here.
 
 | # | Rule | Enforced by | Status |
 |---|---|---|---|
@@ -220,6 +223,11 @@ written" and "The foundation: twelve-factor".
 | D2 | Documents reference documents by working relative link — never a tracker number, never a bare name; a standard not yet written is linked at its roster row | `check-standards-docs` (proposed): no issue or pull-request reference in a standard's prose, and every relative link resolves | **review only** |
 | D3 | A rule restating a twelve-factor factor cites it; a rule departing from one says so, in the rule, with the reason | — resists honestly: whether a citation is apt, or a departure argued, is judgment | **review only** |
 | D4 | A rule is argued from principle, never from precedent, and a standard is not an inventory: it names, counts and describes no repository; a failure mode is stated as the general property it is, so the text does not reveal which repository, if any, taught it | — resists honestly: a grep finds repository names and counting phrases, not the fallacy, and is still worth running. The review question on every rule and every Decisions entry: *would this reason hold if no current repository existed?* | **review only** |
+| D5 | An acceptable solutions register states no rule: delete it and every rule still stands, with every repository still able to comply | the citation half is **static and decidable** — `check-solutions` (proposed): every rule id a register cites exists in the standard it shares a number with, which catches the drift that turns a claim into an orphan when a standard is renumbered. Whether a sentence is a claim or a rule in the wrong document resists honestly and is the review question on every register diff | **review only** |
+| D6 | Absence from a register is not refusal; what is refused is refused by a rule in the standard, which the register cites | — resists honestly. The observable half: a register's refusals table cites a rule id for every row, checked with D5's citation pass | **review only** |
+| D7 | A register entry is a technical claim on a date — never an endorsement, a price, a contract term or a vendor ranking | `check-solutions` (proposed): a currency symbol, or the pricing vocabulary, in a register is a finding. Close to no false positives, because the vocabulary has no other use on a page this class admits | **review only** |
+| D8 | Every register carries the date its claims were last checked; the horizon is 180 days, lowerable and not raisable; an entry past it is a finding | **static and decidable, and the mechanism of the whole class** — `check-solutions` (proposed): parse the checked date, compare to the run date, fail past the horizon. The same shape as 038 FF3's date comparison, over a different committed file, and worth folding into that checker rather than writing twice | **review only** |
+| D9 | A register may name at most one default route, argued, and says what would change it | — resists honestly: that an argument is good is judgment. That there is at most one is a review question a reader answers by reading the page | **review only** |
 
 D1 and D2 are the cheapest gates in this ledger — a grep each, no false
 positives — and they are the kind of rule that regresses silently, because a
@@ -237,6 +245,19 @@ One carve-out is unsettled and left visible rather than assumed: the CI
 standard's decisions log cites the change that settled each row, which is
 history rather than a live reference, and whether D2 admits that is a review
 question until someone rules on it.
+
+D5 to D9 land review-only under the charter's own sequence, and D8 is the row
+to watch: **a register whose staleness nothing detects is the exact failure the
+register class was created to prevent, one document further out.** The horizon
+is a date in a file compared to the run date — the cheapest check in this
+ledger after D1 — and until `check-solutions` exists, a register's freshness
+rests on someone reading the date, which is what the class says is not good
+enough. Writing it is the first follow-up this section is asking for, and it
+belongs beside `check-flag-declarations`, whose date comparison is the same
+comparison over a different file.
+D5's citation pass is worth the same trip: it is what stops a register drifting
+into an orphan after a standard is renumbered, and it is the only mechanical
+grip on the boundary between a claim and a rule.
 
 ## Service standard
 

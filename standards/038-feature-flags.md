@@ -4,7 +4,10 @@ One of the Aurum Alpha engineering standards, written under the platform
 contract ([`000-platform.md`](000-platform.md)) — a per-capability standard
 from its roster. Read [`999-enforcement.md`](999-enforcement.md) for the tier
 each rule below actually holds. Artifacts:
-[`contracts/feature-flags/`](../contracts/feature-flags/). Configuration is
+[`contracts/feature-flags/`](../contracts/feature-flags/); what is known to
+satisfy these rules, and when that was last checked, is
+[`solutions/038-feature-flags.md`](../solutions/038-feature-flags.md), which
+states no rule of its own. Configuration is
 [`030-service.md`](030-service.md) SC3's; the authorization check a flag never
 replaces is [`070-rbac.md`](070-rbac.md)'s; what a browser is told is
 [`090-web-client.md`](090-web-client.md) WC2's; the ids in an evaluation

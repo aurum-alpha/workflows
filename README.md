@@ -298,9 +298,94 @@ Each issue carries the reasoning it was raised with, so the document can be
 written from the argument rather than from memory. Each lands with the next
 free number and its own prefix.
 
+## Acceptable solutions: the register of what satisfies a standard
+
+A standard states a rule and the reasoning behind it, and both are meant to
+outlive the tools that satisfy them. **The tools do not cooperate.** A provider
+is acquired and renamed, a package stops being maintained, a vendor's language
+coverage changes in a minor release, a protocol everyone implements arrives and
+makes the adapter question moot. A document that named those tools is then
+wrong in the way this repository exists to prevent — quietly, because prose
+does not fail. **A standard that lists what to buy has put its most perishable
+sentence inside its most durable document.**
+
+Removing the sentence is not the answer either. Someone starting a capability
+has to pick something, and a standard that pins a specification and names
+nothing that implements it has handed back the arbitrary decision this
+repository exists to take away.
+
+So the perishable half lives in a second class of document, under `solutions/`:
+**the acceptable solutions register**. One per standard that needs one, sharing
+that standard's number, so [`solutions/038-feature-flags.md`](solutions/038-feature-flags.md)
+answers [`standards/038-feature-flags.md`](standards/038-feature-flags.md) and
+the number is still the address.
+
+The pattern is borrowed from performance-based building codes, which state what
+a wall has to achieve and, in separate documents, name constructions deemed to
+satisfy it. Building the named construction settles compliance with no argument;
+building something else is permitted and carries the burden of demonstrating
+compliance another way. The requirement outlives the products, the products are
+revised without reopening the requirement, and nobody confuses the two, which
+are exactly the three properties wanted here.
+
+A register does one job: for one standard, name the routes known to satisfy its
+rules, say **which rule ids** each route satisfies, say which rules it leaves
+for the repository to build anyway, and carry the date each claim was last
+checked.
+
+Five rules, because each is a way this class fails quietly:
+
+1. **A register never states a rule.** Every requirement lives in the standard;
+   the register only claims that something meets one. The test is destructive
+   and worth applying to any sentence in doubt: **delete the whole register and
+   every rule must still stand, with every repository still able to comply** —
+   more slowly, arguing its own choice. A register sentence that fails that test
+   is a rule in the wrong document, where no ledger row covers it and no reader
+   looking for rules will find it.
+2. **Absence is not refusal.** An option the register does not name is not
+   forbidden; it is unexamined. A repository may take it by demonstrating
+   compliance against the standard's rules — and then it is entered here, so the
+   next repository does not repeat the demonstration. What *is* refused is
+   refused by a rule in the standard, and the register cites that rule.
+3. **A listing is a technical claim on a date, never an endorsement or a
+   purchase.** No prices, no contract terms, no vendor ranking, no comparison
+   table that reads as a bake-off. Commercial terms perish faster than anything
+   technical, and a register carrying them becomes a procurement document that
+   nobody updates and everyone quotes. The question a register answers is *does
+   this route comply*, not *what should we buy*.
+4. **Every entry carries the date it was last checked, and a stale entry reads
+   as stale.** The horizon is **180 days**: an entry not re-checked within it is
+   a finding, the same way an overdue flag is. A register may lower the horizon
+   and may not raise it. This is the whole mechanism of the class — an entry
+   that rots silently is worse than no entry, because it carries this
+   repository's authority while being wrong.
+5. **A register may name one default route**, argued, for a repository with no
+   reason to choose otherwise. That is not a ranking of vendors; it is the
+   charter's own purpose — an arbitrary decision made once — applied to the one
+   place a standard deliberately leaves open. The default is a technical
+   argument a reader can disagree with, and the register says what would change
+   it.
+
+Registers in existence today: `038`. A standard with no register is a standard
+whose implementations nobody has surveyed yet, which is a gap tracked as an
+issue like any other — not a statement that the standard admits nothing.
+
+**A register is vendored at handover like a standard**, and the freeze bites
+harder here: a client repository keeps a document whose claims stop being
+re-checked on the day it leaves. Rule 4 is what protects that reader, because
+the dates travel with the entries and a reader can see for themselves how old
+the survey is.
+
+Adding one follows the standards path, shortened: open an issue with the
+argument, write `solutions/<number>-<slug>.md` against the rule ids it claims to
+satisfy, register the class's checkable claims in the ledger, and add the number
+to the list above.
+
 ## What is here
 
 - `standards/` — the numbered documents above.
+- `solutions/` — the acceptable solutions registers: per standard, what is
+  known to satisfy its rules, and when that was last checked.
 - `contracts/` — the artifacts behind the application-layer standards: JSON
   Schemas and conformance corpora, one directory per capability.
 - `.github/workflows/job-*.yml` — the shared job catalog. One reusable workflow

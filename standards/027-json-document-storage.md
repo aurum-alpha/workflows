@@ -399,11 +399,22 @@ because the documents are there.
 
 ### Move to a document database when the column fails a test, and choose by the test
 
-| Engine class | Examples admitted in [`storage-profiles.json`](../contracts/json-document-storage/storage-profiles.json) | Answers | Role | What it gives up |
+| Engine class | Admitted as | Answers | Role | What it gives up |
 |---|---|---|---|---|
-| **General-purpose document engine** | The engine behind the MongoDB wire protocol, admitted as a protocol profile because several servers implement it independently — a repository moves between them by connection string | `scale`: a large, write-heavy collection of self-contained documents that relates to nothing but its owner, queried by many interior fields with secondary indexes, whose volume is degrading the transactional tables beside it. `query_shape` where the shape is rich secondary indexing over per-document shapes rather than relevance. | `primary` or `derived` | Foreign keys, cross-document uniqueness, checks, a transaction with the owner row (DS3: SD10 and SD11 do not transfer). |
-| **Key-value document store** | DynamoDB, admitted as a single implementation | `scale` at the far end: a collection accessed by known keys along access patterns designed up front — a per-tenant event log, a session-shaped record, a device's last-known state — at a write rate the relational engine will not sustain, with no ad-hoc query at all. | `primary` (its own copy) or `derived` (a keyed read model) | Every query the design did not anticipate; secondary indexes are declared and paid for; no interior query language. |
-| **Search engine** | Elasticsearch and OpenSearch, each a single implementation — they share a lineage and have diverged | `query_shape`: relevance ranking, full-text analysis, faceting, aggregation and geospatial ranking over user-authored shapes, which the relational engine's JSON indexing cannot serve. | `derived` only, by construction | Durability as a system of record: an index is a projection, rebuilt from rows (DS8), and the profile admits no other role. |
+| **General-purpose document engine** | A **protocol profile**, because several servers implement the same wire protocol independently and a repository moves between them by connection string | `scale`: a large, write-heavy collection of self-contained documents that relates to nothing but its owner, queried by many interior fields with secondary indexes, whose volume is degrading the transactional tables beside it. `query_shape` where the shape is rich secondary indexing over per-document shapes rather than relevance. | `primary` or `derived` | Foreign keys, cross-document uniqueness, checks, a transaction with the owner row (DS3: SD10 and SD11 do not transfer). |
+| **Key-value document store** | A **single implementation**, because the access-pattern design and the index economics are that engine's and do not transfer | `scale` at the far end: a collection accessed by known keys along access patterns designed up front — a per-tenant event log, a session-shaped record, a device's last-known state — at a write rate the relational engine will not sustain, with no ad-hoc query at all. | `primary` (its own copy) or `derived` (a keyed read model) | Every query the design did not anticipate; secondary indexes are declared and paid for; no interior query language. |
+| **Search engine** | A **single implementation per lineage**, because a shared ancestry that has since diverged is two engines and not one profile | `query_shape`: relevance ranking, full-text analysis, faceting, aggregation and geospatial ranking over user-authored shapes, which the relational engine's JSON indexing cannot serve. | `derived` only, by construction | Durability as a system of record: an index is a projection, rebuilt from rows (DS8), and the profile admits no other role. |
+
+**Which engines are admitted in each class is
+[`storage-profiles.json`](../contracts/json-document-storage/storage-profiles.json),
+and that file is the roster rather than a survey of one.** An engine is
+admitted by adding its entry there and to
+[`admission.schema.json`](../contracts/json-document-storage/admission.schema.json)'s
+engine enumeration in one change, with every per-engine fact filled in and the
+corpus asserting the two agree; an engine absent from it is **not admitted**,
+which is why the roster is not an acceptable solutions register. A register
+names what a repository *may* choose where the standard leaves the choice
+open. Here the standard closes it, and the closure is enforced.
 
 Two of the three tests carry a number. `scale` is stated in the admission —
 the collection's size and write rate, and what they did to the table beside

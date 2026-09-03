@@ -4,9 +4,11 @@ One of the Aurum Alpha engineering standards, written under the platform
 contract ([`000-platform.md`](000-platform.md)) — a per-capability standard
 from its roster. Read [`999-enforcement.md`](999-enforcement.md) for the tier
 each rule below actually holds. Artifacts:
-[`contracts/secrets/`](../contracts/secrets/). The words *process*, *image*,
-*backing service*, *credential*, *configuration* and *environment* are used in
-the senses [`000-platform.md`](000-platform.md#terms) defines. This leans on
+[`contracts/secrets/`](../contracts/secrets/); what is known to satisfy SE10,
+and when that was last checked, is
+[`solutions/032-secrets.md`](../solutions/032-secrets.md), which states no rule
+of its own. The words *process*, *image*, *backing service*, *credential*,
+*configuration* and *environment* are used in the senses [`000-platform.md`](000-platform.md#terms) defines. This leans on
 [`030-service.md`](030-service.md) SC2 and SC3, [`010-ci.md`](010-ci.md),
 [`025-structured-data.md`](025-structured-data.md) SD3,
 [`035-workers.md`](035-workers.md) WK8,
@@ -348,8 +350,15 @@ SE1 says a process sees a variable and never fetches. This rule says how the
 variable gets there, because that is where "the platform delivers it" has
 been left to each repository to discover. There is no industry standard for
 the step between a secret store and a process's environment; there is an
-established set of mechanisms, one per runtime, and this rule pins the class
-per runtime and names examples so a repository does not invent a fourth.
+established set of mechanism *classes*, one per runtime, and this rule pins
+the class and the properties any implementation of it must have, so that a
+repository does not invent a fourth.
+
+**Which implementations meet those properties today is
+[`solutions/032-secrets.md`](../solutions/032-secrets.md)'s**, because the
+products in this space are renamed, acquired and superseded on a timescale
+this document is not written to track. The rule is the class and the test
+below; the register is the survey, dated.
 
 **One secret store per platform, chosen by the platform and not by the
 repository.** A store is a running service with three properties the
@@ -359,9 +368,9 @@ new version and the previous one is still there for the `dual_window` mode
 a leak investigation (SE8) has somewhere to look; and access is scoped per
 environment and per service, so the production value is readable by the
 production workload and by the named owner, and by nothing else. The
-platform's own manager — the cloud provider's secret manager, or a hosted
-manager such as Doppler, or a self-hosted vault — meets this; a repository
-does not pick a different one because its author prefers it, for the reason
+platform's own manager meets this, whether it is the hosting provider's, a
+hosted manager or a self-hosted one; a repository does not pick a different
+one because its author prefers it, for the reason
 [`000-platform.md`](000-platform.md) PC1 gives. A file of encrypted values
 committed to the repository is **not** a store: it has no access log, it
 puts ciphertext into a history that leaves the portfolio at handover under a
@@ -375,11 +384,11 @@ path it comes from and the form it takes — never a value — committed beside
 the deployment configuration, one per environment, so the declaration's
 names are what is checked against it (SE2):
 
-| Runtime | Mechanism | `env` | `file` | Notes |
+| Runtime | Mechanism class | `env` | `file` | Notes |
 |---|---|---|---|---|
-| Kubernetes | A secrets operator that syncs the store into native `Secret` objects — the External Secrets Operator is the established one — with the workload consuming them as `env` or a projected volume; or the Secrets Store CSI driver mounting the store directly as files, with its optional sync to a `Secret` for `env`. | `valueFrom.secretKeyRef` per variable | A projected volume at the declared `path`; the driver rotates the file in place, which is what `reissue` needs | A native `Secret` written by hand or by a pipeline is a copy nobody rotates; the operator owns it. Sealed or encrypted secrets in the repository are the file-of-ciphertext above. |
-| Managed container services | The service's task or revision definition references the store entry by ARN or name and the platform injects it at start. | Native | Native where the platform mounts secrets as files; otherwise the process receives the material in `env` and writes it to its declared path itself at start, before serving | Every major provider's container service does this for its own secret manager; a hosted manager such as Doppler integrates by syncing into that native store. |
-| Virtual machines and systemd | An agent renders the store into `EnvironmentFile=` or `LoadCredential=` before the unit starts, under the machine's platform identity. | `EnvironmentFile=` rendered by the agent, mode `0600`, owned by the service user | `LoadCredential=` places the material under `$CREDENTIALS_DIRECTORY`; the declared path is a symlink to it or the path itself | The agent runs as its own unit with its own credential to the store; the service unit has none. |
+| An orchestrator with a native secret object | An operator that syncs the store into the orchestrator's native secret objects, which the workload consumes as variables or a projected volume; or a driver that mounts the store directly as files, syncing to a native object where variables are also needed. | The orchestrator's per-variable reference to the synced object | A projected volume at the declared `path`, rotated in place by the driver, which is what `reissue` needs | A native secret object written by hand or by a pipeline is a copy nobody rotates; the operator owns it. Sealed or encrypted secrets in the repository are the file-of-ciphertext above. |
+| Managed container services | The service's task or revision definition references the store entry by identifier and the platform injects it at start. | Native | Native where the platform mounts secrets as files; otherwise the process receives the material in `env` and writes it to its declared path itself at start, before serving | Every major provider's container service does this for its own secret manager; a hosted manager reaches it by syncing into that native store. |
+| Virtual machines and init-system units | An agent renders the store into the unit's environment file or its credential directory before the unit starts, under the machine's platform identity. | An environment file rendered by the agent, mode `0600`, owned by the service user | The init system's credential directory, with the declared path a symlink to it or the path itself | The agent runs as its own unit with its own credential to the store; the service unit has none. |
 | The developer's machine | `.env` per SE9, filled from `.env.example`. | `--env-file .env` | A path under the repository's ignored directory | Never a production value; a hosted manager's per-developer development configuration is admitted as the source of that `.env` and is still not the process's client. |
 | The pipeline | The CI system's own secret store, per SE9, preferring OIDC federation to the cloud. | Native | A job step writes the material to the runner's temporary directory and removes it | The pipeline's secrets are for building and publishing; a deploying job hands the platform a reference, never a value. |
 

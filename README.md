@@ -366,9 +366,22 @@ Five rules, because each is a way this class fails quietly:
    argument a reader can disagree with, and the register says what would change
    it.
 
-Registers in existence today: `038`. A standard with no register is a standard
-whose implementations nobody has surveyed yet, which is a gap tracked as an
-issue like any other — not a statement that the standard admits nothing.
+**A tool the standard dictates is part of the rule and stays in the standard.**
+The register carries a choice the standard leaves open; it never carries a
+choice the standard has already closed. Where a document pins a component —
+because a rule is stated in that component's vocabulary, or because an
+enumeration in `contracts/` decides what is admitted and a checker holds a
+repository to it — the component is a rule, and moving it to a register would
+turn an enforced decision into a dated survey. The two are told apart by one
+question: **would naming something else here be a violation, or a choice?** A
+violation means it stays.
+
+Registers in existence today: `032`, `035`, `038`, `060`. A standard with no
+register is one of two things, and the difference matters: either its
+implementations have not been surveyed yet — a gap, tracked as an issue like
+any other — or it closes the choice itself, as the JSON document storage
+standard's engine roster does in `contracts/`. Neither is a statement that the
+standard admits nothing.
 
 **A register is vendored at handover like a standard**, and the freeze bites
 harder here: a client repository keeps a document whose claims stop being

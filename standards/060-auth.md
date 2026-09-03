@@ -3,7 +3,10 @@
 One of the Aurum Alpha engineering standards, written under the platform
 contract ([`000-platform.md`](000-platform.md)) — a per-capability standard from its
 roster. Read [`999-enforcement.md`](999-enforcement.md) for the tier each rule below
-actually holds. Artifacts: [`contracts/auth/`](../contracts/auth/).
+actually holds. Artifacts: [`contracts/auth/`](../contracts/auth/); which proxy
+modules and providers are known to satisfy these rules, and when that was last
+checked, is [`solutions/060-auth.md`](../solutions/060-auth.md), which states no
+rule of its own.
 
 This document governs how a person comes to be authenticated, what identity
 reaches an application as a result, how that identity is created in the first
@@ -55,8 +58,10 @@ job is a legitimate reading of the pattern. This standard prefers the proxy for
 reasons that hold across every product: the backend stays smaller, authentication
 is a tier the application never links against, and the whole capability arrives
 as configuration rather than as a runtime we must maintain — which is what
-PC1 asks of every opinion here. `lua-resty-openidc` on nginx and
-`mod_auth_openidc` on Apache both satisfy it with no first-party code at all.
+PC1 asks of every opinion here. Established OIDC modules for the common
+reverse proxies satisfy it with no first-party code at all;
+[`solutions/060-auth.md`](../solutions/060-auth.md) names which, and when that
+was last checked.
 
 An application-code BFF is admitted where a repository states the reason in its
 **Conventions**. AU7 sets out what that choice costs.
@@ -205,7 +210,8 @@ Two consequences worth stating so nobody helpfully undoes them:
 
 - **Email uniqueness is enforced at the provider, and verified.** Otherwise a
   second unverified account on the same address exists and the matching key stops
-  matching one person. In Keycloak this is the realm's duplicate-emails setting.
+  matching one person. Every provider has a setting for this; the register
+  names where it lives per provider.
 - **A person changing their email costs nothing.** The subject does not change,
   the link holds, no foreign key moves. That is the payoff for not keying on it.
 
@@ -287,8 +293,8 @@ simultaneously correct, and are not drift.
 #### Where the provider is the source instead
 
 Where an HR or identity-governance system owns the workforce lifecycle, it
-provisions **into** the provider — which is what Keycloak's own SCIM support is
-for — and applications learn of a person by roster sync or on first login. That
+provisions **into** the provider — which is what a provider's own SCIM support
+is for — and applications learn of a person by roster sync or on first login. That
 is a third case, admitted, and it does not change anything above for
 application-initiated users.
 
@@ -437,7 +443,7 @@ flowchart TB
       direction TB
       Br1["Browser"] --> St1["example.com<br/>static"]
       Br1 --> Id1["auth.example.com<br/>identity provider"]
-      Br1 --> Rp1["api.example.com<br/>nginx · OAuth client<br/>session + tokens"]
+      Br1 --> Rp1["api.example.com<br/>edge proxy · OAuth client<br/>session + tokens"]
       Rp1 -->|identity token| Api1["API server<br/>not internet-facing"]
     end
     subgraph B2["B2 · the API server is its own BFF — admitted"]
@@ -451,7 +457,7 @@ flowchart TB
 
 | | B1 · proxy | B2 · application code |
 |---|---|---|
-| The OAuth client is | nginx at the edge | the API server |
+| The OAuth client is | the proxy at the edge | the API server |
 | Tokens live | in the proxy, never in application memory | in the application process |
 | The API server receives | a signed identity token | its own session |
 | API server internet-facing | no | yes |

@@ -4,9 +4,11 @@ One of the Aurum Alpha engineering standards, written under the platform
 contract ([`000-platform.md`](000-platform.md)) — a per-capability standard
 from its roster. Read [`999-enforcement.md`](999-enforcement.md) for the tier
 each rule below actually holds. Artifacts:
-[`contracts/workers/`](../contracts/workers/). The words *service*, *server*,
-*worker*, *process*, *job*, *run*, *trigger*, *release* and *deployment* are
-used in the senses [`000-platform.md`](000-platform.md#terms) defines. What a
+[`contracts/workers/`](../contracts/workers/); which components satisfy WK5's
+seven verbs, and when that was last checked, is
+[`solutions/035-workers.md`](../solutions/035-workers.md), which states no rule
+of its own. The words *service*, *server*, *worker*, *process*, *job*, *run*,
+*trigger*, *release* and *deployment* are used in the senses [`000-platform.md`](000-platform.md#terms) defines. What a
 worker runs is a job, and jobs are [`057-jobs.md`](057-jobs.md)'s; the queue a
 pool consumes is [`055-messaging.md`](055-messaging.md)'s; the server the
 worker sits beside is [`030-service.md`](030-service.md)'s, and the worker
@@ -51,9 +53,12 @@ and `SIGTERM` followed by `SIGKILL` after a grace period. **POSIX cron** gives
 the schedule its form: five fields, read the same by every scheduler below.
 **The Kubernetes `batch/v1` API**, Job and CronJob, is the most complete
 written form of what a runner must do, and WK5's seven verbs are its
-vocabulary; systemd timers with oneshot units, the container CLI driven by a
-pipeline or an operator, and the managed schedulers of the major clouds satisfy
-the same verbs. **[Factor XII](https://12factor.net/admin-processes)** names
+vocabulary; init-system timers, the container CLI driven by a pipeline or an
+operator, and the managed schedulers of the major clouds satisfy the same
+verbs, which is what makes the vocabulary a contract rather than one
+orchestrator's API — [`solutions/035-workers.md`](../solutions/035-workers.md)
+says which components satisfy them, and when that was last checked.
+**[Factor XII](https://12factor.net/admin-processes)** names
 the one-shot: an admin process run as a one-off from the same release, with
 the same code, configuration, and dependencies as the long-running processes.
 
@@ -218,17 +223,27 @@ replica dying costs one batch rather than the run.
 Something has to start a one-shot on a tick. This standard names no runner and
 builds none. It states what the runner must do, in
 [`runner-contract.json`](../contracts/workers/runner-contract.json), and each
-runtime the platform could sit on already has a component that does it:
+runtime the platform could sit on already has a component that does it. The
+seven verbs:
 
-| The runner must | Kubernetes Job / CronJob | systemd timer + oneshot | Container CLI, by a pipeline or an operator | Managed schedulers |
-|---|---|---|---|---|
-| Run an image, or a command in one, to completion with args and env, and expose the exit code | `Job`, `restartPolicy: Never` | `Type=oneshot`, `ExecStart=` | `docker run` | ECS RunTask, Cloud Run Jobs, Nomad `batch` |
-| Deliver `SIGTERM` and wait the declared grace before `SIGKILL` | `terminationGracePeriodSeconds` | `TimeoutStopSec=` | `docker stop -t` | Task stop timeout |
-| Enforce the declared deadline | `activeDeadlineSeconds` | `RuntimeMaxSec=` | `timeout` around the run | Task timeout |
-| Fire a five-field cron schedule in UTC, passing the tick as `--at` | `schedule`, `timeZone: Etc/UTC` | `OnCalendar=`, translated from cron | Not a scheduler | EventBridge Scheduler, Cloud Scheduler, Nomad `periodic` |
-| Never start a second run of one schedule while one is running | `concurrencyPolicy: Forbid` | A timer never starts an active unit | — | `prohibit_overlap` and equivalents |
-| Never retry a failed run | `backoffLimit: 0` | No `Restart=` | — | Retry count zero |
-| Handle a missed tick by the declared policy: run late within the window, or skip | `startingDeadlineSeconds` | `Persistent=` | — | Catch-up settings |
+1. **Run an image**, or a command in one, to completion with args and
+   environment, and expose the exit code.
+2. **Deliver `SIGTERM`** and wait the declared grace before `SIGKILL`.
+3. **Enforce the declared deadline.**
+4. **Fire a five-field cron schedule in UTC**, passing the tick as `--at`.
+5. **Never start a second run of one schedule** while one is running.
+6. **Never retry a failed run.**
+7. **Handle a missed tick by the declared policy**: run late within the
+   window, or skip.
+
+A runtime satisfies the contract or it does not, and a repository is
+conformant on any that does. **Which components satisfy which verb, and by
+which setting, is
+[`solutions/035-workers.md`](../solutions/035-workers.md)** — a mapping that
+changes with every orchestrator release and belongs where a date can be put on
+it. A runtime missing a verb is not a reason to drop the verb; it is a reason
+that runtime is not a runner, and the register says which verbs each one
+leaves unsatisfied.
 
 Two of those verbs duplicate guarantees the job already carries, and the
 duplication is deliberate. The runner forbids overlap and 057 JB6 locks in the

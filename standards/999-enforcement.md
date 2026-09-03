@@ -562,8 +562,11 @@ OC1's row points here for the envelope half.
 Rules from [`035-workers.md`](035-workers.md) — the two worker models, how
 their images are cut, the one-shot's command and exit codes, the runner
 contract, and how a declaration reaches the runner. The runner is adopted
-from existing schedulers rather than built, so WK5 is a table of settings a
-renderer emits and a checker can read back.
+from existing schedulers rather than built, so WK5 states seven verbs and
+[`../solutions/035-workers.md`](../solutions/035-workers.md) maps them onto the
+settings a renderer emits and a checker can read back — the mapping being the
+part that moves with an orchestrator release, and the verbs the part that does
+not.
 
 | # | Rule | Enforced by | Status |
 |---|---|---|---|
@@ -740,7 +743,7 @@ violates AE2 or AE4 fails those rows too.
 | SE7 | Every static secret has an owner and a `max_age_days` (default 90, ceiling 365); rotation is `restart` or `dual_window` with a procedure in the operations docs; a stale or never-rotated secret is a finding | the age and mode are schema-decided; the freshness comparison is four `rotation` corpus cases and, live, a check reading the platform store's rotation dates against the declaration (proposed `check-secret-freshness`); that the procedure is followed rather than worked around is review | **review only** |
 | SE8 | A leak is rotated first, investigated second, audited as `secret.rotate`/`secret.revoke` with the secret as target by declaration id and no value in the event; history is never rewritten; handover rotates every secret the repository ever referenced | the event shape is **decided by `leak_response` corpus cases** against `contracts/audit/event.schema.json` plus the no-value scan; the order of operations and the handover rotation are review questions, stated as such | **review only** |
 | SE9 | Development uses development backing services with credentials minted by the file that starts them; `.env.example` is the contract and matches the declaration; pipeline credentials are the CI store's, least-privilege, OIDC-federated where possible, never printed | the `.env.example`-matches-declaration diff is a static check beside SE2's; the compose admission is two `forbidden_locations` cases; that a development credential grants nothing outside the developer's machine is review | **review only** |
-| SE10 | One secret store per platform (versioned values, an access log naming the principal, per-environment and per-service scoping); the store renders into the environment by the runtime's own mechanism — a secrets operator or the Secrets Store CSI driver on Kubernetes, native injection on managed container services, an agent rendering `EnvironmentFile=`/`LoadCredential=` under systemd — on the platform's side of the variable; the repository ships a mapping of declared name to store path and never a value; encrypted secret files in the repository are not a store | the mapping's names against the declaration is the same gate as `.env.example`'s (SE2, SE9); a value in the mapping is SE4's scanner; that the mechanism is one from the table and that the application process holds no store credential are review questions (a call-graph and a platform fact, PC4) | **review only** |
+| SE10 | One secret store per platform (versioned values, an access log naming the principal, per-environment and per-service scoping); the store renders into the environment by the runtime's own mechanism class — an operator or driver syncing into an orchestrator's native secret object, native injection on managed container services, an agent rendering the unit's environment file or credential directory — on the platform's side of the variable; the repository ships a mapping of declared name to store path and never a value; encrypted secret files in the repository are not a store | the mapping's names against the declaration is the same gate as `.env.example`'s (SE2, SE9); a value in the mapping is SE4's scanner; that the mechanism is one from the table and that the application process holds no store credential are review questions (a call-graph and a platform fact, PC4). Which implementations meet the four properties is [`../solutions/032-secrets.md`](../solutions/032-secrets.md)'s and carries a date, not a gate | **review only** |
 
 The corpus was run before landing: fifteen name cases, thirteen declaration
 cases, nine redaction cases, fourteen forbidden-location cases, four rotation

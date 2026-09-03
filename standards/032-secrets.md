@@ -58,7 +58,9 @@ secret is configuration and reaches a process in the environment. The OCI
 runtime offers exactly two channels into a container that exist before the
 process does, environment variables and mounted files, and every runtime the
 platform could sit on populates both from its own secret store. SE1 adopts
-both.
+both. **The step between the store and the environment has no standard**,
+only an established mechanism per runtime; SE10 pins the class per runtime
+and what qualifies one.
 
 **Redaction borrows HTTP's own list.** The field names SE5 redacts by name
 are the ones [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110) and
@@ -76,7 +78,8 @@ posture, never a vendor.
 
 **What no standard covers** is what this document invents: the declaration
 (SE2), the name grammar (SE3), recognition by declaration and never by shape
-(SE5), the age and rotation modes (SE7), the order of a leak response (SE8).
+(SE5), the age and rotation modes (SE7), the order of a leak response (SE8),
+and the properties a store and a delivery mechanism must have (SE10).
 
 ## The rules
 
@@ -339,6 +342,67 @@ image build except as a build-time mount (SE5). A run whose context reads a
 different or empty store — a fork, a dependency bot — fails for that reason,
 visibly, in a job that only uploads or publishes, which is the split 010 draws.
 
+### SE10. The store renders into the environment through the runtime's own mechanism, and there is one store per platform
+
+SE1 says a process sees a variable and never fetches. This rule says how the
+variable gets there, because that is where "the platform delivers it" has
+been left to each repository to discover. There is no industry standard for
+the step between a secret store and a process's environment; there is an
+established set of mechanisms, one per runtime, and this rule pins the class
+per runtime and names examples so a repository does not invent a fourth.
+
+**One secret store per platform, chosen by the platform and not by the
+repository.** A store is a running service with three properties the
+declaration (SE2) relies on: every value is versioned, so a rotation is a
+new version and the previous one is still there for the `dual_window` mode
+(SE7); every read and write is in an access log that names the principal, so
+a leak investigation (SE8) has somewhere to look; and access is scoped per
+environment and per service, so the production value is readable by the
+production workload and by the named owner, and by nothing else. The
+platform's own manager — the cloud provider's secret manager, or a hosted
+manager such as Doppler, or a self-hosted vault — meets this; a repository
+does not pick a different one because its author prefers it, for the reason
+[`000-platform.md`](000-platform.md) PC1 gives. A file of encrypted values
+committed to the repository is **not** a store: it has no access log, it
+puts ciphertext into a history that leaves the portfolio at handover under a
+key nobody there controls, and the day the key is compromised every version
+ever committed is readable at once.
+
+**The store renders into the environment by the runtime's mechanism, on the
+platform's side of the variable, and a repository ships only the mapping.**
+The mapping is a deployment manifest naming, per declared secret, the store
+path it comes from and the form it takes — never a value — committed beside
+the deployment configuration, one per environment, so the declaration's
+names are what is checked against it (SE2):
+
+| Runtime | Mechanism | `env` | `file` | Notes |
+|---|---|---|---|---|
+| Kubernetes | A secrets operator that syncs the store into native `Secret` objects — the External Secrets Operator is the established one — with the workload consuming them as `env` or a projected volume; or the Secrets Store CSI driver mounting the store directly as files, with its optional sync to a `Secret` for `env`. | `valueFrom.secretKeyRef` per variable | A projected volume at the declared `path`; the driver rotates the file in place, which is what `reissue` needs | A native `Secret` written by hand or by a pipeline is a copy nobody rotates; the operator owns it. Sealed or encrypted secrets in the repository are the file-of-ciphertext above. |
+| Managed container services | The service's task or revision definition references the store entry by ARN or name and the platform injects it at start. | Native | Native where the platform mounts secrets as files; otherwise the process receives the material in `env` and writes it to its declared path itself at start, before serving | Every major provider's container service does this for its own secret manager; a hosted manager such as Doppler integrates by syncing into that native store. |
+| Virtual machines and systemd | An agent renders the store into `EnvironmentFile=` or `LoadCredential=` before the unit starts, under the machine's platform identity. | `EnvironmentFile=` rendered by the agent, mode `0600`, owned by the service user | `LoadCredential=` places the material under `$CREDENTIALS_DIRECTORY`; the declared path is a symlink to it or the path itself | The agent runs as its own unit with its own credential to the store; the service unit has none. |
+| The developer's machine | `.env` per SE9, filled from `.env.example`. | `--env-file .env` | A path under the repository's ignored directory | Never a production value; a hosted manager's per-developer development configuration is admitted as the source of that `.env` and is still not the process's client. |
+| The pipeline | The CI system's own secret store, per SE9, preferring OIDC federation to the cloud. | Native | A job step writes the material to the runner's temporary directory and removes it | The pipeline's secrets are for building and publishing; a deploying job hands the platform a reference, never a value. |
+
+**What every mechanism in the table has in common, and what disqualifies
+one that is not in it:** the process's environment is complete before the
+process starts (SE1); the component that holds the store credential is the
+platform's, runs with its own identity and is not the application process;
+rotation is a new version in the store picked up by re-render and restart
+(`restart`, `dual_window`) or in place (`reissue`) with no code change (SE7);
+and the store's access log records the platform component, never an
+application process, reading a value. A mechanism in which the application
+holds a store credential, fetches at start, or caches values on disk it
+manages, is SE1's vendor-SDK case with an operator's name on it.
+
+**Rotation runs through the store.** SE7's modes describe the backing
+service's side; on the delivery side, a rotation is: write the new version
+to the store, let the mechanism render it — the operator's refresh interval,
+the driver's rotation poll, the agent's next run, each declared beside the
+mapping — then restart or not as the mode says. The procedure a human runs
+is in the repository's operations documentation, per the agent standard's
+rule that a procedure not in the docs does not exist, and it names the store
+path and the mechanism, never the value.
+
 ## What is a secret
 
 The test is one question: *does disclosing this value grant access, or let
@@ -393,8 +457,10 @@ the image set against `images` (SE6); the freshness comparison (SE7); the
 audit event's shape (SE8). Review questions, said so in the ledger row: that
 a process fetches nothing in code (SE1, a call-graph fact PC4 keeps a gate
 out of), that a subject names a real backing service (SE3), that rotate came
-before investigate (SE8), and that a development credential grants nothing
-outside the developer's machine (SE9).
+before investigate (SE8), that a development credential grants nothing
+outside the developer's machine (SE9), and that the mapping names a store
+path and a mechanism from the table and no value (SE10 — the presence of a
+value is SE4's scanner; the mechanism's class is a review question).
 
 ## Decisions
 
@@ -402,6 +468,17 @@ outside the developer's machine (SE9).
   A vault client in application code makes the store a runtime dependency of
   every process, needs an undelivered credential to the store, and adds a
   startup gate. Factor III answers delivery; the store renders into it.
+- **One store per platform; the runtime's own mechanism renders it; the
+  repository ships the mapping and never the value** (2026-09-03). The step
+  from store to environment had been left as "the platform delivers it",
+  which each repository resolved differently. There is no standard for it,
+  so the rule pins the class per runtime — operator or CSI driver on
+  Kubernetes, native injection on managed container services, an agent
+  rendering `EnvironmentFile=` or `LoadCredential=` under systemd — and the
+  four properties any mechanism must have. Encrypted files in the repository
+  are refused because they are a history of ciphertext leaving the portfolio
+  at handover and have no access log. Examples are named because a class
+  with no example is a class each reader guesses at; the class is what binds.
 - **A secret is declared, with an id and a `<SUBJECT>_<KIND>` name**
   (2026-09-02). Without a declaration there is no list to redact by, rotate
   from, check an image against, or hand over. The id gives a rotation's audit

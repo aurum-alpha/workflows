@@ -1,14 +1,23 @@
-# aurum-job: capability=bundle language=js role=build
-# Portfolio capability: bundle a Node server to a single file (CI_STANDARD
-# Principle 12). LANGUAGE tier, not framework: Express routes requests and owns
-# no bundler, so there is no `job-build-js-express` — ask what command it would
-# run and there is no single answer. esbuild is the tool, so esbuild names it.
+# aurum-job: capability=build language=js role=build
+# Portfolio capability: BUILD a Node server, by bundling it to a single file
+# (CI_STANDARD Principle 12). LANGUAGE tier, not framework: Express routes
+# requests and owns no bundler, so there is no `job-build-js-express` — ask what
+# command it would run and there is no single answer. esbuild is the tool, so
+# esbuild names it.
+#
+# The capability is `build`, not `bundle`, and the file and inner job say so.
+# Bundling is how this ecosystem builds, the way compiling and linking is how Go
+# and C build — and the portfolio does not break those into separate capabilities
+# either. What every one of them produces is the same thing: the cacheable
+# artifact that is the runnable core of a release, first in the graph, with the
+# gates hanging off it. A caller naming that step `server-ts-express-build` was
+# right, and the catalog was the half that disagreed.
 #
 # The invocation is fixed, not parameterised (Phase F0/F2). Three repos carried
 # a bespoke script/build.ts hand-curating 28 dependencies to bundle; three used
 # these flags already. The majority form is the standard, and repos conform to
 # the job rather than the job flexing per repo.
-name: job-bundle-js-esbuild
+name: job-build-js-esbuild
 
 on:
   workflow_call:
@@ -26,7 +35,7 @@ on:
         default: "."
 
 jobs:
-  bundle:
+  build:
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
     timeout-minutes: 15
     permissions:

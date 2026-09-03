@@ -170,14 +170,22 @@ and the tree which lands are the same tree.
 [`standards/010-ci.md`](standards/010-ci.md) carries the reasoning and the throughput
 cost; what follows is only the part an agent gets wrong.
 
-**Bring the branch up to date by merging the default branch into it, not by
-rebasing.** Both satisfy the check. A rebase rewrites pushed history and needs a
-force-push, which invalidates every existing checkout of that branch, a human's
-included. The usual argument for rebasing — keeping trunk history clean — does
-not apply here, because **squash is the merge method**: the branch's history,
-merge commits and all, is discarded at merge and the default branch still gets
-exactly one commit. Merging costs nothing and breaks nothing, so it is the
-default; rebase only where a repository's **Conventions** section says to.
+**Bring the branch up to date by rebasing onto the default branch. Merging it
+in is also acceptable.** Both satisfy the check, and neither reaches the default
+branch: **squash is the merge method**, so the branch's history — merge commits
+and all — is discarded and the default branch gets exactly one commit either
+way.
+
+What differs is the branch while it is still open, which is the thing a reviewer
+reads. A rebase leaves a series of commits that are the change and nothing else.
+Merging leaves a *"Merge branch 'main' into …"* commit in among them, once per
+update, saying nothing about the work and growing with every day the branch
+stays open.
+
+The cost of rebasing is that it rewrites pushed history and needs a force-push,
+which invalidates any existing checkout of that branch. On a branch one person
+or one agent is working, that is nobody. Where a branch is genuinely shared,
+merge instead — and never rewrite history on a branch belonging to someone else.
 
 **Do not report a pull request as landed while it is green but behind.** It is
 not mergeable yet. Sitting through the update and the re-run is part of landing

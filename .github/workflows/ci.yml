@@ -20,6 +20,24 @@ permissions:
   contents: read
 
 jobs:
+  # THROWAWAY, on a pull request that will be closed rather than merged.
+  #
+  # The question: when the runner fetches an action by owner/repo/path@ref,
+  # does it bring the rest of that repository with it? If it does, the checkers
+  # can ride an action pin and standard_ref -- a hand-typed SHA that can never
+  # name its own commit, and the root cause of three documented incidents -- is
+  # unnecessary.
+  #
+  # Referenced by BRANCH, not by SHA, which rule PIN will rightly fail in the
+  # conformance job below. That is expected and is why this is not merged: the
+  # probe job runs regardless, and its log is the whole point.
+  #
+  # No checkout on purpose. Anything this finds arrived with the action.
+  probe-action-path:
+    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+    steps:
+      - uses: aurum-alpha/workflows/.github/actions/probe-action-path@claude/workflows-dependency-tracking-audit-sgbk31
+
   # This repo is the portfolio's CI definition, so its gate is workflow
   # correctness: actionlint over every workflow file, including the shared
   # job-*.yml bodies every caller runs. The image tag is pinned for the same

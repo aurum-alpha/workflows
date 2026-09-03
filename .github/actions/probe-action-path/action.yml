@@ -1,0 +1,38 @@
+name: probe-action-path
+description: >-
+  THROWAWAY. Does a composite action fetched by owner/repo/path@ref bring the
+  rest of its repository with it? If yes, the checkers can ride an action pin
+  and standard_ref is unnecessary. Delete this action once the answer is known.
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        echo "::group::where the action landed"
+        echo "GITHUB_ACTION_PATH=$GITHUB_ACTION_PATH"
+        echo "::endgroup::"
+
+        echo "::group::repo root two levels up"
+        ls -a "$GITHUB_ACTION_PATH/../.." 2>&1 || echo "RESULT: no repo root"
+        echo "::endgroup::"
+
+        root="$GITHUB_ACTION_PATH/../.."
+        if [ -d "$root/tools" ]; then
+          echo "RESULT: tools/ IS present — $(ls "$root/tools" | wc -l) files"
+        else
+          echo "RESULT: tools/ is NOT present"
+        fi
+
+        if [ -x "$root/tools/check-ci-conformance" ]; then
+          if "$root/tools/check-ci-conformance" --help >/dev/null 2>&1; then
+            echo "RESULT: checker EXECUTES from the action's own tree"
+          else
+            echo "RESULT: checker present but did not execute"
+          fi
+        else
+          echo "RESULT: checker not executable/absent"
+        fi
+
+        # A workspace checkout is deliberately absent from this job, so anything
+        # found above came with the action rather than with the repo under test.
+        echo "RESULT: workspace contents = [$(ls -A "$GITHUB_WORKSPACE" 2>/dev/null | tr '\n' ' ')]"

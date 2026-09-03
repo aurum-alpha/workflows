@@ -44,6 +44,7 @@ will.
 | 16 | A version exists only where consumed | — | **review only** |
 | 17 | Release is promotion, not production | `check-ci-conformance` D4, D5 | gated |
 | 18 | One workflow per repo | `check-ci-conformance` P18 | gated |
+| 19 | The catalog is the default; a local job is a claim | `check-ci-conformance` ADOPT (half) | mixed⁴ |
 | — | Standard job DAG (build first) | `check-ci-conformance` D1–D3 | gated |
 | — | Every job blocks something | `check-ci-conformance` D6 | gated |
 | — | Something runs the image | `check-ci-conformance` D7 | gated |
@@ -70,11 +71,11 @@ will.
 | — | The reason is true, still true, and names a real retirement condition | — | **review only** |
 
 ¹ Gated in every repo whose `ci.yml` calls `job-ci-conformance`, which runs
-these checkers alongside `check-ci-conformance`. The per-repo rollout is
-tracked in this repository's issues; until a repo adopts the job, these rules are unenforced
-**in that repo** and nothing there will say so. The row claims what the
-mechanism can do, not what every repo has taken up — check the rollout, not
-this table, before believing a given repo is covered.
+these checkers alongside `check-ci-conformance`. Until a repo calls the job
+these rules are unenforced **in that repo** and nothing there will say so. The
+row claims what the mechanism can do, not what any repo has taken up — this
+repository keeps no register of which have, so read a repository's own `ci.yml`
+before believing it is covered.
 
 ³ Gated in every repo whose `ci.yml` calls `job-version-release`. It covers
 the two emissions the job itself produces and nothing else: a `v<version>`
@@ -84,6 +85,16 @@ both stay review questions. `gha-runner-controller` is the reason that
 distinction is drawn rather than assumed — its `v<version>` tag was applied on
 `is_default_branch` alone, so every merge re-pointed it at new bytes, and no
 release job anywhere would have caught it.
+
+⁴ Two halves, and one of them is gated. What a stub must look like once it
+calls the catalog — the pin, the stub keys, `secrets: inherit`, the rollup — is
+checked. What is **not** yet checked is the half that decides which jobs are
+stubs at all: a job id naming a catalog capability must call that catalog job.
+That needs each catalog job to declare the capability it serves, so the id can
+be tested against the catalog rather than against a table of correspondences
+written here. Until it lands, a local body whose id names a covered capability
+passes. This row says half rather than gated for that reason, and the row is
+what should change when the declarations arrive.
 
 ² Gated in every repo whose `ci.yml` calls `job-version-gate`, and in no
 other. Unlike the ¹ checkers this one is not carried by

@@ -8,20 +8,24 @@ runs:
   steps:
     - shell: bash
       run: |
-        echo "::group::where the action landed"
         echo "GITHUB_ACTION_PATH=$GITHUB_ACTION_PATH"
+
+        # The action lives at .github/actions/<name>, so the repo root is THREE
+        # levels up, not two. The first run of this probe used two and landed on
+        # .github/, which showed no tools/ and would have read as a refutation.
+        root="$GITHUB_ACTION_PATH/../../.."
+
+        echo "::group::repo root three levels up"
+        ls -a "$root" 2>&1 || echo "no repo root"
         echo "::endgroup::"
 
-        echo "::group::repo root two levels up"
-        ls -a "$GITHUB_ACTION_PATH/../.." 2>&1 || echo "RESULT: no repo root"
-        echo "::endgroup::"
-
-        root="$GITHUB_ACTION_PATH/../.."
-        if [ -d "$root/tools" ]; then
-          echo "RESULT: tools/ IS present — $(ls "$root/tools" | wc -l) files"
-        else
-          echo "RESULT: tools/ is NOT present"
-        fi
+        for d in tools standards contracts setup config; do
+          if [ -e "$root/$d" ]; then
+            echo "RESULT: $d/ IS present"
+          else
+            echo "RESULT: $d/ is NOT present"
+          fi
+        done
 
         if [ -x "$root/tools/check-ci-conformance" ]; then
           if "$root/tools/check-ci-conformance" --help >/dev/null 2>&1; then
@@ -33,6 +37,8 @@ runs:
           echo "RESULT: checker not executable/absent"
         fi
 
-        # A workspace checkout is deliberately absent from this job, so anything
-        # found above came with the action rather than with the repo under test.
+        echo "RESULT: dependency-versions.json present? $([ -f "$root/dependency-versions.json" ] && echo yes || echo no)"
+        echo "RESULT: git metadata present? $([ -e "$root/.git" ] && echo yes || echo no)"
+
+        # No checkout in this job, so anything found above came with the action.
         echo "RESULT: workspace contents = [$(ls -A "$GITHUB_WORKSPACE" 2>/dev/null | tr '\n' ' ')]"

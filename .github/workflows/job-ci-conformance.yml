@@ -1,3 +1,4 @@
+# aurum-job: capability=ci-conformance language=- role=policy
 name: ci-conformance
 
 # Asserts the calling repo obeys CI_STANDARD, inside that repo's own CI, gated
@@ -208,7 +209,31 @@ on:
         # Doing both in one commit is the exit-127 shape: the job body reaches
         # a caller from its own pin, the tools reach it from here, and an
         # invocation that arrives before the file is a command not found.
-        default: 5d73b58dd264e28031b738ac5b9e745a4646c4f8
+        #
+        # Bumped again for the retirement of the adoption-state lists. Both
+        # checkers are caller-consumed and both changed what they report: a
+        # caller pinning that change while this pointed at 5d73b58 would fetch
+        # checkers that still filter on a repository name, and get the old
+        # verdict from the new body.
+        #
+        # Bumped for wave 1 of the job-role change: every catalog job now
+        # carries an `# aurum-job:` declaration saying what it is. Nothing
+        # reads them yet, which is the whole point of landing them alone.
+        #
+        # Wave 2 makes check-ci-conformance resolve a caller's job to the
+        # declaration on the job it calls. That reads the CATALOG LISTING
+        # clone, which is deliberately not pinned to this ref — see
+        # catalog_roots() — so it is the default branch, and a wave doing both
+        # at once cannot work: on the pull request that adds the declarations
+        # the default branch does not have them, every role resolves empty, and
+        # D1 through D5 pass by having nothing to say. That is not a
+        # hypothetical. It is what the first attempt at this did, and its
+        # conformance job went green on a checker that had been rendered inert.
+        #
+        # Same shape as job-go-build.yml in #97 and the wave-A data change: the
+        # instrument was looking at a tree from before the thing it needed
+        # existed, and reported that absence as conformance.
+        default: a47c10d39a67c8b62920a95005a9c679a3d649e7
 
 jobs:
   ci-conformance:
@@ -381,10 +406,10 @@ jobs:
       # has seven. Nothing happened: the trees sat there agreeing by luck, and
       # the one that had drifted was the one carrying content the others lacked.
       #
-      # A repo not yet in the checker's ADOPTED list still gets every finding
-      # printed here — it just does not fail on them. That is the same contract
-      # check-ci-conformance gives an UNCONVERTED repo, and it exists so an
-      # unadopted repo is visibly a known gap rather than silently unchecked.
+      # Every caller is checked the same way. Calling this job IS the adoption,
+      # so there is no list of adopting repositories to consult and no repo this
+      # step knows by name; standing debt runs under warn_only above, which the
+      # caller declares in its own ci.yml.
       - name: One source of agent guidance
         if: ${{ !cancelled() }}
         env:

@@ -1,3 +1,4 @@
+# aurum-job: capability=build language=js role=build
 # Portfolio capability: build for a Vite-built client (CI_STANDARD Principle 12).
 # FRAMEWORK tier — React owns its build tool, so the shared job owns the command
 # rather than a contract. That is the test for admitting a framework job: name

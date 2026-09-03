@@ -236,10 +236,20 @@ deliberately not covered by that:
   description of another repository's state, and it is the one place a
   citation of the past is admitted. It does not extend to a standard's rules or
   its reasoning, which name no repository at all — see D4.
-- **Checker allow-lists.** `tools/` carries per-repo entries because a gate has
-  to know what it is currently letting through. Each entry states the gap it
-  represents — a debt with a name, not a permission — and the target state for
-  every list is empty.
+- **Checker allow-lists,** and only where the entry names a *waived rule*.
+  `tools/` carries per-repo entries because a gate has to know what it is
+  currently letting through. Each entry states the gap it represents — a debt
+  with a name, not a permission — and the target state for every list is empty.
+
+**A checker never holds a list of who is subject to it.** That is the carve-out
+above read backwards, and it is not admitted: the gates run inside each
+repository's own CI, so calling a gate is what subjects a repository to it, and
+a name list gating who gets judged can only be redundant with that call or
+disagree with it. Where a repository has standing debt it declares the window
+itself, through a job input in its own `ci.yml`, which is the same rule as the
+paragraphs above — the state lives with the code. A checker that decides what to
+report from a repository's *name* has made this repository the scoreboard by
+another route.
 
 ## The standards
 

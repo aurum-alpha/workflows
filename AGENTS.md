@@ -264,6 +264,7 @@ gate is respected, that a correction reached the docs. Those stay review
 questions, and [`standards/999-enforcement.md`](standards/999-enforcement.md) says so in
 the row rather than implying coverage it lacks.
 
-Repos are held to it by name. A repository not yet listed still has its findings
-printed on every run — a known gap with somewhere to read it, which is what
-distinguishes it from a repository nobody has looked at.
+No repository is held to it by name. The gate runs inside each repository's own
+CI, against that repository and nothing else, so calling the job is the adoption
+— and a repository with standing debt says so through the job's `warn_only`
+input, in its own `ci.yml`, where the debt is.

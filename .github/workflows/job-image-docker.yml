@@ -1,3 +1,4 @@
+# aurum-job: capability=image language=- role=publish
 # Portfolio capability: build and publish the container (CI_STANDARD Principle 12).
 # System tier — docker is neither a language nor a framework.
 #

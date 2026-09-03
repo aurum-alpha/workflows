@@ -1,3 +1,4 @@
+# aurum-job: capability=depcheck language=js role=gate
 # Portfolio capability: find declared-but-unused dependencies for one
 # deployable unit's JS/TS project.
 #

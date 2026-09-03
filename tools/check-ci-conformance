@@ -149,6 +149,36 @@ def is_library(path: pathlib.Path) -> bool:
             triggers.add(m.group(1))
     return triggers == {"workflow_call"}
 
+
+def defines_catalog(repo: pathlib.Path) -> bool:
+    """This tree DEFINES shared jobs rather than calling them.
+
+    The one exemption ADOPT needs, and it is a property of the tree rather than
+    a repository's name. A repo holding reusable workflows is the catalog; its
+    own ci.yml gates those definitions and cannot be a stub of them.
+
+    It replaces a hardcoded list of adopting repositories, which reached the
+    same answer for the catalog and the wrong answer for everyone else. Such a
+    list can only be redundant — a repo that calls job-ci-conformance.yml has
+    adopted the check by calling it — or wrong, when a caller absent from the
+    list silently gets ADOPT skipped after asking to be checked. The second
+    case was live, and it fails the quiet way: the rules are not reported and
+    not failed, they simply do not run.
+
+    Debt is the caller's to declare, through the job's warn_only input, in its
+    own ci.yml. It is not something this repository knows about anyone.
+
+    is_library() and D6 are the same move: P18 refused a filename allowlist
+    because it would have named the catalog its own worst offender, and D6
+    retired OUTSIDE_ROLLUP for a structural test so there was no second list to
+    forget. This is the third and last of them.
+    """
+    wf = repo / ".github" / "workflows"
+    if not wf.is_dir():
+        return False
+    return any(is_library(p) for p in sorted(wf.glob("*.y*ml")))
+
+
 # A graph root is the first node of a stack, or the change-detection job the
 # rest keys off. Matched by SHAPE, not by an enumerated list of names: the list
 # version hardcoded `build`, `web-build`, `go-mod` and friends, so the moment a
@@ -413,17 +443,17 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
     def bad(rule, msg):
         out.append(f"[{rule}] {msg}")
 
-    # Adoption: is each job a call into the catalog, or a body of its own?
+    # ADOPT: is each job a call into the catalog, or a body of its own?
     # Same subject, same file, one verdict.
     #
-    # Only converted callers are asked. This repo IS the catalog — its jobs are
-    # the definitions, not calls to them — and a repo in UNCONVERTED is a known
-    # gap with a written reason rather than a finding to re-raise on every run.
-    # The standalone tool scoped itself the same way by iterating CONVERTED;
-    # losing that on the merge would have turned the catalog into its own
-    # largest violator.
-    if repo.name in CONVERTED:
-        for finding in adoption_findings(repo.name, text):
+    # Every repo is asked except the one that DEFINES the shared jobs, where the
+    # question is a category error: the catalog's own jobs are the definitions,
+    # not calls to them, and it fails four of its own ADOPT rules by being what
+    # it is. That exemption is a property of the tree, read off it here —
+    # is_library() and D6 both reached the same conclusion for the same reason,
+    # and the rule is now stated once in defines_catalog().
+    if not defines_catalog(repo):
+        for finding in adoption_findings(text):
             bad("ADOPT", finding)
 
     # --- P18: ci.yml is the pipeline -------------------------------------
@@ -674,9 +704,8 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
             # exist in the catalog", which is true and irrelevant.
             #
             # Whether a third-party workflow is ALLOWED is a different
-            # question, and check-catalog-adoption owns it — EXTERNAL_JOBS
-            # there is the approved list. Copying that list here would make
-            # two places to update and one place to forget.
+            # question, and EXTERNAL_JOBS below is the approved list. Answering
+            # it here too would make two places to update and one to forget.
             m_uses = re.match(r"([\w.-]+)/([\w.-]+)/\.github/workflows/([\w.-]+\.ya?ml)@", uses.strip())
             if m_uses and m_uses.group(1) == CATALOG_OWNER:
                 cat = catalog_dir(m_uses.group(2))
@@ -871,21 +900,24 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
             # no path worth rehearsing — running it on a pull request would
             # delete things while that pull request is still open.
             # PUBLISH_RE matches an id, and an id is only evidence about a job
-            # the standard names. `package` in event-manager is a repo-local
-            # job — no catalog workflow behind it, declared in LOCAL_ALLOWLIST
-            # with a reason, which under Principle 19 is what a local job IS: a
-            # claim that the catalog does not cover this case. A repo may have
-            # as many of those as it can justify, and inferring DAG obligations
-            # from the letters in their names is the standard reaching past
-            # what it defines. It read `package` as a publish step and demanded
-            # gates the repo had deliberately moved to image-build.
+            # the standard names. A job that calls no catalog workflow is
+            # repo-specific: the standard did not define it, does not know what
+            # it does, and inferring DAG obligations from the letters in its
+            # name is the standard reaching past what it defines. It read a PHP
+            # repo's `package` — a composer vendor tree and a React bundle laid
+            # into a dist directory, not a publish step — as a publish and
+            # demanded gates that repo had deliberately moved to image-build.
+            #
+            # This was a named exemption (LOCAL_ALLOWLIST) covering thirteen
+            # job ids in four repos, which is the same sentence said for the
+            # jobs someone had already hit and silent about the next one. The
+            # test is structural now, so there is no list to keep current — and
+            # no way for an entry to go stale into a permanent waiver, which
+            # four of those thirteen had already done.
             #
             # Standard jobs still answer for themselves: anything calling a
             # catalog workflow is in scope no matter what it is called.
-            local_by_declaration = (
-                job in LOCAL_ALLOWLIST.get(repo.name, set())
-                and "aurum-alpha/workflows/" not in uses
-            )
+            local_by_declaration = "aurum-alpha/workflows/" not in uses
             if (
                 PUBLISH_RE.search(job)
                 and not local_by_declaration
@@ -1135,148 +1167,25 @@ def main() -> int:
 
 
 # ---------------------------------------------------------------------------
-# Catalog adoption — merged in from check-catalog-adoption.
+# ADOPT — is a caller's job a call into the catalog, or a body of its own?
 #
-# It was a separate 417-line tool asking a question this one already had the
-# subject for: conformance asks whether a pipeline is the right SHAPE, adoption
-# asks whether its CONTENT is shared or bespoke. Two instruments reading one
-# ci.yml is how they came to disagree about the prune (G#8) — a split question
-# gives two answers and no way to tell which is right.
+# Merged in from check-catalog-adoption, a separate 417-line tool asking a
+# question this one already had the subject for: conformance asks whether a
+# pipeline is the right SHAPE, adoption asks whether its CONTENT is shared or
+# bespoke. Two instruments reading one ci.yml is how they came to disagree
+# about the prune (G#8) — a split question gives two answers and no way to tell
+# which is right.
 #
-# The logic below is transplanted rather than rewritten, under renamed symbols,
-# because it has its own parser and reconciling two parsers in the same change
-# that merges two tools is how a refactor becomes an outage.
+# What did not survive the merge is that tool's CONVERTED/UNCONVERTED pair. It
+# swept a directory of clones and needed to enumerate its subjects; here the
+# subject is whichever repo invoked the job, so the same list stopped being an
+# enumeration and became a filter on who was allowed to be judged. See
+# defines_catalog() for the structural test that replaced it.
+#
+# The parser below is transplanted rather than rewritten, because reconciling
+# two parsers in the same change that merges two tools is how a refactor
+# becomes an outage.
 # ---------------------------------------------------------------------------
-
-CONVERTED = [
-    "credit-watch",
-    "event-manager",
-    "expense-splitter",
-    "flight-watch",
-    "gha-runner-controller",
-    "gofast",
-    "hiring-tracker",
-    "jewelry-factory",
-    "lid-firmware",
-    "wardley-mapper",
-]
-
-# Repos that are NOT converted, each with the reason. Reported on every run and
-# deliberately not failing the run — an unconverted repo is a known gap, and
-# this is what distinguishes it from a repo nobody has looked at. Moving a name
-# from here to CONVERTED is the conversion.
-UNCONVERTED = {
-    "client-manager": (
-        "19 local job bodies. CI_STANDARD accounts for six of them as policy "
-        "about that codebase (forbidigo-pgxpool, conformance-suite, "
-        "telemetry-canary, migration-expand-only, header-definition, "
-        "header-staleness), which is the legitimate Principle 19 case. The "
-        "other thirteen — the server-go-* baseline, client-ts-react-install, "
-        "client-ts-react-fmt, changes, contract, image-tag-parity — have not "
-        "been triaged, and guessing which are gaps and which are drift would "
-        "be inventing a verdict. Tracked separately; see also P18, the two "
-        "release workflows still outside ci.yml."
-    ),
-}
-
-# Repo-local jobs that keep a body in the caller.
-#
-# Principle 19: a local job is a CLAIM that the catalog does not cover this
-# case. Every entry therefore states the gap it represents, and closing that gap
-# is backlog — an entry here is a debt with a name, not a permission. The target
-# state for every repo is an empty list.
-LOCAL_ALLOWLIST = {
-    "hiring-tracker": {"update-version-info"},
-    # The PlatformIO build and test-unit jobs moved to the catalog
-    # (job-build-cpp-pio, job-test-unit-cpp-pio), so what is left is the one
-    # job that is genuinely about this product rather than about PlatformIO:
-    # it parses LID_FIRMWARE_VERSION out of include/version.h and runs this
-    # repo's tools/package_firmware_artifact.py to lay out the field and dev
-    # packages. Nothing in either step generalises to a second firmware
-    # product, and inventing inputs to pretend otherwise would put this repo's
-    # header format and packaging script into the portfolio's catalog.
-    #
-    # The gap this names: the catalog models building and testing firmware,
-    # not releasing it. When a second C/C++ product needs packaging, the shape
-    # they share is what should be extracted — not this one generalised early.
-    "lid-firmware": {"firmware-publish"},
-    # The compile and the two packaging jobs are genuinely repo-specific: a
-    # version-stamped .deb via nfpm and a controller image. Both consume the
-    # one compiled artifact rather than rebuilding it, which is the property
-    # that matters; there is no shared job that models either.
-    "gha-runner-controller": {
-        # server-go-build and server-go-test-integration carried their pre-#82
-        # names here long after the rename, so the two genuinely-explained
-        # local jobs reported as unexplained drift. An allow-list is a debt
-        # with a name; it cannot be that while its names are wrong.
-        "server-go-build",
-        "server-go-test-integration",
-        "package-deb",
-        # "release" was here until gha-runner-controller#163: the local body it
-        # explained is retired for a job-version-release stub, which answers to
-        # the structural downstream-of-ci-ok exemption like every other mint.
-        # Splits the repo's two unrelated products so a Dockerfile edit does
-        # not compile Go, and a Go change does not rebuild an image that
-        # shares no source with it.
-        "changes",
-        # The runner image is the actions-runner base plus packages: no repo
-        # source, so no shared job models it.
-        "runner-image",
-    },
-    # The only PHP repo in the portfolio, and the catalog has no PHP job at all:
-    # there is no job-php-*.yml to call, so these five cannot be stubs of
-    # anything. CI_STANDARD's "PHP job catalog (event-manager)" section says
-    # so directly — the ids are standard, the bodies "stay repo-local until a
-    # second PHP repo exists" — and that is the whole justification. Composer
-    # dev and prod installs, phpunit, phpstan, and the CI4 integration suite
-    # with its service containers are ordinary work every PHP repo would do
-    # the same way; they are local because there is nobody to share them with,
-    # not because they are special.
-    #
-    # `package` and `test-e2e` are a different claim and should not be read as
-    # covered by the PHP one. `package` is this product's build: it lays a
-    # composer vendor tree and the downloaded React bundle into dist-php via
-    # `make all`, which runs `pnpm exec grunt vendor`. Grunt, that Makefile and
-    # that directory layout are one repo's, and generalising them would put
-    # them in the portfolio's catalog. `test-e2e` brings up the docker-compose
-    # stack and drives it with Playwright; it is also currently `if: false`,
-    # so what is allow-listed here is a body that does not run.
-    #
-    # The gap the first five name: the catalog models Node, Go and C/C++ and
-    # not PHP, and one repo is not enough evidence to design the interface
-    # from. A second PHP repo is the event that should close it, and the shape
-    # the two share is what gets extracted — not this one generalised early.
-    #
-    # The gap `package` and `test-e2e` name is different and larger: the
-    # catalog has no job for assembling a deployable tree out of two stacks'
-    # outputs, and none for compose-based end-to-end. Neither is PHP-specific;
-    # both are simply unbuilt.
-    #
-    # Not allow-listed, deliberately: client-ts-react-install,
-    # client-ts-react-build and client-ts-react-test-unit. Those are TypeScript
-    # jobs, the catalog covers TypeScript, and they are drift rather than a
-    # gap. They should keep reporting until they are stubs.
-    #
-    # event-manager#64 made two of the three stubs and deleted the install job
-    # outright — the catalog has no install job, each capability job installs
-    # from the pnpm store. What is left is client-ts-react-build, and that one
-    # IS a gap rather than drift: the catalog's build jobs are
-    # job-build-js-vite and job-bundle-js-esbuild, and this app is webpack.
-    # Moving it is not a CI change. AdminController, PortalController and
-    # RegisterController read FCPATH."static/react/{app}.html",
-    # react_admin.php hardcodes /static/react/vendors.js, and docker-compose
-    # serves the dev bundles from webpack:3001; those move together or not at
-    # all. So it is allow-listed with that reason, per Principle 19, and the
-    # entry disappears the day this app leaves webpack.
-    "event-manager": {
-        "build",
-        "server-php-ci4-test-unit",
-        "server-php-ci4-static-analysis",
-        "server-php-ci4-test-integration",
-        "test-e2e",
-        "client-ts-react-build",
-    },
-}
 
 # Shared jobs that report rather than gate. A caller may leave these out of
 # ci-ok: putting a job that only posts a comment into the rollup would let a
@@ -1398,7 +1307,7 @@ def _adopt_parse_jobs(text: str) -> dict[str, dict[str, str]]:
     return jobs
 
 
-def adoption_findings(repo: str, text: str) -> list[str]:
+def adoption_findings(text: str) -> list[str]:
     problems = []
     jobs = _adopt_parse_jobs(text)
     if not jobs:
@@ -1427,17 +1336,32 @@ def adoption_findings(repo: str, text: str) -> list[str]:
             stack.extend(deps.get(cur, ()))
         return False
 
-    allow = LOCAL_ALLOWLIST.get(repo, set())
     stub_ids = []
     for job_id, props in jobs.items():
         if job_id == "ci-ok":
             if "uses" in props:
                 problems.append("ci-ok must be a local job, not a stub")
             continue
-        if job_id in allow:
-            continue
+        # A job with a body is repo-specific, and a repo-specific job is not
+        # this checker's business. The catalog defines a set of capabilities; a
+        # job outside that set is one repo's own work, and the standard has
+        # nothing to say about what it contains, what it is called, or where it
+        # sits. Converting one is a conversation about whether the shape
+        # generalises — which is review, not a gate.
+        #
+        # A named exemption list (LOCAL_ALLOWLIST) used to carry this, thirteen
+        # job ids across four repos, each with a paragraph arguing the catalog
+        # did not cover that case. Nothing verified the argument, so an entry
+        # could name a job that had since become a stub, or a job that no
+        # longer existed at all: four of the thirteen had, and each of those
+        # was a standing permission for a local body nobody would be told
+        # about.
+        #
+        # What is NOT yet checked, and is the other half of this rule: a job id
+        # that DOES name a catalog capability must be a stub calling it. That
+        # needs each catalog job to declare its capability, so it lands with
+        # those declarations rather than with a correspondence table here.
         if "uses" not in props:
-            problems.append(f"job '{job_id}' has a local body (not a stub, not allow-listed)")
             continue
         # Housekeeping is outside the rollup BY PLACEMENT, not by name. A job
         # the rollup is upstream of cannot be in ci-ok's needs — that would be

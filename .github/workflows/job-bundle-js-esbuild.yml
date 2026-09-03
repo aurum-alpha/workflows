@@ -1,3 +1,4 @@
+# aurum-job: capability=bundle language=js role=build
 # Portfolio capability: bundle a Node server to a single file (CI_STANDARD
 # Principle 12). LANGUAGE tier, not framework: Express routes requests and owns
 # no bundler, so there is no `job-build-js-express` — ask what command it would

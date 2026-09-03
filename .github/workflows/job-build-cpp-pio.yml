@@ -136,16 +136,18 @@ jobs:
           import os, pathlib, subprocess
 
           # --- BEGIN shared: version stamp. KEEP EVERY COPY IDENTICAL.
-          # tools/check-version-stamp-shared compares this region across every catalog
+          # tools/check-version-stamp-shared compares this region across every workflow
           # job that carries it and fails if they diverge, so editing one copy without
           # the others turns this repo red rather than letting two build systems drift
           # into two versioning semantics.
           #
-          # It is duplicated rather than extracted because a reusable workflow runs in
-          # the CALLER's checkout: it cannot reference a catalog composite without its
-          # own SHA pin, which makes every change a two-commit dance. setup/node-pnpm's
-          # header records the portfolio making the same trade for the same reason. The
-          # checker is what makes the duplicate safe.
+          # It is duplicated rather than extracted because a reusable workflow runs in the
+          # CALLER's checkout and cannot reach a catalog composite except by naming the
+          # catalog repository. That used to mean a SHA pin, and so a two-commit dance
+          # for every edit; since the portfolio moved to @main it does not, and the
+          # reason for the duplicate has expired without the duplicate going with it.
+          # Extracting it is worth its own change. The checker is what makes it safe
+          # meanwhile.
           def resolve_version_stamp(version_file, version, commit):
               """Did THIS commit cut a release, and what should the build stamp?
 

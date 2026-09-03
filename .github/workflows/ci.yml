@@ -114,121 +114,195 @@ jobs:
       contents: read
       pull-requests: write
 
+  # THE VERSION FILE, READ ONCE. job-version-release never decides whether a
+  # commit cut a release — it takes `version` and `version_changed` as inputs,
+  # because three repositories had hand-written that decision and two of them
+  # had it subtly wrong. Everywhere else those inputs come off a build job:
+  # job-go-build for the Go repos, job-build-cpp-pio for the firmware.
+  #
+  # This repository compiles nothing, so it has no build job to read them from,
+  # and that is the whole reason this job exists. It is repo-local rather than a
+  # catalog job because it would have exactly one caller — the catalog is for
+  # capabilities the portfolio shares, and "a repo that builds nothing but is
+  # still versioned" is a description of this repository alone.
+  #
+  # It carries the shared version-stamp block, which tools/check-version-stamp-shared
+  # compares against every other copy. `stamp` is computed and discarded: nothing
+  # here is compiled, so there is no binary to stamp — but the block is copied
+  # whole rather than trimmed to the half this job uses, because a partial copy
+  # is a copy that cannot be compared.
+  version-read:
+    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+    outputs:
+      version: ${{ steps.stamp.outputs.version }}
+      version_changed: ${{ steps.stamp.outputs.version_changed }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # HEAD^ is what the release decision reads. Two commits is all of it.
+          fetch-depth: 2
+      - id: stamp
+        shell: python3 {0}
+        env:
+          VERSION_FILE: .version
+        run: |
+          import os, pathlib, subprocess
+
+          vf = pathlib.Path(os.environ["VERSION_FILE"])
+          # No version file is a valid answer, not an error: Principle 16 says a
+          # repo with nothing deciding from the string has no version at all.
+          version = vf.read_text().strip() if vf.is_file() else "dev"
+          commit = subprocess.run(["git", "rev-parse", "--short=7", "HEAD"],
+                                  capture_output=True, text=True).stdout.strip() or "unknown"
+
+          # --- BEGIN shared: version stamp. KEEP EVERY COPY IDENTICAL.
+          # tools/check-version-stamp-shared compares this region across every workflow
+          # job that carries it and fails if they diverge, so editing one copy without
+          # the others turns this repo red rather than letting two build systems drift
+          # into two versioning semantics.
+          #
+          # It is duplicated rather than extracted because a reusable workflow runs in the
+          # CALLER's checkout and cannot reach a catalog composite except by naming the
+          # catalog repository. That used to mean a SHA pin, and so a two-commit dance
+          # for every edit; since the portfolio moved to @main it does not, and the
+          # reason for the duplicate has expired without the duplicate going with it.
+          # Extracting it is worth its own change. The checker is what makes it safe
+          # meanwhile.
+          def resolve_version_stamp(version_file, version, commit):
+              """Did THIS commit cut a release, and what should the build stamp?
+
+              Returns (changed, stamp). One answer, so nothing downstream re-derives it.
+
+              A release is a commit that changed the version file. fetch-depth: 2 makes
+              HEAD^ available; it resolves on a push (the previous commit) and on a pull
+              request (the base branch tip, because the merge ref's first parent is the
+              base). A root commit has no parent and is not a release: a repository's
+              first commit is not a release event.
+
+              Anything else is a PRE-RELEASE of the next PATCH, which is a floor rather
+              than a guess. Whatever the next release turns out to be it is at least
+              0.15.1, so the stamp sorts above the last release and below every release
+              that could follow:
+
+                  0.15.0  <  0.15.1-dev.abc  <  0.15.1-rc.1  <  0.15.1  <  0.16.0
+
+              Build metadata (0.15.0+dev.abc) would be wrong: SemVer ignores it in
+              precedence, so such a build compares EQUAL to the release it is not.
+              `dev` and not `beta` or `rc`, which belong to pre-releases a human cuts on
+              purpose; ordering is unaffected, since dev < rc by SemVer's ASCII rule.
+
+              Debian is NOT this string. dpkg reads `-` as the separator before the
+              debian-revision, so 0.15.1-dev.abc sorts ABOVE 0.15.1 there; a .deb wants
+              `~`. That rendering belongs to whichever job packages one.
+              """
+              import pathlib as _pathlib, re as _re, subprocess as _subprocess
+
+              def _cut_release():
+                  if not _pathlib.Path(version_file).is_file():
+                      return False
+                  if _subprocess.run(["git", "rev-parse", "--verify", "-q", "HEAD^"],
+                                     capture_output=True).returncode != 0:
+                      print("HEAD has no parent; treating this as not a release.")
+                      return False
+                  r = _subprocess.run(["git", "diff", "--name-only", "HEAD^", "HEAD"],
+                                      capture_output=True, text=True)
+                  if r.returncode != 0:
+                      # Never guess True. A false positive mints a version; a false
+                      # negative only withholds one, and a withheld release is a pull
+                      # request someone reopens.
+                      print(f"::warning::could not diff HEAD^..HEAD "
+                            f"({r.stderr.strip()}); treating this as not a release.")
+                      return False
+                  return version_file in r.stdout.split()
+
+              changed = _cut_release()
+              if changed or version == "dev":
+                  return changed, version
+              m = _re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", version)
+              if not m:
+                  # No next patch to be a pre-release of, so say so and order nothing.
+                  print(f"::warning::{version_file} reads {version!r}, which is not "
+                        "MAJOR.MINOR.PATCH; stamping it unordered.")
+                  return changed, f"{version}-dev.{commit}"
+              major, minor, patch = (int(g) for g in m.groups())
+              return changed, f"{major}.{minor}.{patch + 1}-dev.{commit}"
+          # --- END shared: version stamp ---
+
+          changed, stamp = resolve_version_stamp(
+              os.environ["VERSION_FILE"], version, commit)
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+              fh.write(f"version={version}\n")
+              fh.write(f"version_changed={'true' if changed else 'false'}\n")
+          print(f"version={version} release={changed} stamp={stamp}")
+
   # Housekeeping, downstream of the rollup — rule D6's declared exemption, the
   # same shape as job-image-prune. Nothing gates on a tag existing; the tag is
   # a human and machine index created after the fact, which is the direction
   # Principle 14 requires: file -> build -> tag, never tag -> build.
   #
-  # This exists because the portfolio had no way to say "adopt the current
-  # catalog". Callers SHA-pin, correctly, but Dependabot cannot compute what is
-  # newer than a bare SHA — so nothing ever proposed a re-pin and the portfolio
-  # drifted onto nine different commits without one instrument noticing. A real
-  # tag gives Dependabot something to resolve, and the re-pin PRs then arrive
-  # by themselves in every repo whose dependabot.yml already covers
-  # github-actions, which is all of them.
+  # THIS WAS FIFTY LINES OF HAND-WRITTEN SHELL, and job-version-release exists
+  # because three repositories had written the same fifty lines. The catalog's
+  # own copy was the fourth, which made this repository the one place the rule
+  # was shipped from and not obeyed. It now calls the job it publishes, in the
+  # local path form — same reasoning as version-gate above and the ci-ok action
+  # below: a rule this repo hands to eleven callers and does not run on itself
+  # is a rule nobody has tested.
   #
-  # Created once and never moved, and now only where a release was actually
-  # cut. This job used to run its tagging step on EVERY merge to main, which
-  # was wrong in both directions at once: a merge that did not touch .version
-  # found the tag already sitting on an earlier commit and failed the run —
-  # after ci-ok had gone green — and the only thing standing between a merge
-  # that did touch it and a silently re-pointed tag was that same collision
-  # check. Five of the twenty merges before this one took the first path.
+  # What the catalog job adds over the shell it replaces: a GitHub release
+  # rather than a bare tag, an idempotent retry path through workflow_dispatch,
+  # and — the part that matters most — every step except the publish itself
+  # runs on the pull request, so a broken release fails on the change that
+  # broke it instead of on the merge that had to cut it.
   #
-  # So the switch is now what it always should have been: did THIS commit
-  # change .version. The collision check stays underneath it as a backstop,
-  # not as the mechanism — job-version-gate rejects a backward or repeated
-  # version on the pull request, and if one ever reaches main anyway the
-  # existing tag wins and the step says so rather than repointing what eleven
-  # repos may already have pinned.
+  # It also stops re-deriving the release switch. The old body ran its own
+  # `git diff --name-only HEAD^ HEAD | grep -qxF .version`; the decision now
+  # arrives as an input from version-read, which answers it once.
+  #
+  # always() IS LOAD-BEARING, and its absence silently killed this job once.
+  #
+  # GitHub skips a job when ANY job in its `needs` closure was skipped, and
+  # `always()` rescues only the job that carries it. ci-ok carries one, so it
+  # survives version-gate skipping on a push; this job did not, so it
+  # inherited the skip through ci-ok and never ran. The 2673932 merge is the
+  # evidence: lint, conformance and ci-ok all green, release skipped with no
+  # steps at all.
+  #
+  # version-gate skips on EVERY push to main — it is pull_request-only, since
+  # only a pull request has a base to compare against — so this was not a
+  # one-merge accident. It would have skipped on a release merge too, and the
+  # first anyone would have known is a release that produced no tag, which is
+  # the failure this whole standard exists to stop: something that did not
+  # happen, reported as fine.
+  #
+  # needs.ci-ok.result is then checked explicitly, because always() also
+  # disarms the implicit "only if my dependencies succeeded". Without that
+  # clause this job would tag a commit whose CI had failed.
+  #
+  # What is NOT in the `if:` is the push/main condition. The catalog job applies
+  # that per-step, so gating the job to main here would be rule D5 — and it
+  # would take back the pull-request rehearsal that is half the point.
   release:
-    # always() IS LOAD-BEARING, and its absence silently killed this job.
-    #
-    # GitHub skips a job when ANY job in its `needs` closure was skipped, and
-    # `always()` rescues only the job that carries it. ci-ok carries one, so it
-    # survives version-gate skipping on a push; this job did not, so it
-    # inherited the skip through ci-ok and never ran. The 2673932 merge is the
-    # evidence: lint, conformance and ci-ok all green, release skipped with no
-    # steps at all.
-    #
-    # version-gate skips on EVERY push to main — it is pull_request-only, since
-    # only a pull request has a base to compare against — so this was not a
-    # one-merge accident. It would have skipped on a release merge too, and the
-    # first anyone would have known is a release that produced no tag, which is
-    # the failure this whole standard exists to stop: something that did not
-    # happen, reported as fine.
-    #
-    # needs.ci-ok.result is then checked explicitly, because always() also
-    # disarms the implicit "only if my dependencies succeeded". Without that
-    # clause this job would tag a commit whose CI had failed.
+    needs: [ci-ok, version-read]
     if: >-
       always()
-      && github.event_name == 'push'
-      && github.ref == 'refs/heads/main'
       && needs.ci-ok.result == 'success'
-    needs: [ci-ok]
-    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+    uses: ./.github/workflows/job-version-release.yml
+    with:
+      version: ${{ needs.version-read.outputs.version }}
+      version_changed: ${{ needs.version-read.outputs.version_changed }}
     permissions:
-      # The workflow default is contents: read; tagging needs write, and this
-      # is the only job in the repo that has it.
+      # The workflow default is contents: read; tagging and releasing need
+      # write, and this is the only job in the repo that has it.
       contents: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          # Tags are what this job reads to decide whether to act.
-          fetch-tags: true
-          fetch-depth: 0
-      - name: Tag this commit with .version
-        env:
-          GIT_AUTHOR_NAME: github-actions[bot]
-          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
-          GIT_COMMITTER_NAME: github-actions[bot]
-          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
-        run: |
-          set -euo pipefail
-
-          # THE RELEASE SWITCH. A version-named emission — this tag, a
-          # v<version> image tag, a release, a versioned package — is produced
-          # only by a commit that changed the version file. Everything else on
-          # main is still built, still gated and still reachable by SHA; it is
-          # simply not minted.
-          #
-          # -F, because `.version` as a regex matches any character where the
-          # dot is: a file called `aversion` would satisfy `grep -qx '.version'`
-          # and mint a release nobody asked for.
-          if ! git diff --name-only HEAD^ HEAD | grep -qxF '.version'; then
-            echo "This commit did not change .version; nothing to mint."
-            exit 0
-          fi
-
-          version="$(tr -d ' \t\r\n' < .version)"
-          case "$version" in
-            [0-9]*.[0-9]*.[0-9]*) ;;
-            *) echo "::error::.version reads '$version'; expected MAJOR.MINOR.PATCH"
-               exit 1 ;;
-          esac
-          tag="v${version}"
-          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
-            existing="$(git rev-list -n1 "${tag}")"
-            if [ "${existing}" = "${GITHUB_SHA}" ]; then
-              echo "${tag} already points at ${GITHUB_SHA}; nothing to do."
-              exit 0
-            fi
-            echo "::error::${tag} already exists at ${existing} and this commit is" \
-                 "${GITHUB_SHA}. Tags are immutable here — callers may already pin" \
-                 "${tag}. Bump .version instead of moving it."
-            exit 1
-          fi
-          git tag -a "${tag}" -m "workflows ${tag}" "${GITHUB_SHA}"
-          git push origin "${tag}"
-          echo "tagged ${tag} at ${GITHUB_SHA}"
-          { echo "### Released \`${tag}\`"
-            echo
-            echo "Dependabot will open re-pin pull requests across the portfolio."
-          } >> "$GITHUB_STEP_SUMMARY"
 
   ci-ok:
-    needs: [lint, conformance, version-gate]
+    # version-read is in here rather than downstream because it is not
+    # housekeeping — it is the input housekeeping reads. A version-read that
+    # failed while the rollup went green would hand `release` an empty
+    # `version_changed`, and the release that did not happen would be
+    # reported as fine (rule D6).
+    needs: [lint, conformance, version-gate, version-read]
     if: always()
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
     steps:

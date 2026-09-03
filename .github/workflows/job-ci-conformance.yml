@@ -218,7 +218,7 @@ on:
         #
         # Bumped for wave 1 of the job-role change: every catalog job now
         # carries an `# aurum-job:` declaration saying what it is. Nothing
-        # reads them yet, which is the whole point of landing them alone.
+        # read them yet, which was the whole point of landing them alone.
         #
         # Wave 2 makes check-ci-conformance resolve a caller's job to the
         # declaration on the job it calls. That reads the CATALOG LISTING
@@ -233,7 +233,13 @@ on:
         # Same shape as job-go-build.yml in #97 and the wave-A data change: the
         # instrument was looking at a tree from before the thing it needed
         # existed, and reported that absence as conformance.
-        default: a47c10d39a67c8b62920a95005a9c679a3d649e7
+        #
+        # Bumped for wave 2, the reader. The declarations are on the default
+        # branch now, so the listing clone carries them and the roles resolve;
+        # verified against a checkout of that branch rather than assumed, since
+        # assuming is what went wrong the first time. Rule DECL means a repeat
+        # cannot be quiet: a catalog job with no declaration is reported.
+        default: a2efeb8eecbadc299b9a06028fd1cbf7f716fdc2
 
 jobs:
   ci-conformance:

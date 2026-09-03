@@ -167,6 +167,29 @@ by the CI check that reads the same file, naming the flag, its owner and its
 removal condition. The kinds are disjoint: a flag that is a kill switch *and*
 a rollout has two lifetimes and satisfies neither, so it is two flags.
 
+**`review_by` is at most 365 days ahead of the day the declaration is read**,
+and the two ceilings are measured differently on purpose. `expires` is
+bounded from `created` because a release or an experiment has a **bounded
+life**: the whole point is that the flag ends. `review_by` is bounded from
+*today* because an operational or entitlement flag may legitimately live for
+years, so what is bounded is not its life but the **neglect** of it — the
+longest anyone may go without looking at it again.
+
+A ceiling measured from `created` would be satisfied once and never again; a
+required field with no ceiling at all is satisfied by typing a date in the
+next century, which is the accumulation failure FF3 exists to prevent
+arriving through the one kind that never expires. Measured forward from the
+reading, neither is possible: a distant date fails the day it is written and
+every day after, extension is always available and always a commit somebody
+reviews, and a flag kept for a decade is kept by ten deliberate acts rather
+than by one forgotten one. A repository may lower either ceiling in its
+**Conventions** and may not raise it.
+
+The number is a judgment, like 180: an annual look matches how recurring
+review is actually scheduled, and a shorter cycle on a kill switch that is
+working correctly becomes a rubber stamp — which is worse than a longer one
+that is honoured, because it produces a record of review nobody performed.
+
 ### FF4. Every boolean flag defaults to `false`, and evaluation failure returns the default
 
 **The default is the value under which the new thing is absent, and for a
@@ -434,6 +457,18 @@ declaration still has a call site (FF11).
 - **The 180-day ceiling on `expires`** (2026-09-02). A judgment stated so it
   can be argued with; without one the required field is satisfied by a date
   in the next decade. Repositories may lower it and may not raise it.
+- **`review_by` is bounded 365 days ahead of the reading date, not from
+  `created`** (2026-09-03). The ceiling on `expires` was written and the
+  matching one on `review_by` was not, which left the standard bounding the
+  flags already on their way out and leaving unbounded the two kinds most
+  likely to sit for a decade — the exact inversion of what FF3 is for. A
+  ceiling measured from `created` is the obvious fix and the wrong one: it is
+  satisfied once, and it wrongly reports a flag that has been legitimately
+  reviewed every year since. Measuring forward from the reading makes a
+  distant date fail on the day it is written, makes extension always
+  available and always a reviewed commit, and makes a decade of keeping a
+  flag cost ten deliberate acts. Both weakenings are in the corpus as
+  detectors so neither can return quietly.
 - **Exposure is an event through the outbox, once per subject**
   (2026-09-02). Per evaluation is FF8's volume failure in a second channel;
   nothing makes the experiment unanalysable. Once per subject at first

@@ -790,7 +790,7 @@ running an evaluation boundary against the corpus.
 |---|---|---|---|
 | FF1 | Application code evaluates through the OpenFeature evaluation API; the provider is set from configuration at start; a vendor SDK is only ever a provider; an evaluation never throws; a provider down is `degraded`, never `503` | **resists a checker at its own level** — whether domain code imports a provider is a fact about source, and a gate reading source for it is the PC4 violation. The observable halves are live: the startup line names the provider (`job-image-starts`, proposed), and `/readyz` stays `200` with the provider unreachable (SC6's gate) | **review only** |
 | FF2 | Every flag is declared in the repository against `flag-declaration.schema.json`; the declaration is built into the image; an evaluation of an undeclared flag is a finding and never reaches the provider; flag names and permission strings are disjoint sets | **schema-decided** for the file: fifteen `declarations` cases. **One `evaluation` case is a verified detector** — a provider holding a flag no declaration names, which an implementation that asks the provider first answers from the provider and passes every other case. Disjointness is an intersection of two committed sets (proposed `check-flag-names`) | **review only** |
-| FF3 | Four kinds: `release` and `experiment` carry `expires` and `removal`, `operational` and `entitlement` carry `review_by`; `expires` is at most 180 days after `created`; the day after either date the flag is a finding | the kind-conditional fields are **schema-decided**; the 180-day horizon and the date comparison are decided by the `expiry` corpus part, seven cases (proposed `check-flag-declarations`, static over one committed file). That a kind was chosen honestly is a review question | **review only** |
+| FF3 | Four kinds: `release` and `experiment` carry `expires` and `removal`, `operational` and `entitlement` carry `review_by`; `expires` is at most 180 days after `created` and `review_by` at most 365 days ahead of the day the declaration is read; the day after either date the flag is a finding | the kind-conditional fields are **schema-decided**; both horizons and the date comparison are decided by the `expiry` corpus part, ten cases, **two of them verified detectors** — a sweep with no forward ceiling on `review_by` fails exactly the century-date case, and one bounding `review_by` from `created` rather than from the reading date fails exactly the long-lived-but-recently-reviewed case (proposed `check-flag-declarations`, static over one committed file). That a kind was chosen honestly is a review question | **review only** |
 | FF4 | Every boolean flag defaults to `false` and is named for what `true` turns on; the call site's default is the declared default; every failure returns the declared default with `reason: ERROR` and the specification's code, logged once per flag per process | the boolean default is **schema-decided**. **One `evaluation` case is a verified detector**: the provider unavailable, which a fail-open implementation answers `true` and passes every case in which the provider is up. A call-site default disagreeing with the declaration is an `evaluation` finding case. Whether a non-boolean default is the shipped variant is a review question | **review only** |
 | FF5 | A flag decides whether a capability is shown or wired and never whether a subject is allowed; an `entitlement` flag is evaluated beside a permission, never instead; a flag appears in no grant, role, `/me` permission list or `check` argument; flag on and permission denied is `403`; flag off is `404` | **decided by the `gating` corpus** — four cases. **One is a verified detector**: entitlement on and permission denied, which an implementation treating the flag as authorization serves and passes the other three. `check-flag-names` (FF2's) catches a flag name in the permission set | **review only** |
 | FF6 | The evaluation context is `targeting_key`, `tenant_id`, `user_id`, `environment`, `release_version`, `service` and a flat `attributes` map; never an email, a name, an address, an IP, a birth date or free text; ids are public ids | **schema-decided** by `evaluation-context.schema.json` at the platform hook: ten `contexts` cases, including the key denylist, the `@`-in-value rule and a nested object. The denylist catches spellings and not the property, so *would this attribute identify a person* stays the review question on every new attribute | **review only** |
@@ -802,14 +802,17 @@ running an evaluation boundary against the corpus.
 
 The corpus was run before landing: fifteen declaration cases, ten context
 cases, four evaluated-set cases, ten evaluation cases, four gating cases,
-two experiment cases and seven expiry cases all reproduce their expected
-results against a reference evaluation boundary, and the three detectors
+two experiment cases and ten expiry cases all reproduce their expected
+results against a reference evaluation boundary, and the five detectors
 were checked against deliberately weakened boundaries. The fail-open
 boundary — `true` on provider error — fails exactly the provider-unavailable
 case; the provider-first boundary — asking the provider before the
 declaration — fails exactly the undeclared-flag case; the
 flag-as-authorization handler fails exactly the entitled-and-denied case;
-each passes everything else.
+the sweep with no forward ceiling on `review_by` — the shape this standard
+shipped with — fails exactly the century-date case; the sweep bounding
+`review_by` from `created` rather than from the reading date fails exactly
+the long-lived-but-recently-reviewed case; each passes everything else.
 
 ## Notifications standard
 

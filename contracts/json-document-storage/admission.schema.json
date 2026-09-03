@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://contracts.aurumalpha.dev/document-storage/admission.schema.json",
+  "$id": "https://contracts.aurumalpha.dev/json-document-storage/admission.schema.json",
   "title": "Aurum Alpha document store admission",
-  "description": "standards/027-document-storage.md DS1: the declaration a repository writes to admit a document store beside its relational store. A store with no admission is not admitted. The declaration names the engine (DS9), the role (DS2), the test the relational engine's JSON column failed (DS1), the collections with their scoping, id source, schema versions and indexes (DS4-DS7), the jobs that project, rebuild and reconcile a derived store (DS8), and the backup posture the backup standard reads. The conditional rules are the ones prose states and a reviewer would otherwise remember: a derived store names its system of record and its jobs and declares backup: rebuild; a primary store declares backup: snapshot and names no rebuild; a scale reason carries its measure; a scoped collection names its isolation levels. Three checks JSON Schema cannot express are judged by the corpus runner and said so there: the engine's admitted roles against storage-profiles.json, that current_schema_version has a schema, that the two credentials differ, and that every index on a scoped collection leads with the outermost isolation field. schema_version 1 - evolves additively per PC6.",
+  "description": "standards/027-json-document-storage.md DS1: the declaration a repository writes to admit a document store beside its relational store. A store with no admission is not admitted. The declaration names the engine (DS9), the role (DS2), the test the relational engine's JSON column failed (DS1), the collections with their scoping, id source, schema versions and indexes (DS4-DS7), the jobs that project, rebuild and reconcile a derived store (DS8), and the backup posture the backup standard reads. The conditional rules are the ones prose states and a reviewer would otherwise remember: a derived store names its system of record and its jobs and declares backup: rebuild; a primary store declares backup: snapshot and names no rebuild; a scale reason carries its measure; a scoped collection names its isolation levels. Three checks JSON Schema cannot express are judged by the corpus runner and said so there: the engine's admitted roles against storage-profiles.json, that current_schema_version has a schema, that the two credentials differ, and that every index on a scoped collection leads with the outermost isolation field. schema_version 1 - evolves additively per PC6.",
   "type": "object",
   "$defs": {
     "jobName": {
@@ -110,7 +110,7 @@
       "description": "The logical name of the owning service, in the form 055 AM1 uses for source: /invoicing. The store is private to this service (SD13 via DS3)."
     },
     "engine": {
-      "enum": ["mongodb", "opensearch"],
+      "enum": ["mongodb", "dynamodb", "elasticsearch", "opensearch"],
       "description": "DS9. An engine admitted by storage-profiles.json; the runner asserts this enumeration and that file agree. An engine is admitted by adding its profile entry and this value in one change."
     },
     "role": {

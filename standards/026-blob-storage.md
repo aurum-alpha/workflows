@@ -19,7 +19,7 @@ an object is keyed, what the application records about it, how it is read,
 how it arrives, how it is scanned, and how it leaves. **What it does not
 define is structured data, JSON documents, or backup**: rows are
 [`025-structured-data.md`](025-structured-data.md)'s, schema-per-document JSON
-data is [`027-document-storage.md`](027-document-storage.md)'s, and a bucket's
+data is [`027-json-document-storage.md`](027-json-document-storage.md)'s, and a bucket's
 copies and their restoration are
 [`028-backup-and-recovery.md`](028-backup-and-recovery.md)'s.
 
@@ -524,7 +524,7 @@ a transaction (BS8, as AM4), and that a `retention` reason is true.
   [`082-data-subject-rights.md`](082-data-subject-rights.md)'s;
   this document supplies the delete those jobs call and the served read an
   export is delivered through.
-- **JSON documents.** [`027-document-storage.md`](027-document-storage.md)'s; a
+- **JSON documents.** [`027-json-document-storage.md`](027-json-document-storage.md)'s; a
   document over the size that standard sets is an object with a reference.
 - **Public asset delivery.** Release artifacts under [`010-ci.md`](010-ci.md),
   served without a check; not user data, not this bucket. A derived object —

@@ -279,7 +279,7 @@ what its jobs declare they need, which is one of the three things WK2 splits
 images on. The pool and the ordinary one-shot image carry
 the service's runtime credential. The migrate image carries the migration
 credentials — the relational one and, where
-[`027-document-storage.md`](027-document-storage.md) admits a document store,
+[`027-json-document-storage.md`](027-json-document-storage.md) admits a JSON document store,
 that store's declaration credential (027 DS7) — and no runtime credential. The
 recovery image carries the restore credential and the runtime credential for
 its run record, and no other image carries the restore credential

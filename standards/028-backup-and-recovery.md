@@ -24,7 +24,7 @@ it does not define is the store itself** — how structured, blob and document
 data are written, isolated and deleted while the service runs, which are
 [`025-structured-data.md`](025-structured-data.md)'s,
 [`026-blob-storage.md`](026-blob-storage.md)'s and
-[`027-document-storage.md`](027-document-storage.md)'s — nor the erasure
+[`027-json-document-storage.md`](027-json-document-storage.md)'s — nor the erasure
 request that produces a ledger entry, which is the data subject rights
 standard's.
 
@@ -148,7 +148,7 @@ is invalid, and so is declaring `rebuild` on a primary store.
 |---|---|---|
 | `relational` | `pitr` — continuous archive of the write-ahead or binary log, restorable to any instant | A scheduled dump has an RPO of its cadence; PITR's is the archive lag, in seconds. |
 | `object` | `versioning`, with replication to the failure domain — every overwrite and delete keeps the prior version | A scheduled bucket copy misses every object written and deleted between copies; versioning already is the point-in-time record. |
-| `document` | `snapshot` or `pitr`, whichever the engine offers continuously | As relational. A primary document store is a database in every sense used here. |
+| `document` | `snapshot` or `pitr`, whichever the engine offers continuously | As relational. A primary JSON document store is a database in every sense used here. |
 | `filesystem` | `snapshot` | A file-level copy of a live filesystem is consistent at no instant; a snapshot is. |
 | `cache` | none — a cache is always `derived`, rebuilt `by: reads` | A cache that cannot be lost is a database with the wrong name, and is declared as one. |
 
@@ -440,7 +440,7 @@ same steps (BR8).
   consumes the entry that standard's erasure job writes.
 - **The object reference and the orphan purge, and when a document store is
   admitted and in which role.** [`026-blob-storage.md`](026-blob-storage.md)'s
-  and [`027-document-storage.md`](027-document-storage.md)'s; BR7 relies on
+  and [`027-json-document-storage.md`](027-json-document-storage.md)'s; BR7 relies on
   the row being the source of truth, and BR2 takes the role 027 declares.
 - **High availability.** Replicas, failover and multi-zone placement keep a
   service serving through the loss of a machine; they replicate every mistake

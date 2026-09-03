@@ -9,7 +9,7 @@ leans on [`050-http.md`](050-http.md) for the request resources,
 [`057-jobs.md`](057-jobs.md) and [`035-workers.md`](035-workers.md) for the
 work, [`025-structured-data.md`](025-structured-data.md),
 [`026-blob-storage.md`](026-blob-storage.md) and
-[`027-document-storage.md`](027-document-storage.md) for the stores,
+[`027-json-document-storage.md`](027-json-document-storage.md) for the stores,
 [`080-audit.md`](080-audit.md) for the record, [`060-auth.md`](060-auth.md)
 for the identity, [`070-rbac.md`](070-rbac.md) for who may act for whom, and
 [`020-identifiers.md`](020-identifiers.md) for ids and instants.

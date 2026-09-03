@@ -622,10 +622,11 @@ twelve decisions. A third weakened server, one that answers a redirect to the
 store instead of the bytes, fails every one of the six served decisions and
 none of the refusals, which is the shape a posture rule should have.
 
-## Document storage standard
+## JSON document storage standard
 
-Rules from [`027-document-storage.md`](027-document-storage.md) — when a
-document store is admitted beside the relational store, in which role, what
+Rules from [`027-json-document-storage.md`](027-json-document-storage.md) — JSON
+documents, never files: when a document database is admitted beside the
+relational store's JSON column, which engine class for which test, in which role, what
 every document carries, how its shape changes without DDL, and what a copy
 owes its source. Most rules are 025's carried across, and DS3 says which; the
 admission and the envelope are schemas, the reader's version window and the

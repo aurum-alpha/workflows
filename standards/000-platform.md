@@ -339,7 +339,7 @@ written, it points at the roster row.
 ### Data
 
 - **System of record.** The store whose rows are the authority for an entity:
-  the relational store ([`027-document-storage.md`](027-document-storage.md)
+  the relational store ([`027-json-document-storage.md`](027-json-document-storage.md)
   DS1). Every other store holding a copy of that entity is *derived* from it
   and rebuildable by a job; a store that is not rebuildable is *primary* and
   is a database in every sense.
@@ -347,11 +347,12 @@ written, it points at the roster row.
   of one service's database, which holds its reference; the store is a
   stateful server attached as a backing service
   ([`026-blob-storage.md`](026-blob-storage.md)).
-- **Document.** A record a document store reads and writes whole, under one
-  id, carrying its own `schema_version` because no schema outside it records
-  its shape ([`027-document-storage.md`](027-document-storage.md)). A document
-  is never a file, and never a row's substitute where a relational constraint
-  governs the data.
+- **Document.** A JSON document: a record a JSON document store reads and
+  writes whole, under one id, carrying its own `schema_version` because no
+  schema outside it records its shape
+  ([`027-json-document-storage.md`](027-json-document-storage.md)). Never a
+  file — a PDF or a spreadsheet is an object — and never a row's substitute
+  where a relational constraint governs the data.
 - **Backup.** A copy of a stateful server's state taken by the engine's own
   mechanism under a credential no process of the service holds, kept in a
   different failure domain, and proven restorable by a drill
@@ -402,7 +403,7 @@ the work is an issue in this repository.
 | Service interfaces & HTTP APIs | Protocol selection (HTTP default, gRPC internal-only, SSE before WebSocket); OpenAPI description; RFC 9457 errors; pagination, versioning, idempotency keys, retry semantics; snake_case wire naming | [`050-http.md`](050-http.md) |
 | Identifiers & primitives | Internal keys never exposed; public-id format table; RFC 3339 UTC; integer minor-unit money | [`020-identifiers.md`](020-identifiers.md) |
 | Structured data | SQL as the query language with no runtime generation; migrations as ordered `.sql` files shipped in the image and run as a step before rollout; expand-only; declared isolation levels that are the RBAC scope types, proven by enumeration; per-engine storage profile | [`025-structured-data.md`](025-structured-data.md) |
-| Document storage | The relational store is the system of record and the JSON column is the first answer; a document store is admitted by a declaration naming which of three tests the column failed, in one of two roles — derived (rebuilt by a job, not backed up) or primary (a database in every sense); the structured-data rules for tenancy, identity, hard delete, privacy and authored queries transfer, migrations become a version window and a backfill, and the schema lives in the documents | [`027-document-storage.md`](027-document-storage.md) |
+| JSON document storage | The relational store is the system of record and its JSON column is the first answer; a document database — a document engine, a key-value document store, a search engine — is admitted beside it, the hybrid model, by a declaration naming which of three tests the column failed and in one of two roles — derived (rebuilt by a job, not backed up) or primary (a database in every sense); the structured-data rules for tenancy, identity, hard delete, privacy and authored queries transfer, migrations become a version window and a backfill, and the schema lives in the documents | [`027-json-document-storage.md`](027-json-document-storage.md) |
 | Backup and recovery | A recovery declaration per stateful store — RPO, RTO, the engine's mechanism, retention between a floor and a ceiling bounded by the erasure horizon, a drill cadence; derived stores declared `rebuild` and not backed up; restore exercised as a periodic job that measures the objectives and blocks a deployment when stale; an erasure ledger copied to the backup domain and replayed before readiness | [`028-backup-and-recovery.md`](028-backup-and-recovery.md) |
 | Async messaging | CloudEvents 1.0 profile as the envelope; at-least-once with `(source, id)` deduplication through inbox and outbox; workers, never timers; Standard Webhooks signing at the edge | [`055-messaging.md`](055-messaging.md) |
 | Jobs | The job as an interface: a named, bounded task with an input, a key, a declared class and an outcome; three duplicate policies; a run record; single-flight in the job; absence as the failure of a periodic job | [`057-jobs.md`](057-jobs.md) |

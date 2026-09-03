@@ -1,10 +1,10 @@
-# Document storage: when a document store is admitted beside the relational store, and which structured-data rules transfer
+# JSON document storage: the relational JSON column first, when a document database is admitted beside it, and which structured-data rules transfer
 
 One of the Aurum Alpha engineering standards, written under the platform
 contract ([`000-platform.md`](000-platform.md)) — a per-capability standard
 from its roster. Read [`999-enforcement.md`](999-enforcement.md) for the tier
 each rule below actually holds. Artifacts:
-[`contracts/document-storage/`](../contracts/document-storage/). Nearly every
+[`contracts/json-document-storage/`](../contracts/json-document-storage/). Nearly every
 rule here is a rule of [`025-structured-data.md`](025-structured-data.md)
 carried across or deliberately left behind; ids and timestamps are
 [`020-identifiers.md`](020-identifiers.md)'s; the jobs that rebuild and
@@ -13,8 +13,20 @@ backfill a store are [`057-jobs.md`](057-jobs.md)'s; what is backed up is
 *stateful server*, *backing service* and *credential* are used in the senses
 [`000-platform.md`](000-platform.md#terms) defines.
 
-This document governs **a document store attached beside the relational
-store**: when one is admitted at all, in which of two roles, what every
+**A document here is a JSON document** ([RFC 8259](https://www.rfc-editor.org/rfc/rfc8259)):
+a record whose shape is decided per document rather than per table — a form a
+user designed, a payload a provider sent, a search-index entry, a read model
+projected from many rows. It is **never a file a person would call a
+document**: a PDF, a spreadsheet, a word-processor file, a scanned contract.
+Those are bytes, and bytes are objects under
+[`026-blob-storage.md`](026-blob-storage.md), whatever the product calls them.
+Where this document and the industry say *document store* or *document
+database*, read *JSON document store*.
+
+This document governs **JSON documents and where they live**: the relational
+engine's JSON column as the first answer, the hybrid model in which a
+document database is attached beside the relational store when the column is
+insufficient, which engine for which need, in which of two roles, what every
 document carries, how a document's shape changes without a schema to migrate,
 and how a store that is a copy is kept a faithful one. **What it does not
 define is the relational store, blobs, or backup**: the first is
@@ -25,8 +37,8 @@ is backed up; this document only says which stores it may exclude.
 
 ## Why this exists
 
-A document store is the second persistence engine a product reaches for, and
-it is reached for early, because its first week is easier than the relational
+A JSON document store is the second persistence engine a product reaches
+for, and it is reached for early, because its first week is easier than the relational
 store's: no schema to write, no migration to run, a shape that is whatever the
 code last serialised. Every advantage of that week is a decision deferred, and
 the deferred decisions arrive together: what a document *is*, which fields
@@ -51,10 +63,15 @@ anything raises.
 The relational engine's own JSON column already answers most of what a
 document store is asked to do, with a standard query language, inside the
 owning row's transaction, isolation predicate and backup. So this document
-makes that column the default and the document store the exception that
-states its reason, and splits the exception into two roles that differ in
-whether the data may be lost, so the common case, a rebuildable projection,
-carries none of the weight of a system of record. What this removes from
+makes that column the default and the document database the exception that
+states its reason — **the hybrid model**: rows and JSON columns in the
+relational store for everything that can live there, and a document database
+(a general-purpose document engine, a key-value document store, a search
+engine) attached beside it for the data the column measurably cannot serve.
+It splits the exception into two roles that differ in whether the data may be
+lost, so the common case, a rebuildable projection, carries none of the
+weight of a system of record. [The hybrid model](#the-hybrid-model-the-json-column-or-a-document-database)
+below says which engine answers which need. What this removes from
 every repository: whether a store is warranted, what a document must carry,
 how its shape may change, and what a copy owes its source. What remains is
 the shape of the documents, which is the domain's.
@@ -113,10 +130,11 @@ payload a provider sent, a page a renderer assembled — and no other entity
 holds a reference into its interior. That is the test SD10 already states for
 the JSON column, so the column is the first answer: one row, one `jsonb`
 value, queried with SQL/JSON path under SD1, inside the row's transaction and
-isolation predicate, in the row's backup. A document store is admitted only
-when the column fails one of three tests, and the admission
-([`admission.schema.json`](../contracts/document-storage/admission.schema.json))
-names which:
+isolation predicate, in the row's backup. A document database is admitted
+only when the column fails one of three tests, and the admission
+([`admission.schema.json`](../contracts/json-document-storage/admission.schema.json))
+names which; [the hybrid model](#the-hybrid-model-the-json-column-or-a-document-database)
+below says which engine each test usually leads to:
 
 | Test | The column is insufficient when | Typical role |
 |---|---|---|
@@ -209,7 +227,7 @@ collection used but not declared is the finding.
 ### DS5. Every document carries the envelope
 
 **Whatever else a document holds, it carries the five fields of
-[`document-envelope.schema.json`](../contracts/document-storage/document-envelope.schema.json)
+[`document-envelope.schema.json`](../contracts/json-document-storage/document-envelope.schema.json)
 at its top level:**
 
 | Field | Value | Why it is in every document |
@@ -318,7 +336,7 @@ jobs, both declared in the admission by name.**
 ### DS9. An engine is admitted by a storage-profile entry
 
 **No engine is mandated, and no engine is admitted until
-[`storage-profiles.json`](../contracts/document-storage/storage-profiles.json)
+[`storage-profiles.json`](../contracts/json-document-storage/storage-profiles.json)
 carries its entry**, in the form [`025-structured-data.md`](025-structured-data.md)
 SD7 established: for each primitive the native representation it lands in,
 and why the obvious alternative is wrong. An entry fixes how the DS4
@@ -329,9 +347,13 @@ indexed and lead every index on a scoped collection; the form
 engine's query language under DS3; the engine's own ceiling, so DS10's sits
 under it; which roles the engine may take — a search engine is a projection
 by construction and is `derived` only; and whether it is admitted as a
-profile of a multi-implementation protocol or as a single implementation. An
-engine not in the file is admitted by adding its entry, in its own change,
-with every field filled in — the door SD7 leaves open.
+profile of a multi-implementation protocol or as a single implementation. The
+file today carries a general-purpose document engine admitted as a
+wire-protocol profile, a key-value document store, and two search engines,
+each admitted as a single implementation; [the hybrid model](#the-hybrid-model-the-json-column-or-a-document-database)
+says what each is for. An engine not in the file is admitted by adding its
+entry, in its own change, with every field filled in — the door SD7 leaves
+open.
 
 ### DS10. A document is not a blob, and a blob is not a document
 
@@ -348,7 +370,50 @@ holds in the other direction: a document store never holds encoded file
 content — a base64 image in a JSON field is a blob that escaped its standard
 — and a blob store never holds a record queried by field.
 
-## Classifying a candidate
+## The hybrid model: the JSON column or a document database
+
+The model has two halves and a default. **The relational store holds every
+row and, in its JSON column, every JSON document that can live beside its
+owner**: that is the default, and no declaration is needed for it. **A
+document database is attached beside the relational store** — never instead
+of it — for the collections the column cannot serve, and each such store is
+one admission (DS1) naming the test the column failed. A product may run
+several: a search engine for its index and a document engine for its archive,
+each its own backing service under [`025-structured-data.md`](025-structured-data.md)
+SD13. What a product never does is move its rows into a document database
+because the documents are there.
+
+### Stay on the JSON column when
+
+- the document is read and written whole, beside the row that owns it, and
+  the reads that reach inside it are by a handful of known paths a JSON index
+  serves;
+- the collection's size and write rate are a fraction of the table it sits
+  in, and nobody has a number that says otherwise;
+- the document must change in the same transaction as its owner, or its
+  isolation must be the row's predicate and nothing looser;
+- the product has one persistence engine today and this would be the second.
+  The second engine is a second backup, a second credential split, a second
+  profile, a second failure mode in every drill; it is bought with a stated
+  reason, not with a preference.
+
+### Move to a document database when the column fails a test, and choose by the test
+
+| Engine class | Examples admitted in [`storage-profiles.json`](../contracts/json-document-storage/storage-profiles.json) | Answers | Role | What it gives up |
+|---|---|---|---|---|
+| **General-purpose document engine** | The engine behind the MongoDB wire protocol, admitted as a protocol profile because several servers implement it independently — a repository moves between them by connection string | `scale`: a large, write-heavy collection of self-contained documents that relates to nothing but its owner, queried by many interior fields with secondary indexes, whose volume is degrading the transactional tables beside it. `query_shape` where the shape is rich secondary indexing over per-document shapes rather than relevance. | `primary` or `derived` | Foreign keys, cross-document uniqueness, checks, a transaction with the owner row (DS3: SD10 and SD11 do not transfer). |
+| **Key-value document store** | DynamoDB, admitted as a single implementation | `scale` at the far end: a collection accessed by known keys along access patterns designed up front — a per-tenant event log, a session-shaped record, a device's last-known state — at a write rate the relational engine will not sustain, with no ad-hoc query at all. | `primary` (its own copy) or `derived` (a keyed read model) | Every query the design did not anticipate; secondary indexes are declared and paid for; no interior query language. |
+| **Search engine** | Elasticsearch and OpenSearch, each a single implementation — they share a lineage and have diverged | `query_shape`: relevance ranking, full-text analysis, faceting, aggregation and geospatial ranking over user-authored shapes, which the relational engine's JSON indexing cannot serve. | `derived` only, by construction | Durability as a system of record: an index is a projection, rebuilt from rows (DS8), and the profile admits no other role. |
+
+Two of the three tests carry a number. `scale` is stated in the admission —
+the collection's size and write rate, and what they did to the table beside
+them — because "it will be big" is a forecast and not a test. `derivedness`
+is stated as the read-to-write ratio and the cost of the join the projection
+replaces. `query_shape` is stated as the query the column could not serve,
+committed as the text DS3 requires, so a reviewer can try it against the
+column and agree.
+
+### The engine follows the data; examples
 
 The admission test is easier to apply from examples than from its
 definition. Read the data, and the store and the role follow.
@@ -356,17 +421,18 @@ definition. Read the data, and the store and the role follow.
 | Data | Store | Role | Why |
 |---|---|---|---|
 | A user-authored form definition, rendered whole, beside its owner row | relational, JSON column | — | SD10's rule exactly: a document by nature, held inside the owner's transaction and isolation. |
-| The same, in a product that searches inside thousands of definitions by field type and label | document store | `primary` | The column fails `query_shape`; the definitions are the only copy. |
-| Full-text search over invoices, contacts and notes | document store | `derived` | A search index is a projection; the rows exist. |
-| A dashboard read model joining six tables, read a thousand times per write | document store | `derived` | `derivedness`: the projection is the cost the column cannot amortise. |
-| A verbatim archive of every provider payload, kept for dispute | JSON column; document store on stated `scale` | `primary` if moved | Relates to nothing but its owner and is never reproduced; the column first, the store when the number is stated. |
+| The same, in a product that searches inside thousands of definitions by field type and label | general-purpose document engine | `primary` | The column fails `query_shape` on secondary indexing over per-document shapes; the definitions are the only copy. |
+| Full-text search over invoices, contacts and notes | search engine | `derived` | A search index is a projection; the rows exist. |
+| A dashboard read model joining six tables, read a thousand times per write | general-purpose document engine, or a key-value store where the reads are by key alone | `derived` | `derivedness`: the projection is the cost the column cannot amortise. |
+| A verbatim archive of every provider payload, kept for dispute | JSON column; a general-purpose document engine on stated `scale` | `primary` if moved | Relates to nothing but its owner and is never reproduced; the column first, the store when the number is stated. |
+| A device's last-known state, one record per device, written every few seconds across a large estate | key-value document store on stated `scale` | `primary` | Known key, one access pattern, a write rate that is the test; nothing queries across devices except a job that walks keys. |
 | An invoice with lines and totals | relational | — | Money, foreign keys, uniqueness: SD10's invariants, DS1's line. |
 | Audit events | relational; a search index over them `derived` | — | [`080-audit.md`](080-audit.md) AE6's append-only grant is a role privilege the relational engine holds and a document store does not. |
-| An uploaded PDF, or a generated 3 MiB export | blob store | — | A file, or over DS10's ceiling; the row holds the reference. |
+| An uploaded PDF, a scanned contract, a spreadsheet, or a generated 3 MiB export | blob store under [`026-blob-storage.md`](026-blob-storage.md) | — | A file is not a document in this document's sense, whatever a person calls it; the row holds the reference. |
 
 ## The artifacts
 
-Per PC3, under [`contracts/document-storage/`](../contracts/document-storage/):
+Per PC3, under [`contracts/json-document-storage/`](../contracts/json-document-storage/):
 
 - **`admission.schema.json`** — DS1's declaration: engine, role, the test the
   column failed, the collections with scoping, id source, schema versions by
@@ -412,6 +478,18 @@ and whether a document over the ceiling was refused rather than truncated
   that could have kept them, and gives up the one standard query language. A
   store states which of three tests the column failed, so the decision is
   reviewable rather than a default.
+- **The hybrid model names engine classes and their tests** (2026-09-03). A
+  standard that admitted "a document store" without saying which kind left
+  the choice between a search engine and a document engine to whoever built
+  the feature, and the two answer different tests and take different roles.
+  Naming the classes, with the admitted engines as examples and the test each
+  answers, makes the column-versus-store decision and the which-store decision
+  both reviewable. The examples are engines, not endorsements: an engine is
+  admitted by its profile entry (DS9), and the class is what the standard
+  binds to.
+- **A document is a JSON document, and never a file** (2026-09-03). The word
+  carries the opposite meaning to most readers, so the standard says which it
+  means in its title and its first paragraph, and hands every file to 026.
 - **Two roles, and the role decides backup** (2026-09-02). One concept would
   carry the weight of a system of record onto every search index, or the
   looseness of a cache onto the only copy of a user's work. Splitting on
@@ -438,8 +516,9 @@ and whether a document over the ceiling was refused rather than truncated
 
 - **The relational store.** [`025-structured-data.md`](025-structured-data.md),
   in full; this document borrows its rules by name and adds none to it.
-- **Blobs, files and objects.** [`026-blob-storage.md`](026-blob-storage.md)'s;
-  DS10 only draws the line and names the size.
+- **Blobs, files and objects — including every file a person calls a
+  document.** [`026-blob-storage.md`](026-blob-storage.md)'s; DS10 only draws
+  the line and names the size.
 - **Backup mechanism, objectives and the restore drill.**
   [`028-backup-and-recovery.md`](028-backup-and-recovery.md)'s; this document
   hands it one declared field per store and the rebuild job for a derived one.

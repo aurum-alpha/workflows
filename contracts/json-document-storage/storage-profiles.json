@@ -1,0 +1,139 @@
+{
+  "contract": "json-document-storage",
+  "schemaVersion": 1,
+  "description": "standards/027-json-document-storage.md DS9 as data, in the form of 025's storage profiles: for each admitted JSON document engine, how the DS4 identifier, the IP4 instant and the isolation fields land, what form the declaration step renders indexes into, what 'authored text' means for its query language under DS3, its own document ceiling, the roles it may take under DS2, and whether it is admitted as a profile of a multi-implementation wire protocol or as a single implementation. An engine is admitted by adding its entry here and to admission.schema.json's engine enumeration in one change, with every field filled in and every 'why' answered; the corpus runner asserts the two agree. No engine is mandated; an engine absent from this file is not yet admitted.",
+  "fields": {
+    "protocol": "DS9 / PC2. wire_protocol_profile: the engine's protocol and query language have several independent server implementations, so the admission names the protocol and a repository moves between implementations by configuration (factor IV). single_implementation: one server, admitted on its own terms.",
+    "id": "DS4. Where the document's public id or minted UUIDv7 is stored, and the engine identifier that is NOT used.",
+    "instant": "IP4 / DS5. The native representation of created_at, updated_at and every other instant, its precision, and that UTC survives the round trip.",
+    "tenant_field": "DS4. How tenant_id and its containing fields are held and indexed, and how the engine's own partitioning, where it has one, follows them.",
+    "index_declaration": "DS7. The form documents.declare renders the admission's indexes into for this engine, converging: create if absent, never drop without an expand-only reason.",
+    "query_form": "DS3 (SD1 carried across). What is committed as the query and read in review, and how values are bound rather than assembled.",
+    "max_document_bytes": "DS10. The engine's own hard ceiling, so a collection's declared ceiling (at or below 262144) is checked to sit under it.",
+    "admitted_roles": "DS2. Which of derived and primary this engine may be declared as. A search engine is a projection by construction and is derived only."
+  },
+  "engines": {
+    "mongodb": {
+      "protocol": {
+        "kind": "wire_protocol_profile",
+        "why": "The wire protocol and query language are implemented independently by several servers, so an admission names the protocol and a repository can change implementation by changing a connection string."
+      },
+      "id": {
+        "type": "_id holds the DS4 identifier: the entity's public id as a string, or a minted UUIDv7 as the engine's standard binary UUID subtype",
+        "why": "The engine's generated ObjectId is a second id format outside IP2 that carries a timestamp and a process identifier a consumer would parse against IP3, and it cannot be the key a projection upserts by."
+      },
+      "instant": {
+        "type": "the engine's native date type: 64-bit milliseconds since the epoch, UTC",
+        "why": "A native date indexes and compares as an instant. Millisecond precision matches IP4's default; a repository pinning six or nine digits stores the canonical string beside it and says so in its Conventions."
+      },
+      "tenant_field": {
+        "type": "top-level tenant_id as a string, indexed, the first key of every compound index on a scoped collection, and the shard key prefix where the collection is sharded",
+        "why": "The joinless predicate is only fast when the index starts where the predicate does (SD10), and on a partitioned store the isolation field leading is what keeps one tenant's documents on one partition."
+      },
+      "index_declaration": {
+        "type": "one createIndexes command document per declared index, rendered from the admission and applied by documents.declare under the declaration credential",
+        "why": "The engine's index creation is idempotent by name and definition, which is the convergence DS7 requires."
+      },
+      "query_form": {
+        "type": "filter, projection, update and aggregation pipeline documents committed as JSON with named placeholders the driver binds; no builder assembles them at runtime, and no untrusted key ever becomes an operator",
+        "why": "SD1's reasoning: the query document is the review, debugging and explain surface, and operator injection through a user-supplied key is injection."
+      },
+      "max_document_bytes": 16777216,
+      "admitted_roles": [
+        "derived",
+        "primary"
+      ]
+    },
+    "opensearch": {
+      "protocol": {
+        "kind": "single_implementation",
+        "why": "Its REST API and query DSL share a lineage with one other engine but the two have diverged, so an admission names the one it runs rather than a protocol both honour."
+      },
+      "id": {
+        "type": "_id set explicitly to the DS4 identifier on every index request",
+        "why": "An auto-generated _id cannot be upserted by the projection or converged by the rebuild, and a derived store keyed by anything but its source's id is not derived."
+      },
+      "instant": {
+        "type": "date field type with a strict RFC 3339 format, stored UTC, millisecond precision",
+        "why": "A dynamically mapped string is text, and text does not range-query as time; the format is declared so the mapping is the profile's, not the engine's guess."
+      },
+      "tenant_field": {
+        "type": "keyword field tenant_id on every document, carried in a filter context on every query; one index per tenant is admitted where the product isolates by one database per tenant (SD6)",
+        "why": "A keyword filter is the joinless predicate; a filter context is cached and never scores, which is what an isolation predicate should be."
+      },
+      "index_declaration": {
+        "type": "index templates and explicit mappings rendered from the admission; a mapping change within a version is additive (new fields only); a non-additive change is a new index, a rebuild (DS8) into it, and an alias switch",
+        "why": "The engine cannot change an existing field's mapping, which makes DS6's additive-within-a-version rule the engine's own discipline rather than a constraint placed on it."
+      },
+      "query_form": {
+        "type": "the query DSL body committed as JSON with placeholders the client binds; no query-builder object model",
+        "why": "SD1's reasoning, and the DSL body is what the engine's own profiling tools take verbatim."
+      },
+      "max_document_bytes": 104857600,
+      "admitted_roles": [
+        "derived"
+      ]
+    },
+    "dynamodb": {
+      "protocol": {
+        "kind": "single_implementation",
+        "why": "One server behind one API; local emulators exist for tests but no second production implementation honours the protocol, so an admission names the engine."
+      },
+      "id": {
+        "type": "the partition key holds the DS4 identifier as a string - the entity's public id, or a minted UUIDv7 - and the sort key, where one exists, is a declared attribute of the access pattern, never a second identifier",
+        "why": "The engine generates no identifier, which removes IP2's second-format hazard, and a key the projection upserts by must be the source's id."
+      },
+      "instant": {
+        "type": "RFC 3339 UTC string at the precision IP4 pins, stored as a string attribute; a numeric epoch copy is added only where a TTL or a range condition needs a number, beside the string and never instead of it",
+        "why": "The engine has no native instant type; a string in IP4's canonical form sorts correctly and round-trips exactly, and the number the engine's TTL feature wants is a derived copy."
+      },
+      "tenant_field": {
+        "type": "tenant_id is the leading component of the partition key on every scoped table - `<tenant_id>#<entity>` or a dedicated tenant partition - and a condition on every query; a global secondary index on a scoped table carries it as its own leading key",
+        "why": "The partition key is the only predicate the engine evaluates before it reads, so isolation that is not in the key is a scan with a filter, and a scan is a cross-tenant read that happened to be filtered."
+      },
+      "index_declaration": {
+        "type": "table and global secondary index definitions rendered from the admission and applied by documents.declare through the engine's control-plane API, converging: create if absent, never delete without an expand-only reason",
+        "why": "A secondary index is provisioned capacity and a backfill the engine runs itself; declared and converged it is DS7's step, created at boot it is SD3's race."
+      },
+      "query_form": {
+        "type": "key condition and filter expressions committed as text with expression attribute values bound by the driver; no expression is assembled from a request value, and a scan is admitted only in a job that declares it",
+        "why": "SD1's reasoning, and the engine's expression language accepts operators in attribute names only through the binding mechanism, so binding is what prevents an untrusted key becoming an operator."
+      },
+      "max_document_bytes": 409600,
+      "admitted_roles": [
+        "derived",
+        "primary"
+      ]
+    },
+    "elasticsearch": {
+      "protocol": {
+        "kind": "single_implementation",
+        "why": "Its REST API and query DSL share a lineage with one other engine and the two have diverged; an admission names the one it runs rather than a protocol both honour."
+      },
+      "id": {
+        "type": "_id set explicitly to the DS4 identifier on every index request",
+        "why": "An auto-generated _id cannot be upserted by the projection or converged by the rebuild, and a derived store keyed by anything but its source's id is not derived."
+      },
+      "instant": {
+        "type": "date field type with a strict RFC 3339 format, stored UTC, millisecond precision",
+        "why": "A dynamically mapped string is text, and text does not range-query as time; the format is declared so the mapping is the profile's, not the engine's guess."
+      },
+      "tenant_field": {
+        "type": "keyword field tenant_id on every document, carried in a filter context on every query; one index per tenant is admitted where the product isolates by one database per tenant (SD6)",
+        "why": "A keyword filter is the joinless predicate; a filter context is cached and never scores, which is what an isolation predicate should be."
+      },
+      "index_declaration": {
+        "type": "index templates and explicit mappings rendered from the admission; a mapping change within a version is additive (new fields only); a non-additive change is a new index, a rebuild (DS8) into it, and an alias switch",
+        "why": "The engine cannot change an existing field's mapping, which makes DS6's additive-within-a-version rule the engine's own discipline rather than a constraint placed on it."
+      },
+      "query_form": {
+        "type": "the query DSL body committed as JSON with placeholders the client binds; no query-builder object model",
+        "why": "SD1's reasoning, and the DSL body is what the engine's own profiling tools take verbatim."
+      },
+      "max_document_bytes": 104857600,
+      "admitted_roles": [
+        "derived"
+      ]
+    }
+  }
+}

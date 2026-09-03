@@ -12,7 +12,7 @@ This document governs **structured data in a relational store**: how queries
 are written, how the schema changes, how tenants are kept apart, and what the
 running service is allowed to hold in its hand when it talks to the database.
 Blob and file storage is [`026-blob-storage.md`](026-blob-storage.md)'s, and
-document stores are [`027-document-storage.md`](027-document-storage.md)'s;
+JSON document stores are [`027-json-document-storage.md`](027-json-document-storage.md)'s;
 neither is covered here, and the rules below do not transfer to them by
 analogy; 027 DS3 states which transfer, by argument.
 

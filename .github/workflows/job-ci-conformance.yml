@@ -12,9 +12,9 @@ name: ci-conformance
 # two renames without anything noticing. A check that only runs when someone
 # remembers to run it is not a gate.
 #
-# check-catalog-loops is deliberately absent: it inspects this repo's own shared
-# jobs, so it belongs in this repo's CI and nowhere else. check-standard-ref is
-# absent for the same reason.
+# check-catalog-loops and check-version-stamp-shared are deliberately absent:
+# they inspect this repo's own shared jobs, so they belong in this repo's CI and
+# nowhere else.
 #
 # The list is described rather than counted on purpose. It used to say "the four
 # caller-side checkers" and "the fifth checker", which meant adding one made two
@@ -54,192 +54,6 @@ on:
           its count does not fall is not stabilizing, it is hiding.
         type: boolean
         default: false
-      standard_ref:
-        description: >-
-          Commit of aurum-alpha/workflows to take the checkers from. A caller
-          pinning this workflow by SHA gets fixed checkers too, which is the
-          point — but only if this default moves in the same commit as the
-          checkers. GitHub gives a called workflow no handle on its own SHA, so
-          there is nothing to derive it from and it has to be written down.
-
-          It was not, for twenty commits: this default sat on 81b6b62 while
-          tools/check-ci-conformance changed twenty times, so a caller would
-          have run a checker with none of the rules added since — including the
-          one that would have caught the drift that made this obvious. Nothing
-          reported it because no repo called this workflow at all (issue #79).
-
-          One commit of lag is inherent and not a bug to chase: this default
-          can never name the commit that sets it. It points at the previous
-          main, so a caller gets every rule up to the change that shipped it.
-          What must not happen again is twenty.
-
-          The lag is harmless for a rule change and fatal for a NEW CATALOG
-          FILE, because rule CAT and the permissions checker read the catalog
-          listing out of this same clone. job-go-build.yml landed in #97 with
-          this default one commit behind it, so gofast — the first repo to
-          call it — was told the job "does not exist in the catalog", by a
-          checker looking at a tree from before it did. The job was there; the
-          instrument could not see it and reported that as absence. Move this
-          default in the same wave that adds a catalog file, not the one after.
-
-          It is fatal for a DATA change too, and that is the wider rule this
-          entry was missing. The checkers read dependency-versions.json out of this
-          same clone, so the file is an input on exactly the footing of a
-          catalog listing. Wave A (0521448) removed eslint, @eslint/js,
-          eslint-config-prettier and typescript-eslint from it and set this
-          default to the main before itself, as the convention says. The effect
-          was that every repo pinned at v2.2.4 ran check-dependency-versions against
-          a tree where those four were still mandatory — so the first repo to
-          actually drop them, flight-watch#51, was failed for not declaring
-          packages the portfolio had already retired. Same shape as the gofast
-          case: the tree was right and the instrument was looking at an older
-          one.
-
-          So the rule generalises. A wave that changes ANY file the checkers
-          read — a catalog job, a checker, dependency-versions.json — needs this
-          default moved to a commit that contains that change. A wave cannot
-          name its own commit, so when the change is to checker INPUT rather
-          than checker CODE, the bump is a follow-up commit.
-
-          It is now ENFORCED rather than merely written here.
-          check-standard-ref carries a CHECKER_INPUT_FILES list and demands the
-          bump for a change to dependency-versions.json exactly as it does for a
-          change to tools/. Until that landed this paragraph was the only thing
-          standing between a data change and a silently inert release, which is
-          to say nothing was.
-        type: string
-        required: false
-        # The commit that set typescript to 7.0.2 in dependency-versions.json
-        # (wave 6, #247). Moving this is what makes that assertion real: until
-        # now every caller read a pinned tree still saying 6.0.3, which is
-        # precisely why the pin could land ahead of the portfolio without turning
-        # a single repo red.
-        #
-        # The base of wave 7 -- dependency-versions.json asserted WHERE PRESENT,
-        # and Node units discovered from the tree instead of a hand-kept map.
-        # Demanded by the CHECKER_INPUT_FILES rule the previous change added,
-        # which is the first time this bump has been asked for rather than
-        # remembered.
-        #
-        # This bump used to be the one nothing could force, and that is no
-        # longer true -- check-standard-ref now lists dependency-versions.json in
-        # CHECKER_INPUT_FILES and fails a pull request that changes it without
-        # moving this default. That rule first applies to the commit that
-        # introduced it: this very line moved because the checker demanded it.
-        # The history is kept because it explains the rule, and because the
-        # same shape will recur the next time a checker starts reading
-        # something new out of this clone.
-        #
-        # What it used to do: demand a move only for a CONSUMED file --
-        # tools/, job-*.yml, setup/ -- and dependency-versions.json is none of
-        # those. It is checker INPUT: read by the checkers out of this clone,
-        # never referenced by a caller. So on #247 the checker printed
-        # "nothing a caller consumes changed" and passed, exactly as designed,
-        # while the change it was passing needed this follow-up to have any
-        # effect at all.
-        #
-        # That was the wave-A failure stated forward instead of backward.
-        # There, dependency-versions.json lost four packages and this default
-        # stayed behind, so repos that had already dropped them were failed
-        # for not declaring what the portfolio had retired. Same file, same silent
-        # checker, opposite direction: a false red then, a false green in #247.
-        # A data change was never exempt from the bump; it was exempt from
-        # being REMINDED about it, which is worse, because the reminder is the
-        # whole mechanism.
-        #
-        # The rename landed in two commits, and this is the second. First
-        # fleet-versions.json became dependency-versions.json and
-        # check-fleet-versions became check-dependency-versions -- a change
-        # CHECKER_INPUT_FILES demands this bump for exactly as a content
-        # change would, because a rename is still a change to the file every
-        # caller reads out of this clone. But the INVOCATION could not move
-        # in that same commit: this default is the pull request's base, and
-        # that base predated the new path, so pointing at it would have
-        # pinned callers to a tree with no such file. That is precisely how
-        # v2.2.10 and v2.2.11 shipped exit 127. tools/check-fleet-versions
-        # stood in as a bridge for one commit.
-        #
-        # This commit is the second step. The invocation below now names
-        # tools/check-dependency-versions, this default is the merge commit
-        # that carries it, and the bridge is deleted.
-        #
-        # Bumped again for the vocabulary change that retired "fleet": it
-        # touched every checker's comments and gave check-ci-conformance a
-        # --portfolio flag with --fleet as an alias. No rule changed, but the
-        # bytes every caller reads did, and CHECKER_INPUT_FILES does not
-        # distinguish -- which is the point of it.
-        #
-        # Bumped to v2.3.1 for the `entry` input on job-depcheck-js-knip. The
-        # job file is caller-consumed, so a caller pinning this change would
-        # otherwise fetch checkers from f254ede -- a tree without it.
-        #
-        # Bumped again for wave 1 of the check-eslint-config ->
-        # check-lint-configs rename. That bump pointed at its own pull
-        # request's BASE, which did not carry the rename -- correct, because
-        # standard_ref can never name the commit being created, and the
-        # one-commit lag is designed.
-        #
-        # WAVE 2 WAS THE BUMP TO 8e4070a, the wave-1 merge commit and the
-        # first commit whose tools/ carried check-lint-configs -- which is what
-        # allowed the invocation below to name it. The step runs the checker
-        # out of the standard_ref clone, so flipping the name without that bump
-        # is precisely the exit 127 that #126 shipped, and that this repo's own
-        # "Every checker job-ci-conformance invokes exists" step now catches in
-        # both trees.
-        #
-        # Now at 850a32b for wave 3, which deleted the check-eslint-config
-        # shim. The deletion is invisible to every existing caller and the
-        # reason is worth writing down, because the shim was kept on a
-        # misreading of it: a caller takes its job BODY from its own pinned
-        # tag and its TOOLS from that tag's own standard_ref, so a repo
-        # pinned at v2.3.2 runs a body naming check-eslint-config against
-        # f254ede/7a25f11/e54835c -- commits where that file is the real
-        # checker, not this one. Nothing reads tools/ from main. Checked
-        # against all eleven callers rather than reasoned about.
-        #
-        # Bumped again for the ignore_binaries input on job-depcheck-js-knip.
-        # The job file is caller-consumed, so a caller pinning that change
-        # would otherwise fetch checkers from 850a32b.
-        #
-        # Bumped to the merge of wave 1, which is what makes wave 2 safe: the
-        # step below invokes tools/check-catalog-pin-comments, and 5d73b58 is
-        # the first commit where that file exists. Wave 1 deliberately did NOT
-        # bump this -- it added the checker and left the default on adf6111,
-        # because a caller had no reason to fetch it while nothing called it.
-        # Doing both in one commit is the exit-127 shape: the job body reaches
-        # a caller from its own pin, the tools reach it from here, and an
-        # invocation that arrives before the file is a command not found.
-        #
-        # Bumped again for the retirement of the adoption-state lists. Both
-        # checkers are caller-consumed and both changed what they report: a
-        # caller pinning that change while this pointed at 5d73b58 would fetch
-        # checkers that still filter on a repository name, and get the old
-        # verdict from the new body.
-        #
-        # Bumped for wave 1 of the job-role change: every catalog job now
-        # carries an `# aurum-job:` declaration saying what it is. Nothing
-        # read them yet, which was the whole point of landing them alone.
-        #
-        # Wave 2 makes check-ci-conformance resolve a caller's job to the
-        # declaration on the job it calls. That reads the CATALOG LISTING
-        # clone, which is deliberately not pinned to this ref — see
-        # catalog_roots() — so it is the default branch, and a wave doing both
-        # at once cannot work: on the pull request that adds the declarations
-        # the default branch does not have them, every role resolves empty, and
-        # D1 through D5 pass by having nothing to say. That is not a
-        # hypothetical. It is what the first attempt at this did, and its
-        # conformance job went green on a checker that had been rendered inert.
-        #
-        # Same shape as job-go-build.yml in #97 and the wave-A data change: the
-        # instrument was looking at a tree from before the thing it needed
-        # existed, and reported that absence as conformance.
-        #
-        # Bumped for wave 2, the reader. The declarations are on the default
-        # branch now, so the listing clone carries them and the roles resolve;
-        # verified against a checkout of that branch rather than assumed, since
-        # assuming is what went wrong the first time. Rule DECL means a repeat
-        # cannot be quiet: a catalog job with no declaration is reported.
-        default: a2efeb8eecbadc299b9a06028fd1cbf7f716fdc2
 
 jobs:
   ci-conformance:
@@ -262,53 +76,47 @@ jobs:
         with:
           path: .ci-root/${{ steps.repo.outputs.name }}
 
+      # ONE clone of the catalog, at the default branch, for both jobs it does:
+      # it carries the CHECKERS this job runs, and it is the CATALOG LISTING
+      # those checkers resolve `uses:` lines against.
+      #
+      # It used to be two clones at two refs. The checkers came from a
+      # `standard_ref` input — a 40-hex sha typed into this file by hand — and
+      # the listing came from the default branch, on the argument that "which
+      # rules apply to me" should be reproducible while "does job-go-build.yml
+      # exist" is a question about now.
+      #
+      # The first half of that argument is retired. A caller references this
+      # catalog at @main and gets the current standard, because there is no
+      # opt-out from the current standard; rule PIN enforces it. With nothing
+      # pinning the rules, the two clones were the same commit twice.
+      #
+      # What standard_ref cost while it existed: it could never name the commit
+      # that set it, so it was permanently at least one commit behind, and every
+      # incident in this file's history is that gap. gofast was told a shared
+      # job "does not exist" by a checker reading a tree from before it was
+      # added. flight-watch was failed for dropping packages the portfolio had
+      # already retired. A conformance run went green on a checker whose own
+      # change had disabled it, because the declarations it needed were not yet
+      # on the branch it read. Third-party actions stay sha-pinned; that is a
+      # supply-chain control over code we do not own, and a different argument
+      # entirely.
+      #
       # aurum-alpha/workflows is public, so this needs no token — which is the
       # whole reason the check can live inside each repo instead of in a
       # portfolio-wide sweep that only ever ran when someone remembered to run it.
-      - name: Checkout the standard
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: aurum-alpha/workflows
-          ref: ${{ inputs.standard_ref }}
-          path: .aurum-standard
-          persist-credentials: false
-
-      # The CHECKERS come from standard_ref, pinned; the CATALOG LISTING comes
-      # from the default branch, current. They are different questions and were
-      # sharing one clone.
-      #
-      # "Which rules apply to me" should be reproducible, so pinning it is
-      # right. "Does job-go-build.yml exist in the catalog" is a question about
-      # the catalog as it is NOW — and standard_ref can never name the commit
-      # that sets it, so it is permanently at least one commit behind. Rules CAT
-      # and check-caller-permissions read the listing, so on the day a new
-      # shared job lands, the first repo to call it is told the job does not
-      # exist, by a checker looking at a tree from before it was added. gofast
-      # was that repo; the finding even suggested a wrong fix.
-      #
-      # A caller pinning this workflow still gets fixed RULES. What it stops
-      # getting is a stale answer to a question that has no business being
-      # pinned.
-      - name: Checkout the catalog listing
+      - name: Checkout the catalog
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: aurum-alpha/workflows
           path: .aurum-catalog
           persist-credentials: false
-          # TAGS, and the history behind them, for check-catalog-pin-comments:
-          # it resolves each pin's `# vX.Y.Z` comment with `git rev-list -n1`
-          # against this clone. The default shallow checkout carries no tags at
-          # all, and that checker refuses to run without them rather than
-          # passing every repository having resolved nothing -- verified by
-          # pointing it at a --depth 1 --no-tags clone, where it exits 2 on a
-          # fixture containing four deliberate mismatches.
-          #
-          # MEASURED BEFORE ADDING, because this runs on every conformance job
-          # in eleven repositories: the catalog is 281 commits, and a full
-          # clone's .git is 20288 KB against the shallow clone's 20284 KB. Four
-          # kilobytes. There is no throughput argument against it.
-          fetch-depth: 0
-          fetch-tags: true
+          # Shallow, and no tags. The full history and tags were here for
+          # check-catalog-pin-comments, which resolved each pin's `# vX.Y.Z`
+          # comment against this clone with `git rev-list`. First-party pins no
+          # longer exist -- a caller references the catalog at @main -- so that
+          # checker had nothing left to resolve and is deleted. Every remaining
+          # checker reads files, and none needs history.
 
       # check-caller-permissions is the one checker that parses YAML properly
       # rather than by pattern — it has to resolve job-level blocks against
@@ -337,7 +145,7 @@ jobs:
         env:
           REPO: ${{ steps.repo.outputs.name }}
           AURUM_CATALOG_ROOT: .aurum-catalog
-        run: .aurum-standard/tools/check-ci-conformance --repo-root ".ci-root/$REPO"
+        run: .aurum-catalog/tools/check-ci-conformance --repo-root ".ci-root/$REPO"
         continue-on-error: ${{ inputs.warn_only }}
 
 
@@ -346,7 +154,7 @@ jobs:
         env:
           REPO: ${{ steps.repo.outputs.name }}
           AURUM_CATALOG_ROOT: .aurum-catalog
-        run: .aurum-standard/tools/check-caller-permissions --root .ci-root --repo "$REPO"
+        run: .aurum-catalog/tools/check-caller-permissions --root .ci-root --repo "$REPO"
         continue-on-error: ${{ inputs.warn_only }}
 
       - name: Toolchain versions match the portfolio
@@ -354,7 +162,7 @@ jobs:
         env:
           REPO: ${{ steps.repo.outputs.name }}
           AURUM_CATALOG_ROOT: .aurum-catalog
-        run: .aurum-standard/tools/check-dependency-versions --root .ci-root --repo "$REPO"
+        run: .aurum-catalog/tools/check-dependency-versions --root .ci-root --repo "$REPO"
         continue-on-error: ${{ inputs.warn_only }}
 
       # The sibling of the check above, and the division is worth stating.
@@ -373,7 +181,7 @@ jobs:
         env:
           REPO: ${{ steps.repo.outputs.name }}
           AURUM_CATALOG_ROOT: .aurum-catalog
-        run: .aurum-standard/tools/check-exact-pins --root .ci-root --repo "$REPO"
+        run: .aurum-catalog/tools/check-exact-pins --root .ci-root --repo "$REPO"
         continue-on-error: ${{ inputs.warn_only }}
 
       # An override is the one place a version is still decided by somebody
@@ -386,7 +194,7 @@ jobs:
         env:
           REPO: ${{ steps.repo.outputs.name }}
           AURUM_CATALOG_ROOT: .aurum-catalog
-        run: .aurum-standard/tools/check-overrides --root .ci-root --repo "$REPO"
+        run: .aurum-catalog/tools/check-overrides --root .ci-root --repo "$REPO"
         continue-on-error: ${{ inputs.warn_only }}
 
       # A shared lint config says, in its own header, that a byte-identity
@@ -404,7 +212,7 @@ jobs:
         env:
           REPO: ${{ steps.repo.outputs.name }}
           AURUM_CATALOG_ROOT: .aurum-catalog
-        run: .aurum-standard/tools/check-lint-configs --root .ci-root --repo "$REPO"
+        run: .aurum-catalog/tools/check-lint-configs --root .ci-root --repo "$REPO"
         continue-on-error: ${{ inputs.warn_only }}
 
       # AGENTS.md says there is one source of agent guidance and only one. What
@@ -421,27 +229,5 @@ jobs:
         env:
           REPO: ${{ steps.repo.outputs.name }}
           AURUM_CATALOG_ROOT: .aurum-catalog
-        run: .aurum-standard/tools/check-agent-docs --root .ci-root --repo "$REPO"
-        continue-on-error: ${{ inputs.warn_only }}
-
-      # A pin is two halves -- @<sha> and the `# v2.3.4` beside it -- and until
-      # this step every checker here read only the first. event-manager#124
-      # shipped fourteen pins whose comments said v2.2.14 against SHAs that
-      # were v2.3.2, and every gate in the portfolio passed. A human found it
-      # two merges later, reading a diff, by chance.
-      #
-      # The comment is the half a reviewer actually reads: nobody recognises
-      # 5d73b58dd264 on sight and everybody recognises v2.3.5. So a pin whose
-      # comment lies is worse than a bare SHA -- an absent comment prompts a
-      # lookup, a wrong one prevents it.
-      #
-      # This is the step that needs the catalog clone to carry tags, which is
-      # why wave 1 added fetch-depth: 0 and fetch-tags: true a release ahead of
-      # this line rather than alongside it.
-      - name: Every catalog pin comment names the tag its SHA is
-        if: ${{ !cancelled() }}
-        env:
-          REPO: ${{ steps.repo.outputs.name }}
-          AURUM_CATALOG_ROOT: .aurum-catalog
-        run: .aurum-standard/tools/check-catalog-pin-comments --root .ci-root --repo "$REPO"
+        run: .aurum-catalog/tools/check-agent-docs --root .ci-root --repo "$REPO"
         continue-on-error: ${{ inputs.warn_only }}

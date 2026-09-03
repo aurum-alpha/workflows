@@ -575,10 +575,38 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
                            "every feature-branch commit — the pull_request run already "
                            "covers it, and the two never cancel each other")
 
-    # --- PIN: sha-pinned actions with a version comment -------------------
+    # --- PIN: third party is sha-pinned; ours tracks main -----------------
+    #
+    # Two rules that looked like one. Both were "pin everything to a 40-hex
+    # sha", and the arguments underneath them are not the same argument.
+    #
+    # A THIRD PARTY's action is code we did not write, from a repository we do
+    # not control. A tag there is a mutable pointer somebody else can move, so
+    # pinning it is a supply-chain control: the sha is the review. That rule is
+    # absolute and is unchanged.
+    #
+    # OUR OWN catalog is the opposite case. We control it, and a pin buys a
+    # repository only the ability to sit on rules it has already been given.
+    # That is not safety, it is an opt-out, and CI compliance is not optional
+    # here — a standard every repository can decline at its own pace is a
+    # suggestion with extra steps. The pin also cost more than it bought: the
+    # portfolio spent months in a loop of change the catalog, bump eleven pins,
+    # discover the bug, fix the catalog, bump eleven pins again.
+    #
+    # So a first-party reference must be `@main`, exactly. Not a sha, which
+    # would be pinning backwards; not a tag, which would be the same thing
+    # wearing a version number. Versions are still cut and still mean what they
+    # meant — they are how a human names a state of the catalog — but nothing
+    # consumes them as a pin any more.
     for m in re.finditer(r"uses:\s*([\w.-]+/[^@\s]+)@([^\s#]+)[ \t]*(#.*)?$", text, re.M):
         action, ref, comment = m.group(1), m.group(2), m.group(3)
-        if not re.fullmatch(r"[0-9a-f]{40}", ref):
+        if action.startswith(f"{CATALOG_OWNER}/"):
+            if ref != "main":
+                bad("PIN", f"{action}@{ref} pins our own catalog — it must be "
+                           "@main. A version-named or sha-named reference to the "
+                           "catalog is an opt-out from the current standard, and "
+                           "there is no opt-out")
+        elif not re.fullmatch(r"[0-9a-f]{40}", ref):
             bad("PIN", f"{action}@{ref} is not a 40-hex sha — tags are mutable pointers")
         elif not comment or not re.match(r"#\s*v", comment.strip()):
             bad("PIN", f"{action}@{ref[:8]} has no trailing '# vX.Y.Z' comment")
@@ -597,6 +625,12 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
     # Every workflow file counts, not just ci.yml. A release workflow calling
     # the catalog from an older commit is the same divergence, and P18 already
     # names those files as debt.
+    #
+    # PIN now requires every first-party reference to be `@main`, so there is
+    # exactly one catalog state a conformant repo can be drawing from and this
+    # rule cannot fire on one. It is kept because it still describes the
+    # transition: a repo halfway through the move has sha pins left, and this
+    # names how many and where while PIN names each one.
     if wf_dir.is_dir():
         pins: dict[str, list[str]] = {}
         for wf in sorted(wf_dir.glob("*.yml")) + sorted(wf_dir.glob("*.yaml")):
@@ -1289,9 +1323,15 @@ REPORTING_JOBS = {"job-release-risk.yml"}
 # so here. tools/check-caller-permissions verifies the grant actually covers
 # what the shared job requests.
 STUB_KEYS = {"uses", "needs", "with", "secrets", "if", "permissions"}
+
+# What a stub's `uses:` must look like. The reference half agrees with rule PIN
+# — a first-party workflow is taken at `@main`, never pinned — and this pattern
+# is why that agreement has to be written twice: ADOPT reads a stub's `uses:`
+# through its own parser and would otherwise keep demanding the sha PIN no
+# longer wants. The first repository to migrate found exactly that, five
+# findings deep, which is the argument for migrating one before eleven.
 USES_RE = re.compile(
-    r"^aurum-alpha/workflows/\.github/workflows/job-[a-z0-9-]+\.ya?ml"
-    r"@[0-9a-f]{40}\s+# v\S+$"
+    r"^aurum-alpha/workflows/\.github/workflows/job-[a-z0-9-]+\.ya?ml@main$"
 )
 
 # Approved third-party reusable workflows, by path without the pin.
@@ -1481,9 +1521,9 @@ def adoption_findings(text: str) -> list[str]:
             external = bool(m) and m.group("path") in EXTERNAL_JOBS
             if not external:
                 problems.append(
-                    f"job '{job_id}' uses '{props['uses']}' — must reference a shared "
-                    "job workflow, or an approved third-party workflow, pinned to a "
-                    "40-hex SHA with a version comment"
+                    f"job '{job_id}' uses '{props['uses']}' — must be a shared job "
+                    "workflow at @main, or an approved third-party workflow pinned "
+                    "to a 40-hex SHA with a version comment"
                 )
         # `secrets: inherit` hands the caller's whole secret set to the called
         # workflow. Into the catalog that is fine and required — it is this

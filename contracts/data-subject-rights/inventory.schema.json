@@ -1,0 +1,202 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/data-subject-rights/inventory.schema.json",
+  "title": "Aurum Alpha personal-data inventory",
+  "description": "standards/082-data-subject-rights.md DR1: the declaration, committed in the repository beside the schema, of every store that holds data about a person. One entry per (store, subject column); a store with two columns naming people carries two entries, each with its own treatment, because erasure targets a subject and not a row. The export job and the erasure job are functions of this file and of nothing else, which is why a store holding personal data with no entry is a finding rather than an oversight. The conditional rules below are DR5's treatment vocabulary made mechanical: a retained entry names its legal basis and what survives; an anonymised entry names what survives, as an allowlist; a deleted entry names neither; an entry declared free of personal data says why and can be exported by nothing. schema_version 1 - evolves additively per PC6.",
+  "type": "object",
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "A table, collection, bucket-prefix, provider or column name, snake_case per 025 SD10. Never a hostname or a connection string: the entry names the store logically and configuration says where it is."
+    },
+    "duration": {
+      "type": "string",
+      "pattern": "^P(?!$)(\\d+Y)?(\\d+M)?(\\d+W)?(\\d+D)?(T(?=\\d)(\\d+H)?(\\d+M)?(\\d+S)?)?$",
+      "description": "ISO 8601 duration. Retention windows are years and months, so the calendar components are admitted here where 057's job durations admit only days and time."
+    },
+    "legalBasis": {
+      "type": "object",
+      "description": "DR5. Why a row survives an erasure request, stated so a checker can require the answer and a lawyer can read it. The kind is a closed set so that a declaration cannot invent a basis; the reference is where the obligation is named.",
+      "properties": {
+        "kind": {
+          "enum": ["legal_obligation", "legal_claims", "contract"],
+          "description": "legal_obligation: a statute requires the record (tax, accounting, employment). legal_claims: the record is needed to establish or defend a claim. contract: the record is needed to perform a contract that is still live. The concept names follow the legal-basis terms of the W3C Data Privacy Vocabulary where the two coincide, so a declaration maps onto a record of processing without translation."
+        },
+        "reference": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The obligation, named: the statute and section, the contract clause, the claim. A kind with no reference is a category and not a reason."
+        },
+        "retain_for": {
+          "$ref": "#/$defs/duration",
+          "description": "How long the row is kept, measured from the column named in from. On expiry the row is deleted by the retention job (057 JB8 shape, named retention.purge); a basis with no expiry is a decision to hold personal data indefinitely, which DR5 does not admit."
+        },
+        "from": {
+          "$ref": "#/$defs/identifier",
+          "description": "The column the window counts from - issued_at, closed_at, terminated_at. Never created_at by default: the obligation usually runs from the event the row records, not from when the row was written."
+        }
+      },
+      "required": ["kind", "reference", "retain_for", "from"],
+      "additionalProperties": false
+    },
+    "stamp": {
+      "type": "object",
+      "description": "DR5. Optional on anonymise and retain: two columns the erasure job writes when it reduces a row, so the row itself says it was reduced and for whom. This is 080 AE7's erased_at and erased_subjects pair, generalised: the audit store declares it and any store whose reduced rows must be distinguishable from rows that never carried the value may.",
+      "properties": {
+        "at": {
+          "$ref": "#/$defs/identifier",
+          "description": "The instant column set to the erasure time."
+        },
+        "subjects": {
+          "$ref": "#/$defs/identifier",
+          "description": "The array column the erased subject's public id is appended to."
+        }
+      },
+      "required": ["at", "subjects"],
+      "additionalProperties": false
+    },
+    "entry": {
+      "type": "object",
+      "description": "One store, or one subject column of one store, and how it is treated on erasure and on export.",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/identifier",
+          "description": "The table, collection, blob entity or external provider, named logically."
+        },
+        "store": {
+          "enum": ["relational", "document", "blob", "external"],
+          "description": "Which standard's rules the store is under: 025 for relational, 027 for document, 026 for blob. external is a backing service holding a copy the service placed there - a notification provider, an analytics vendor - reached through that provider's deletion interface by the erasure job, and never assumed to be covered by anyone else."
+        },
+        "subject_column": {
+          "$ref": "#/$defs/identifier",
+          "description": "The column, field or key that ties a row to the subject: the subject's public id, or a foreign key resolved through the entry named in via. For the subject's own root row it is that row's public id column. Required for every treatment but none."
+        },
+        "via": {
+          "$ref": "#/$defs/identifier",
+          "description": "The entry whose identity subject_column holds, where the subject is reached through another row. Entries with via are treated before the entry they name (DR4's dependency order), so a child never outlives its parent and a foreign key never dangles mid-run. A blob entry always carries via, because 026 makes a row the owner of every object."
+        },
+        "tenant_scoped": {
+          "type": "boolean",
+          "description": "Whether the store carries the isolation columns of 025 SD5. A scoped entry is treated for the tenant the request names; a global entry is treated when the subject holds no membership in any other tenant (DR4), or on every erasure where the inventory declares no membership entry."
+        },
+        "membership": {
+          "type": "boolean",
+          "description": "Marks the one entry whose rows are the subject's tenant memberships. It is what DR4 consults to decide whether global rows may go. At most one entry carries it; the corpus runner checks the count, which JSON Schema cannot."
+        },
+        "treatment": {
+          "enum": ["delete", "anonymise", "retain", "none"],
+          "description": "DR5. delete: the rows are removed (025 SD12). anonymise: the rows are reduced to their structural columns plus retained_columns, every other value tombstoned, so the residue identifies nobody once every entry is treated. retain: the rows are reduced the same way but keep their subject linkage under legal_basis until retain_for expires. none: the store holds no personal data, and reason says why - present so a reader can tell considered from forgotten."
+        },
+        "retained_columns": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/identifier" },
+          "description": "DR5. The ALLOWLIST of non-structural columns that survive reduction. Every column not named here and not structural is tombstoned - a free-text notes field included, because free text is where personal data hides. There is deliberately no denylist form: a list of columns to scrub is complete only until the next migration adds a column."
+        },
+        "legal_basis": {
+          "$ref": "#/$defs/legalBasis"
+        },
+        "stamp": {
+          "$ref": "#/$defs/stamp"
+        },
+        "export": {
+          "type": "boolean",
+          "description": "DR3. Whether the subject's rows in this entry are in the export package. False needs a reason a reviewer can hear: the rows are credential material (a session), or a derived projection of entries already exported (a search index), or a provider's copy of what the service already exports."
+        },
+        "export_excludes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/identifier" },
+          "description": "DR3. Columns withheld from the package although the entry is exported: a credential hash, or the columns that describe another person in a row shared between two subjects. Internal keys are excluded without being named, per 020 IP1."
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "description": "treatment none only: why this store holds nothing about a person."
+        }
+      },
+      "required": ["name", "store", "treatment"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "description": "DR1: an entry that holds personal data says which column names the person, whether it is tenant-scoped, and whether it is exported. An entry that holds none says why and nothing else.",
+          "if": { "properties": { "treatment": { "const": "none" } } },
+          "then": {
+            "required": ["reason"],
+            "properties": { "export": { "const": false } },
+            "not": {
+              "anyOf": [
+                { "required": ["subject_column"] },
+                { "required": ["retained_columns"] },
+                { "required": ["legal_basis"] },
+                { "required": ["stamp"] },
+                { "required": ["via"] },
+                { "required": ["export_excludes"] },
+                { "required": ["membership"] }
+              ]
+            }
+          },
+          "else": {
+            "required": ["subject_column", "tenant_scoped", "export"],
+            "not": { "required": ["reason"] }
+          }
+        },
+        {
+          "description": "DR5: a retained row has a legal basis with an expiry and an allowlist of what survives.",
+          "if": { "properties": { "treatment": { "const": "retain" } } },
+          "then": { "required": ["legal_basis", "retained_columns"] },
+          "else": { "not": { "required": ["legal_basis"] } }
+        },
+        {
+          "description": "DR5: anonymisation is an allowlist, and it is declared even when empty - an empty list is a decision, an absent one is not.",
+          "if": { "properties": { "treatment": { "const": "anonymise" } } },
+          "then": { "required": ["retained_columns"] }
+        },
+        {
+          "description": "DR5: a deleted row keeps nothing, so nothing is declared to survive and nothing is stamped.",
+          "if": { "properties": { "treatment": { "const": "delete" } } },
+          "then": {
+            "not": {
+              "anyOf": [
+                { "required": ["retained_columns"] },
+                { "required": ["stamp"] }
+              ]
+            }
+          }
+        },
+        {
+          "description": "026: a stored object is owned by a row, so a blob entry reaches its subject through that row and never directly.",
+          "if": { "properties": { "store": { "const": "blob" } }, "required": ["store"] },
+          "then": { "required": ["via"] }
+        },
+        {
+          "description": "An external provider's copy is reached through the provider, not through another entry.",
+          "if": { "properties": { "store": { "const": "external" } }, "required": ["store"] },
+          "then": { "not": { "required": ["via"] } }
+        },
+        {
+          "description": "DR3: excluding columns from an export that does not happen is a contradiction a reader would otherwise have to resolve.",
+          "if": { "properties": { "export": { "const": false } }, "required": ["export"] },
+          "then": { "not": { "required": ["export_excludes"] } }
+        }
+      ]
+    }
+  },
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "service": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The service whose stores these are, logically named as 055 AM1 names a source. One inventory per service, because 025 SD13 gives each service its own stores and no service can declare another's."
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/entry" },
+      "description": "Every store of the service. Completeness is checked against the engine's catalog by the coverage part of corpus.json: a table in the catalog with no entry is the finding."
+    }
+  },
+  "required": ["schema_version", "service", "entries"],
+  "additionalProperties": false
+}

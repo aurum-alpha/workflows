@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/json-document-storage/document-envelope.schema.json",
+  "title": "Aurum Alpha document envelope",
+  "description": "standards/027-json-document-storage.md DS5: the fields every document in an admitted document store carries at its top level, whatever else it holds. Ids and instants come from the identifiers contract and the tenant id from the observability contract, referenced rather than restated. This is deliberately the one OPEN schema under contracts/: additionalProperties is true because the body of a document belongs to the collection's own versioned schema (DS6), and the envelope only says what must be present around it. Two judgments the envelope cannot make alone are made by the corpus runner against the admission: whether tenant_id may be absent (only on a collection the admission marks unscoped) and whether the serialised document is within its collection's ceiling (DS10). schema_version here is the COLLECTION schema's version per DS6, not this envelope's; the envelope's own shape is version 1 and evolves additively per PC6.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/publicId",
+      "description": "DS4. The public id of the entity this document projects, or a UUIDv7 minted for a document that is its own entity. Stored in the engine's id field per storage-profiles.json; never the engine's generated identifier. The schema admits any IP2 format because a projected entity may carry any of them; it cannot tell a 24-hex engine identifier from a nanoid, and the corpus records that honestly rather than claiming it."
+    },
+    "tenant_id": {
+      "$ref": "https://contracts.aurumalpha.dev/observability/context.schema.json#/$defs/tenantId",
+      "description": "DS4 / 025 SD5. The tenant public id, required on every document of a scoped collection; the field for each contained level (client_org_id, ...) sits beside it under the same naming. Absent only where the admission marks the collection unscoped, which the runner checks."
+    },
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "DS6. The version of the collection's schema this document was written under. A reader accepts the current version and the one before it, upgrades the previous on read, and refuses any other by name. This is the only place the schema of an existing document can be recorded, because there is no DDL to have recorded it."
+    },
+    "created_at": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp",
+      "description": "IP4 canonical instant, UTC, Z, pinned precision; landed in the engine's native instant type per storage-profiles.json. SD10's first timestamp, carried across by DS5."
+    },
+    "updated_at": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp",
+      "description": "As created_at, maintained on every write. A derived store's freshness (DS8) is measured against it."
+    }
+  },
+  "required": ["id", "schema_version", "created_at", "updated_at"],
+  "additionalProperties": true
+}

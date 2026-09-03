@@ -1,0 +1,187 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/data-subject-rights/request.schema.json",
+  "title": "Aurum Alpha data-subject request",
+  "description": "standards/082-data-subject-rights.md DR2: the resource a data-export or erasure request is, as the API returns it and as the service stores it. One shape for both kinds, because the two rights share a lifecycle - requested, verified, worked by a job, finished - and differ only in the terminal state and what it carries. Ids and instants are the identifiers contract's; the tenant id is the observability contract's. The conditionals below are the status machine: which statuses each kind may take, and which fields each status requires and forbids, so that a resource cannot claim completion without its result or a hold without the hold. schema_version 1 - evolves additively per PC6.",
+  "type": "object",
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Lowercase hex SHA-256."
+    },
+    "problemType": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://errors\\.aurumalpha\\.dev/[a-z][a-z0-9-]*/[a-z][a-z0-9-]*$",
+      "description": "An RFC 9457 type URI in 050 HA3's form."
+    }
+  },
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "id": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/uuidv7",
+      "description": "The request's public id. It is the job key of the job that works it (057 JB2), the id an audit event names as target, and the id the erasure ledger entry cites."
+    },
+    "kind": {
+      "enum": ["export", "erasure"],
+      "description": "Which right is being exercised."
+    },
+    "subject_id": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/publicId",
+      "description": "The person the request is about, by the application's own public id (060 AU3: never the provider's subject)."
+    },
+    "tenant_id": {
+      "$ref": "https://contracts.aurumalpha.dev/observability/context.schema.json#/$defs/tenantId",
+      "description": "The tenant the request was made in. DR3 bounds the export to it and DR4 bounds the erasure to it; a subject who is a member of several tenants exercises each right per tenant."
+    },
+    "requested_by": {
+      "enum": ["self", "tenant_admin"],
+      "description": "DR2. self: the subject, authorized by identity. tenant_admin: a person holding data_subject.export or data_subject.erase in the tenant's scope under 070, acting on the subject's behalf."
+    },
+    "requester_id": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/publicId",
+      "description": "Who made the request. Equal to subject_id when requested_by is self; the administrator's public id otherwise. The audit event's actor."
+    },
+    "status": {
+      "enum": ["pending", "running", "completed", "failed", "expired", "cancelled", "held"],
+      "description": "DR2's vocabulary. pending: created and, for an erasure, inside its grace period. running: the job holds it. completed: the terminal success. failed: the job exhausted its retries; failure says why. expired (export only): the package's availability window closed and the package was deleted. cancelled (erasure only): withdrawn during grace. held (erasure only): a legal hold suspended it after grace; a release returns it to pending."
+    },
+    "created_at": { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp" },
+    "updated_at": { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp" },
+    "verified_at": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp",
+      "description": "DR2. The instant the requester's authentication was last confirmed, from the identity token's auth_time (060 AU2). An erasure is created only when this is within the step-up window; the value is kept so the verification is a fact on the resource, not a memory of the handler."
+    },
+    "deadline_at": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp",
+      "description": "DR2. When the request must be completed by: created_at plus 72 hours for an export, grace_ends_at plus 72 hours for an erasure. A request open past it is an alert, computed from the request table the way 057 JB8 computes staleness."
+    },
+    "completed_at": { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp" },
+    "cancelled_at": { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp" },
+    "grace_ends_at": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp",
+      "description": "DR4, erasure only. created_at plus the product's declared grace period, fourteen days by default. Until it passes the request is cancellable and no data moves."
+    },
+    "hold": {
+      "type": "object",
+      "description": "DR6. Present exactly while status is held: which hold, since when. The hold's reason is the administrator's and is not on the subject-facing resource.",
+      "properties": {
+        "id": { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/uuidv7" },
+        "placed_at": { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp" }
+      },
+      "required": ["id", "placed_at"],
+      "additionalProperties": false
+    },
+    "package": {
+      "type": "object",
+      "description": "DR3, export only, on completion: what was built. The bytes live in the service's bucket under 026 and are reached through the download route, never through a URL stored here.",
+      "properties": {
+        "size_bytes": { "type": "integer", "minimum": 1 },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "files": { "type": "integer", "minimum": 1, "description": "Entries in the zip, the manifest included." },
+        "available_until": {
+          "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp",
+          "description": "completed_at plus seven days. After it the download route answers 410 and the retention job deletes the package."
+        }
+      },
+      "required": ["size_bytes", "sha256", "files", "available_until"],
+      "additionalProperties": false
+    },
+    "result": {
+      "type": "object",
+      "description": "DR7, erasure only, on completion: the counts and the two records that prove the run.",
+      "properties": {
+        "entries_treated": { "type": "integer", "minimum": 0 },
+        "rows_deleted": { "type": "integer", "minimum": 0 },
+        "rows_reduced": { "type": "integer", "minimum": 0 },
+        "blobs_deleted": { "type": "integer", "minimum": 0 },
+        "identity_revoked": {
+          "type": "boolean",
+          "description": "Whether 060 AU4's revokeAppAccess was performed. False only where the subject retains a membership in another tenant."
+        },
+        "ledger_entry_id": {
+          "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/uuidv7",
+          "description": "The erasure ledger entry 028 replays after a restore."
+        },
+        "audit_event_id": {
+          "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/uuidv7",
+          "description": "The 080 event carrying data_subject.erase as its action."
+        }
+      },
+      "required": ["entries_treated", "rows_deleted", "rows_reduced", "blobs_deleted", "identity_revoked", "ledger_entry_id", "audit_event_id"],
+      "additionalProperties": false
+    },
+    "failure": {
+      "type": "object",
+      "description": "Present exactly while status is failed: the problem type and this occurrence's reason, per 050 HA3, so the resource explains itself without a log query.",
+      "properties": {
+        "type": { "$ref": "#/$defs/problemType" },
+        "detail": { "type": "string", "minLength": 1 }
+      },
+      "required": ["type", "detail"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["schema_version", "id", "kind", "subject_id", "tenant_id", "requested_by", "requester_id", "status", "created_at", "updated_at", "verified_at", "deadline_at"],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "description": "DR2: an export is pending, running, completed, failed or expired, and carries none of the erasure's fields.",
+      "if": { "properties": { "kind": { "const": "export" } } },
+      "then": {
+        "properties": { "status": { "enum": ["pending", "running", "completed", "failed", "expired"] } },
+        "not": {
+          "anyOf": [
+            { "required": ["grace_ends_at"] },
+            { "required": ["hold"] },
+            { "required": ["result"] },
+            { "required": ["cancelled_at"] }
+          ]
+        }
+      },
+      "else": {
+        "properties": { "status": { "enum": ["pending", "running", "completed", "failed", "cancelled", "held"] } },
+        "required": ["grace_ends_at"],
+        "not": { "required": ["package"] }
+      }
+    },
+    {
+      "description": "A completed request says when, and carries what it produced: the package for an export, the result for an erasure.",
+      "if": { "properties": { "status": { "enum": ["completed", "expired"] } } },
+      "then": {
+        "required": ["completed_at"],
+        "if": { "properties": { "kind": { "const": "export" } } },
+        "then": { "required": ["package"] },
+        "else": { "required": ["result"] }
+      },
+      "else": {
+        "not": {
+          "anyOf": [
+            { "required": ["completed_at"] },
+            { "required": ["package"] },
+            { "required": ["result"] }
+          ]
+        }
+      }
+    },
+    {
+      "description": "DR6: held means a hold, in both directions.",
+      "if": { "properties": { "status": { "const": "held" } } },
+      "then": { "required": ["hold"] },
+      "else": { "not": { "required": ["hold"] } }
+    },
+    {
+      "description": "A failure carries its reason, and nothing else claims one.",
+      "if": { "properties": { "status": { "const": "failed" } } },
+      "then": { "required": ["failure"] },
+      "else": { "not": { "required": ["failure"] } }
+    },
+    {
+      "description": "A cancellation says when.",
+      "if": { "properties": { "status": { "const": "cancelled" } } },
+      "then": { "required": ["cancelled_at"] },
+      "else": { "not": { "required": ["cancelled_at"] } }
+    }
+  ]
+}

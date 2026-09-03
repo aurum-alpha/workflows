@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/blob-storage/object-reference.schema.json",
+  "title": "Aurum Alpha object reference",
+  "description": "standards/026-blob-storage.md BS4: what an application stores about a stored object, in a row of its own database that owns the object. The reference is bucket-agnostic: a key, a content type, a size, a checksum, a status and timestamps, and never a URL, a bucket name or an endpoint - those are configuration (BS2), and a URL stored in a row is a credential or a hostname persisted for the life of the row. The row is the source of truth: an object in the bucket with no row is an orphan (BS8), and a row whose object is absent is an upload still in flight (BS6) or a defect. The shape is closed so that a URL, a bucket or an internal key cannot enter it under another name. Ids and timestamps are the identifiers contract's; the tenant id is the observability contract's vocabulary. schema_version 1 - evolves additively per PC6.",
+  "type": "object",
+  "$defs": {
+    "mediaType": {
+      "type": "string",
+      "description": "BS6. An IANA media type, lowercase, type and subtype only: image/png, application/pdf. No parameters and no wildcard - a wildcard is a policy shorthand that re-expands on load and is refused for the same reason 070 RB6 refuses one.",
+      "pattern": "^(application|audio|font|image|message|model|multipart|text|video)/[a-z0-9][a-z0-9!#$&^_.+-]{0,126}$"
+    },
+    "checksum": {
+      "type": "string",
+      "description": "BS6. SHA-256 of the object as the server computed it over the stream and storage reports it, lowercase hex, prefixed with the algorithm: sha256:<64 hex> for an object written in one part; sha256-<n>:<64 hex> for a multipart object, where the value is the composite the S3 API defines over its n parts. Never an ETag, which is not a digest of the bytes for a multipart object and is not promised to be one for any object.",
+      "pattern": "^sha256(-[1-9][0-9]{0,4})?:[0-9a-f]{64}$"
+    },
+    "filename": {
+      "type": "string",
+      "description": "BS3, BS5. The name the uploader gave the file, kept as display metadata and used to build Content-Disposition at read time. Never part of the key. No path separators, no control characters; length bounded so it fits a header.",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[^/\\\\\\u0000-\\u001f\\u007f]+$"
+    }
+  },
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "PC6. The version of this shape."
+    },
+    "id": {
+      "$ref": "https://contracts.aurumalpha.dev/blob-storage/key.schema.json#/$defs/objectId",
+      "description": "BS3, BS4. The object's public id: a UUIDv7 minted by the server before the first byte of the upload is read, equal to the key's final segment. This is what the owning row references and the only handle an API exposes; the key itself is never an API value, and the server is the only thing that resolves the id to it."
+    },
+    "key": {
+      "$ref": "https://contracts.aurumalpha.dev/blob-storage/key.schema.json#/$defs/key",
+      "description": "BS3. The object's key in the service's bucket, in the grammar key.schema.json fixes. Bucket-agnostic: the same key names the object in every environment's bucket."
+    },
+    "tenant_id": {
+      "$ref": "https://contracts.aurumalpha.dev/observability/context.schema.json#/$defs/tenantId",
+      "description": "BS10. The owning tenant's public id, present wherever the service is tenant-scoped and equal to the key's first segment. The isolation column 025 SD5 requires on a scoped table; the row, not the key prefix, is what the isolation check reads."
+    },
+    "content_type": {
+      "$ref": "#/$defs/mediaType",
+      "description": "BS6. Declared with the upload, admitted by the upload policy, and confirmed against the bytes by the server's own sniff before the row becomes stored. Set on the stored object and sent as Content-Type on every read the server serves (BS5); the client's declaration is never recorded unverified."
+    },
+    "size_bytes": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 5497558138880,
+      "description": "BS6. Declared with the upload and verified against the bytes the server counted as they streamed; bounded above by the policy's max_size_bytes and, absolutely, by the S3 API's single-object ceiling of five tebibytes."
+    },
+    "checksum": {
+      "$ref": "#/$defs/checksum",
+      "description": "BS6. Declared with the upload, verified against the digest the server computed over the stream and the one storage reports. The value that makes a later integrity check possible without trusting the storage's own accounting."
+    },
+    "original_filename": {
+      "$ref": "#/$defs/filename",
+      "description": "BS3, BS5. Display metadata and the source of Content-Disposition. Optional: an object generated by the service has none."
+    },
+    "status": {
+      "enum": ["pending", "stored"],
+      "description": "BS6. pending: the row was committed before the first byte and the upload has not completed; the object may be partly or wholly in the bucket. stored: the server verified size, checksum and content type against the bytes at the end of the body. Only a stored object is ever served."
+    },
+    "scan": {
+      "enum": ["not_required", "pending", "clean", "infected"],
+      "description": "BS7. The malware-scan posture of this object under its entity's policy. not_required where the policy says scan: false; otherwise pending from the start of the upload until the scan job records clean or infected. The server serves a read only for not_required or clean. infected: the object has been deleted from the bucket and the row records why it is gone."
+    },
+    "created_at": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp",
+      "description": "IP4. When the pending row was committed, before the first byte. The clock the purge job (BS8) reads a pending row against."
+    },
+    "stored_at": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp",
+      "description": "IP4. When the server verified the whole body and set stored. Present exactly when status is stored."
+    }
+  },
+  "required": ["schema_version", "id", "key", "content_type", "size_bytes", "checksum", "status", "scan", "created_at"],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "description": "BS6. A stored row says when it was stored; a pending row cannot.",
+      "if": { "properties": { "status": { "const": "stored" } } },
+      "then": { "required": ["stored_at"] },
+      "else": { "not": { "required": ["stored_at"] } }
+    },
+    {
+      "description": "BS7. A scan verdict exists only for an object that was stored; a pending row is not_required or pending.",
+      "if": { "properties": { "status": { "const": "pending" } } },
+      "then": { "properties": { "scan": { "enum": ["not_required", "pending"] } } }
+    }
+  ]
+}

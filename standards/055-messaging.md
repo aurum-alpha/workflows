@@ -19,8 +19,9 @@ report, a retention sweep, a backfill — is a job under
 [`035-workers.md`](035-workers.md); where such work fans out, the messages it
 produces are consumed under the rules here. A consumer under this document is a
 pool worker running a per-event job, and what that job promises about a
-repeated delivery is its duplicate policy under 057 JB2. Notifications to people ride this envelope and are the
-[notifications standard](000-platform.md#the-capability-roster)'s.
+repeated delivery is its duplicate policy under 057 JB2. Notifications to
+people ride this envelope and are
+[`058-notifications.md`](058-notifications.md)'s.
 
 ## Why this exists
 

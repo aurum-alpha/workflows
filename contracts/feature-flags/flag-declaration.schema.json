@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/feature-flags/flag-declaration.schema.json",
+  "title": "Aurum Alpha feature flag declaration",
+  "description": "standards/038-feature-flags.md FF2: one flag's declaration, committed beside the code that evaluates it and built into the image. The repository's declaration file is a list of these; a name appears once. The provider holds values; this holds existence and lifetime. Conditional rules the prose states and a reviewer would otherwise remember: release and experiment flags carry expires and removal and never review_by (FF3); operational and entitlement flags carry review_by and never expires (FF3); an experiment carries two or more variants (FF10); a boolean flag's default is false (FF4). The 180-day ceiling on expires after created (FF3) is a date computation the expiry corpus part decides, not this schema. schemaVersion 1 — evolves additively per PC6.",
+  "type": "object",
+  "$defs": {
+    "schemaVersion": { "const": 1 },
+    "flagName": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+      "description": "FF2: <area>.<flag>, lowercase snake_case segments, exactly two. The key passed to the evaluation API and the feature_flag.key on the span. Has the shape of a permission string and is never one (FF5): the two sets are disjoint."
+    },
+    "date": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/date"
+    },
+    "scalar": {
+      "description": "A value a string or number flag may take.",
+      "type": ["string", "number"]
+    }
+  },
+  "properties": {
+    "name": { "$ref": "#/$defs/flagName" },
+    "type": {
+      "enum": ["boolean", "string", "number", "object"],
+      "description": "FF1: which typed evaluation call resolves it. A provider value of another type is TYPE_MISMATCH and returns the default (FF4)."
+    },
+    "default": {
+      "description": "FF4: what every evaluation returns when the provider does not answer — not ready, unreachable, flag unknown, type mismatch, targeting key missing. For a boolean flag this is false; for a string or number flag it is the variant the code shipped with. The call site's default is this value.",
+      "type": ["boolean", "string", "number", "object"]
+    },
+    "kind": {
+      "enum": ["release", "operational", "experiment", "entitlement"],
+      "description": "FF3: which lifetime the flag has. release and experiment expire; operational and entitlement are reviewed."
+    },
+    "scope": {
+      "enum": ["global", "tenant", "user"],
+      "description": "FF6: which public id is the targeting key — the tenant's for tenant, the user's for user, none for global. A scoped flag evaluated without its id returns the default with TARGETING_KEY_MISSING."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "description": "FF2: what true, or each variant, turns on. Written for the reviewer who finds the flag overdue."
+    },
+    "owner": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{1,63}$",
+      "description": "FF2: the team or role handle asked when the sweep finds the flag overdue (FF11). A handle, never a person's name or address: the file is in the repository."
+    },
+    "created": {
+      "$ref": "#/$defs/date",
+      "description": "FF3: the start of the lifetime. RFC 3339 full-date per 020 IP4."
+    },
+    "expires": {
+      "$ref": "#/$defs/date",
+      "description": "FF3: the last day a release or experiment flag is in date; the day after, the sweep raises a finding. At most 180 days after created (decided by the expiry corpus part). Forbidden on operational and entitlement flags."
+    },
+    "review_by": {
+      "$ref": "#/$defs/date",
+      "description": "FF3: the last day an operational or entitlement flag is in date without review; the day after, the sweep raises a finding. Forbidden on release and experiment flags."
+    },
+    "removal": {
+      "type": "string",
+      "minLength": 1,
+      "description": "FF3, FF11: the condition under which the flag and its call sites are deleted, written at creation. Required on release and experiment flags; for an experiment it is where the decision is recorded (FF10)."
+    },
+    "variants": {
+      "type": "array",
+      "description": "FF10: the admitted values of a string or number flag. An experiment declares two or more. Not admitted on boolean or object flags, whose values are their type.",
+      "items": { "$ref": "#/$defs/scalar" },
+      "minItems": 2,
+      "uniqueItems": true
+    },
+    "served_to_client": {
+      "type": "boolean",
+      "default": false,
+      "description": "FF7: whether the flag's evaluated value is included in the set the browser receives. Off by default; a flag the browser does not render from is not sent to it."
+    }
+  },
+  "required": ["name", "type", "default", "kind", "scope", "description", "owner", "created"],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "enum": ["release", "experiment"] } } },
+      "then": {
+        "required": ["expires", "removal"],
+        "not": { "required": ["review_by"] }
+      },
+      "else": {
+        "required": ["review_by"],
+        "not": { "anyOf": [ { "required": ["expires"] }, { "required": ["removal"] } ] }
+      }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "experiment" } } },
+      "then": { "required": ["variants"], "properties": { "type": { "enum": ["string", "number"] } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "boolean" } } },
+      "then": { "properties": { "default": { "const": false } }, "not": { "required": ["variants"] } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "string" } } },
+      "then": { "properties": { "default": { "type": "string" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "number" } } },
+      "then": { "properties": { "default": { "type": "number" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "object" } } },
+      "then": { "properties": { "default": { "type": "object" } }, "not": { "required": ["variants"] } }
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/feature-flags/evaluated-set.schema.json",
+  "title": "Aurum Alpha evaluated flag set",
+  "description": "standards/038-feature-flags.md FF7: the document a browser receives instead of evaluating flags itself — the flags member of the application configuration fetched at load (090 WC2, GET /api/config). The server evaluated these with the session's subject as context; the client renders from them and the server still evaluates the same flags and runs the permission check on every request (FF5). Carries only flags declared served_to_client. Object-typed flags are not served to the client. schemaVersion 1 — evolves additively per PC6.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "PC6: the version of this shape."
+    },
+    "evaluated_at": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp",
+      "description": "FF7: when the server evaluated the set, so a client can decide whether its documented refresh is due. Canonical instant per 020 IP4."
+    },
+    "flags": {
+      "type": "object",
+      "description": "FF7: flag name to evaluated value. Names follow FF2's grammar; values are the scalar the flag's type admits.",
+      "propertyNames": {
+        "$ref": "https://contracts.aurumalpha.dev/feature-flags/flag-declaration.schema.json#/$defs/flagName"
+      },
+      "additionalProperties": {
+        "type": ["boolean", "string", "number"]
+      }
+    }
+  },
+  "required": ["schema_version", "evaluated_at", "flags"],
+  "additionalProperties": false
+}

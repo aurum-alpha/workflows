@@ -1,0 +1,718 @@
+{
+  "contract": "security-baseline",
+  "schemaVersion": 1,
+  "description": "The conformance corpus for standards/085-security-baseline.md. Four parts. 'headers' is judged by applying response-headers.json to a response: each case names its class, the headers as sent (names case-insensitive), whether the OpenAPI document declares the endpoint public, and the exact set of findings a checker must report; an empty set is acceptance. Two cases are detectors: 'x-frame-options-without-frame-ancestors-rejected' fails a checker that lets X-Frame-Options satisfy the framing requirement, and 'hsts-without-include-subdomains-rejected' fails a checker that tests HSTS for presence and max-age alone. 'from-lines' is judged by running SB1's checker over a Dockerfile given as an array of lines: the findings are '<line number>:<finding>' and an empty list is acceptance; one case is a detector, 'second-stage-unpinned-rejected', which fails a checker that reads only the first FROM. 'scan-acceptance' is judged two ways: 'valid' by acceptance.schema.json (an 'entry' against #/$defs/entry, a 'file' against the whole schema), and where 'today' is given, by the calendar checks SB2 states: an entry past its expiry, and a window over ninety days, are findings. 'security-md' is judged by security-md.schema.json alone.",
+  "headers": [
+    {
+      "case": "document-complete-set-accepted",
+      "class": "document",
+      "why": "SB3's document set in full: HSTS with includeSubDomains, the strict CSP with a per-response nonce and 'strict-dynamic', nosniff, referrer, the deny-list, COOP, CORP, and no-store because a nonced document cannot be cached.",
+      "headers": {
+        "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+        "Content-Security-Policy": "default-src 'self'; script-src 'self' 'nonce-rAnd0mN0nc3ValueXYZ12345' 'strict-dynamic'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Cache-Control": "no-store",
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "findings": []
+    },
+    {
+      "case": "api-complete-set-accepted",
+      "class": "api",
+      "why": "SB3's API set in full: the inert CSP with sandbox, no-referrer, no-store on an authenticated response, and a Server header that is a product token with no version.",
+      "headers": {
+        "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
+        "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'; sandbox",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "no-referrer",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Cache-Control": "no-store",
+        "Server": "envoy",
+        "Content-Type": "application/json"
+      },
+      "findings": []
+    },
+    {
+      "case": "asset-complete-set-accepted",
+      "class": "asset",
+      "why": "SB3's asset set: no CSP, no policy headers a static file cannot use, and the immutable cache form that is only correct because the name is the content hash.",
+      "headers": {
+        "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+        "X-Content-Type-Options": "nosniff",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Cache-Control": "public, max-age=31536000, immutable",
+        "Content-Type": "text/javascript"
+      },
+      "findings": []
+    },
+    {
+      "case": "document-with-topology-b-extensions-accepted",
+      "class": "document",
+      "why": "SB3 admits the ordinary widenings: connect-src to the API origin under 060 AU7 topology B, img-src to data:, a nonce on style-src, CORP same-site, and preload on a domain its owner submitted. None of them touches script-src.",
+      "headers": {
+        "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+        "Content-Security-Policy": "default-src 'self'; script-src 'self' 'nonce-Zm9vYmFyYmF6cXV4MTIzNDU2' 'strict-dynamic'; style-src 'self' 'nonce-Zm9vYmFyYmF6cXV4MTIzNDU2'; img-src 'self' data:; connect-src 'self' https://api.example.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Permissions-Policy": "camera=(self), microphone=(), geolocation=(), payment=(), usb=()",
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "Cross-Origin-Resource-Policy": "same-site",
+        "Cache-Control": "no-store"
+      },
+      "findings": []
+    },
+    {
+      "case": "hsts-without-include-subdomains-rejected",
+      "class": "document",
+      "why": "SB3, the detector: a year of max-age and no includeSubDomains. A cookie set on the apex reaches every subdomain, so one subdomain reachable in clear is the session in clear. A checker that tests HSTS for presence and a max-age alone accepts this set and fails only this case.",
+      "detector": true,
+      "headers": {
+        "Strict-Transport-Security": "max-age=31536000",
+        "Content-Security-Policy": "default-src 'self'; script-src 'self' 'nonce-rAnd0mN0nc3ValueXYZ12345' 'strict-dynamic'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Cache-Control": "no-store"
+      },
+      "findings": ["hsts.include_subdomains_missing"]
+    },
+    {
+      "case": "hsts-max-age-below-a-year-rejected",
+      "class": "api",
+      "why": "SB3: a year is the preload list's floor and the rule's. A short max-age is a browser that forgets the site was HTTPS-only between visits.",
+      "headers": {
+        "Strict-Transport-Security": "max-age=86400; includeSubDomains",
+        "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'; sandbox",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "no-referrer",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Cache-Control": "no-store"
+      },
+      "findings": ["hsts.max_age_below_year"]
+    },
+    {
+      "case": "x-frame-options-without-frame-ancestors-rejected",
+      "class": "document",
+      "why": "SB3, the detector: X-Frame-Options DENY is present and frame-ancestors is not. Browsers consult frame-ancestors first and the superseded header never substitutes for it. A checker that treats DENY as satisfying the framing requirement accepts this set and fails only this case.",
+      "detector": true,
+      "headers": {
+        "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+        "Content-Security-Policy": "default-src 'self'; script-src 'self' 'nonce-rAnd0mN0nc3ValueXYZ12345' 'strict-dynamic'; object-src 'none'; base-uri 'none'; form-action 'self'",
+        "X-Frame-Options": "DENY",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Cache-Control": "no-store"
+      },
+      "findings": ["csp.frame_ancestors_missing"]
+    },
+    {
+      "case": "x-frame-options-beside-frame-ancestors-accepted",
+      "class": "document",
+      "why": "SB3: the superseded header sent beside the one that superseded it is harmless duplication and not a finding.",
+      "headers": {
+        "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+        "Content-Security-Policy": "default-src 'self'; script-src 'self' 'nonce-rAnd0mN0nc3ValueXYZ12345' 'strict-dynamic'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+        "X-Frame-Options": "DENY",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Cache-Control": "no-store"
+      },
+      "findings": []
+    },
+    {
+      "case": "frame-ancestors-missing-rejected",
+      "class": "document",
+      "why": "SB3: no framing control at all. This is the sibling of the detector; every checker rejects it, which is what makes the detector a detector.",
+      "headers": {
+        "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+        "Content-Security-Policy": "default-src 'self'; script-src 'self' 'nonce-rAnd0mN0nc3ValueXYZ12345' 'strict-dynamic'; object-src 'none'; base-uri 'none'; form-action 'self'",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Cache-Control": "no-store"
+      },
+      "findings": ["csp.frame_ancestors_missing"]
+    },
+    {
+      "case": "csp-with-unsafe-inline-in-script-src-rejected",
+      "class": "document",
+      "why": "SB3: 'unsafe-inline' in script-src is the compatibility fallback for browsers that predate 'strict-dynamic', and it is a permission granted only to the clients least able to defend themselves. The nonce and 'strict-dynamic' are present, so this is the only finding.",
+      "headers": {
+        "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+        "Content-Security-Policy": "default-src 'self'; script-src 'self' 'nonce-rAnd0mN0nc3ValueXYZ12345' 'strict-dynamic' 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Cache-Control": "no-store"
+      },
+      "findings": ["csp.script_src_unsafe_source"]
+    },
+    {
+      "case": "csp-with-host-allowlist-and-no-nonce-rejected",
+      "class": "document",
+      "why": "SB3: a host allow-list in script-src instead of a nonce. No nonce, no 'strict-dynamic', and a CDN origin that hosts something an attacker can load. Three findings, each a separate defect.",
+      "headers": {
+        "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+        "Content-Security-Policy": "default-src 'self'; script-src 'self' https://cdn.example.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Cache-Control": "no-store"
+      },
+      "findings": ["csp.script_src_nonce_missing", "csp.script_src_strict_dynamic_missing", "csp.script_src_unsafe_source"]
+    },
+    {
+      "case": "csp-report-only-does-not-satisfy-rejected",
+      "class": "document",
+      "why": "SB3: a policy that only reports is a policy that is not enforced. Admitted during a rollout beside the enforced header, never instead of it.",
+      "headers": {
+        "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+        "Content-Security-Policy-Report-Only": "default-src 'self'; script-src 'self' 'nonce-rAnd0mN0nc3ValueXYZ12345' 'strict-dynamic'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Cache-Control": "no-store"
+      },
+      "findings": ["csp.report_only_does_not_satisfy"]
+    },
+    {
+      "case": "x-xss-protection-present-rejected",
+      "class": "api",
+      "why": "SB3: a header every browser has removed support for, whose blocking mode introduced leaks of its own. Sent by a framework default, never by a decision.",
+      "headers": {
+        "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+        "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'; sandbox",
+        "X-Content-Type-Options": "nosniff",
+        "X-XSS-Protection": "1; mode=block",
+        "Referrer-Policy": "no-referrer",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Cache-Control": "no-store"
+      },
+      "findings": ["forbidden.x_xss_protection"]
+    },
+    {
+      "case": "server-version-and-powered-by-rejected",
+      "class": "api",
+      "why": "SB3: a version in Server and a framework name in X-Powered-By are reconnaissance done for free. Two findings.",
+      "headers": {
+        "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+        "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'; sandbox",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "no-referrer",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Cache-Control": "no-store",
+        "Server": "nginx/1.27.1",
+        "X-Powered-By": "Express"
+      },
+      "findings": ["server.version_disclosed", "forbidden.x_powered_by"]
+    },
+    {
+      "case": "api-authenticated-without-no-store-rejected",
+      "class": "api",
+      "why": "SB3: an authenticated response with a cache lifetime is one person's data in a shared cache. private does not redeem it; the rule is no-store.",
+      "headers": {
+        "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+        "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'; sandbox",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "no-referrer",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Cache-Control": "private, max-age=60"
+      },
+      "findings": ["cache_control.not_no_store"]
+    },
+    {
+      "case": "api-declared-public-with-max-age-accepted",
+      "class": "api",
+      "declared_public": true,
+      "why": "SB3: the OpenAPI document declares this endpoint public and cacheable, so it states its own policy. The header must still be present.",
+      "headers": {
+        "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+        "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'; sandbox",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "no-referrer",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Cache-Control": "public, max-age=300"
+      },
+      "findings": []
+    },
+    {
+      "case": "document-missing-permissions-policy-rejected",
+      "class": "document",
+      "why": "SB3: with no Permissions-Policy every feature is available to every frame, the product's own included, so a compromised dependency can open the camera.",
+      "headers": {
+        "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+        "Content-Security-Policy": "default-src 'self'; script-src 'self' 'nonce-rAnd0mN0nc3ValueXYZ12345' 'strict-dynamic'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Cache-Control": "no-store"
+      },
+      "findings": ["permissions_policy.missing"]
+    },
+    {
+      "case": "document-permissions-policy-allowing-camera-everywhere-rejected",
+      "class": "document",
+      "why": "SB3: camera=* grants the feature to every frame. (self) is admitted with a Conventions entry; * is never.",
+      "headers": {
+        "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+        "Content-Security-Policy": "default-src 'self'; script-src 'self' 'nonce-rAnd0mN0nc3ValueXYZ12345' 'strict-dynamic'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Permissions-Policy": "camera=*, microphone=(), geolocation=(), payment=(), usb=()",
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Cache-Control": "no-store"
+      },
+      "findings": ["permissions_policy.feature_not_denied"]
+    },
+    {
+      "case": "document-cacheable-shell-rejected",
+      "class": "document",
+      "why": "SB3: a document with a cache lifetime is a document whose nonce will be stale on its second use; the shell is rendered per response and says so.",
+      "headers": {
+        "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+        "Content-Security-Policy": "default-src 'self'; script-src 'self' 'nonce-rAnd0mN0nc3ValueXYZ12345' 'strict-dynamic'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Cache-Control": "max-age=60"
+      },
+      "findings": ["cache_control.not_no_store"]
+    },
+    {
+      "case": "asset-without-immutable-rejected",
+      "class": "asset",
+      "why": "SB3: an hour of max-age without immutable makes the browser revalidate a file whose name already proves its content; either the name is a hash and the file is immutable, or it is not this class.",
+      "headers": {
+        "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+        "X-Content-Type-Options": "nosniff",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Cache-Control": "public, max-age=3600"
+      },
+      "findings": ["cache_control.asset_not_immutable"]
+    },
+    {
+      "case": "api-csp-without-sandbox-rejected",
+      "class": "api",
+      "why": "SB3: default-src 'none' stops loads and frame-ancestors stops framing, but a browser navigated to the URL still renders the body in an origin with a cookie; sandbox is what makes it inert.",
+      "headers": {
+        "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+        "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "no-referrer",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Cache-Control": "no-store"
+      },
+      "findings": ["csp.sandbox_missing"]
+    }
+  ],
+  "from-lines": [
+    {
+      "case": "in-band-tag-and-digest-accepted",
+      "why": "SB1's canonical form: the digest is the pin, the tag is the version comment carried in-band, and an update tool maintains both as one edit.",
+      "dockerfile": [
+        "FROM node:22.6.0-bookworm-slim@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90",
+        "USER node"
+      ],
+      "findings": []
+    },
+    {
+      "case": "comment-form-accepted",
+      "why": "SB1's admitted alternative: a bare digest with the version in a trailing comment, the way action pins are written.",
+      "dockerfile": [
+        "FROM node@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90 # 22.6.0-bookworm-slim",
+        "USER node"
+      ],
+      "findings": []
+    },
+    {
+      "case": "digest-without-version-rejected",
+      "why": "SB1: a correct pin nobody can read, whose next update is a diff nobody can review.",
+      "dockerfile": [
+        "FROM node@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
+      ],
+      "findings": ["1:from.version_missing"]
+    },
+    {
+      "case": "tag-only-rejected",
+      "why": "SB1: a tag is a mutable pointer; the bytes it names change when upstream rebuilds and nothing in the repository changes when they do.",
+      "dockerfile": [
+        "FROM node:22-bookworm-slim"
+      ],
+      "findings": ["1:from.tag_not_digest"]
+    },
+    {
+      "case": "implicit-latest-rejected",
+      "why": "SB1: no tag is the latest tag, which is the most mutable pointer there is.",
+      "dockerfile": [
+        "FROM nginx"
+      ],
+      "findings": ["1:from.tag_not_digest"]
+    },
+    {
+      "case": "scratch-accepted",
+      "why": "SB1's first exemption: scratch is the empty image and has no digest to pin.",
+      "dockerfile": [
+        "FROM scratch",
+        "COPY app /app",
+        "USER 65532:65532",
+        "ENTRYPOINT [\"/app\"]"
+      ],
+      "findings": []
+    },
+    {
+      "case": "stage-reference-accepted",
+      "why": "SB1's second exemption: a FROM that names a stage this file declared with AS is pinned by that stage's own FROM.",
+      "dockerfile": [
+        "FROM golang:1.23.1-bookworm@sha256:0f067aa0ba902b7c4bf92f3577b34da60f067aa0ba902b7c4bf92f3577b34da6 AS build",
+        "RUN go build -o /out/app ./cmd/app",
+        "FROM build AS test",
+        "RUN go test ./..."
+      ],
+      "findings": []
+    },
+    {
+      "case": "second-stage-unpinned-rejected",
+      "why": "SB1, the detector: the build stage is pinned and the runtime stage is not, so the image that ships is the unpinned one. A checker that reads only the first FROM accepts this file and fails only this case.",
+      "detector": true,
+      "dockerfile": [
+        "FROM golang:1.23.1-bookworm@sha256:0f067aa0ba902b7c4bf92f3577b34da60f067aa0ba902b7c4bf92f3577b34da6 AS build",
+        "RUN go build -o /out/app ./cmd/app",
+        "FROM gcr.io/distroless/static-debian12:nonroot",
+        "COPY --from=build /out/app /app"
+      ],
+      "findings": ["3:from.tag_not_digest"]
+    },
+    {
+      "case": "arg-parameterised-reference-rejected",
+      "why": "SB1: a reference the checker cannot read without evaluating the build is a pin nobody is checking.",
+      "dockerfile": [
+        "ARG BASE=node:22",
+        "FROM ${BASE}"
+      ],
+      "findings": ["2:from.unreadable_reference"]
+    },
+    {
+      "case": "platform-flag-accepted",
+      "why": "SB1's third exemption: the --platform flag sits between FROM and the reference and does not change what is pinned.",
+      "dockerfile": [
+        "FROM --platform=$BUILDPLATFORM golang:1.23.1@sha256:0f067aa0ba902b7c4bf92f3577b34da60f067aa0ba902b7c4bf92f3577b34da6 AS build"
+      ],
+      "findings": []
+    },
+    {
+      "case": "truncated-digest-rejected",
+      "why": "SB1: a digest is sha256 plus 64 hex characters; a shorter one is not a content address.",
+      "dockerfile": [
+        "FROM node:22.6.0@sha256:3f8d9a2b"
+      ],
+      "findings": ["1:from.digest_malformed"]
+    },
+    {
+      "case": "lowercase-instruction-still-read",
+      "why": "SB1: Dockerfile instructions are case-insensitive, so a checker that only matches FROM in capitals would miss this line and pass an unpinned image.",
+      "dockerfile": [
+        "from node:22"
+      ],
+      "findings": ["1:from.tag_not_digest"]
+    },
+    {
+      "case": "registry-with-port-accepted",
+      "why": "SB1: a private registry with a port is an ordinary name; the tag after the last path component and the digest after it are what the grammar reads.",
+      "dockerfile": [
+        "FROM registry.example.com:5000/base/node:22.6.0@sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
+      ],
+      "findings": []
+    }
+  ],
+  "scan-acceptance": [
+    {
+      "case": "entry-with-reason-and-expiry-accepted",
+      "valid": true,
+      "today": "2026-09-02",
+      "why": "SB2 in full: an OSV id, a reason that says why the advisory does not apply, an expiry inside ninety days of the decision, and the condition that retires it early.",
+      "entry": {
+        "id": "GHSA-7hfp-qfw3-5jxh",
+        "reason": "prototype-pollution in a config merge this repository never calls with user input; the vulnerable function is unreachable from any handler",
+        "expires": "2026-11-15",
+        "accepted_on": "2026-09-02",
+        "retire_when": "the dependency releases a fixed minor and the lockfile moves to it",
+        "owner": "platform-security",
+        "scan": "lockfile"
+      },
+      "findings": []
+    },
+    {
+      "case": "entry-with-cve-id-accepted",
+      "valid": true,
+      "today": "2026-09-02",
+      "why": "SB2: a CVE identifier is an admitted OSV id; the image scan reports OS packages by CVE.",
+      "entry": {
+        "id": "CVE-2025-12345",
+        "reason": "the affected OS package is present in the base image and the vulnerable daemon is never started; no fixed package is published yet",
+        "expires": "2026-10-30",
+        "accepted_on": "2026-09-02",
+        "scan": "image"
+      },
+      "findings": []
+    },
+    {
+      "case": "entry-without-expiry-rejected",
+      "valid": false,
+      "why": "SB2: no acceptance is permanent. An entry with no expiry is a decision made under time pressure that nothing will revisit.",
+      "entry": {
+        "id": "GHSA-7hfp-qfw3-5jxh",
+        "reason": "prototype-pollution in a config merge this repository never calls with user input",
+        "accepted_on": "2026-09-02"
+      }
+    },
+    {
+      "case": "entry-without-reason-rejected",
+      "valid": false,
+      "why": "SB2: an id and a date with no reason is an exemption nobody can re-evaluate at expiry.",
+      "entry": {
+        "id": "GHSA-7hfp-qfw3-5jxh",
+        "expires": "2026-11-15"
+      }
+    },
+    {
+      "case": "entry-naming-a-package-instead-of-an-advisory-rejected",
+      "valid": false,
+      "why": "SB2: an acceptance names one advisory. A package name accepts every advisory that package will ever have.",
+      "entry": {
+        "id": "lodash",
+        "reason": "we have reviewed this package and its use here is safe for now",
+        "expires": "2026-11-15"
+      }
+    },
+    {
+      "case": "expired-entry-is-a-finding",
+      "valid": true,
+      "today": "2026-09-02",
+      "why": "SB2: the shape is valid and the date has passed, so the entry is a finding again whether or not the advisory still reports.",
+      "entry": {
+        "id": "GO-2024-3105",
+        "reason": "the vulnerable function is not reached from any binary this repository builds, per the reachability scan",
+        "expires": "2026-08-01",
+        "accepted_on": "2026-05-15"
+      },
+      "findings": ["acceptance.expired"]
+    },
+    {
+      "case": "window-over-ninety-days-is-a-finding",
+      "valid": true,
+      "today": "2026-09-02",
+      "why": "SB2: six months is not an acceptance, it is a decision to stop looking, and that decision is made by moving the repository into a stage rather than by a distant date.",
+      "entry": {
+        "id": "GHSA-8hc4-vh64-cxmj",
+        "reason": "development-only dependency; the vulnerable code path runs in the test harness and never in a shipped image",
+        "expires": "2027-03-01",
+        "accepted_on": "2026-09-02"
+      },
+      "findings": ["acceptance.window_exceeds_90_days"]
+    },
+    {
+      "case": "window-of-exactly-ninety-days-accepted",
+      "valid": true,
+      "today": "2026-09-02",
+      "why": "SB2: ninety days is the ceiling, inclusive.",
+      "entry": {
+        "id": "GHSA-8hc4-vh64-cxmj",
+        "reason": "development-only dependency; the vulnerable code path runs in the test harness and never in a shipped image",
+        "expires": "2026-12-01",
+        "accepted_on": "2026-09-02"
+      },
+      "findings": []
+    },
+    {
+      "case": "file-with-two-entries-accepted",
+      "valid": true,
+      "why": "SB2: the checker's normalised view of one native exemption file, with its source named.",
+      "file": {
+        "schemaVersion": 1,
+        "source": "osv-scanner.toml",
+        "acceptances": [
+          {
+            "id": "GHSA-7hfp-qfw3-5jxh",
+            "reason": "prototype-pollution in a config merge this repository never calls with user input",
+            "expires": "2026-11-15",
+            "accepted_on": "2026-09-02"
+          },
+          {
+            "id": "CVE-2025-12345",
+            "reason": "the affected daemon is present in the base image and never started; no fixed package is published yet",
+            "expires": "2026-10-30",
+            "accepted_on": "2026-09-02",
+            "scan": "image"
+          }
+        ]
+      }
+    },
+    {
+      "case": "file-without-acceptances-list-rejected",
+      "valid": false,
+      "why": "SB2: a file with no list is not a file the checker read; an empty list is the valid way to say nothing is accepted.",
+      "file": {
+        "schemaVersion": 1,
+        "source": "osv-scanner.toml"
+      }
+    }
+  ],
+  "security-md": [
+    {
+      "case": "complete-policy-accepted",
+      "valid": true,
+      "why": "SB7 in full: a monitored channel, two numbers inside their ceilings, scope in and out, safe harbour stated, disclosure terms, and a security.txt with contact, expiry, policy and languages.",
+      "policy": {
+        "schemaVersion": 1,
+        "reporting": {
+          "channels": [
+            { "kind": "email", "location": "mailto:security@example.com" },
+            { "kind": "advisory", "location": "https://github.com/example/example/security/advisories/new" }
+          ],
+          "encryption": "https://example.com/.well-known/pgp-key.txt",
+          "report_should_include": ["affected component and version", "reproduction steps", "impact"]
+        },
+        "response": {
+          "acknowledge_within_business_days": 3,
+          "triage_within_days": 14
+        },
+        "scope": {
+          "in_scope": ["https://app.example.com", "https://api.example.com", "this repository"],
+          "out_of_scope": ["third-party services", "denial of service", "social engineering"]
+        },
+        "safe_harbour": { "stated": true },
+        "disclosure": {
+          "coordinated": true,
+          "finder_may_publish_after_days": 90,
+          "credit_offered": true
+        },
+        "security_txt": {
+          "contact": ["mailto:security@example.com"],
+          "expires": "2027-03-01T00:00:00.000Z",
+          "policy": "https://example.com/security",
+          "preferred_languages": ["en"],
+          "encryption": "https://example.com/.well-known/pgp-key.txt"
+        }
+      }
+    },
+    {
+      "case": "policy-without-response-numbers-rejected",
+      "valid": false,
+      "why": "SB7: a commitment without a number is not a commitment.",
+      "policy": {
+        "schemaVersion": 1,
+        "reporting": { "channels": [ { "kind": "email", "location": "mailto:security@example.com" } ] },
+        "response": {},
+        "scope": { "in_scope": ["https://app.example.com"] },
+        "safe_harbour": { "stated": true },
+        "disclosure": { "coordinated": true, "credit_offered": true },
+        "security_txt": {
+          "contact": ["mailto:security@example.com"],
+          "expires": "2027-03-01T00:00:00.000Z",
+          "policy": "https://example.com/security",
+          "preferred_languages": ["en"]
+        }
+      }
+    },
+    {
+      "case": "policy-with-acknowledgement-over-three-days-rejected",
+      "valid": false,
+      "why": "SB7: three business days is the ceiling for telling a finder the report arrived.",
+      "policy": {
+        "schemaVersion": 1,
+        "reporting": { "channels": [ { "kind": "email", "location": "mailto:security@example.com" } ] },
+        "response": { "acknowledge_within_business_days": 10, "triage_within_days": 14 },
+        "scope": { "in_scope": ["https://app.example.com"] },
+        "safe_harbour": { "stated": true },
+        "disclosure": { "coordinated": true, "credit_offered": true },
+        "security_txt": {
+          "contact": ["mailto:security@example.com"],
+          "expires": "2027-03-01T00:00:00.000Z",
+          "policy": "https://example.com/security",
+          "preferred_languages": ["en"]
+        }
+      }
+    },
+    {
+      "case": "policy-without-safe-harbour-rejected",
+      "valid": false,
+      "why": "SB7: a finder who fears the report will not send it; the section is required and the only value it admits is that the commitment is stated.",
+      "policy": {
+        "schemaVersion": 1,
+        "reporting": { "channels": [ { "kind": "email", "location": "mailto:security@example.com" } ] },
+        "response": { "acknowledge_within_business_days": 3, "triage_within_days": 14 },
+        "scope": { "in_scope": ["https://app.example.com"] },
+        "safe_harbour": { "stated": false },
+        "disclosure": { "coordinated": true, "credit_offered": true },
+        "security_txt": {
+          "contact": ["mailto:security@example.com"],
+          "expires": "2027-03-01T00:00:00.000Z",
+          "policy": "https://example.com/security",
+          "preferred_languages": ["en"]
+        }
+      }
+    },
+    {
+      "case": "policy-without-a-channel-rejected",
+      "valid": false,
+      "why": "SB7: no channel is a public channel, because a finder who cannot find an address posts where they can.",
+      "policy": {
+        "schemaVersion": 1,
+        "reporting": { "channels": [] },
+        "response": { "acknowledge_within_business_days": 3, "triage_within_days": 14 },
+        "scope": { "in_scope": ["https://app.example.com"] },
+        "safe_harbour": { "stated": true },
+        "disclosure": { "coordinated": true, "credit_offered": true },
+        "security_txt": {
+          "contact": ["mailto:security@example.com"],
+          "expires": "2027-03-01T00:00:00.000Z",
+          "policy": "https://example.com/security",
+          "preferred_languages": ["en"]
+        }
+      }
+    },
+    {
+      "case": "security-txt-with-a-date-instead-of-an-instant-rejected",
+      "valid": false,
+      "why": "SB7 through 020 IP4: RFC 9116 Expires is an instant, and the contract's timestamp form is RFC 3339 UTC with the pinned precision; a bare date does not match it.",
+      "policy": {
+        "schemaVersion": 1,
+        "reporting": { "channels": [ { "kind": "email", "location": "mailto:security@example.com" } ] },
+        "response": { "acknowledge_within_business_days": 3, "triage_within_days": 14 },
+        "scope": { "in_scope": ["https://app.example.com"] },
+        "safe_harbour": { "stated": true },
+        "disclosure": { "coordinated": true, "credit_offered": true },
+        "security_txt": {
+          "contact": ["mailto:security@example.com"],
+          "expires": "2027-03-01",
+          "policy": "https://example.com/security",
+          "preferred_languages": ["en"]
+        }
+      }
+    }
+  ]
+}

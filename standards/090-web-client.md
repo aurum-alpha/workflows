@@ -151,6 +151,11 @@ who loads the page — the bootstrap to anonymous ones — so both are public by
 construction. A value that must not be public belongs behind the server, where
 the browser can use its effect without ever seeing it.
 
+The authenticated application configuration's `flags` member is the evaluated
+set of [`038-feature-flags.md`](038-feature-flags.md) FF7, shaped by
+`contracts/feature-flags/evaluated-set.schema.json`; the browser renders from
+it and evaluates nothing.
+
 ### WC3. One API client module, generated, owning the boundary rules
 
 Calls to an Aurum Alpha service go through **one client module**, not
@@ -182,6 +187,10 @@ forty places for one of them to be missing:
 A repository may generate this module, hand-write it, or wrap a generated
 core. What it may not do is spread these six obligations across a component
 tree.
+
+A file download is a request to the service's own API by object id
+([`026-blob-storage.md`](026-blob-storage.md) BS5), through this module like
+every other request; the client never holds a URL to a store.
 
 ### WC4. Presentation is the client's job, and it is done with `Intl`
 

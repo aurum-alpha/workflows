@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/blob-storage/upload-policy.schema.json",
+  "title": "Aurum Alpha upload policy",
+  "description": "standards/026-blob-storage.md BS6: the declaration a service carries in its repository stating, per entity that owns objects, what may be uploaded - the admitted content types, the size ceiling, whether the object is scanned before it is served, how it is served - and, per service, how long an unfinished upload may stay pending and above what size the server writes in parts. The server reads it before the first byte of every upload and again at the end of the body; a reviewer reads it to see the service's exposure in one file. An entity with no entry accepts no uploads. Two rules prose states are decidable here and are: an object other people download is scanned (BS7), and inline is declared only over types a browser renders without executing (BS5). Nothing in this policy names a URL, a lifetime for one, or a bucket: no URL to an object exists (BS4, BS5). schema_version 1 - evolves additively per PC6.",
+  "type": "object",
+  "$defs": {
+    "duration": {
+      "type": "string",
+      "pattern": "^P(?!$)(\\d+D)?(T(?=\\d)(\\d+H)?(\\d+M)?(\\d+S)?)?$",
+      "description": "ISO 8601 duration, days and time components only, in the form 057's declaration uses."
+    },
+    "inlineSafeType": {
+      "enum": [
+        "image/png",
+        "image/jpeg",
+        "image/gif",
+        "image/webp",
+        "image/avif",
+        "video/mp4",
+        "audio/mpeg",
+        "application/pdf"
+      ],
+      "description": "BS5. The media types a browser may be told to render inline. Excluded on purpose: image/svg+xml and text/html, which carry script; anything the browser would sniff into one of those."
+    },
+    "entityPolicy": {
+      "type": "object",
+      "description": "BS6. The upload rules for one entity, keyed by the entity segment of the object key (key.schema.json).",
+      "properties": {
+        "max_size_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5497558138880,
+          "description": "BS6. The largest object this entity accepts. Checked against the declared size before the first byte is read, enforced on the byte count as the body streams - the stream is aborted where it passes this - and it is the endpoint's body limit."
+        },
+        "content_types": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "https://contracts.aurumalpha.dev/blob-storage/object-reference.schema.json#/$defs/mediaType" },
+          "description": "BS6. The closed set of media types this entity admits, each a full type/subtype. The declared type must be in it before the first byte is read, and the type the server sniffs from the bytes must equal the declared one at the end of the body."
+        },
+        "audience": {
+          "enum": ["uploader", "others"],
+          "description": "BS7. Who reads what is uploaded here. uploader: only the person who uploaded it is ever served it - a profile photo shown back to its owner, an export a user requested. others: anyone else may be - an attachment on a shared record, a document sent to a client. others requires scan: true."
+        },
+        "scan": {
+          "type": "boolean",
+          "description": "BS7. Whether an object is scanned for malware before the server serves it. Required true where audience is others; where false, every object of this entity is scan: not_required."
+        },
+        "disposition": {
+          "enum": ["attachment", "inline"],
+          "description": "BS5. How the server sets Content-Disposition on every read it serves. attachment is the default and the safe one; inline is admitted only where every admitted content type is in the inline-safe list."
+        },
+        "retention": {
+          "type": "object",
+          "description": "BS8. Present only where a domain reason keeps objects past the life of the owning row, in the manner 025 SD12 admits soft delete. States the reason and the period; the object stays scoped and erasable for the whole of it.",
+          "properties": {
+            "reason": { "type": "string", "minLength": 1, "description": "The domain or statutory reason, in a sentence a reviewer can check." },
+            "period": { "$ref": "#/$defs/duration", "description": "How long past the owning row's deletion the object is kept." }
+          },
+          "required": ["reason", "period"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["max_size_bytes", "content_types", "audience", "scan", "disposition"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "description": "BS7. What one person uploads for another to download is scanned before it is served.",
+          "if": { "properties": { "audience": { "const": "others" } } },
+          "then": { "properties": { "scan": { "const": true } } }
+        },
+        {
+          "description": "BS5. inline only over types a browser renders without executing.",
+          "if": { "properties": { "disposition": { "const": "inline" } } },
+          "then": { "properties": { "content_types": { "items": { "$ref": "#/$defs/inlineSafeType" } } } }
+        }
+      ]
+    }
+  },
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "PC6. The version of this shape."
+    },
+    "tenant_scoped": {
+      "type": "boolean",
+      "description": "BS3, BS10. Whether object keys carry the tenant segment. true for any service with a tenant isolation level (025 SD5); false only for a service that has none."
+    },
+    "upload_ttl": {
+      "$ref": "#/$defs/duration",
+      "description": "BS6, BS8. How long a pending row may exist before the purge job treats the upload as abandoned - a client that never sent its final range, a server that died mid-stream - and deletes the object or aborts the multipart upload, then the row. Default PT1H."
+    },
+    "multipart_threshold_bytes": {
+      "type": "integer",
+      "minimum": 5242880,
+      "maximum": 5368709120,
+      "description": "BS6. Above this declared size the server writes the body to the store as a multipart upload rather than one PutObject. Bounded below by the S3 API's minimum part size of five mebibytes and above by its single-PUT ceiling of five gibibytes. Default 104857600 (one hundred mebibytes)."
+    },
+    "entities": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "BS6. One entry per entity that owns objects, keyed by the entity segment of the key. An entity absent here accepts no uploads.",
+      "patternProperties": {
+        "^[a-z][a-z0-9_]*$": { "$ref": "#/$defs/entityPolicy" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": ["schema_version", "tenant_scoped", "upload_ttl", "multipart_threshold_bytes", "entities"],
+  "additionalProperties": false
+}

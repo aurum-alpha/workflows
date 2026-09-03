@@ -220,6 +220,10 @@ row a customer can rename or delete.**
 
 #### The cases that look like exceptions
 
+A feature flag is not one of them: a flag decides whether a capability is
+wired or shown and never whether a subject is allowed
+([`038-feature-flags.md`](038-feature-flags.md) FF5).
+
 *"But I need to notify the billing contact."* That is not a role check, and
 treating it as one is how the anti-pattern arrives wearing a reasonable face. It
 is one of two things:

@@ -285,7 +285,7 @@ process that was going to exit anyway, and it is what makes a long job safe to
 deploy over.
 
 The unit of work for a long job over a table is a keyset batch on the UUIDv7
-key (025 SD9), one transaction per batch, checkpoint after each. A long job
+key (025 SD1), one transaction per batch, checkpoint after each. A long job
 that holds one transaction for its whole run has declared itself `long` and
 behaved as `short`, and it will be the thing that holds the lock the next
 migration is waiting on.
@@ -435,6 +435,5 @@ long job's batches are really one transaction each (JB7), and whether
   platform has not taken. A job that needs another job to have finished
   produces a message and lets the next job consume it, which is the only
   orchestration this standard admits.
-- **Notifications to people.** The [notifications
-  standard](000-platform.md#the-capability-roster)'s, riding 055's envelope; a
+- **Notifications to people.** The [`058-notifications.md`](058-notifications.md)'s, riding 055's envelope; a
   job that sends one produces the message and stops.

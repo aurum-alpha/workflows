@@ -275,6 +275,16 @@ written, it points at the roster row.
 - **Runner.** The platform component that starts a one-shot worker on a tick,
   at a deployment step, or by an operator's hand. The platform states what a
   runner must do and builds none; every runtime it could sit on supplies one.
+- **Secret.** A configuration value whose disclosure grants access or lets
+  someone forge something a service trusts: a credential, a signing or
+  encryption key, a webhook secret. Every credential is a secret; not every
+  secret is a credential. Delivered, declared, named, redacted and rotated per
+  [`032-secrets.md`](032-secrets.md).
+- **Finding.** What a checker or a scan reports when a rule is broken at a
+  boundary it can see: a named slug, attributable to a rule, that a gate turns
+  red on and an audit prints. An acceptance
+  ([`085-security-baseline.md`](085-security-baseline.md) SB2) is a finding a
+  repository has recorded a dated reason to tolerate.
 
 ### Work
 
@@ -316,6 +326,47 @@ written, it points at the roster row.
   SD2, SD3).
 - **Backfill.** A job that populates data after an expand migration: long,
   single-flight, resumable, rate-bounded, and never inside the migration.
+- **Notification.** A message to a person with an identity record, through a
+  channel, about an event; recorded per recipient per channel in the sending
+  service's database ([`058-notifications.md`](058-notifications.md)). An
+  alert to an operator is not one.
+- **Flag.** A named, typed value a process asks for at a decision point,
+  whose answer may differ by environment, tenant or user without a new
+  release; declared in the repository, evaluated through the OpenFeature API,
+  and never an authorization input
+  ([`038-feature-flags.md`](038-feature-flags.md)).
+
+### Data
+
+- **System of record.** The store whose rows are the authority for an entity:
+  the relational store ([`027-json-document-storage.md`](027-json-document-storage.md)
+  DS1). Every other store holding a copy of that entity is *derived* from it
+  and rebuildable by a job; a store that is not rebuildable is *primary* and
+  is a database in every sense.
+- **Object.** Bytes under a key in an object store, owned by exactly one row
+  of one service's database, which holds its reference; the store is a
+  stateful server attached as a backing service
+  ([`026-blob-storage.md`](026-blob-storage.md)).
+- **Document.** A JSON document: a record a JSON document store reads and
+  writes whole, under one id, carrying its own `schema_version` because no
+  schema outside it records its shape
+  ([`027-json-document-storage.md`](027-json-document-storage.md)). Never a
+  file — a PDF or a spreadsheet is an object — and never a row's substitute
+  where a relational constraint governs the data.
+- **Backup.** A copy of a stateful server's state taken by the engine's own
+  mechanism under a credential no process of the service holds, kept in a
+  different failure domain, and proven restorable by a drill
+  ([`028-backup-and-recovery.md`](028-backup-and-recovery.md)). Not a replica,
+  which applies every mistake within seconds.
+- **Erasure ledger.** The record, per erased subject per request, of what an
+  erasure removed, transformed or redacted, kept in the service's database and
+  copied to the backup domain, and replayed after any restore before the
+  service is readmitted to traffic
+  ([`028-backup-and-recovery.md`](028-backup-and-recovery.md) BR6).
+- **Subject.** A person about whom a service holds data, identified inside the
+  service by the application's own user public id
+  ([`060-auth.md`](060-auth.md) AU3). What a service owes one is
+  [`082-data-subject-rights.md`](082-data-subject-rights.md)'s.
 
 ### Governance
 
@@ -343,7 +394,7 @@ the work is an issue in this repository.
 | Identity provisioning | The application originates the user and creates the identity; four operations over SCIM or an admin API | [`060-auth.md`](060-auth.md) AU4 |
 | Session lifecycle | Idle and absolute limits, invisible refresh, back-channel logout with a short-token backstop | [`060-auth.md`](060-auth.md) AU5 |
 | Configuration | [Factor III](https://12factor.net/config) profile: variable naming, fail-loud on missing, no environment detection in code | [`030-service.md`](030-service.md) SC3 |
-| Secrets | Delivery convention — how a secret reaches a process; never a vendor SDK in application code | not yet written |
+| Secrets | [Factor III](https://12factor.net/config) profile for delivery: an environment variable, or a file at a declared path, placed by the platform before the process starts; never a vendor SDK in application code; one secret store per platform, rendered into the environment by the runtime's own mechanism, the repository shipping a name-to-store-path mapping and never a value. A per-service declaration of every secret (owner, kind, images, age, rotation mode) that the redactor, the image set and the freshness check read; `<SUBJECT>_<KIND>` naming; a secret is recognised by declaration, never by shape; rotate first, then investigate, then audit | [`032-secrets.md`](032-secrets.md) |
 | Logging | [Factor XI](https://12factor.net/logs) profile: structured log-line schema to stdout; transport is the platform's problem | [`030-service.md`](030-service.md) SC2 |
 | Health & readiness | Two-endpoint contract, fixed paths and shapes | [`030-service.md`](030-service.md) SC1 |
 | Service lifecycle | [Factor IX](https://12factor.net/disposability) profile: SIGTERM means drain — readiness flips, in-flight completes, stated timeout | [`030-service.md`](030-service.md) SC4 |
@@ -352,17 +403,17 @@ the work is an issue in this repository.
 | Service interfaces & HTTP APIs | Protocol selection (HTTP default, gRPC internal-only, SSE before WebSocket); OpenAPI description; RFC 9457 errors; pagination, versioning, idempotency keys, retry semantics; snake_case wire naming | [`050-http.md`](050-http.md) |
 | Identifiers & primitives | Internal keys never exposed; public-id format table; RFC 3339 UTC; integer minor-unit money | [`020-identifiers.md`](020-identifiers.md) |
 | Structured data | SQL as the query language with no runtime generation; migrations as ordered `.sql` files shipped in the image and run as a step before rollout; expand-only; declared isolation levels that are the RBAC scope types, proven by enumeration; per-engine storage profile | [`025-structured-data.md`](025-structured-data.md) |
-| Document storage | When a document store is admitted beside the relational store, and which of the structured-data rules do not transfer | not yet written |
-| Backup and recovery | Restore is exercised, not assumed; recovery objectives stated per product; spans structured, blob and document storage | not yet written |
+| JSON document storage | The relational store is the system of record and its JSON column is the first answer; a document database — a document engine, a key-value document store, a search engine — is admitted beside it, the hybrid model, by a declaration naming which of three tests the column failed and in one of two roles — derived (rebuilt by a job, not backed up) or primary (a database in every sense); the structured-data rules for tenancy, identity, hard delete, privacy and authored queries transfer, migrations become a version window and a backfill, and the schema lives in the documents | [`027-json-document-storage.md`](027-json-document-storage.md) |
+| Backup and recovery | A recovery declaration per stateful store — RPO, RTO, the engine's mechanism, retention between a floor and a ceiling bounded by the erasure horizon, a drill cadence; derived stores declared `rebuild` and not backed up; restore exercised as a periodic job that measures the objectives and blocks a deployment when stale; an erasure ledger copied to the backup domain and replayed before readiness | [`028-backup-and-recovery.md`](028-backup-and-recovery.md) |
 | Async messaging | CloudEvents 1.0 profile as the envelope; at-least-once with `(source, id)` deduplication through inbox and outbox; workers, never timers; Standard Webhooks signing at the edge | [`055-messaging.md`](055-messaging.md) |
 | Jobs | The job as an interface: a named, bounded task with an input, a key, a declared class and an outcome; three duplicate policies; a run record; single-flight in the job; absence as the failure of a periodic job | [`057-jobs.md`](057-jobs.md) |
 | Workers | Two worker models, the pool and the one-shot, packaged per service and started by a runner the platform specifies and does not build — [factor XII](https://12factor.net/admin-processes) made specific | [`035-workers.md`](035-workers.md) |
 | Audit events | Internal event contract: application data and not a log line; actor separate from target; the action string is the permission string; a stated floor of what must emit; OCSF at the export boundary rather than as the record | [`080-audit.md`](080-audit.md) |
-| Security baseline | Response-header set, scanning, image pinning, secrets doctrine | not yet written |
-| Feature flags | Evaluation contract; standard-first (OpenFeature is the candidate) | not yet written |
-| Notifications | Message contract over the async envelope; provider at the boundary | not yet written |
-| Blob storage | S3 API as the storage protocol; reference, tenancy and upload rules | not yet written |
-| Data subject rights | Export and erasure as endpoint contracts | not yet written |
+| Security baseline | Base images pinned by digest as actions are; lockfile, reachability and image scans with acceptances that expire; a fixed response header set per response class (document, API, asset), asserted by the start check; TLS floor and rate-limit floor; `SECURITY.md` plus RFC 9116 `security.txt`; CycloneDX SBOM per image; secrets doctrine is the secrets row's | [`085-security-baseline.md`](085-security-baseline.md) |
+| Feature flags | OpenFeature profile as the evaluation API, the provider as configuration; a flag declared in the repository with one of four kinds and a date after which it is a finding; every boolean defaults to `false`; a flag gates and never authorizes; the evaluation context is the id vocabulary and carries nothing personal; the browser receives an evaluated set | [`038-feature-flags.md`](038-feature-flags.md) |
+| Notifications | The record in the service's database as the truth for *did we tell them*; a pipeline of three 057 jobs and two 055 messages; two classes with consent per declared category per channel and a security floor no preference mutes; RFC 8058 one-click unsubscribe; provider behind one adapter, swapped by configuration | [`058-notifications.md`](058-notifications.md) |
+| Blob storage | S3 API profile as the storage protocol; one private bucket per service per environment; an object reference in the owning row and never a URL of any kind; every read and write passes through the service by object id after the authorization check, the store reachable from the service alone; uploads the server streams to the store and verifies against the bytes; scan before serve by declared audience; hard delete through the outbox and a periodic purge | [`026-blob-storage.md`](026-blob-storage.md) |
+| Data subject rights | Export and erasure as request resources over 050's conventions, worked by 057 jobs from a declared personal-data inventory; three treatments (`delete`, `anonymise` as an allowlist, `retain` under a named basis with an expiry); a legal hold; every erasure proved by an audit event and a ledger entry | [`082-data-subject-rights.md`](082-data-subject-rights.md) |
 | What a browser may hold | Session cookie only: no token in JavaScript or web storage, no provider credential in the bundle, a `401` answered by navigating. The authentication architecture itself is the authentication row's | [`090-web-client.md`](090-web-client.md) WC1 |
 | Client configuration | Fetched from the server at load, never compiled into the bundle — [factor III](https://12factor.net/config) honoured through the server's environment, and build-once preserved | [`090-web-client.md`](090-web-client.md) WC2 |
 | API client contract | One generated client module owning problem+json parsing, idempotency keys, bounded retries and cursor paging at the boundary | [`090-web-client.md`](090-web-client.md) WC3 |

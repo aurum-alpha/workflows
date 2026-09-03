@@ -1,3 +1,4 @@
+# aurum-job: capability=build language=cpp role=build
 # Portfolio capability: build for a PlatformIO C/C++ firmware unit (CI_STANDARD
 # Principle 12 — one way per capability). Tool tier: `pio` is PlatformIO's CLI,
 # not one board's or one framework's, so this job serves any PlatformIO project

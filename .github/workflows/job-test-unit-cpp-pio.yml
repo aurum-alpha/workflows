@@ -1,3 +1,4 @@
+# aurum-job: capability=test-unit language=cpp role=gate
 # Portfolio capability: test-unit for a PlatformIO C/C++ firmware unit
 # (CI_STANDARD Principle 12 — one way per capability).
 #

@@ -1,0 +1,157 @@
+#!/usr/bin/env python3
+"""Every catalog pin's tag comment names the tag its SHA actually is.
+
+A pin is two halves:
+
+    uses: aurum-alpha/workflows/.github/workflows/job-go-build.yml@<sha> # v2.3.4
+
+EVERY OTHER CHECKER READS THE SHA. NOTHING READ THE COMMENT. That asymmetry
+is not academic: event-manager#124 shipped fourteen pins whose comments said
+`# v2.2.14` beside SHAs that were v2.3.2, and every gate in the portfolio
+passed, because each one resolved the SHA and none looked at the text beside
+it. The mismatch was found by a human reading a diff, two merges later, and
+only because someone happened to look.
+
+The comment is not decoration. It is the only part of a pin a reviewer reads:
+nobody recognises `019c637b4ab8...` on sight, everybody recognises `v2.3.4`.
+A pin whose comment lies is a pin that reviews as one version and runs as
+another, which is worse than a pin with no comment at all -- an absent comment
+prompts a lookup, a wrong one prevents it.
+
+WHAT THIS CHECKS, precisely: for every reference to this catalog in a
+repository's workflows, the tag named in the trailing comment exists, and
+`git rev-list -n1 <tag>` in the catalog equals the pinned SHA.
+
+THREE REFERENCE SHAPES, and all three are checked. The first cut of the
+v2.3.3 re-pin matched only reusable workflows and silently left the other two
+at the previous SHA, which put every repository in violation of [LOCK]:
+
+    .github/workflows/<name>.yml@<sha>   reusable workflows
+    .github/actions/<name>@<sha>         composite actions (ci-ok)
+    setup/<name>@<sha>                   setup composites (node-pnpm)
+
+Third-party pins -- actions/checkout and friends -- carry the same kind of
+comment and are NOT checked here. Resolving them means a network call per
+action to a registry this repository does not own, which is a different tool
+with a different failure mode. The gap is real and worth naming rather than
+leaving for someone to discover: a stale `# v7.0.1` beside an actions/checkout
+SHA would pass this checker.
+
+Run against local clones:  tools/check-catalog-pin-comments --root /workspace
+Run against one repo:      tools/check-catalog-pin-comments --root DIR --repo NAME
+
+Naming a repo with no catalog pins is a pass, so every caller can wire this
+up unconditionally.
+"""
+
+import argparse
+import os
+import pathlib
+import re
+import subprocess
+import sys
+
+# Any path under the catalog, not just reusable workflows. The character class
+# admits the dots in `job-go-build.yml` and the slashes in `.github/actions/`.
+PIN = re.compile(
+    r"aurum-alpha/workflows/(?P<path>[A-Za-z0-9._/-]+)"
+    r"@(?P<sha>[0-9a-f]{40})"
+    r"(?:[^\S\n]*#[^\S\n]*(?P<tag>v[0-9]+\.[0-9]+\.[0-9]+))?"
+)
+
+
+def tag_sha(catalog: pathlib.Path, tag: str):
+    """The commit `tag` names in the catalog clone, or None if unresolvable.
+
+    `git rev-list -n1` rather than `rev-parse`, because an annotated tag is its
+    own object: `rev-parse v2.3.4` yields the TAG object's hash, not the
+    commit's, and comparing that against a pinned commit SHA would report every
+    annotated tag as a mismatch. The release job creates annotated tags
+    (`git tag -a`), so this is the case that actually occurs here, not a
+    theoretical one.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(catalog), "rev-list", "-n1", tag],
+            capture_output=True, text=True, check=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+    return out.stdout.strip() or None
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--root", default="/workspace", type=pathlib.Path)
+    ap.add_argument("--repo", action="append", help="limit to specific repo(s)")
+    args = ap.parse_args()
+
+    # Same override as the other checkers: the question "what commit is v2.3.4"
+    # is about the catalog as it is NOW, not as some pinned standard_ref
+    # remembers it. A tag is immutable, so this matters less here than it does
+    # for the shared configs -- but the clone this resolves against must at
+    # least HAVE tags, which a default shallow checkout does not.
+    catalog = pathlib.Path(os.environ.get("AURUM_CATALOG_ROOT")
+                           or pathlib.Path(__file__).resolve().parent.parent)
+
+    # Fail loudly rather than passing everything: a checker that cannot resolve
+    # any tag would otherwise report a clean run having verified nothing, which
+    # is the exact failure this repository's standards exist to prevent.
+    probe = subprocess.run(["git", "-C", str(catalog), "tag", "--list", "v*"],
+                           capture_output=True, text=True)
+    if probe.returncode != 0 or not probe.stdout.strip():
+        print(f"::error::no tags in the catalog clone at {catalog}. This "
+              "checker resolves tag comments against them, so with none "
+              "present it would pass every repository having checked nothing. "
+              "The clone needs fetch-depth: 0 and fetch-tags: true.",
+              file=sys.stderr)
+        return 2
+
+    repos = args.repo or sorted(p.name for p in args.root.iterdir() if p.is_dir())
+
+    failures = checked = 0
+    for repo in repos:
+        wf = args.root / repo / ".github" / "workflows"
+        if not wf.is_dir():
+            continue
+        found_any = False
+        for path in sorted(wf.glob("*.yml")) + sorted(wf.glob("*.yaml")):
+            for n, line in enumerate(path.read_text().splitlines(), 1):
+                m = PIN.search(line)
+                if not m:
+                    continue
+                found_any = True
+                checked += 1
+                where = f"{repo}/{path.relative_to(args.root / repo)}:{n}"
+                sha, tag = m.group("sha"), m.group("tag")
+                if tag is None:
+                    failures += 1
+                    print(f"{where}: pin has no tag comment — "
+                          f"{m.group('path')}@{sha[:12]}")
+                    print("  A bare SHA is unreviewable: add `# vMAJOR.MINOR.PATCH`.")
+                    continue
+                actual = tag_sha(catalog, tag)
+                if actual is None:
+                    failures += 1
+                    print(f"{where}: comment names {tag}, which is not a tag "
+                          "in the catalog")
+                elif actual != sha:
+                    failures += 1
+                    print(f"{where}: comment says {tag}, but that tag is "
+                          f"{actual[:12]}")
+                    print(f"  the pin is {sha[:12]} — one of the two is wrong")
+        if args.repo and not found_any:
+            print(f"{repo}: no catalog pins — nothing to check")
+
+    if failures:
+        print(f"\nFAIL: {failures} pin(s) whose comment does not match their "
+              "SHA. Fix BOTH halves together: the comment is what a reviewer "
+              "reads, so a wrong one is worse than none.")
+        return 1
+
+    print(f"\nPASS: {checked} catalog pin(s), every tag comment matches its SHA")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

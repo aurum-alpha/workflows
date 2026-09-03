@@ -199,7 +199,16 @@ on:
         # Bumped again for the ignore_binaries input on job-depcheck-js-knip.
         # The job file is caller-consumed, so a caller pinning that change
         # would otherwise fetch checkers from 850a32b.
-        default: af2fafc97021753245864e94907d99ab433e4c9d
+        #
+        # Bumped to the merge of wave 1, which is what makes wave 2 safe: the
+        # step below invokes tools/check-catalog-pin-comments, and 5d73b58 is
+        # the first commit where that file exists. Wave 1 deliberately did NOT
+        # bump this -- it added the checker and left the default on adf6111,
+        # because a caller had no reason to fetch it while nothing called it.
+        # Doing both in one commit is the exit-127 shape: the job body reaches
+        # a caller from its own pin, the tools reach it from here, and an
+        # invocation that arrives before the file is a command not found.
+        default: 5d73b58dd264e28031b738ac5b9e745a4646c4f8
 
 jobs:
   ci-conformance:
@@ -255,6 +264,20 @@ jobs:
           repository: aurum-alpha/workflows
           path: .aurum-catalog
           persist-credentials: false
+          # TAGS, and the history behind them, for check-catalog-pin-comments:
+          # it resolves each pin's `# vX.Y.Z` comment with `git rev-list -n1`
+          # against this clone. The default shallow checkout carries no tags at
+          # all, and that checker refuses to run without them rather than
+          # passing every repository having resolved nothing -- verified by
+          # pointing it at a --depth 1 --no-tags clone, where it exits 2 on a
+          # fixture containing four deliberate mismatches.
+          #
+          # MEASURED BEFORE ADDING, because this runs on every conformance job
+          # in eleven repositories: the catalog is 281 commits, and a full
+          # clone's .git is 20288 KB against the shallow clone's 20284 KB. Four
+          # kilobytes. There is no throughput argument against it.
+          fetch-depth: 0
+          fetch-tags: true
 
       # check-caller-permissions is the one checker that parses YAML properly
       # rather than by pattern — it has to resolve job-level blocks against
@@ -368,4 +391,26 @@ jobs:
           REPO: ${{ steps.repo.outputs.name }}
           AURUM_CATALOG_ROOT: .aurum-catalog
         run: .aurum-standard/tools/check-agent-docs --root .ci-root --repo "$REPO"
+        continue-on-error: ${{ inputs.warn_only }}
+
+      # A pin is two halves -- @<sha> and the `# v2.3.4` beside it -- and until
+      # this step every checker here read only the first. event-manager#124
+      # shipped fourteen pins whose comments said v2.2.14 against SHAs that
+      # were v2.3.2, and every gate in the portfolio passed. A human found it
+      # two merges later, reading a diff, by chance.
+      #
+      # The comment is the half a reviewer actually reads: nobody recognises
+      # 5d73b58dd264 on sight and everybody recognises v2.3.5. So a pin whose
+      # comment lies is worse than a bare SHA -- an absent comment prompts a
+      # lookup, a wrong one prevents it.
+      #
+      # This is the step that needs the catalog clone to carry tags, which is
+      # why wave 1 added fetch-depth: 0 and fetch-tags: true a release ahead of
+      # this line rather than alongside it.
+      - name: Every catalog pin comment names the tag its SHA is
+        if: ${{ !cancelled() }}
+        env:
+          REPO: ${{ steps.repo.outputs.name }}
+          AURUM_CATALOG_ROOT: .aurum-catalog
+        run: .aurum-standard/tools/check-catalog-pin-comments --root .ci-root --repo "$REPO"
         continue-on-error: ${{ inputs.warn_only }}

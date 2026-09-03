@@ -98,34 +98,25 @@ FORBIDDEN = [
     ".claude/memories",
 ]
 
-# Repos held to the full standard. A repo NOT listed still has every finding
-# printed — it just does not fail the run.
-#
-# This mirrors CONVERTED/UNCONVERTED in check-ci-conformance, and for the same
-# reason: an unadopted repo is a known gap with a name, which is a different
-# thing from a repo nobody has looked at. Silence would make those two
-# indistinguishable.
-#
-# The charter's "no document names a repository to describe its state" exempts
-# checker allow-lists precisely here — a gate has to declare what it currently
-# lets through. Moving a name in is the adoption. The target state is every
-# repo listed and this comment deleted.
-ADOPTED = [
-    "workflows",
-]
 
-# The repo whose AGENTS.md IS the standard rather than a repo's answer to it.
+# The tree whose AGENTS.md IS the standard rather than a repo's answer to it.
 #
-# check-ci-conformance draws the same line for the same reason: "This repo IS
-# the catalog — its jobs are the definitions, not calls to them." A2 and A3 ask
-# whether a repository answered the standard's six questions about itself and
-# said where the standard lives. Asked of the standard, both are category
-# errors, and the fix a finding would suggest — put repo-specific sections in
-# it, make it link to itself — is the opposite of what this document is for.
+# A2 and A3 ask whether a repository answered the standard's six questions about
+# itself and said where the standard lives. Asked of the standard, both are
+# category errors, and the fix a finding would suggest — put repo-specific
+# sections in it, make it link to itself — is the opposite of what this document
+# is for.
 #
-# A4 and A5 still apply. Someone works in this repo with an agent like anywhere
-# else, and the standard is the guidance they need.
-STANDARD_REPO = "workflows"
+# Read off the tree, never off a repository's name. A repo carrying the checker
+# that enforces the standard is the repo that defines it; a repo that vendors the
+# standard for handover copies the document, not the gate, so it answers A2 and
+# A3 like any other. check-ci-conformance's defines_catalog() draws the same line
+# the same way, and neither tool knows what any repository is called.
+#
+# A4 and A5 still apply here. Someone works in this repo with an agent like
+# anywhere else, and the standard is the guidance they need.
+def defines_standard(repo_dir: pathlib.Path) -> bool:
+    return (repo_dir / "tools" / "check-agent-docs").is_file()
 
 
 def first_meaningful_line(text: str) -> str:
@@ -169,7 +160,7 @@ def _content_findings(repo_dir: pathlib.Path, text: str) -> list[str]:
     return findings
 
 
-def check(repo_dir: pathlib.Path, name: str) -> list[str]:
+def check(repo_dir: pathlib.Path) -> list[str]:
     findings = []
 
     source = repo_dir / SOURCE
@@ -180,7 +171,7 @@ def check(repo_dir: pathlib.Path, name: str) -> list[str]:
 
     text = source.read_text(encoding="utf-8", errors="replace")
 
-    if name != STANDARD_REPO:
+    if not defines_standard(repo_dir):
         findings.extend(_content_findings(repo_dir, text))
 
     for rel in FORBIDDEN:
@@ -231,44 +222,32 @@ def main() -> int:
     )
 
     failures = 0
-    pending = 0
     for name in repos:
         repo_dir = args.root / name
         if not repo_dir.is_dir():
             print(f"{name}: not found under {args.root}", file=sys.stderr)
             return 2
 
-        findings = check(repo_dir, name)
-        adopted = name in ADOPTED
+        findings = check(repo_dir)
 
         if not findings:
-            print(f"{name}: conformant" + ("" if adopted else " (not yet adopted)"))
+            print(f"{name}: conformant")
             continue
 
-        label = "" if adopted else "  [not yet adopted — reported, not failing]"
-        print(f"{name}: {len(findings)} finding(s){label}")
+        print(f"{name}: {len(findings)} finding(s)")
         for f in findings:
             print(f"  {f}")
-        if adopted:
-            failures += len(findings)
-        else:
-            pending += len(findings)
+        failures += len(findings)
 
     print()
-    if pending:
-        print(
-            f"{pending} finding(s) in repos not yet in ADOPTED. Not failures "
-            "today; they are what adoption has to clear. Moving a name into "
-            "ADOPTED in tools/check-agent-docs is the adoption."
-        )
     if failures:
         print(
-            f"FAIL: {failures} finding(s) in adopted repo(s). One source of "
-            "agent guidance, and only one — see AGENTS.md rule 1."
+            f"FAIL: {failures} finding(s). One source of agent guidance, and "
+            "only one — see AGENTS.md rule 1."
         )
         return 1
 
-    print(f"PASS: {len(repos)} repo(s) checked, no findings in adopted repos.")
+    print(f"PASS: {len(repos)} repo(s) checked, no findings.")
     return 0
 
 

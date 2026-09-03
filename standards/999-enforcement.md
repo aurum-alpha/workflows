@@ -129,11 +129,11 @@ it was a checker change rather than twelve workflow changes.
 | A8 | The human approval gate is honoured | — | **review only** |
 | A9 | Docs win over code, and a correction lands in the docs | — | **review only** |
 
-¹ Gated in repos named in the checker's `ADOPTED` list. Elsewhere the findings
-are printed on every run without failing it — the same contract
-`check-ci-conformance` gives an `UNCONVERTED` repo, and for the same reason: a
-gap someone has looked at and a gap nobody has looked at should not read the
-same. Adoption is moving a name into that list.
+¹ Gated wherever the checker runs, which is wherever a repository calls
+`job-ci-conformance.yml`. A repository with standing debt declares it through
+that job's `warn_only` input, in its own `ci.yml`, and burns it down there —
+this repository holds no list of who has adopted what and no verdict on anyone's
+state.
 
 A4 and A5 are the two that earn the gate. A4 fails by accumulation — a tree
 appears, nothing announces it, and the copies drift until nobody knows which one

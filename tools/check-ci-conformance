@@ -149,6 +149,36 @@ def is_library(path: pathlib.Path) -> bool:
             triggers.add(m.group(1))
     return triggers == {"workflow_call"}
 
+
+def defines_catalog(repo: pathlib.Path) -> bool:
+    """This tree DEFINES shared jobs rather than calling them.
+
+    The one exemption ADOPT needs, and it is a property of the tree rather than
+    a repository's name. A repo holding reusable workflows is the catalog; its
+    own ci.yml gates those definitions and cannot be a stub of them.
+
+    It replaces a hardcoded list of adopting repositories, which reached the
+    same answer for the catalog and the wrong answer for everyone else. Such a
+    list can only be redundant — a repo that calls job-ci-conformance.yml has
+    adopted the check by calling it — or wrong, when a caller absent from the
+    list silently gets ADOPT skipped after asking to be checked. The second
+    case was live, and it fails the quiet way: the rules are not reported and
+    not failed, they simply do not run.
+
+    Debt is the caller's to declare, through the job's warn_only input, in its
+    own ci.yml. It is not something this repository knows about anyone.
+
+    is_library() and D6 are the same move: P18 refused a filename allowlist
+    because it would have named the catalog its own worst offender, and D6
+    retired OUTSIDE_ROLLUP for a structural test so there was no second list to
+    forget. This is the third and last of them.
+    """
+    wf = repo / ".github" / "workflows"
+    if not wf.is_dir():
+        return False
+    return any(is_library(p) for p in sorted(wf.glob("*.y*ml")))
+
+
 # A graph root is the first node of a stack, or the change-detection job the
 # rest keys off. Matched by SHAPE, not by an enumerated list of names: the list
 # version hardcoded `build`, `web-build`, `go-mod` and friends, so the moment a
@@ -413,16 +443,16 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
     def bad(rule, msg):
         out.append(f"[{rule}] {msg}")
 
-    # Adoption: is each job a call into the catalog, or a body of its own?
+    # ADOPT: is each job a call into the catalog, or a body of its own?
     # Same subject, same file, one verdict.
     #
-    # Only converted callers are asked. This repo IS the catalog — its jobs are
-    # the definitions, not calls to them — and a repo in UNCONVERTED is a known
-    # gap with a written reason rather than a finding to re-raise on every run.
-    # The standalone tool scoped itself the same way by iterating CONVERTED;
-    # losing that on the merge would have turned the catalog into its own
-    # largest violator.
-    if repo.name in CONVERTED:
+    # Every repo is asked except the one that DEFINES the shared jobs, where the
+    # question is a category error: the catalog's own jobs are the definitions,
+    # not calls to them, and it fails four of its own ADOPT rules by being what
+    # it is. That exemption is a property of the tree, read off it here —
+    # is_library() and D6 both reached the same conclusion for the same reason,
+    # and the rule is now stated once in defines_catalog().
+    if not defines_catalog(repo):
         for finding in adoption_findings(repo.name, text):
             bad("ADOPT", finding)
 
@@ -674,9 +704,8 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
             # exist in the catalog", which is true and irrelevant.
             #
             # Whether a third-party workflow is ALLOWED is a different
-            # question, and check-catalog-adoption owns it — EXTERNAL_JOBS
-            # there is the approved list. Copying that list here would make
-            # two places to update and one place to forget.
+            # question, and EXTERNAL_JOBS below is the approved list. Answering
+            # it here too would make two places to update and one to forget.
             m_uses = re.match(r"([\w.-]+)/([\w.-]+)/\.github/workflows/([\w.-]+\.ya?ml)@", uses.strip())
             if m_uses and m_uses.group(1) == CATALOG_OWNER:
                 cat = catalog_dir(m_uses.group(2))
@@ -1135,49 +1164,25 @@ def main() -> int:
 
 
 # ---------------------------------------------------------------------------
-# Catalog adoption — merged in from check-catalog-adoption.
+# ADOPT — is a caller's job a call into the catalog, or a body of its own?
 #
-# It was a separate 417-line tool asking a question this one already had the
-# subject for: conformance asks whether a pipeline is the right SHAPE, adoption
-# asks whether its CONTENT is shared or bespoke. Two instruments reading one
-# ci.yml is how they came to disagree about the prune (G#8) — a split question
-# gives two answers and no way to tell which is right.
+# Merged in from check-catalog-adoption, a separate 417-line tool asking a
+# question this one already had the subject for: conformance asks whether a
+# pipeline is the right SHAPE, adoption asks whether its CONTENT is shared or
+# bespoke. Two instruments reading one ci.yml is how they came to disagree
+# about the prune (G#8) — a split question gives two answers and no way to tell
+# which is right.
 #
-# The logic below is transplanted rather than rewritten, under renamed symbols,
-# because it has its own parser and reconciling two parsers in the same change
-# that merges two tools is how a refactor becomes an outage.
+# What did not survive the merge is that tool's CONVERTED/UNCONVERTED pair. It
+# swept a directory of clones and needed to enumerate its subjects; here the
+# subject is whichever repo invoked the job, so the same list stopped being an
+# enumeration and became a filter on who was allowed to be judged. See
+# defines_catalog() for the structural test that replaced it.
+#
+# The parser below is transplanted rather than rewritten, because reconciling
+# two parsers in the same change that merges two tools is how a refactor
+# becomes an outage.
 # ---------------------------------------------------------------------------
-
-CONVERTED = [
-    "credit-watch",
-    "event-manager",
-    "expense-splitter",
-    "flight-watch",
-    "gha-runner-controller",
-    "gofast",
-    "hiring-tracker",
-    "jewelry-factory",
-    "lid-firmware",
-    "wardley-mapper",
-]
-
-# Repos that are NOT converted, each with the reason. Reported on every run and
-# deliberately not failing the run — an unconverted repo is a known gap, and
-# this is what distinguishes it from a repo nobody has looked at. Moving a name
-# from here to CONVERTED is the conversion.
-UNCONVERTED = {
-    "client-manager": (
-        "19 local job bodies. CI_STANDARD accounts for six of them as policy "
-        "about that codebase (forbidigo-pgxpool, conformance-suite, "
-        "telemetry-canary, migration-expand-only, header-definition, "
-        "header-staleness), which is the legitimate Principle 19 case. The "
-        "other thirteen — the server-go-* baseline, client-ts-react-install, "
-        "client-ts-react-fmt, changes, contract, image-tag-parity — have not "
-        "been triaged, and guessing which are gaps and which are drift would "
-        "be inventing a verdict. Tracked separately; see also P18, the two "
-        "release workflows still outside ci.yml."
-    ),
-}
 
 # Repo-local jobs that keep a body in the caller.
 #

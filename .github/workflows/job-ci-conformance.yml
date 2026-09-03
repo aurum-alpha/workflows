@@ -199,7 +199,12 @@ on:
         # Bumped again for the ignore_binaries input on job-depcheck-js-knip.
         # The job file is caller-consumed, so a caller pinning that change
         # would otherwise fetch checkers from 850a32b.
-        default: af2fafc97021753245864e94907d99ab433e4c9d
+        #
+        # Bumped again for check-catalog-pin-comments (wave 1) and the deeper
+        # catalog checkout it needs. Nothing invokes the new checker yet --
+        # that is wave 2 -- but tools/ changed, and a caller reads tools/ from
+        # here.
+        default: adf61116c98ea609cf979ee3576d7d6924372f14
 
 jobs:
   ci-conformance:
@@ -255,6 +260,20 @@ jobs:
           repository: aurum-alpha/workflows
           path: .aurum-catalog
           persist-credentials: false
+          # TAGS, and the history behind them, for check-catalog-pin-comments:
+          # it resolves each pin's `# vX.Y.Z` comment with `git rev-list -n1`
+          # against this clone. The default shallow checkout carries no tags at
+          # all, and that checker refuses to run without them rather than
+          # passing every repository having resolved nothing -- verified by
+          # pointing it at a --depth 1 --no-tags clone, where it exits 2 on a
+          # fixture containing four deliberate mismatches.
+          #
+          # MEASURED BEFORE ADDING, because this runs on every conformance job
+          # in eleven repositories: the catalog is 281 commits, and a full
+          # clone's .git is 20288 KB against the shallow clone's 20284 KB. Four
+          # kilobytes. There is no throughput argument against it.
+          fetch-depth: 0
+          fetch-tags: true
 
       # check-caller-permissions is the one checker that parses YAML properly
       # rather than by pattern — it has to resolve job-level blocks against

@@ -1323,9 +1323,15 @@ REPORTING_JOBS = {"job-release-risk.yml"}
 # so here. tools/check-caller-permissions verifies the grant actually covers
 # what the shared job requests.
 STUB_KEYS = {"uses", "needs", "with", "secrets", "if", "permissions"}
+
+# What a stub's `uses:` must look like. The reference half agrees with rule PIN
+# — a first-party workflow is taken at `@main`, never pinned — and this pattern
+# is why that agreement has to be written twice: ADOPT reads a stub's `uses:`
+# through its own parser and would otherwise keep demanding the sha PIN no
+# longer wants. The first repository to migrate found exactly that, five
+# findings deep, which is the argument for migrating one before eleven.
 USES_RE = re.compile(
-    r"^aurum-alpha/workflows/\.github/workflows/job-[a-z0-9-]+\.ya?ml"
-    r"@[0-9a-f]{40}\s+# v\S+$"
+    r"^aurum-alpha/workflows/\.github/workflows/job-[a-z0-9-]+\.ya?ml@main$"
 )
 
 # Approved third-party reusable workflows, by path without the pin.
@@ -1515,9 +1521,9 @@ def adoption_findings(text: str) -> list[str]:
             external = bool(m) and m.group("path") in EXTERNAL_JOBS
             if not external:
                 problems.append(
-                    f"job '{job_id}' uses '{props['uses']}' — must reference a shared "
-                    "job workflow, or an approved third-party workflow, pinned to a "
-                    "40-hex SHA with a version comment"
+                    f"job '{job_id}' uses '{props['uses']}' — must be a shared job "
+                    "workflow at @main, or an approved third-party workflow pinned "
+                    "to a 40-hex SHA with a version comment"
                 )
         # `secrets: inherit` hands the caller's whole secret set to the called
         # workflow. Into the catalog that is fine and required — it is this

@@ -45,6 +45,7 @@ will.
 | 17 | Release is promotion, not production | `check-ci-conformance` D4, D5 | gated |
 | 18 | One workflow per repo | `check-ci-conformance` P18 | gated |
 | 19 | The catalog is the default; a local job is a claim | `check-ci-conformance` ADOPT (half) | mixed⁴ |
+| — | A job's kind is read off the workflow it calls | `check-ci-conformance` ROLE, DECL | gated |
 | — | Standard job DAG (build first) | `check-ci-conformance` D1–D3 | gated |
 | — | Every job blocks something | `check-ci-conformance` D6 | gated |
 | — | Something runs the image | `check-ci-conformance` D7 | gated |
@@ -90,11 +91,14 @@ release job anywhere would have caught it.
 calls the catalog — the pin, the stub keys, `secrets: inherit`, the rollup — is
 checked. What is **not** yet checked is the half that decides which jobs are
 stubs at all: a job id naming a catalog capability must call that catalog job.
-That needs each catalog job to declare the capability it serves, so the id can
-be tested against the catalog rather than against a table of correspondences
-written here. Until it lands, a local body whose id names a covered capability
-passes. This row says half rather than gated for that reason, and the row is
-what should change when the declarations arrive.
+
+The declarations that half needs now exist — every catalog job states its
+capability, language and role, and the row above reads them — so what remains is
+the id grammar itself,
+`<purpose>-<language>[-<framework>][-<product>]-<capability>[-<tool>]`, checked
+against the declaration of the job actually called. Six id shapes in the fleet
+disagree with the job they call today, so landing it is a rename as much as a
+rule. Until then, a local body whose id names a covered capability passes.
 
 ² Gated in every repo whose `ci.yml` calls `job-version-gate`, and in no
 other. Unlike the ¹ checkers this one is not carried by

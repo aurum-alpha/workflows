@@ -45,7 +45,7 @@ and because the delivery mechanisms below are built for the platform's own.
 
 | Route | Refused by |
 |---|---|
-| Encrypted secret files committed to the repository — the SOPS and sealed-secrets shape | **SE10**. No access log, ciphertext in a history that leaves the portfolio at handover, and one key compromise exposes every version ever committed. |
+| Encrypted secret values committed to the repository, in any shape, sealed forms included | **SE10**, on five independent grounds — permanent history that leaves at handover, a bootstrap key that keeps the delivery step and adds a master key beside it, a second mechanism where one way is the rule, a GitOps premise the platform has not adopted, and required configuration in the repository against SC3. No exception; the register admits none and never will. |
 | The application calling a store's SDK at start | **SE1**. This is the rule the whole standard opens with, and an operator's name on it does not change it. |
 | A native secret object written by hand or by a pipeline | **SE10**. A copy nobody rotates. The operator owns the object. |
 | A second store attached because a repository's author prefers it | **SE10**, and PC1 behind it. |

@@ -8,7 +8,8 @@ each rule below actually holds. Artifacts:
 and when that was last checked, is
 [`solutions/032-secrets.md`](../solutions/032-secrets.md), which states no rule
 of its own. The words *process*, *image*, *backing service*, *credential*,
-*configuration* and *environment* are used in the senses [`000-platform.md`](000-platform.md#terms) defines. This leans on
+*configuration* and *environment* are used in the senses
+[`000-platform.md`](000-platform.md#terms) defines. This leans on
 [`030-service.md`](030-service.md) SC2 and SC3, [`010-ci.md`](010-ci.md),
 [`025-structured-data.md`](025-structured-data.md) SD3,
 [`035-workers.md`](035-workers.md) WK8,
@@ -371,11 +372,54 @@ production workload and by the named owner, and by nothing else. The
 platform's own manager meets this, whether it is the hosting provider's, a
 hosted manager or a self-hosted one; a repository does not pick a different
 one because its author prefers it, for the reason
-[`000-platform.md`](000-platform.md) PC1 gives. A file of encrypted values
-committed to the repository is **not** a store: it has no access log, it
-puts ciphertext into a history that leaves the portfolio at handover under a
-key nobody there controls, and the day the key is compromised every version
-ever committed is readable at once.
+[`000-platform.md`](000-platform.md) PC1 gives.
+
+**A file of encrypted values committed to the repository is not a store, and
+there is no exception.** This covers every shape of it: values encrypted in
+place inside a committed configuration file, and the sealed form whose
+private key lives in a cluster controller. Both are refused, for five
+independent reasons, any one of which is sufficient:
+
+1. **A repository is not a place a secret value may live, in any form,
+   because its history is permanent and it leaves.** Deleting the file
+   removes it from no clone and no fork. A repository built for a client
+   leaves the portfolio at handover carrying every version of every value it
+   ever held, and the day the key is compromised, the compromise is
+   retroactive across the whole history at once. A store has a current
+   version and old versions that can actually be destroyed.
+2. **It moves the problem and then multiplies it.** The ciphertext is inert
+   without a decryption key, and that key has to reach the live system
+   somehow — by the very mechanism this rule already specifies. So the
+   repository does not remove a delivery step; it keeps that step and adds a
+   second path beside it. What it has bought is one delivery instead of many,
+   at the price of turning that one into a master key that unlocks
+   everything, whose own compromise is total.
+3. **It is a second way to do the thing there is already one way to do**,
+   which [`010-ci.md`](010-ci.md) Principle 12 and PC1 both refuse. After it,
+   a platform has two secret-delivery mechanisms, and every process, every
+   rotation and every incident has to ask which one it is looking at. The
+   answer to *how does a secret reach a process* is one answer or it is no
+   answer.
+4. **It is a GitOps pattern, and the platform does not do GitOps.** The
+   argument for it is that the whole desired state of a system, secrets
+   included, should be reconstructable from the repository by one apply. That
+   premise is a deployment model this platform has not adopted, so the
+   benefit it trades against the four other costs here is one the platform
+   does not collect.
+5. **Required runtime configuration is never in the repository.** SC3 admits
+   a safe default in the repository for an *optional* variable, and states
+   that a required variable has no default. A secret is required by
+   definition — a process without it does not serve — so no form of its value
+   belongs in code, encrypted or otherwise. The repository ships the mapping
+   (below) and nothing else.
+
+The sealed shape is refused on the same five, and the argument usually made
+for it does not rescue it: that the decrypting key never leaves the platform
+is true, and it still fails 1, 3, 4 and 5 unchanged. It also fails SE7 —
+rotation becomes a commit, indistinguishable from an edit, with nothing
+noticing one that never happened — and the controller key has to be backed
+up or recovery is impossible, which relocates the whole exposure into the
+backup.
 
 **The store renders into the environment by the runtime's mechanism, on the
 platform's side of the variable, and a repository ships only the mapping.**
@@ -481,13 +525,26 @@ value is SE4's scanner; the mechanism's class is a review question).
   repository ships the mapping and never the value** (2026-09-03). The step
   from store to environment had been left as "the platform delivers it",
   which each repository resolved differently. There is no standard for it,
-  so the rule pins the class per runtime — operator or CSI driver on
-  Kubernetes, native injection on managed container services, an agent
-  rendering `EnvironmentFile=` or `LoadCredential=` under systemd — and the
-  four properties any mechanism must have. Encrypted files in the repository
-  are refused because they are a history of ciphertext leaving the portfolio
-  at handover and have no access log. Examples are named because a class
-  with no example is a class each reader guesses at; the class is what binds.
+  so the rule pins the class per runtime and the four properties any
+  mechanism must have. The class is what binds; which implementations have
+  those properties is a survey with a date on it and lives in
+  [`solutions/032-secrets.md`](../solutions/032-secrets.md).
+- **No encrypted secret value in the repository, and no exception for the
+  sealed form** (2026-09-03). The case for committing ciphertext is that the
+  system becomes reconstructable from the repository alone. It does not
+  become that: the decryption key still has to reach the live system by the
+  mechanism this standard already specifies, so the delivery step is kept and
+  a second path is added beside it, with the added one carrying a single key
+  that unlocks everything. That is a second answer to a question with one
+  answer, which Principle 12 refuses on its own; the reconstructable-repository
+  benefit belongs to a deployment model this platform has not adopted; and a
+  required value in the repository is refused by SC3 whatever its encoding.
+  Underneath all of it, a repository's history is permanent and it leaves,
+  which no encryption changes. An earlier draft of this rule also claimed such
+  a file has no access log. That was wrong where the key sits in a managed key
+  service, which logs every decrypt with its principal, and the claim is
+  withdrawn rather than kept as a convenient one — the four reasons above do
+  not need it.
 - **A secret is declared, with an id and a `<SUBJECT>_<KIND>` name**
   (2026-09-02). Without a declaration there is no list to redact by, rotate
   from, check an image against, or hand over. The id gives a rotation's audit

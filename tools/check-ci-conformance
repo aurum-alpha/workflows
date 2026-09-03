@@ -88,7 +88,17 @@ principle needed enforcing:
                           across eleven repos before this rule existed. Passes
                           toJSON(needs), not toJSON(needs.*.result) — the
                           flattened form cannot name which job failed
-  N1  the language token is true  a stub calling job-go-* has 'go' in position 2
+  DECL a catalog job declares what it is  a caller reaching a catalog
+                          workflow that carries no `# aurum-job:` line is
+                          reported, never absorbed: with no declaration the
+                          role rules have nothing to say, and a rule with
+                          nothing to say is indistinguishable from one that
+                          passed
+  ROLE what a job IS comes from the catalog workflow it calls, read off that
+                          workflow's own `# aurum-job:` declaration. A job
+                          calling nothing has no role and no DAG obligations —
+                          it is repo-specific, and the standard did not define
+                          it
   IN  caller inputs exist      every key under `with:` is an input the shared
                           job declares, and every required input is passed.
                           GitHub rejects the whole FILE at startup for a
@@ -102,12 +112,18 @@ principle needed enforcing:
        repository default, which the file cannot show and an org setting can
        revoke from every caller at once
 
-N1 checks the LANGUAGE token and nothing else, because the language is all a
-`uses:` line can prove. Purpose and framework are review-only: no line in the
-file says whether a job serves the client or the server, and assuming otherwise
-is precisely what renamed six repos' `build` to `react-build` when it compiles
-both a React client and an Express server. Repo-local jobs are invisible to N1
-for the same reason.
+Nothing here reads meaning out of a job id. Four regexes used to — ROOT_RE,
+BUILD_RE, GATE_RE and PUBLISH_RE — and they were unsound in both directions. A
+job named `pub` calling job-image-publish escaped D3, D4 and D5 entirely,
+because none of the four magic words appeared in it; a PHP repo's `package`,
+which lays a vendor tree into a dist directory, was failed as an ungated
+publish. The `uses:` line names the exact workflow a job runs, which settles
+the question the regexes were estimating.
+
+Whether a job id is well FORMED is a separate rule and not yet written: the
+grammar <purpose>-<language>[-<framework>][-<product>]-<capability>[-<tool>]
+is what makes ids legible in tooling outside CI, and the declarations this now
+reads are what will let it be checked against the job actually called.
 
 Exit: 0 conformant, 1 violations, 2 no ci workflow found.
 """
@@ -179,72 +195,133 @@ def defines_catalog(repo: pathlib.Path) -> bool:
     return any(is_library(p) for p in sorted(wf.glob("*.y*ml")))
 
 
-# A graph root is the first node of a stack, or the change-detection job the
-# rest keys off. Matched by SHAPE, not by an enumerated list of names: the list
-# version hardcoded `build`, `web-build`, `go-mod` and friends, so the moment a
-# repo renamed `build` to `react-build` — obeying N1 — the checker called its
-# own standard a violation. Enumerating names is how a checker acquires the
-# drift it exists to prevent. The prefix repeats — `([a-z0-9]+-)*` — because a
-# job id carries purpose, language and framework before the capability, and an
-# earlier version allowed exactly one segment, so `client-ts-react-build` read
-# as an orphan the first time a real three-token id appeared.
+# What a job IS comes from the catalog workflow it calls, never from its id.
 #
-# `composer` sits beside `mod`, `build` and `install` because in PHP the
-# dependency install IS a build: `vendor/` ships inside the image rather than
-# being scaffolding for producing it (Principle 21). Leaving it out would mean
-# D2 — a build must not wait on a gate — silently stopped applying to the one
-# job in that repo which assembles what gets shipped.
+# Every rule below that needs to know a job's kind — is it a build, a gate, a
+# thing that publishes — used to read the letters in the job id and guess:
 #
-# `-prod` was allowed here and is not any more. Principle 20 makes the
-# unsuffixed id the production path, so an `install-prod` job is now a naming
-# violation, and there is no reason for the checker to keep a seat warm for it.
-ROOT_RE = re.compile(
-    r"^(changes|create-docker-[\w-]+-image"
-    r"|([a-z0-9]+-)*(mod|build|install|composer))$"
+#   ROOT_RE     ^(changes|create-docker-.*-image|(...)*(mod|build|install|composer))$
+#   BUILD_RE    (^|-)(build|install|composer)$
+#   GATE_RE     (lint|typecheck|test|vet|gofmt|prettier|analysis|scanner|check|audit)
+#   PUBLISH_RE  (publish|release|package|image)
+#
+# All four are gone, and each was wrong in a way the next one could not fix.
+# BUILD_RE could not see that `image-build` packages rather than compiles, so
+# PUBLISH_RE had to be subtracted from it. PUBLISH_RE matched a PHP repo's
+# `package` — a vendor tree laid into a dist directory — and demanded gates it
+# had already moved elsewhere. GATE_RE matched `gofmt` but not `fmt`, so the
+# one Go repo obeying the naming rule had a gate the checker could not see. And
+# none of them could tell a repo's own job from a catalog one, which is how a
+# name-keyed waiver list came to exist to say "not that one".
+#
+# The evidence was there the whole time: `uses:` names the exact workflow the
+# job runs. A job calling job-image-publish.yml IS a publish. One calling
+# job-go-build.yml IS a build. The checker was guessing while holding the
+# answer, and two rules had already worked this out for themselves — the
+# conformance job's D1 exemption and the prune's D6 exemption both match on the
+# shared job called, "rather than by a name pattern that would also catch a
+# repo's own job".
+#
+# So each catalog job declares what it is, on its first line:
+#
+#     # aurum-job: capability=build language=go role=build
+#
+# and this reads that declaration out of the catalog clone. A job whose `uses:`
+# names no catalog workflow has NO role: it is repo-specific, the standard did
+# not define it, and no rule here infers anything about it.
+#
+# The roles, and what each one costs the job that carries it:
+#
+#   build      a source build. May be a graph root (D1). Must not wait on a
+#              gate (D2). Does not itself satisfy D3.
+#   root       comes first and compiles nothing — dependency resolution. May be
+#              a graph root; nothing else.
+#   gate       proves something about the SOURCE. Satisfies D3, and a build
+#              that waits on one fails D2.
+#   policy     proves something about the REPO'S CONFIGURATION rather than the
+#              artifact. May be a graph root, because it reads no build output.
+#              Deliberately does NOT satisfy D3: conformance and the version
+#              gate say nothing about the bytes being published.
+#   publish    emits or promotes an artifact. D3, D4 and D5 apply.
+#   toolchain  builds what other jobs run inside. A graph root, and not a
+#              product, so D3's premise does not reach it.
+#   none       no DAG obligations either way.
+DECL_RE = re.compile(
+    r"^#\s*aurum-job:\s*capability=(?P<capability>\S+)\s+"
+    r"language=(?P<language>\S+)\s+role=(?P<role>\S+)\s*$"
 )
-BUILD_RE = re.compile(r"(^|-)(build|install|composer)$")
-GATE_RE = re.compile(r"(lint|typecheck|test|vet|gofmt|prettier|analysis|scanner|check|audit)")
-PUBLISH_RE = re.compile(r"(publish|release|package|image)")
-REPORTING_RE = re.compile(r"risk$")
+ROOT_ROLES = {"build", "root", "policy", "toolchain"}
+_DECL_CACHE: dict[str, dict[str, str] | None] = {}
 
-# Names that trip PUBLISH_RE without producing a product artifact. Ungated is
-# correct for each, for a different reason:
-#   *-parity        asserts pins match across files; a gate, not a build
-#   create-*-image  the CI toolchain image every other job runs inside, so by
-#                   construction upstream of every gate
-# gha-runner-controller's `runner-image` used to be third on this list, by
-# name, with the reason "a base image plus packages, sharing no source with
-# the repo's code — there is nothing here to gate it on". The reason was
-# right and the mechanism was wrong: a name exemption died the moment the job
-# moved onto the catalog triad and stopped being called `runner-image`. The
-# property the name stood for is now detected directly — see
-# sourceless_image_builds() and its use in D3.
-NOT_A_PRODUCT_RE = re.compile(r"parity$|^create-docker-[\w-]+-image$")
 
-# A shared job proves the LANGUAGE of the source it runs against, and nothing
-# more. job-go-vet can only be pointed at Go; job-node-lint can only be pointed
-# at TypeScript/JavaScript.
-#
-# It does NOT prove the purpose or the framework. The first version of this rule
-# assumed it did — "calls job-node-* therefore it is React" — and renamed six
-# repos' `build` to `react-build` when that job compiles a React client AND an
-# Express server from one command. hiring-tracker's `react-test-unit` ran
-# fourteen server tests and zero client tests. The toolchain is not the codebase.
-#
-# So this checks the language token only: position two of the caller's id.
-LANGUAGE_OF_SHARED_JOB = {
-    "job-go-": "go",
-    "job-node-": "ts",
-    "job-ts-": "ts",
-    "job-php-": "php",
-}
-# Jobs that act on no single codebase take no prefix: their bare name is the
-# information, saying "this one spans the repo".
-SPANS_REPO = {
-    "ci-ok", "changes", "image", "package", "release", "test-e2e",
-    "runner-image", "contract", "image-tag-parity", "osv-scanner",
-    "version-gate", "package-deb", "package-image",
-}
+class Undeclared(str):
+    """A catalog job that is there but says nothing about itself.
+
+    Distinct from None, and the distinction is the whole guard. None means the
+    job calls no catalog workflow — repo-specific, and correctly roleless. This
+    means the workflow was found and carries no `# aurum-job:` line, which is
+    not a fact about the caller at all: it is this checker unable to answer, and
+    it must never read as "no obligations".
+
+    It exists because the alternative was measured, not imagined. The change
+    that introduced roles first landed the declarations and the reader in one
+    commit. The declarations are resolved against the CATALOG LISTING clone,
+    which catalog_roots() deliberately leaves unpinned, so that clone is the
+    default branch — which on that pull request did not have them yet. Every
+    role came back None, D1 through D5 had nothing to say, and the conformance
+    job went green on a checker its own change had just disabled. Locally it
+    passed for the opposite reason: with no AURUM_CATALOG_ROOT set the fallback
+    is the checker's own repo root, which did have them. Two trees, two answers,
+    and the green one was the lie.
+
+    catalog_dir() carries the same lesson one level up — "Split out from
+    catalog_inputs so a MISSING FILE can be told apart from a MISSING CATALOG.
+    Conflating them is what let job-go-gofmt.yml through." A silent rule and a
+    satisfied rule look identical, so anything that cannot answer says so.
+    """
+
+
+def catalog_declaration(uses: str) -> dict[str, str] | Undeclared | None:
+    """The `# aurum-job:` declaration of the catalog workflow this job calls.
+
+    None when the job calls nothing or calls a third party — no role, and no
+    rule keyed on role does anything with it.
+
+    Undeclared when the catalog workflow was found and carries no declaration.
+    Rule DECL reports that; no DAG rule reads a role from it.
+
+    A catalog file the clone does not carry is left to rule CAT, which already
+    reports it with the catalog listing it searched.
+    """
+    m = re.match(
+        r"([\w.-]+)/([\w.-]+)/\.github/workflows/([\w.-]+\.ya?ml)@", uses.strip()
+    )
+    if not m or m.group(1) != CATALOG_OWNER:
+        return None
+    _, repo_name, fname = m.groups()
+    key = f"{repo_name}/{fname}"
+    if key in _DECL_CACHE:
+        return _DECL_CACHE[key]
+    found = None
+    for root in catalog_roots(repo_name):
+        f = root / ".github/workflows" / fname
+        if not f.is_file():
+            continue
+        found = Undeclared(fname)
+        for line in f.read_text().splitlines()[:5]:
+            d = DECL_RE.match(line)
+            if d:
+                found = d.groupdict()
+            break
+        break
+    _DECL_CACHE[key] = found
+    return found
+
+
+def role_of(props: dict) -> str | None:
+    d = catalog_declaration(props.get("uses", ""))
+    return d["role"] if isinstance(d, dict) else None
+
 
 MAIN_GATE_RE = re.compile(
     r"refs/heads/main|is_default_branch|event_name\s*==\s*'push'"
@@ -436,7 +513,8 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
 
     # "Gates hang off the build" presumes a build. A repo that compiles nothing
     # — this one checks yaml — has no such node, and its gates are the roots.
-    has_build = any(BUILD_RE.search(j) for j in jobs)
+    roles = {j: role_of(p) for j, p in jobs.items()}
+    has_build = any(r == "build" for r in roles.values())
     wf_perms = workflow_permissions(text)
     out: list[str] = []
 
@@ -624,11 +702,24 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
             # broken build makes its verdict no less true. Gating it on the
             # build would mean a repo whose code does not compile never learns
             # its CI is nonconformant — the check least able to wait, waiting.
-            # Matched by the shared job it calls, like the prune below, rather
-            # than by a name pattern that would also catch a repo's own job.
-            is_conformance = "job-ci-conformance" in props.get("uses", "")
-            if has_build and not graph[job] and not ROOT_RE.match(job) \
-                    and not is_conformance:
+            # It carries role=policy for exactly that property, so the exemption
+            # is the role rather than a second test naming one workflow.
+            #
+            # ROOT_ROLES is what ROOT_RE was reaching for. Its regex enumerated
+            # `changes`, `create-docker-*-image` and anything ending in mod,
+            # build, install or composer — a list that had already gone wrong
+            # once when a repo renamed `build` to `react-build` obeying the
+            # naming rule and was called a violation for it.
+            #
+            # A job with no role is repo-specific and D1 does not reach it. A
+            # repo's own change-detection job is the case that used to need a
+            # name in the regex; it needs nothing now.
+            if (
+                has_build
+                and not graph[job]
+                and roles.get(job) is not None
+                and roles[job] not in ROOT_ROLES
+            ):
                 bad("D1", f"'{job}' has no needs: — it runs beside the build it should gate")
 
             # Separate property: having a needs: puts a job in the right place
@@ -672,15 +763,19 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
                 bad("D6", f"'{job}' prunes the registry but ci-ok is not upstream "
                           "of it — housekeeping must not run ahead of the gates")
 
-            # `image-build` ends in -build and is not one. D2 says a build never
-            # needs a gate — build first, fail fast — and that is about SOURCE
-            # builds, which compile something and must come before anything is
-            # spent testing it. An image build compiles nothing: it packages
-            # artifacts the source builds already produced, which is why it is
-            # the convergence point every gate hangs off. PUBLISH_RE is exactly
-            # the set of jobs that package rather than compile.
-            if BUILD_RE.search(job) and not PUBLISH_RE.search(job):
-                inv = sorted(n for n in graph[job] if GATE_RE.search(n) and not BUILD_RE.search(n))
+            # D2 says a build never needs a gate — build first, fail fast — and
+            # that is about SOURCE builds, which compile something and must come
+            # before anything is spent testing it. An image build compiles
+            # nothing: it packages artifacts the source builds already produced,
+            # which is why it is the convergence point every gate hangs off.
+            #
+            # That distinction used to be `BUILD_RE and not PUBLISH_RE`, one
+            # regex subtracted from another because the first could not tell
+            # `image-build` from `go-build`. The catalog jobs say which they are
+            # — role=build compiles, role=publish packages — so there is nothing
+            # to subtract.
+            if roles.get(job) == "build":
+                inv = sorted(n for n in graph[job] if roles.get(n) == "gate")
                 if inv:
                     bad("D2", f"'{job}' is a build but needs gate(s): {', '.join(inv)}")
 
@@ -715,6 +810,23 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
                     hint = f" — did you mean {near[0]}?" if near else ""
                     bad("CAT", f"'{job}' calls {m_uses.group(3)}, which does not exist in the "
                                f"catalog{hint} The whole file fails at startup: no jobs, no logs")
+
+            # --- DECL: the catalog job says what it is ----------------------
+            # Every rule that asks what a job IS answers from the declaration on
+            # the workflow it calls. A catalog job carrying none leaves those
+            # rules with nothing to say about this caller — and silence from a
+            # rule is indistinguishable from a rule satisfied, which is the
+            # failure this whole file keeps relearning.
+            #
+            # So it is reported here rather than absorbed. The finding names the
+            # catalog file, because the fix belongs there and not in the repo
+            # that tripped over it.
+            decl = catalog_declaration(uses)
+            if isinstance(decl, Undeclared):
+                bad("DECL", f"'{job}' calls {decl}, which carries no '# aurum-job:' "
+                            "declaration, so nothing here knows whether it builds, "
+                            "gates or publishes — D1 through D5 go quiet for this "
+                            "job rather than passing it. Declare it in the catalog")
 
             # --- IN: the caller's `with:` matches the callee's schema -------
             # Only checkable when the catalog is on disk next to the repos,
@@ -878,58 +990,37 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
                             "no logs",
                         )
 
-            for marker, lang in LANGUAGE_OF_SHARED_JOB.items():
-                if marker not in uses:
-                    continue
-                parts = job.split("-")
-                if len(parts) < 2 or parts[1] != lang:
-                    bad(
-                        "N1",
-                        f"'{job}' calls a {marker}* shared job, so its source is "
-                        f"{lang}, but its language token is "
-                        f"'{parts[1] if len(parts) > 1 else '(absent)'}' — ids are "
-                        f"<purpose>-<language>[-<framework>]-<capability>, so this "
-                        f"should read <purpose>-{lang}-...",
-                    )
-
-            # The prune matches PUBLISH_RE on the word "image" and publishes
-            # nothing — it deletes. D4 (be in ci-ok) is wrong for it by design;
-            # it sits downstream of the rollup. D5 (never gate the job to main)
-            # is wrong for it too: D5 exists so a publish path is rehearsed on
-            # pull requests instead of first attempted on main, and a prune has
-            # no path worth rehearsing — running it on a pull request would
-            # delete things while that pull request is still open.
-            # PUBLISH_RE matches an id, and an id is only evidence about a job
-            # the standard names. A job that calls no catalog workflow is
-            # repo-specific: the standard did not define it, does not know what
-            # it does, and inferring DAG obligations from the letters in its
-            # name is the standard reaching past what it defines. It read a PHP
-            # repo's `package` — a composer vendor tree and a React bundle laid
-            # into a dist directory, not a publish step — as a publish and
-            # demanded gates that repo had deliberately moved to image-build.
+            # D3, D4 and D5 reach exactly the jobs the catalog calls a publish.
             #
-            # This was a named exemption (LOCAL_ALLOWLIST) covering thirteen
-            # job ids in four repos, which is the same sentence said for the
-            # jobs someone had already hit and silent about the next one. The
-            # test is structural now, so there is no list to keep current — and
-            # no way for an entry to go stale into a permanent waiver, which
-            # four of those thirteen had already done.
+            # The prune is one of them and still answers to none of the three,
+            # because it sits downstream of the rollup — it deletes rather than
+            # emits, so D4 is wrong for it by design, and D5 is too: D5 exists
+            # so a publish path is rehearsed on pull requests instead of first
+            # attempted on main, and running a prune on a pull request would
+            # delete things while that pull request is still open. That is the
+            # `ci-ok in ancestors` test below, which is placement rather than a
+            # name.
             #
-            # Standard jobs still answer for themselves: anything calling a
-            # catalog workflow is in scope no matter what it is called.
-            local_by_declaration = "aurum-alpha/workflows/" not in uses
+            # What used to select the set was PUBLISH_RE — `publish|release|
+            # package|image` against the job id — with two regexes subtracted
+            # from it for the ids it caught wrongly, and then a repo-keyed
+            # waiver list for the ones neither regex could express. It read a
+            # PHP repo's `package`, which lays a vendor tree and a React bundle
+            # into a dist directory, as a publish and demanded gates that repo
+            # had deliberately moved to image-build.
+            #
+            # None of that is needed once the job says what it is. A job with no
+            # role calls no catalog workflow, so it is repo-specific and the
+            # standard has nothing to say about it; a toolchain image is not a
+            # product, so D3's premise never reaches it; and there is no list to
+            # keep current, which matters because the last one had four stale
+            # entries out of thirteen.
             if (
-                PUBLISH_RE.search(job)
-                and not local_by_declaration
-                and not REPORTING_RE.search(job)
-                and not NOT_A_PRODUCT_RE.search(job)
+                roles.get(job) == "publish"
                 and "ci-ok" not in ancestors(job, graph)
             ):
                 reach = ancestors(job, graph)
-                if not any(
-                    GATE_RE.search(a) and not BUILD_RE.search(a) and not REPORTING_RE.search(a)
-                    for a in reach
-                ):
+                if not any(roles.get(a) == "gate" for a in reach):
                     # No gate in reach. Before failing, ask what a gate could
                     # have tested: if every image build in this chain (the job
                     # itself included) is a job-image-build caller passing no

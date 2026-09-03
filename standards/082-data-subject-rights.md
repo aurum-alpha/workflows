@@ -202,11 +202,12 @@ credential, a secret, an internal key, or another person's data.**
 **Tenancy bounds the package**: scoped entries contribute the request's
 tenant's rows and global entries the subject's, so a person in two tenants
 receives two packages from two requests — 025 SD6's isolation applied to the
-one read that crosses every table. **Delivery is a presigned link, never a
-URL on the resource.** The job writes the package to the service's own bucket
-under 026 as an object the request row owns; `GET …/{id}/download` checks the
-requester, mints a short-lived presigned GET per 026 with
-`Content-Disposition: attachment`, and answers `302`. The package is available
+one read that crosses every table. **Delivery is through the service, and
+never a URL — on the resource or anywhere else.** The job writes the package
+to the service's own bucket under 026 as an object the request row owns;
+`GET …/{id}/download` checks the requester and streams the object per
+[`026-blob-storage.md`](026-blob-storage.md) BS5 with
+`Content-Disposition: attachment`, answering `200`. The package is available
 for seven days from completion, after which the route answers `410
 export-expired`, the request reads `expired`, and the retention job deletes
 the object: a concentrated copy of personal data is held no longer than the

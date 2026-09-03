@@ -14,7 +14,7 @@
     },
     "objectId": {
       "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/uuidv7",
-      "description": "BS3. The object's public id, minted by the server at intent time (BS6); the final segment of the key and the id of the object reference. UUIDv7 so the keys of one entity sort by creation, which is what a keyset sweep over the bucket (BS8) relies on."
+      "description": "BS3. The object's public id, minted by the server before the first byte of the upload is read (BS6); the final segment of the key and the id of the object reference. UUIDv7 so the keys of one entity sort by creation, which is what a keyset sweep over the bucket (BS8) relies on."
     },
     "tenantScopedKey": {
       "type": "string",

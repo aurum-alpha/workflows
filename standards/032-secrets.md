@@ -220,8 +220,8 @@ detector. A declared value is a secret because it is declared. This is SC2's
 
 **Not in a URL, and not in an error body.** A credential in a query string is
 in the access log of every proxy, load balancer and browser on the path, none
-of which redact it; credentials travel in headers or bodies, and a short-lived
-signed URL is a different object belonging to the [`026-blob-storage.md`](026-blob-storage.md). [`050-http.md`](050-http.md)
+of which redact it; credentials travel in headers or bodies, and there is no
+signed-URL exception: [`026-blob-storage.md`](026-blob-storage.md) BS5 issues none. [`050-http.md`](050-http.md)
 HA3's `detail` is never a secret, a connection string or a stack; layer 1's
 redactor sits in front of the problem+json serializer as well as the log
 emitter, because a driver's error message is the same string in both places.

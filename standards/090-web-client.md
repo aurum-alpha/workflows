@@ -188,9 +188,9 @@ A repository may generate this module, hand-write it, or wrap a generated
 core. What it may not do is spread these six obligations across a component
 tree.
 
-A fetch to a presigned URL ([`026-blob-storage.md`](026-blob-storage.md) BS5)
-uses credentials mode `omit`: the URL is its own credential and the store is
-another origin, so the session cookie must not travel with it.
+A file download is a request to the service's own API by object id
+([`026-blob-storage.md`](026-blob-storage.md) BS5), through this module like
+every other request; the client never holds a URL to a store.
 
 ### WC4. Presentation is the client's job, and it is done with `Intl`
 

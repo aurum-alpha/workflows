@@ -745,11 +745,11 @@
       "expect": { "http": 200, "status": "cancelled" }
     },
     {
-      "case": "a-completed-export-is-downloaded-through-a-presigned-redirect",
-      "why": "DR3 and 026: the download route checks the requester, mints a short-lived presigned GET, and redirects. The resource never carries a URL.",
+      "case": "a-completed-export-is-streamed-through-the-service",
+      "why": "DR3 and 026 BS5: the download route checks the requester and streams the package as an attachment. No URL to the store exists, on the resource or in the answer.",
       "given": { "kind": "export", "status": "completed", "auth_age_seconds": 60, "past_available_until": false },
       "action": "download",
-      "expect": { "http": 302 }
+      "expect": { "http": 200 }
     },
     {
       "case": "an-export-past-its-window-is-gone",

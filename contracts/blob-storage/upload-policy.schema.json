@@ -2,18 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.aurumalpha.dev/blob-storage/upload-policy.schema.json",
   "title": "Aurum Alpha upload policy",
-  "description": "standards/026-blob-storage.md BS6: the declaration a service carries in its repository stating, per entity that owns objects, what may be uploaded - the admitted content types, the size ceiling, whether the object is scanned before it is served, how it is served, and the read and intent lifetimes. The server reads it at intent time and at confirm; a reviewer reads it to see the service's exposure in one file. An entity with no entry accepts no uploads. Two rules prose states are decidable here and are: an object other people download is scanned (BS7), and a presigned read never outlives the ceiling (BS5). schema_version 1 - evolves additively per PC6.",
+  "description": "standards/026-blob-storage.md BS6: the declaration a service carries in its repository stating, per entity that owns objects, what may be uploaded - the admitted content types, the size ceiling, whether the object is scanned before it is served, how it is served - and, per service, how long an unfinished upload may stay pending and above what size the server writes in parts. The server reads it before the first byte of every upload and again at the end of the body; a reviewer reads it to see the service's exposure in one file. An entity with no entry accepts no uploads. Two rules prose states are decidable here and are: an object other people download is scanned (BS7), and inline is declared only over types a browser renders without executing (BS5). Nothing in this policy names a URL, a lifetime for one, or a bucket: no URL to an object exists (BS4, BS5). schema_version 1 - evolves additively per PC6.",
   "type": "object",
   "$defs": {
     "duration": {
       "type": "string",
       "pattern": "^P(?!$)(\\d+D)?(T(?=\\d)(\\d+H)?(\\d+M)?(\\d+S)?)?$",
       "description": "ISO 8601 duration, days and time components only, in the form 057's declaration uses."
-    },
-    "readTtl": {
-      "type": "string",
-      "pattern": "^PT(?:1H|(?:[1-9]|[1-5][0-9]|60)M|(?:[1-9][0-9]{0,2}|[1-2][0-9]{3}|3[0-5][0-9]{2}|3600)S)$",
-      "description": "BS5. The lifetime of a presigned GET, bounded above by the ceiling of one hour: PT<n>S up to 3600, PT<n>M up to 60, or PT1H. A longer value does not validate, because a presigned URL is a bearer credential and its lifetime is the only revocation it has."
     },
     "inlineSafeType": {
       "enum": [
@@ -36,26 +31,26 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 5497558138880,
-          "description": "BS6. The largest object this entity accepts. Checked against the declared size at intent, before a presign is issued, and against the size storage reports at confirm."
+          "description": "BS6. The largest object this entity accepts. Checked against the declared size before the first byte is read, enforced on the byte count as the body streams - the stream is aborted where it passes this - and it is the endpoint's body limit."
         },
         "content_types": {
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
           "items": { "$ref": "https://contracts.aurumalpha.dev/blob-storage/object-reference.schema.json#/$defs/mediaType" },
-          "description": "BS6. The closed set of media types this entity admits, each a full type/subtype. The declared type at intent must be in it and the sniffed type at confirm must equal the declared one."
+          "description": "BS6. The closed set of media types this entity admits, each a full type/subtype. The declared type must be in it before the first byte is read, and the type the server sniffs from the bytes must equal the declared one at the end of the body."
         },
         "audience": {
           "enum": ["uploader", "others"],
-          "description": "BS7. Who reads what is uploaded here. uploader: only the person who uploaded it ever receives a presigned read - a profile photo shown back to its owner, an export a user requested. others: anyone else may - an attachment on a shared record, a document sent to a client. others requires scan: true."
+          "description": "BS7. Who reads what is uploaded here. uploader: only the person who uploaded it is ever served it - a profile photo shown back to its owner, an export a user requested. others: anyone else may be - an attachment on a shared record, a document sent to a client. others requires scan: true."
         },
         "scan": {
           "type": "boolean",
-          "description": "BS7. Whether an object is scanned for malware before a presigned read is issued. Required true where audience is others; where false, every object of this entity is scan: not_required."
+          "description": "BS7. Whether an object is scanned for malware before the server serves it. Required true where audience is others; where false, every object of this entity is scan: not_required."
         },
         "disposition": {
           "enum": ["attachment", "inline"],
-          "description": "BS5. How the server sets Content-Disposition on every presigned read. attachment is the default and the safe one; inline is admitted only where every admitted content type is in the inline-safe list."
+          "description": "BS5. How the server sets Content-Disposition on every read it serves. attachment is the default and the safe one; inline is admitted only where every admitted content type is in the inline-safe list."
         },
         "retention": {
           "type": "object",
@@ -94,19 +89,15 @@
       "type": "boolean",
       "description": "BS3, BS10. Whether object keys carry the tenant segment. true for any service with a tenant isolation level (025 SD5); false only for a service that has none."
     },
-    "presign_get_ttl": {
-      "$ref": "#/$defs/readTtl",
-      "description": "BS5. The lifetime of every presigned GET this service issues. Default PT15M; ceiling PT1H, enforced by the pattern. A caller may ask for shorter and never for longer."
-    },
-    "intent_ttl": {
+    "upload_ttl": {
       "$ref": "#/$defs/duration",
-      "description": "BS6, BS8. How long a pending intent row waits for its confirm before the purge job treats it as abandoned: deletes the object if one arrived, and the row. Default PT1H."
+      "description": "BS6, BS8. How long a pending row may exist before the purge job treats the upload as abandoned - a client that never sent its final range, a server that died mid-stream - and deletes the object or aborts the multipart upload, then the row. Default PT1H."
     },
     "multipart_threshold_bytes": {
       "type": "integer",
       "minimum": 5242880,
       "maximum": 5368709120,
-      "description": "BS6. Above this declared size the intent returns a multipart upload rather than a single presigned PUT. Bounded below by the S3 API's minimum part size of five mebibytes and above by its single-PUT ceiling of five gibibytes. Default 104857600 (one hundred mebibytes)."
+      "description": "BS6. Above this declared size the server writes the body to the store as a multipart upload rather than one PutObject. Bounded below by the S3 API's minimum part size of five mebibytes and above by its single-PUT ceiling of five gibibytes. Default 104857600 (one hundred mebibytes)."
     },
     "entities": {
       "type": "object",
@@ -118,6 +109,6 @@
       "additionalProperties": false
     }
   },
-  "required": ["schema_version", "tenant_scoped", "presign_get_ttl", "intent_ttl", "multipart_threshold_bytes", "entities"],
+  "required": ["schema_version", "tenant_scoped", "upload_ttl", "multipart_threshold_bytes", "entities"],
   "additionalProperties": false
 }

@@ -1,0 +1,118 @@
+{
+  "contract": "notifications",
+  "schemaVersion": 1,
+  "description": "standards/058-notifications.md NF2 and NF11: the messages the pipeline speaks, all of them 055 AM1 envelopes. notification.requested is internal, produced by notify.decide through the outbox (AM4) and consumed by notify.send.<channel>. The four status events are what a provider's webhook becomes after 055 AM8 re-envelopes it: source is /<adapter name>, id is the provider's own event id, subject is the notification_id the adapter resolved from the provider's message id, and data is the shape below. The record's status moves only along the transitions listed; an event that arrives for a transition not listed is recorded in the inbox and ignored, because providers redeliver and reorder.",
+  "messages": {
+    "notification.requested": {
+      "direction": "internal",
+      "source": "the service, logically named (055 AM1)",
+      "subject": "notification_id",
+      "produced_by": "notify.decide, in the transaction that wrote the record (055 AM4); notification.release, for a deferred record whose not_before has passed",
+      "consumed_by": "notify.send.<channel>, routed by data.channel",
+      "dataschema": "https://contracts.aurumalpha.dev/notifications/notification-requested/v1.schema.json",
+      "data": {
+        "type": "object",
+        "properties": {
+          "notification_id": { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/uuidv7" },
+          "channel": { "enum": ["email", "sms", "push", "in_app", "chat"] }
+        },
+        "required": ["notification_id", "channel"],
+        "additionalProperties": false,
+        "description": "Only the reference. The send job reads the record, resolves the address, renders, and sends; the payload travels in the row, never twice."
+      },
+      "record_status_on_consume": "sent (provider accepted) | failed (permanent refusal, retries exhausted) | unknown (at_most_once crash between the provider call and the record)"
+    },
+    "notification.delivered": {
+      "direction": "inbound status",
+      "source": "/<adapter name>",
+      "id": "the provider's event id (055 AM8)",
+      "subject": "notification_id",
+      "dataschema": "https://contracts.aurumalpha.dev/notifications/notification-delivered/v1.schema.json",
+      "data": {
+        "type": "object",
+        "properties": {
+          "notification_id": { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/uuidv7" },
+          "provider_message_id": { "type": "string", "minLength": 1 },
+          "occurred_at": { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp" }
+        },
+        "required": ["notification_id", "provider_message_id", "occurred_at"],
+        "additionalProperties": false
+      },
+      "record_status": "delivered",
+      "side_effects": "delivered_at = data.occurred_at"
+    },
+    "notification.bounced": {
+      "direction": "inbound status",
+      "source": "/<adapter name>",
+      "id": "the provider's event id (055 AM8)",
+      "subject": "notification_id",
+      "dataschema": "https://contracts.aurumalpha.dev/notifications/notification-bounced/v1.schema.json",
+      "data": {
+        "type": "object",
+        "properties": {
+          "notification_id": { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/uuidv7" },
+          "provider_message_id": { "type": "string", "minLength": 1 },
+          "occurred_at": { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp" },
+          "kind": { "enum": ["hard", "soft"], "description": "NF7. hard suppresses the address for every class; soft is retried under 055 AM5 and suppresses nothing." },
+          "detail": { "type": "string", "description": "The provider's diagnostic, for an operator. Never rendered to the recipient." }
+        },
+        "required": ["notification_id", "provider_message_id", "occurred_at", "kind"],
+        "additionalProperties": false
+      },
+      "record_status": "bounced",
+      "side_effects": "kind = hard: the identity's channel address gains suppression { reason: hard_bounce }; a transactional bounce is an alert (NF3)"
+    },
+    "notification.complained": {
+      "direction": "inbound status",
+      "source": "/<adapter name>",
+      "id": "the provider's event id (055 AM8)",
+      "subject": "notification_id",
+      "dataschema": "https://contracts.aurumalpha.dev/notifications/notification-complained/v1.schema.json",
+      "data": {
+        "type": "object",
+        "properties": {
+          "notification_id": { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/uuidv7" },
+          "provider_message_id": { "type": "string", "minLength": 1 },
+          "occurred_at": { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp" }
+        },
+        "required": ["notification_id", "provider_message_id", "occurred_at"],
+        "additionalProperties": false
+      },
+      "record_status": "complained",
+      "side_effects": "the identity's channel address gains suppression { reason: complaint }: optional notifications stop, transactional continue (NF7)"
+    },
+    "notification.failed": {
+      "direction": "inbound status",
+      "source": "/<adapter name>",
+      "id": "the provider's event id (055 AM8)",
+      "subject": "notification_id",
+      "dataschema": "https://contracts.aurumalpha.dev/notifications/notification-failed/v1.schema.json",
+      "data": {
+        "type": "object",
+        "properties": {
+          "notification_id": { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/uuidv7" },
+          "provider_message_id": { "type": "string", "minLength": 1 },
+          "occurred_at": { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp" },
+          "detail": { "type": "string" }
+        },
+        "required": ["notification_id", "provider_message_id", "occurred_at"],
+        "additionalProperties": false
+      },
+      "record_status": "failed",
+      "side_effects": "a transactional failure is an alert (NF3)"
+    }
+  },
+  "transitions": {
+    "deferred": ["queued", "suppressed"],
+    "queued": ["sent", "failed", "unknown"],
+    "sent": ["delivered", "bounced", "complained", "failed"],
+    "delivered": ["complained"],
+    "unknown": ["sent", "failed"],
+    "bounced": [],
+    "complained": [],
+    "failed": [],
+    "suppressed": [],
+    "collapsed": []
+  },
+  "transitions_note": "deferred -> suppressed happens when notification.release finds the address suppressed or the preference withdrawn since notify.decide ran: consent is re-checked at release. unknown -> sent|failed is notification.reconcile's, the at_most_once reconciler named in notify.send's declaration (057 JB4). bounced, complained, failed, suppressed and collapsed are terminal; a later delivered for a bounced row is a provider reorder and is ignored."
+}

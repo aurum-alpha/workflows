@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/security-baseline/base-image.schema.json",
+  "title": "Aurum Alpha pinned base image reference",
+  "description": "The grammar of a pinned base image (SB1 of standards/085-security-baseline.md): an OCI reference addressed by digest, with its human-readable version carried in-band as the tag or in a trailing comment. A checker applies these patterns to every FROM line in every Dockerfile, exempting only 'scratch', a reference to a stage the same file declared with AS, and the --platform flag. schemaVersion 1 — evolves additively per PC6.",
+  "$defs": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "digest": {
+      "type": "string",
+      "description": "An OCI content digest: the sha256 algorithm and 64 lowercase hex characters. Content-addressed and immutable by the OCI distribution specification, which is why it is the pin and a tag is not (SB1).",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "imageName": {
+      "type": "string",
+      "description": "An OCI image name: optional registry host with optional port, then one or more lowercase path components. No tag, no digest (SB1).",
+      "pattern": "^(?:[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::[0-9]{1,5})?/)?[a-z0-9]+(?:[._-][a-z0-9]+)*(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)*$"
+    },
+    "tag": {
+      "type": "string",
+      "description": "An OCI tag: the human-readable version the runtime ignores when a digest is present, kept because a digest alone cannot be reviewed (SB1).",
+      "pattern": "^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$"
+    },
+    "pinnedReference": {
+      "type": "string",
+      "description": "The canonical pinned reference: <name>:<tag>@sha256:<digest>. The tag is the version comment carried in-band, and an update tool maintains both halves as one edit (SB1).",
+      "pattern": "^(?:[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::[0-9]{1,5})?/)?[a-z0-9]+(?:[._-][a-z0-9]+)*(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)*:[A-Za-z0-9_][A-Za-z0-9._-]{0,127}@sha256:[0-9a-f]{64}$"
+    },
+    "pinnedFromLine": {
+      "type": "string",
+      "description": "A FROM line in either admitted form: the in-band form 'FROM [--platform=<p>] <name>:<tag>@sha256:<digest> [AS <stage>]', or the comment form 'FROM [--platform=<p>] <name>@sha256:<digest> [AS <stage>] # <version>'. A digest with neither a tag nor a comment does not match, because it is a pin nobody can read (SB1). The instruction keyword is case-insensitive in a Dockerfile and the pattern admits both spellings.",
+      "pattern": "^[ \\t]*[Ff][Rr][Oo][Mm][ \\t]+(?:--platform=[^ \\t]+[ \\t]+)?(?:(?:[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::[0-9]{1,5})?/)?[a-z0-9]+(?:[._-][a-z0-9]+)*(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)*)(?::[A-Za-z0-9_][A-Za-z0-9._-]{0,127}@sha256:[0-9a-f]{64}(?:[ \\t]+[Aa][Ss][ \\t]+[A-Za-z0-9_.-]+)?[ \\t]*(?:#.*)?|@sha256:[0-9a-f]{64}(?:[ \\t]+[Aa][Ss][ \\t]+[A-Za-z0-9_.-]+)?[ \\t]*#[ \\t]*[^ \\t].*)$"
+    },
+    "finding": {
+      "type": "string",
+      "description": "The findings SB1's checker reports, one per offending FROM line: tag_not_digest (no digest at all, an implicit latest included), digest_malformed (an @ reference that is not sha256 plus 64 hex), version_missing (a digest with neither tag nor comment), unreadable_reference (a build argument or other reference the checker cannot resolve without evaluating the build).",
+      "enum": [
+        "from.tag_not_digest",
+        "from.digest_malformed",
+        "from.version_missing",
+        "from.unreadable_reference"
+      ]
+    }
+  }
+}

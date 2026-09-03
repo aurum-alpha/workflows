@@ -1,0 +1,1672 @@
+{
+  "description": "The conformance corpus for standards/026-blob-storage.md. Five parts. 'keys' is judged by key.schema.json alone, against #/$defs/key. 'references' is judged by object-reference.schema.json plus two equalities the schema cannot express and an implementation must: the key's final segment equals id, and where tenant_id is present the key's first segment equals it (BS3, BS10). 'policies' is judged by upload-policy.schema.json alone. 'uploads' is judged by running uploads through a server to a storage: each case carries the entity's policy and a sequence of steps at stated seconds - an upload is one request carrying the declaration and the bytes, and the server writes the bytes to the store itself - and an implementation must produce the stated result for every step that carries 'expect' and the stated end state (BS6, BS7, BS8). 'reads' is judged by asking a server for an object by id given a row, a request context and a policy: the implementation serves the bytes with the stated status, content type and Content-Disposition, or refuses for the stated reason (BS5, BS7, BS10). Every served case expects the bytes in the response body with status 200 or 206; an implementation that answers a redirect, a location, or any URL to the store fails every served case, because no such URL may exist (BS4, BS5). Two cases are detectors: 'a-declared-type-that-disagrees-with-the-bytes-is-rejected' fails an implementation that records the client's declared content type without sniffing the bytes, or that sniffs and silently overwrites the declaration; 'a-scan-pending-object-is-refused' fails an implementation that treats scanning as advisory and serves an object before its verdict.",
+  "keys": [
+    {
+      "case": "a-tenant-scoped-key-with-a-uuidv7-tenant-is-accepted",
+      "valid": true,
+      "why": "BS3 in full: tenant public id, entity, object UUIDv7, three segments, nothing after the id.",
+      "key": "01923e01-9999-7000-8000-00000000000f/invoice_attachments/01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99"
+    },
+    {
+      "case": "a-tenant-scoped-key-with-a-prefixed-handle-tenant-is-accepted",
+      "valid": true,
+      "why": "BS3: the tenant segment is any admitted IP2 format; a prefixed handle is one.",
+      "key": "cus_V1StGXR8Z5jd/invoice_attachments/01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99"
+    },
+    {
+      "case": "an-unscoped-key-is-accepted",
+      "valid": true,
+      "why": "BS3: a service with no tenant level drops the tenant segment and keeps the rest of the grammar.",
+      "key": "firmware_images/01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99"
+    },
+    {
+      "case": "a-filename-as-the-final-segment-is-rejected",
+      "valid": false,
+      "why": "BS3: the original filename is metadata on the reference, never part of the key. A filename in the key is user-chosen bytes in a storage address, and usually personal data.",
+      "key": "01923e01-9999-7000-8000-00000000000f/invoice_attachments/Q3 report.pdf"
+    },
+    {
+      "case": "an-extension-after-the-id-is-rejected",
+      "valid": false,
+      "why": "BS3: the content type lives on the reference and on the object; an extension in the key is a second, unverified statement of it.",
+      "key": "01923e01-9999-7000-8000-00000000000f/invoice_attachments/01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99.pdf"
+    },
+    {
+      "case": "an-integer-tenant-segment-is-rejected",
+      "valid": false,
+      "why": "IP1 through BS3: an internal key never leaves the service, and a key is a value another system holds.",
+      "key": "4711/invoice_attachments/01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99"
+    },
+    {
+      "case": "an-email-in-the-key-is-rejected",
+      "valid": false,
+      "why": "BS3: keys carry no personal data. An email address is the commonest way one arrives, as a user-shaped prefix.",
+      "key": "someone@example.com/avatars/01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99"
+    },
+    {
+      "case": "a-date-path-is-rejected",
+      "valid": false,
+      "why": "BS3: a year/month/day prefix is a layout convention borrowed from filesystems; the UUIDv7 already orders keys by creation and the prefix is the tenant.",
+      "key": "2026/09/02/01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99"
+    },
+    {
+      "case": "a-uuidv4-object-id-is-rejected",
+      "valid": false,
+      "why": "IP2 through BS3: the object id is a UUIDv7, so a sweep over one entity's keys is a keyset walk in creation order.",
+      "key": "01923e01-9999-7000-8000-00000000000f/invoice_attachments/9f6a2c3e-1b4d-4e8f-9a0b-7c6d5e4f3a2b"
+    },
+    {
+      "case": "an-uppercase-entity-is-rejected",
+      "valid": false,
+      "why": "BS3: the entity is snake_case in the grammar 025 SD10 gives table names, so the key and the owning table agree on one spelling.",
+      "key": "01923e01-9999-7000-8000-00000000000f/InvoiceAttachments/01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99"
+    },
+    {
+      "case": "a-nested-entity-path-is-rejected",
+      "valid": false,
+      "why": "BS3: the entity is one segment. A nested path is a hierarchy the row already expresses, duplicated in a place nothing validates.",
+      "key": "01923e01-9999-7000-8000-00000000000f/invoices/attachments/01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99"
+    },
+    {
+      "case": "a-leading-slash-is-rejected",
+      "valid": false,
+      "why": "BS3: a key is not a path. A leading slash produces an empty first segment, which some S3 implementations store as a distinct object and some collapse.",
+      "key": "/01923e01-9999-7000-8000-00000000000f/invoice_attachments/01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99"
+    }
+  ],
+  "references": [
+    {
+      "case": "a-stored-reference-is-accepted",
+      "valid": true,
+      "why": "BS4 in full: bucket-agnostic key, verified content type, size and checksum, stored with its instant, scan clean, tenant on the row equal to the key's prefix.",
+      "reference": {
+        "schema_version": 1,
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "key": "01923e01-9999-7000-8000-00000000000f/invoice_attachments/01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "content_type": "application/pdf",
+        "size_bytes": 184201,
+        "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        "original_filename": "Q3 report.pdf",
+        "status": "stored",
+        "scan": "clean",
+        "created_at": "2026-03-04T09:12:44.108Z",
+        "stored_at": "2026-03-04T09:12:51.330Z"
+      }
+    },
+    {
+      "case": "a-pending-reference-is-accepted",
+      "valid": true,
+      "why": "BS6: the pending row, committed before any byte reaches storage, carrying the declared values the server verifies at the end of the body.",
+      "reference": {
+        "schema_version": 1,
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "key": "01923e01-9999-7000-8000-00000000000f/invoice_attachments/01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "content_type": "application/pdf",
+        "size_bytes": 184201,
+        "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        "original_filename": "Q3 report.pdf",
+        "status": "pending",
+        "scan": "pending",
+        "created_at": "2026-03-04T09:12:44.108Z"
+      }
+    },
+    {
+      "case": "an-unscoped-stored-reference-is-accepted",
+      "valid": true,
+      "why": "BS3: a service with no tenant level carries no tenant_id and a two-segment key; a multipart composite checksum is the admitted form for an object written in parts.",
+      "reference": {
+        "schema_version": 1,
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "key": "firmware_images/01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "content_type": "application/octet-stream",
+        "size_bytes": 209715200,
+        "checksum": "sha256-2:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "status": "stored",
+        "scan": "not_required",
+        "created_at": "2026-03-04T09:12:44.108Z",
+        "stored_at": "2026-03-04T09:14:02.001Z"
+      }
+    },
+    {
+      "case": "a-url-in-the-reference-is-rejected",
+      "valid": false,
+      "why": "BS4: the application stores a reference, never a URL. A presigned URL is a bearer credential with a lifetime; a bucket URL is a hostname and a bucket name persisted per row, which BS2 makes configuration.",
+      "reference": {
+        "schema_version": 1,
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "key": "01923e01-9999-7000-8000-00000000000f/invoice_attachments/01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "url": "https://invoicing-prod.s3.example.com/01923e01-9999-7000-8000-00000000000f/invoice_attachments/01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99?X-Amz-Signature=abc",
+        "content_type": "application/pdf",
+        "size_bytes": 184201,
+        "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        "status": "stored",
+        "scan": "clean",
+        "created_at": "2026-03-04T09:12:44.108Z",
+        "stored_at": "2026-03-04T09:12:51.330Z"
+      }
+    },
+    {
+      "case": "a-bucket-name-in-the-reference-is-rejected",
+      "valid": false,
+      "why": "BS2 and BS4: the bucket is a backing service named by configuration and differs per environment; a reference that names it is one that stops resolving when the environment changes.",
+      "reference": {
+        "schema_version": 1,
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "key": "01923e01-9999-7000-8000-00000000000f/invoice_attachments/01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "bucket": "invoicing-prod",
+        "content_type": "application/pdf",
+        "size_bytes": 184201,
+        "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        "status": "stored",
+        "scan": "clean",
+        "created_at": "2026-03-04T09:12:44.108Z",
+        "stored_at": "2026-03-04T09:12:51.330Z"
+      }
+    },
+    {
+      "case": "an-internal-key-as-id-is-rejected",
+      "valid": false,
+      "why": "IP1 through BS4: the reference's id is the object's public id, which the owning row and the API carry; an integer is a storage key that never leaves the service.",
+      "reference": {
+        "schema_version": 1,
+        "id": 4711,
+        "key": "01923e01-9999-7000-8000-00000000000f/invoice_attachments/01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "content_type": "application/pdf",
+        "size_bytes": 184201,
+        "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        "status": "stored",
+        "scan": "clean",
+        "created_at": "2026-03-04T09:12:44.108Z",
+        "stored_at": "2026-03-04T09:12:51.330Z"
+      }
+    },
+    {
+      "case": "an-md5-checksum-is-rejected",
+      "valid": false,
+      "why": "BS6: the checksum is SHA-256 as storage reports it. An MD5, which is what an ETag usually is, is neither collision-resistant nor a digest of the bytes for a multipart object.",
+      "reference": {
+        "schema_version": 1,
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "key": "01923e01-9999-7000-8000-00000000000f/invoice_attachments/01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "content_type": "application/pdf",
+        "size_bytes": 184201,
+        "checksum": "md5:9e107d9d372bb6826bd81d3542a419d6",
+        "status": "stored",
+        "scan": "clean",
+        "created_at": "2026-03-04T09:12:44.108Z",
+        "stored_at": "2026-03-04T09:12:51.330Z"
+      }
+    },
+    {
+      "case": "a-stored-reference-without-stored-at-is-rejected",
+      "valid": false,
+      "why": "BS6: stored means the confirm succeeded at an instant; a stored row that cannot say when is a row whose status was set by something other than the confirm.",
+      "reference": {
+        "schema_version": 1,
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "key": "01923e01-9999-7000-8000-00000000000f/invoice_attachments/01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "content_type": "application/pdf",
+        "size_bytes": 184201,
+        "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        "status": "stored",
+        "scan": "clean",
+        "created_at": "2026-03-04T09:12:44.108Z"
+      }
+    },
+    {
+      "case": "a-pending-reference-marked-clean-is-rejected",
+      "valid": false,
+      "why": "BS7: a scan verdict is a fact about stored bytes; a pending row has no bytes the scan job could have read.",
+      "reference": {
+        "schema_version": 1,
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "key": "01923e01-9999-7000-8000-00000000000f/invoice_attachments/01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "content_type": "application/pdf",
+        "size_bytes": 184201,
+        "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        "status": "pending",
+        "scan": "clean",
+        "created_at": "2026-03-04T09:12:44.108Z"
+      }
+    },
+    {
+      "case": "an-offset-created-at-is-rejected",
+      "valid": false,
+      "why": "IP4 through BS4: stored instants are UTC with a Z suffix.",
+      "reference": {
+        "schema_version": 1,
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "key": "01923e01-9999-7000-8000-00000000000f/invoice_attachments/01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "content_type": "application/pdf",
+        "size_bytes": 184201,
+        "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        "status": "pending",
+        "scan": "pending",
+        "created_at": "2026-03-04T11:12:44.108+02:00"
+      }
+    },
+    {
+      "case": "a-wildcard-content-type-is-rejected",
+      "valid": false,
+      "why": "BS6: the content type on a reference is one verified media type. A wildcard is a policy shorthand and never a fact about an object.",
+      "reference": {
+        "schema_version": 1,
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "key": "01923e01-9999-7000-8000-00000000000f/invoice_attachments/01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "content_type": "image/*",
+        "size_bytes": 184201,
+        "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        "status": "pending",
+        "scan": "pending",
+        "created_at": "2026-03-04T09:12:44.108Z"
+      }
+    },
+    {
+      "case": "a-filename-with-a-path-separator-is-rejected",
+      "valid": false,
+      "why": "BS5: the filename becomes a Content-Disposition value and a name on someone's disk; a separator in it is a path traversal waiting for a careless client.",
+      "reference": {
+        "schema_version": 1,
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "key": "01923e01-9999-7000-8000-00000000000f/invoice_attachments/01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "content_type": "application/pdf",
+        "size_bytes": 184201,
+        "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        "original_filename": "../../etc/passwd",
+        "status": "pending",
+        "scan": "pending",
+        "created_at": "2026-03-04T09:12:44.108Z"
+      }
+    },
+    {
+      "case": "a-key-whose-final-segment-is-not-the-id-is-rejected",
+      "valid": false,
+      "why": "BS3 and BS4, decided by the equality the schema cannot state: the key's final segment IS the reference's id. Two ids for one object is how a row and its bytes drift apart.",
+      "reference": {
+        "schema_version": 1,
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "key": "01923e01-9999-7000-8000-00000000000f/invoice_attachments/01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a98",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "content_type": "application/pdf",
+        "size_bytes": 184201,
+        "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        "status": "stored",
+        "scan": "clean",
+        "created_at": "2026-03-04T09:12:44.108Z",
+        "stored_at": "2026-03-04T09:12:51.330Z"
+      }
+    },
+    {
+      "case": "a-key-prefix-that-is-not-the-tenant-id-is-rejected",
+      "valid": false,
+      "why": "BS10, decided by the second equality: the row's tenant_id is the boundary and the key prefix is a convenience, so a disagreement between them is a row filed under one tenant and stored under another. The purge job reports it as a finding.",
+      "reference": {
+        "schema_version": 1,
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "key": "01923e01-9999-7000-8000-000000000010/invoice_attachments/01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "content_type": "application/pdf",
+        "size_bytes": 184201,
+        "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        "status": "stored",
+        "scan": "clean",
+        "created_at": "2026-03-04T09:12:44.108Z",
+        "stored_at": "2026-03-04T09:12:51.330Z"
+      }
+    }
+  ],
+  "policies": [
+    {
+      "case": "a-complete-policy-is-accepted",
+      "valid": true,
+      "why": "BS6 in full: tenant-scoped, upload TTL, multipart threshold, two entities with closed type sets, one scanned because others download it and one not because only the uploader does. Nothing in it names a URL or a lifetime for one.",
+      "policy": {
+        "schema_version": 1,
+        "tenant_scoped": true,
+        "upload_ttl": "PT1H",
+        "multipart_threshold_bytes": 104857600,
+        "entities": {
+          "invoice_attachments": {
+            "max_size_bytes": 26214400,
+            "content_types": [
+              "application/pdf",
+              "image/png",
+              "image/jpeg"
+            ],
+            "audience": "others",
+            "scan": true,
+            "disposition": "attachment"
+          },
+          "avatars": {
+            "max_size_bytes": 2097152,
+            "content_types": [
+              "image/png",
+              "image/jpeg",
+              "image/webp"
+            ],
+            "audience": "uploader",
+            "scan": false,
+            "disposition": "inline"
+          }
+        }
+      }
+    },
+    {
+      "case": "a-read-lifetime-in-the-policy-is-rejected",
+      "valid": false,
+      "why": "BS4, BS5: there is no URL to an object and therefore no lifetime for one; a policy that declares a presigned-read lifetime under any name describes a read this standard forbids, and the closed shape refuses it.",
+      "policy": {
+        "schema_version": 1,
+        "tenant_scoped": true,
+        "upload_ttl": "PT1H",
+        "multipart_threshold_bytes": 104857600,
+        "entities": {
+          "invoice_attachments": {
+            "max_size_bytes": 26214400,
+            "content_types": [
+              "application/pdf",
+              "image/png",
+              "image/jpeg"
+            ],
+            "audience": "others",
+            "scan": true,
+            "disposition": "attachment"
+          },
+          "avatars": {
+            "max_size_bytes": 2097152,
+            "content_types": [
+              "image/png",
+              "image/jpeg",
+              "image/webp"
+            ],
+            "audience": "uploader",
+            "scan": false,
+            "disposition": "inline"
+          }
+        },
+        "presign_get_ttl": "PT15M"
+      }
+    },
+    {
+      "case": "a-wildcard-content-type-is-rejected",
+      "valid": false,
+      "why": "BS6: the admitted set is closed and enumerated. image/* admits image/svg+xml, which carries script, and whatever image type a browser learns next.",
+      "policy": {
+        "schema_version": 1,
+        "tenant_scoped": true,
+        "upload_ttl": "PT1H",
+        "multipart_threshold_bytes": 104857600,
+        "entities": {
+          "avatars": {
+            "max_size_bytes": 2097152,
+            "content_types": [
+              "image/*"
+            ],
+            "audience": "uploader",
+            "scan": false,
+            "disposition": "attachment"
+          }
+        }
+      }
+    },
+    {
+      "case": "an-others-audience-without-scan-is-rejected",
+      "valid": false,
+      "why": "BS7: what one person uploads for another to download is scanned before it is served. The declaration is where that posture is stated, so the schema holds it.",
+      "policy": {
+        "schema_version": 1,
+        "tenant_scoped": true,
+        "upload_ttl": "PT1H",
+        "multipart_threshold_bytes": 104857600,
+        "entities": {
+          "invoice_attachments": {
+            "max_size_bytes": 26214400,
+            "content_types": [
+              "application/pdf"
+            ],
+            "audience": "others",
+            "scan": false,
+            "disposition": "attachment"
+          }
+        }
+      }
+    },
+    {
+      "case": "inline-over-svg-is-rejected",
+      "valid": false,
+      "why": "BS5: inline is admitted only over types a browser renders without executing; SVG carries script and is served as an attachment or not at all.",
+      "policy": {
+        "schema_version": 1,
+        "tenant_scoped": true,
+        "upload_ttl": "PT1H",
+        "multipart_threshold_bytes": 104857600,
+        "entities": {
+          "logos": {
+            "max_size_bytes": 1048576,
+            "content_types": [
+              "image/png",
+              "image/svg+xml"
+            ],
+            "audience": "others",
+            "scan": true,
+            "disposition": "inline"
+          }
+        }
+      }
+    },
+    {
+      "case": "a-multipart-threshold-below-the-minimum-part-size-is-rejected",
+      "valid": false,
+      "why": "BS6: the S3 API's minimum part size is five mebibytes, so a threshold below it would produce multipart uploads whose parts the storage refuses.",
+      "policy": {
+        "schema_version": 1,
+        "tenant_scoped": true,
+        "upload_ttl": "PT1H",
+        "multipart_threshold_bytes": 1048576,
+        "entities": {
+          "invoice_attachments": {
+            "max_size_bytes": 26214400,
+            "content_types": [
+              "application/pdf"
+            ],
+            "audience": "others",
+            "scan": true,
+            "disposition": "attachment"
+          }
+        }
+      }
+    },
+    {
+      "case": "an-entity-name-that-is-not-snake-case-is-rejected",
+      "valid": false,
+      "why": "BS3: the entity segment is snake_case in the key grammar, and the policy is keyed by that segment.",
+      "policy": {
+        "schema_version": 1,
+        "tenant_scoped": true,
+        "upload_ttl": "PT1H",
+        "multipart_threshold_bytes": 104857600,
+        "entities": {
+          "InvoiceAttachments": {
+            "max_size_bytes": 26214400,
+            "content_types": [
+              "application/pdf"
+            ],
+            "audience": "others",
+            "scan": true,
+            "disposition": "attachment"
+          }
+        }
+      }
+    },
+    {
+      "case": "a-policy-with-no-entities-is-rejected",
+      "valid": false,
+      "why": "BS6: a service that stores objects declares at least one entity that owns them; an empty policy is a service that accepts no uploads and needs no bucket.",
+      "policy": {
+        "schema_version": 1,
+        "tenant_scoped": true,
+        "upload_ttl": "PT1H",
+        "multipart_threshold_bytes": 104857600,
+        "entities": {}
+      }
+    },
+    {
+      "case": "a-retention-without-a-reason-is-rejected",
+      "valid": false,
+      "why": "BS8: keeping an object past its owning row is the exception 025 SD12 admits for soft delete, and it needs the same stated domain reason.",
+      "policy": {
+        "schema_version": 1,
+        "tenant_scoped": true,
+        "upload_ttl": "PT1H",
+        "multipart_threshold_bytes": 104857600,
+        "entities": {
+          "invoice_attachments": {
+            "max_size_bytes": 26214400,
+            "content_types": [
+              "application/pdf"
+            ],
+            "audience": "others",
+            "scan": true,
+            "disposition": "attachment",
+            "retention": {
+              "period": "P7Y"
+            }
+          }
+        }
+      }
+    },
+    {
+      "case": "a-bucket-name-in-the-policy-is-rejected",
+      "valid": false,
+      "why": "BS2: the bucket is a backing service attached by configuration, per environment. It has no place in a declaration committed to the repository.",
+      "policy": {
+        "schema_version": 1,
+        "tenant_scoped": true,
+        "bucket": "invoicing-prod",
+        "upload_ttl": "PT1H",
+        "multipart_threshold_bytes": 104857600,
+        "entities": {
+          "invoice_attachments": {
+            "max_size_bytes": 26214400,
+            "content_types": [
+              "application/pdf"
+            ],
+            "audience": "others",
+            "scan": true,
+            "disposition": "attachment"
+          }
+        }
+      }
+    }
+  ],
+  "uploads": [
+    {
+      "case": "a-complete-upload-is-stored-and-served",
+      "why": "BS6 in full: the server checks the declaration against the policy before the first byte, commits the pending row, streams the body to the store while hashing, counting and sniffing, verifies all three against the declaration at the end, and sets stored; a stored object with no scan requirement is served, as bytes, by BS5.",
+      "policy": {
+        "upload_ttl": "PT1H",
+        "multipart_threshold_bytes": 104857600,
+        "entity": {
+          "max_size_bytes": 26214400,
+          "content_types": [
+            "application/pdf",
+            "image/png"
+          ],
+          "audience": "uploader",
+          "scan": false
+        }
+      },
+      "steps": [
+        {
+          "at": 0,
+          "op": "upload",
+          "declared": {
+            "content_type": "application/pdf",
+            "size_bytes": 184201,
+            "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+            "original_filename": "Q3 report.pdf"
+          },
+          "body": {
+            "bytes": "pdf",
+            "size_bytes": 184201,
+            "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+          },
+          "expect": "stored"
+        },
+        {
+          "at": 1,
+          "op": "get",
+          "expect": "served"
+        }
+      ],
+      "end": {
+        "row": "stored",
+        "scan": "not_required",
+        "object": true
+      }
+    },
+    {
+      "case": "a-type-the-policy-does-not-admit-is-refused-before-any-byte",
+      "why": "BS6 step 1: the policy is checked before the body is read, so a disallowed type never reaches the store and no row is written.",
+      "policy": {
+        "upload_ttl": "PT1H",
+        "multipart_threshold_bytes": 104857600,
+        "entity": {
+          "max_size_bytes": 26214400,
+          "content_types": [
+            "application/pdf"
+          ],
+          "audience": "uploader",
+          "scan": false
+        }
+      },
+      "steps": [
+        {
+          "at": 0,
+          "op": "upload",
+          "declared": {
+            "content_type": "application/zip",
+            "size_bytes": 184201,
+            "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+            "original_filename": "Q3 report.pdf"
+          },
+          "body": {
+            "bytes": "zip",
+            "size_bytes": 184201,
+            "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+          },
+          "expect": "rejected:type_not_admitted"
+        },
+        {
+          "at": 1,
+          "op": "row_present",
+          "expect": false
+        }
+      ],
+      "end": {
+        "row": "absent",
+        "object": false
+      }
+    },
+    {
+      "case": "a-size-over-the-policy-ceiling-is-refused-before-any-byte",
+      "why": "BS6 step 1: the declared size is checked against max_size_bytes before the body is read; the count as the body streams is the second line, for a client that declared one size and sent another.",
+      "policy": {
+        "upload_ttl": "PT1H",
+        "multipart_threshold_bytes": 104857600,
+        "entity": {
+          "max_size_bytes": 26214400,
+          "content_types": [
+            "application/pdf"
+          ],
+          "audience": "uploader",
+          "scan": false
+        }
+      },
+      "steps": [
+        {
+          "at": 0,
+          "op": "upload",
+          "declared": {
+            "content_type": "application/pdf",
+            "size_bytes": 30000000,
+            "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+            "original_filename": "Q3 report.pdf"
+          },
+          "body": {
+            "bytes": "pdf",
+            "size_bytes": 30000000,
+            "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+          },
+          "expect": "rejected:size_over_max"
+        },
+        {
+          "at": 1,
+          "op": "row_present",
+          "expect": false
+        }
+      ],
+      "end": {
+        "row": "absent",
+        "object": false
+      }
+    },
+    {
+      "case": "a-body-shorter-than-declared-is-rejected-and-a-new-upload-succeeds",
+      "why": "BS6 step 3: the bytes the server counted are the truth, not the declaration. The object is deleted with the pending row, and the client uploads again as a new object.",
+      "policy": {
+        "upload_ttl": "PT1H",
+        "multipart_threshold_bytes": 104857600,
+        "entity": {
+          "max_size_bytes": 26214400,
+          "content_types": [
+            "application/pdf"
+          ],
+          "audience": "uploader",
+          "scan": false
+        }
+      },
+      "steps": [
+        {
+          "at": 0,
+          "op": "upload",
+          "declared": {
+            "content_type": "application/pdf",
+            "size_bytes": 184201,
+            "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+            "original_filename": "Q3 report.pdf"
+          },
+          "body": {
+            "bytes": "pdf",
+            "size_bytes": 100000,
+            "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+          },
+          "expect": "rejected:size_mismatch"
+        },
+        {
+          "at": 1,
+          "op": "object_present",
+          "expect": false
+        },
+        {
+          "at": 2,
+          "op": "row_present",
+          "expect": false
+        },
+        {
+          "at": 10,
+          "op": "upload",
+          "declared": {
+            "content_type": "application/pdf",
+            "size_bytes": 184201,
+            "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+            "original_filename": "Q3 report.pdf"
+          },
+          "body": {
+            "bytes": "pdf",
+            "size_bytes": 184201,
+            "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+          },
+          "expect": "stored"
+        }
+      ],
+      "end": {
+        "row": "stored",
+        "scan": "not_required",
+        "object": true
+      }
+    },
+    {
+      "case": "a-body-that-passes-the-declared-size-is-aborted-as-it-streams",
+      "why": "BS6 step 2: the server counts as it forwards and aborts the stream at the byte past the declaration rather than reading to the end and comparing; nothing is stored and no row remains.",
+      "policy": {
+        "upload_ttl": "PT1H",
+        "multipart_threshold_bytes": 104857600,
+        "entity": {
+          "max_size_bytes": 26214400,
+          "content_types": [
+            "application/pdf"
+          ],
+          "audience": "uploader",
+          "scan": false
+        }
+      },
+      "steps": [
+        {
+          "at": 0,
+          "op": "upload",
+          "declared": {
+            "content_type": "application/pdf",
+            "size_bytes": 184201,
+            "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+            "original_filename": "Q3 report.pdf"
+          },
+          "body": {
+            "bytes": "pdf",
+            "size_bytes": 2000000,
+            "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+          },
+          "expect": "rejected:size_mismatch"
+        },
+        {
+          "at": 1,
+          "op": "object_present",
+          "expect": false
+        },
+        {
+          "at": 2,
+          "op": "row_present",
+          "expect": false
+        }
+      ],
+      "end": {
+        "row": "absent",
+        "object": false
+      }
+    },
+    {
+      "case": "a-checksum-that-disagrees-with-the-bytes-is-rejected",
+      "why": "BS6 step 3: the declared checksum and the digest the server computed over the stream must agree, or the bytes are not the bytes the client meant to send. The store, sent the declared value as x-amz-checksum-sha256, is a second verifier.",
+      "policy": {
+        "upload_ttl": "PT1H",
+        "multipart_threshold_bytes": 104857600,
+        "entity": {
+          "max_size_bytes": 26214400,
+          "content_types": [
+            "application/pdf"
+          ],
+          "audience": "uploader",
+          "scan": false
+        }
+      },
+      "steps": [
+        {
+          "at": 0,
+          "op": "upload",
+          "declared": {
+            "content_type": "application/pdf",
+            "size_bytes": 184201,
+            "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+            "original_filename": "Q3 report.pdf"
+          },
+          "body": {
+            "bytes": "pdf",
+            "size_bytes": 184201,
+            "checksum": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "expect": "rejected:checksum_mismatch"
+        },
+        {
+          "at": 1,
+          "op": "object_present",
+          "expect": false
+        }
+      ],
+      "end": {
+        "row": "absent",
+        "object": false
+      }
+    },
+    {
+      "case": "a-declared-type-that-disagrees-with-the-bytes-is-rejected",
+      "detector": true,
+      "why": "BS6, the detector. Both types are admitted, the size and checksum agree, and the only lie is the declaration: image/png over bytes that are a PDF. The server sniffs the bytes itself and refuses. An implementation that records the declared type without looking passes every other case in this part - the policy check before the body, the size and checksum checks over the stream - and stores this one as image/png, which is a PDF served with an image type to every browser that later renders it. An implementation that sniffs and silently overwrites the declaration also fails here, because it stores rather than refuses.",
+      "policy": {
+        "upload_ttl": "PT1H",
+        "multipart_threshold_bytes": 104857600,
+        "entity": {
+          "max_size_bytes": 26214400,
+          "content_types": [
+            "application/pdf",
+            "image/png"
+          ],
+          "audience": "uploader",
+          "scan": false
+        }
+      },
+      "steps": [
+        {
+          "at": 0,
+          "op": "upload",
+          "declared": {
+            "content_type": "image/png",
+            "size_bytes": 184201,
+            "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+            "original_filename": "Q3 report.pdf"
+          },
+          "body": {
+            "bytes": "pdf",
+            "size_bytes": 184201,
+            "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+          },
+          "expect": "rejected:type_mismatch"
+        },
+        {
+          "at": 1,
+          "op": "object_present",
+          "expect": false
+        }
+      ],
+      "end": {
+        "row": "absent",
+        "object": false
+      }
+    },
+    {
+      "case": "an-abandoned-ranged-upload-is-purged-after-upload-ttl",
+      "why": "BS6 and BS8: a client sending the body in ranges leaves the row pending between them; one that never sends the final range is removed by the purge job after upload_ttl, its parts with it, and left alone before.",
+      "policy": {
+        "upload_ttl": "PT1H",
+        "multipart_threshold_bytes": 104857600,
+        "entity": {
+          "max_size_bytes": 26214400,
+          "content_types": [
+            "application/pdf"
+          ],
+          "audience": "uploader",
+          "scan": false
+        }
+      },
+      "steps": [
+        {
+          "at": 0,
+          "op": "upload_range",
+          "declared": {
+            "content_type": "application/pdf",
+            "size_bytes": 184201,
+            "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+            "original_filename": "Q3 report.pdf"
+          },
+          "body": {
+            "bytes": "pdf",
+            "size_bytes": 100000
+          },
+          "expect": "pending"
+        },
+        {
+          "at": 30,
+          "op": "tick",
+          "expect": "purged:0"
+        },
+        {
+          "at": 3700,
+          "op": "tick",
+          "expect": "purged:1"
+        },
+        {
+          "at": 3701,
+          "op": "row_present",
+          "expect": false
+        }
+      ],
+      "end": {
+        "row": "absent",
+        "object": false
+      }
+    },
+    {
+      "case": "a-server-that-died-mid-stream-leaves-a-row-the-purge-job-removes",
+      "why": "BS6 step 1 and BS8: the row is committed before the first byte, so a server that dies mid-stream leaves a pending row and a partial object, never an object without a row; the purge job removes both after upload_ttl.",
+      "policy": {
+        "upload_ttl": "PT1H",
+        "multipart_threshold_bytes": 104857600,
+        "entity": {
+          "max_size_bytes": 26214400,
+          "content_types": [
+            "application/pdf"
+          ],
+          "audience": "uploader",
+          "scan": false
+        }
+      },
+      "steps": [
+        {
+          "at": 0,
+          "op": "upload_crash",
+          "declared": {
+            "content_type": "application/pdf",
+            "size_bytes": 184201,
+            "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+            "original_filename": "Q3 report.pdf"
+          },
+          "body": {
+            "bytes": "pdf",
+            "size_bytes": 90000
+          }
+        },
+        {
+          "at": 1,
+          "op": "object_present",
+          "expect": true
+        },
+        {
+          "at": 2,
+          "op": "row_present",
+          "expect": true
+        },
+        {
+          "at": 3700,
+          "op": "tick",
+          "expect": "purged:1"
+        },
+        {
+          "at": 3701,
+          "op": "object_present",
+          "expect": false
+        }
+      ],
+      "end": {
+        "row": "absent",
+        "object": false
+      }
+    },
+    {
+      "case": "a-scanned-object-is-not-served-until-the-verdict-is-clean",
+      "why": "BS7: the entity's audience is others, so the object is scan: pending from the start of the upload; the upload stores it, a read is refused until the scan job records clean, and served after.",
+      "policy": {
+        "upload_ttl": "PT1H",
+        "multipart_threshold_bytes": 104857600,
+        "entity": {
+          "max_size_bytes": 26214400,
+          "content_types": [
+            "application/pdf"
+          ],
+          "audience": "others",
+          "scan": true
+        }
+      },
+      "steps": [
+        {
+          "at": 0,
+          "op": "upload",
+          "declared": {
+            "content_type": "application/pdf",
+            "size_bytes": 184201,
+            "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+            "original_filename": "Q3 report.pdf"
+          },
+          "body": {
+            "bytes": "pdf",
+            "size_bytes": 184201,
+            "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+          },
+          "expect": "stored"
+        },
+        {
+          "at": 1,
+          "op": "get",
+          "expect": "refused:scan_pending"
+        },
+        {
+          "at": 40,
+          "op": "scan_result",
+          "verdict": "clean"
+        },
+        {
+          "at": 41,
+          "op": "get",
+          "expect": "served"
+        }
+      ],
+      "end": {
+        "row": "stored",
+        "scan": "clean",
+        "object": true
+      }
+    },
+    {
+      "case": "an-infected-object-is-deleted-and-never-served",
+      "why": "BS7 and BS8: an infected verdict deletes the bytes and leaves the row saying why they are gone; a read is refused for that reason rather than answering not found.",
+      "policy": {
+        "upload_ttl": "PT1H",
+        "multipart_threshold_bytes": 104857600,
+        "entity": {
+          "max_size_bytes": 26214400,
+          "content_types": [
+            "application/pdf"
+          ],
+          "audience": "others",
+          "scan": true
+        }
+      },
+      "steps": [
+        {
+          "at": 0,
+          "op": "upload",
+          "declared": {
+            "content_type": "application/pdf",
+            "size_bytes": 184201,
+            "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+            "original_filename": "Q3 report.pdf"
+          },
+          "body": {
+            "bytes": "pdf",
+            "size_bytes": 184201,
+            "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+          },
+          "expect": "stored"
+        },
+        {
+          "at": 40,
+          "op": "scan_result",
+          "verdict": "infected"
+        },
+        {
+          "at": 41,
+          "op": "object_present",
+          "expect": false
+        },
+        {
+          "at": 42,
+          "op": "get",
+          "expect": "refused:infected"
+        }
+      ],
+      "end": {
+        "row": "stored",
+        "scan": "infected",
+        "object": false
+      }
+    },
+    {
+      "case": "deleting-the-owning-row-deletes-the-object-through-the-outbox",
+      "why": "BS8: the row and the outbox message commit together (055 AM4), so the object outlives the row only until the relay runs the delete job; 025 SD11 is why the storage call is not inside the transaction.",
+      "policy": {
+        "upload_ttl": "PT1H",
+        "multipart_threshold_bytes": 104857600,
+        "entity": {
+          "max_size_bytes": 26214400,
+          "content_types": [
+            "application/pdf"
+          ],
+          "audience": "uploader",
+          "scan": false
+        }
+      },
+      "steps": [
+        {
+          "at": 0,
+          "op": "upload",
+          "declared": {
+            "content_type": "application/pdf",
+            "size_bytes": 184201,
+            "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+            "original_filename": "Q3 report.pdf"
+          },
+          "body": {
+            "bytes": "pdf",
+            "size_bytes": 184201,
+            "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+          },
+          "expect": "stored"
+        },
+        {
+          "at": 20,
+          "op": "delete_row",
+          "expect": "queued"
+        },
+        {
+          "at": 21,
+          "op": "object_present",
+          "expect": true
+        },
+        {
+          "at": 22,
+          "op": "relay",
+          "expect": "deleted:1"
+        },
+        {
+          "at": 23,
+          "op": "object_present",
+          "expect": false
+        },
+        {
+          "at": 24,
+          "op": "relay",
+          "expect": "deleted:0"
+        }
+      ],
+      "end": {
+        "row": "absent",
+        "object": false
+      }
+    },
+    {
+      "case": "a-repeated-upload-with-the-same-idempotency-key-returns-the-first-answer",
+      "why": "BS6 with 050 HA6's shape: a client that lost the first response repeats the request under the same Idempotency-Key and receives the first answer; one object exists, not two.",
+      "policy": {
+        "upload_ttl": "PT1H",
+        "multipart_threshold_bytes": 104857600,
+        "entity": {
+          "max_size_bytes": 26214400,
+          "content_types": [
+            "application/pdf"
+          ],
+          "audience": "uploader",
+          "scan": false
+        }
+      },
+      "steps": [
+        {
+          "at": 0,
+          "op": "upload",
+          "declared": {
+            "content_type": "application/pdf",
+            "size_bytes": 184201,
+            "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+            "original_filename": "Q3 report.pdf"
+          },
+          "body": {
+            "bytes": "pdf",
+            "size_bytes": 184201,
+            "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+          },
+          "idempotency_key": "k-7f4e",
+          "expect": "stored"
+        },
+        {
+          "at": 5,
+          "op": "upload",
+          "declared": {
+            "content_type": "application/pdf",
+            "size_bytes": 184201,
+            "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+            "original_filename": "Q3 report.pdf"
+          },
+          "body": {
+            "bytes": "pdf",
+            "size_bytes": 184201,
+            "checksum": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+          },
+          "idempotency_key": "k-7f4e",
+          "expect": "stored"
+        },
+        {
+          "at": 6,
+          "op": "row_count",
+          "expect": 1
+        }
+      ],
+      "end": {
+        "row": "stored",
+        "scan": "not_required",
+        "object": true
+      }
+    },
+    {
+      "case": "an-object-with-no-row-is-purged-as-an-orphan",
+      "why": "BS4 and BS8: the row is the source of truth, so an object under a well-formed key with no row at all - a writer whose row transaction never committed, in violation of BS6 step 1 - is removed by the same periodic job and counted.",
+      "policy": {
+        "upload_ttl": "PT1H",
+        "multipart_threshold_bytes": 104857600,
+        "entity": {
+          "max_size_bytes": 26214400,
+          "content_types": [
+            "application/pdf"
+          ],
+          "audience": "uploader",
+          "scan": false
+        }
+      },
+      "steps": [
+        {
+          "at": 0,
+          "op": "orphan_object",
+          "bytes": "pdf",
+          "size_bytes": 184201
+        },
+        {
+          "at": 1,
+          "op": "object_present",
+          "expect": true
+        },
+        {
+          "at": 3700,
+          "op": "tick",
+          "expect": "purged:1"
+        },
+        {
+          "at": 3701,
+          "op": "object_present",
+          "expect": false
+        }
+      ],
+      "end": {
+        "row": "absent",
+        "object": false
+      }
+    },
+    {
+      "case": "a-body-above-the-threshold-is-written-in-parts",
+      "why": "BS6 step 2: above the policy's threshold the server writes the stream to the store as a multipart upload and verifies the composite checksum the S3 API defines over the parts; the client sent one request and saw no difference.",
+      "policy": {
+        "upload_ttl": "PT1H",
+        "multipart_threshold_bytes": 104857600,
+        "entity": {
+          "max_size_bytes": 1073741824,
+          "content_types": [
+            "application/octet-stream"
+          ],
+          "audience": "uploader",
+          "scan": false
+        }
+      },
+      "steps": [
+        {
+          "at": 0,
+          "op": "upload",
+          "declared": {
+            "content_type": "application/octet-stream",
+            "size_bytes": 209715200,
+            "checksum": "sha256-2:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "body": {
+            "bytes": "binary",
+            "size_bytes": 209715200,
+            "checksum": "sha256-2:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "expect": "stored:multipart"
+        }
+      ],
+      "end": {
+        "row": "stored",
+        "scan": "not_required",
+        "object": true
+      }
+    }
+  ],
+  "reads": [
+    {
+      "case": "a-stored-clean-object-for-a-permitted-subject-is-served-as-bytes",
+      "why": "BS5 in full: the id resolved to a row, the tenant matches, the check passed, the object is stored and clean, so the server streams the bytes with the row's content type, an attachment disposition built from the row's filename, and no-store. There is no URL in the answer because there is none anywhere.",
+      "policy": {
+        "disposition": "attachment"
+      },
+      "row": {
+        "status": "stored",
+        "scan": "clean",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "content_type": "application/pdf",
+        "original_filename": "Q3 report.pdf",
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "size_bytes": 184201
+      },
+      "context": {
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "permitted": true
+      },
+      "expect": {
+        "served": true,
+        "http": 200,
+        "body": "bytes",
+        "content_type": "application/pdf",
+        "content_disposition": "attachment; filename=\"Q3 report.pdf\"; filename*=UTF-8''Q3%20report.pdf",
+        "cache_control": "private, no-store"
+      }
+    },
+    {
+      "case": "a-range-request-is-served-as-a-partial-response",
+      "why": "BS5: a Range header is passed through to the store's ranged GetObject and answered 206 with the store's Content-Range; a resumed download and a video seek are ordinary reads through the server, not a reason to hand out a URL.",
+      "policy": {
+        "disposition": "attachment"
+      },
+      "row": {
+        "status": "stored",
+        "scan": "clean",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "content_type": "application/pdf",
+        "original_filename": "Q3 report.pdf",
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "size_bytes": 184201
+      },
+      "context": {
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "permitted": true
+      },
+      "request": {
+        "range": "bytes=0-65535"
+      },
+      "expect": {
+        "served": true,
+        "http": 206,
+        "body": "bytes",
+        "content_type": "application/pdf",
+        "content_disposition": "attachment; filename=\"Q3 report.pdf\"; filename*=UTF-8''Q3%20report.pdf",
+        "cache_control": "private, no-store",
+        "content_range": "bytes 0-65535/184201"
+      }
+    },
+    {
+      "case": "an-unknown-object-id-is-not-found",
+      "why": "BS4, BS5: the id is the only handle a client holds and it means nothing without the row; an id with no row is 404 before any tenant or permission question is asked, because there is nothing to ask it about.",
+      "policy": {
+        "disposition": "attachment"
+      },
+      "row": null,
+      "context": {
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "permitted": true
+      },
+      "expect": {
+        "served": false,
+        "http": 404,
+        "reason": "not_found"
+      }
+    },
+    {
+      "case": "a-pending-object-is-refused",
+      "why": "BS6: only a stored object is served. A pending row may have no bytes, or bytes the server has not finished verifying.",
+      "policy": {
+        "disposition": "attachment"
+      },
+      "row": {
+        "status": "pending",
+        "scan": "not_required",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "content_type": "application/pdf",
+        "original_filename": "Q3 report.pdf",
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "size_bytes": 184201
+      },
+      "context": {
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "permitted": true
+      },
+      "expect": {
+        "served": false,
+        "http": 409,
+        "reason": "not_stored"
+      }
+    },
+    {
+      "case": "a-scan-pending-object-is-refused",
+      "why": "BS7, the detector. The object is stored, the subject is permitted and the tenant matches; the only thing missing is the scan verdict. An implementation that treats scanning as advisory - serve now, quarantine if the verdict comes back bad - refuses the infected case below because those bytes are gone, refuses the pending and forbidden cases for their own reasons, and serves this one. It fails exactly this case.",
+      "policy": {
+        "disposition": "attachment"
+      },
+      "row": {
+        "status": "stored",
+        "scan": "pending",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "content_type": "application/pdf",
+        "original_filename": "Q3 report.pdf",
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "size_bytes": 184201
+      },
+      "context": {
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "permitted": true
+      },
+      "expect": {
+        "served": false,
+        "http": 409,
+        "reason": "scan_pending"
+      },
+      "detector": true
+    },
+    {
+      "case": "an-infected-object-is-refused",
+      "why": "BS7: the bytes were deleted at the verdict; the row remains so the refusal can say why rather than answering not found.",
+      "policy": {
+        "disposition": "attachment"
+      },
+      "row": {
+        "status": "stored",
+        "scan": "infected",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "content_type": "application/pdf",
+        "original_filename": "Q3 report.pdf",
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "size_bytes": 184201
+      },
+      "context": {
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "permitted": true
+      },
+      "expect": {
+        "served": false,
+        "http": 410,
+        "reason": "infected"
+      }
+    },
+    {
+      "case": "a-subject-without-the-permission-is-refused",
+      "why": "BS5 and 070: the server serves after check(subject, permission, scope) on the owning entity and never instead of it. The check is what decides who receives the bytes, at the moment of the request, every time.",
+      "policy": {
+        "disposition": "attachment"
+      },
+      "row": {
+        "status": "stored",
+        "scan": "clean",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "content_type": "application/pdf",
+        "original_filename": "Q3 report.pdf",
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "size_bytes": 184201
+      },
+      "context": {
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "permitted": false
+      },
+      "expect": {
+        "served": false,
+        "http": 403,
+        "reason": "forbidden"
+      }
+    },
+    {
+      "case": "another-tenants-object-is-refused-even-with-a-grant",
+      "why": "BS10 and 025 SD6: the subject holds the permission in their own tenant and asks for an object whose row belongs to another. The row's tenant_id is the boundary; a grant in one tenant reaches no row in another, whatever the key prefix says.",
+      "policy": {
+        "disposition": "attachment"
+      },
+      "row": {
+        "status": "stored",
+        "scan": "clean",
+        "tenant_id": "01923e01-9999-7000-8000-000000000010",
+        "content_type": "application/pdf",
+        "original_filename": "Q3 report.pdf",
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "size_bytes": 184201
+      },
+      "context": {
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "permitted": true
+      },
+      "expect": {
+        "served": false,
+        "http": 403,
+        "reason": "forbidden"
+      }
+    },
+    {
+      "case": "a-missing-tenant-context-is-refused",
+      "why": "BS10 and 025 SD6: a request that resolved no tenant sees no scoped rows. A read served with no tenant bound is a cross-tenant read.",
+      "policy": {
+        "disposition": "attachment"
+      },
+      "row": {
+        "status": "stored",
+        "scan": "clean",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "content_type": "application/pdf",
+        "original_filename": "Q3 report.pdf",
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "size_bytes": 184201
+      },
+      "context": {
+        "tenant_id": null,
+        "permitted": true
+      },
+      "expect": {
+        "served": false,
+        "http": 403,
+        "reason": "forbidden"
+      }
+    },
+    {
+      "case": "a-unicode-filename-gets-an-ascii-fallback-and-an-rfc-8187-form",
+      "why": "BS5: Content-Disposition per RFC 6266 carries both forms - filename as an ASCII fallback with every non-ASCII, quote and backslash character replaced by an underscore, and filename* as RFC 8187 UTF-8 percent-encoding - so every client reads one of them correctly and no client is handed raw UTF-8 in a quoted string.",
+      "policy": {
+        "disposition": "attachment"
+      },
+      "row": {
+        "status": "stored",
+        "scan": "clean",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "content_type": "application/pdf",
+        "original_filename": "Rapport été.pdf",
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "size_bytes": 184201
+      },
+      "context": {
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "permitted": true
+      },
+      "expect": {
+        "served": true,
+        "http": 200,
+        "body": "bytes",
+        "content_type": "application/pdf",
+        "content_disposition": "attachment; filename=\"Rapport _t_.pdf\"; filename*=UTF-8''Rapport%20%C3%A9t%C3%A9.pdf",
+        "cache_control": "private, no-store"
+      }
+    },
+    {
+      "case": "a-filename-with-a-quote-is-neutralised-in-the-fallback",
+      "why": "BS5: a double quote inside the quoted fallback would end it early and let the rest of the filename inject header parameters; it is replaced in the fallback and percent-encoded in the RFC 8187 form.",
+      "policy": {
+        "disposition": "attachment"
+      },
+      "row": {
+        "status": "stored",
+        "scan": "clean",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "content_type": "application/pdf",
+        "original_filename": "say \"hi\".pdf",
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "size_bytes": 184201
+      },
+      "context": {
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "permitted": true
+      },
+      "expect": {
+        "served": true,
+        "http": 200,
+        "body": "bytes",
+        "content_type": "application/pdf",
+        "content_disposition": "attachment; filename=\"say _hi_.pdf\"; filename*=UTF-8''say%20%22hi%22.pdf",
+        "cache_control": "private, no-store"
+      }
+    },
+    {
+      "case": "an-object-with-no-filename-is-served-under-its-id",
+      "why": "BS5: an object the service generated has no original filename; the id is the name, and it is one the client can quote back on a support call.",
+      "policy": {
+        "disposition": "attachment"
+      },
+      "row": {
+        "status": "stored",
+        "scan": "not_required",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "content_type": "application/pdf",
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "size_bytes": 184201
+      },
+      "context": {
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "permitted": true
+      },
+      "expect": {
+        "served": true,
+        "http": 200,
+        "body": "bytes",
+        "content_type": "application/pdf",
+        "content_disposition": "attachment; filename=\"01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99\"",
+        "cache_control": "private, no-store"
+      }
+    },
+    {
+      "case": "an-inline-disposition-is-served-for-an-inline-safe-type",
+      "why": "BS5: the policy declared inline over image types, so the browser renders rather than downloads; the server still names the type and the filename from the row, never the store's own guess.",
+      "policy": {
+        "disposition": "inline"
+      },
+      "row": {
+        "status": "stored",
+        "scan": "not_required",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "content_type": "image/png",
+        "original_filename": "photo.png",
+        "id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
+        "size_bytes": 20480
+      },
+      "context": {
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "permitted": true
+      },
+      "expect": {
+        "served": true,
+        "http": 200,
+        "body": "bytes",
+        "content_type": "image/png",
+        "content_disposition": "inline; filename=\"photo.png\"; filename*=UTF-8''photo.png",
+        "cache_control": "private, no-store"
+      }
+    }
+  ],
+  "contract": "blob-storage",
+  "schemaVersion": 1
+}

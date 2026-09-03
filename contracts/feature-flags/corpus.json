@@ -1,0 +1,717 @@
+{
+  "contract": "feature-flags",
+  "schemaVersion": 1,
+  "description": "The conformance corpus for standards/038-feature-flags.md. Six parts. 'declarations' is judged by flag-declaration.schema.json alone; 'contexts' by evaluation-context.schema.json alone; 'evaluated_sets' by evaluated-set.schema.json alone — each case is accepted or rejected and a rejection names the rule. 'evaluation' is judged by running an evaluation boundary: given the fixture declarations, a provider state and a context, the call must return exactly the stated value, reason and error code and raise exactly the stated findings (FF1, FF2, FF4, FF6). 'gating' is judged by serving a request behind an entitlement flag and a permission check together (FF5). 'experiments' is judged by evaluating a split flag repeatedly and counting distinct variants per subject and exposures recorded (FF10). 'expiry' is judged by comparing a declaration to a date and listing the findings the sweep raises (FF3, FF11). Three cases are detectors: 'provider-unavailable-returns-the-declared-default' fails an implementation that fails open on provider error; 'an-undeclared-flag-is-a-finding' fails an implementation that asks the provider before the declaration; 'entitled-and-denied-is-refused' fails an implementation that treats a flag as authorization.",
+  "fixtures": {
+    "declarations": [
+      {
+        "name": "invoicing.pdf_renderer_v2",
+        "type": "boolean",
+        "default": false,
+        "kind": "release",
+        "scope": "tenant",
+        "description": "Render invoices with the second-generation PDF pipeline instead of the first.",
+        "owner": "invoicing-team",
+        "created": "2026-09-01",
+        "expires": "2026-11-30",
+        "removal": "Every tenant on the new renderer for thirty days with no rendering-error regression; delete the first-generation pipeline.",
+        "served_to_client": true
+      },
+      {
+        "name": "checkout.layout",
+        "type": "string",
+        "default": "control",
+        "kind": "experiment",
+        "scope": "user",
+        "description": "Which checkout layout a user sees: the current one or the redesign.",
+        "owner": "growth-team",
+        "created": "2026-09-01",
+        "expires": "2026-10-31",
+        "removal": "Decision on conversion at the 95% interval; the winning layout becomes the code.",
+        "variants": ["control", "redesign"]
+      },
+      {
+        "name": "payments.fraud_bypass",
+        "type": "boolean",
+        "default": false,
+        "kind": "operational",
+        "scope": "global",
+        "description": "Skip the fraud provider call and accept the charge on internal rules only. An operator's intervention when the provider degrades.",
+        "owner": "payments-oncall",
+        "created": "2026-09-01",
+        "review_by": "2027-09-01"
+      },
+      {
+        "name": "reporting.audit_export",
+        "type": "boolean",
+        "default": false,
+        "kind": "entitlement",
+        "scope": "tenant",
+        "description": "The tenant's plan includes the audit export. Evaluated beside the audit.export permission, never instead of it.",
+        "owner": "platform-team",
+        "created": "2026-09-01",
+        "review_by": "2027-03-01"
+      }
+    ]
+  },
+  "declarations": [
+    {
+      "case": "a-release-flag-with-expiry-and-removal",
+      "valid": true,
+      "why": "FF2 and FF3 in full for a release flag: boolean default false, tenant scope, expires within 180 days, a removal condition, served to the client.",
+      "declaration": {
+        "name": "invoicing.pdf_renderer_v2",
+        "type": "boolean",
+        "default": false,
+        "kind": "release",
+        "scope": "tenant",
+        "description": "Render invoices with the second-generation PDF pipeline.",
+        "owner": "invoicing-team",
+        "created": "2026-09-01",
+        "expires": "2026-11-30",
+        "removal": "Every tenant on the new renderer for thirty days; delete the old pipeline.",
+        "served_to_client": true
+      }
+    },
+    {
+      "case": "an-operational-flag-with-a-review-date",
+      "valid": true,
+      "why": "FF3: an operational flag does not expire and is reviewed; FF4: named for the intervention, so its default is false and a provider outage leaves the normal path.",
+      "declaration": {
+        "name": "payments.fraud_bypass",
+        "type": "boolean",
+        "default": false,
+        "kind": "operational",
+        "scope": "global",
+        "description": "Skip the fraud provider and accept on internal rules only.",
+        "owner": "payments-oncall",
+        "created": "2026-09-01",
+        "review_by": "2027-09-01"
+      }
+    },
+    {
+      "case": "an-experiment-with-two-variants",
+      "valid": true,
+      "why": "FF10: an experiment is a string flag with two or more variants, user-scoped, expiring with a decision named in removal.",
+      "declaration": {
+        "name": "checkout.layout",
+        "type": "string",
+        "default": "control",
+        "kind": "experiment",
+        "scope": "user",
+        "description": "Which checkout layout a user sees.",
+        "owner": "growth-team",
+        "created": "2026-09-01",
+        "expires": "2026-10-31",
+        "removal": "Decision on conversion; the winning layout becomes the code.",
+        "variants": ["control", "redesign"]
+      }
+    },
+    {
+      "case": "an-entitlement-flag-with-a-review-date",
+      "valid": true,
+      "why": "FF3 and FF5: an entitlement is tenant-scoped, reviewed rather than expired, and its description names the permission it is evaluated beside.",
+      "declaration": {
+        "name": "reporting.audit_export",
+        "type": "boolean",
+        "default": false,
+        "kind": "entitlement",
+        "scope": "tenant",
+        "description": "The tenant's plan includes the audit export; evaluated beside audit.export.",
+        "owner": "platform-team",
+        "created": "2026-09-01",
+        "review_by": "2027-03-01"
+      }
+    },
+    {
+      "case": "a-release-flag-without-expires-is-rejected",
+      "valid": false,
+      "why": "FF3: a release flag carries the date after which it is a finding. Without one the accumulation failure has a field that permits it.",
+      "declaration": {
+        "name": "invoicing.pdf_renderer_v2",
+        "type": "boolean",
+        "default": false,
+        "kind": "release",
+        "scope": "tenant",
+        "description": "Render invoices with the second-generation PDF pipeline.",
+        "owner": "invoicing-team",
+        "created": "2026-09-01",
+        "removal": "Every tenant on the new renderer; delete the old pipeline."
+      }
+    },
+    {
+      "case": "a-release-flag-with-review-by-instead-of-expires-is-rejected",
+      "valid": false,
+      "why": "FF3: the kinds are disjoint. A release flag that is reviewed rather than expired is an operational flag wearing a release flag's name, and the declaration says which.",
+      "declaration": {
+        "name": "invoicing.pdf_renderer_v2",
+        "type": "boolean",
+        "default": false,
+        "kind": "release",
+        "scope": "tenant",
+        "description": "Render invoices with the second-generation PDF pipeline.",
+        "owner": "invoicing-team",
+        "created": "2026-09-01",
+        "review_by": "2027-09-01",
+        "removal": "Every tenant on the new renderer; delete the old pipeline."
+      }
+    },
+    {
+      "case": "an-operational-flag-with-expires-is-rejected",
+      "valid": false,
+      "why": "FF3: an operational flag lives while an operator could need it; giving it an expiry makes a kill switch vanish from the sweep on a date nobody chose for that reason. It carries review_by.",
+      "declaration": {
+        "name": "payments.fraud_bypass",
+        "type": "boolean",
+        "default": false,
+        "kind": "operational",
+        "scope": "global",
+        "description": "Skip the fraud provider and accept on internal rules only.",
+        "owner": "payments-oncall",
+        "created": "2026-09-01",
+        "expires": "2026-12-01"
+      }
+    },
+    {
+      "case": "a-boolean-flag-defaulting-to-true-is-rejected",
+      "valid": false,
+      "why": "FF4: every boolean flag defaults to false and is named for what true turns on. A default of true is a flag whose provider outage turns the feature on.",
+      "declaration": {
+        "name": "payments.fraud_check_enabled",
+        "type": "boolean",
+        "default": true,
+        "kind": "operational",
+        "scope": "global",
+        "description": "Call the fraud provider before accepting a charge.",
+        "owner": "payments-oncall",
+        "created": "2026-09-01",
+        "review_by": "2027-09-01"
+      }
+    },
+    {
+      "case": "an-experiment-with-one-variant-is-rejected",
+      "valid": false,
+      "why": "FF10: an experiment compares; one variant measures nothing.",
+      "declaration": {
+        "name": "checkout.layout",
+        "type": "string",
+        "default": "control",
+        "kind": "experiment",
+        "scope": "user",
+        "description": "Which checkout layout a user sees.",
+        "owner": "growth-team",
+        "created": "2026-09-01",
+        "expires": "2026-10-31",
+        "removal": "Decision on conversion.",
+        "variants": ["control"]
+      }
+    },
+    {
+      "case": "a-boolean-experiment-is-rejected",
+      "valid": false,
+      "why": "FF10: an experiment names its variants so the exposure record and the decision can name them; a boolean has no variants and is a release flag.",
+      "declaration": {
+        "name": "checkout.express_pay",
+        "type": "boolean",
+        "default": false,
+        "kind": "experiment",
+        "scope": "user",
+        "description": "Show the express-pay button.",
+        "owner": "growth-team",
+        "created": "2026-09-01",
+        "expires": "2026-10-31",
+        "removal": "Decision on conversion."
+      }
+    },
+    {
+      "case": "a-three-segment-name-is-rejected",
+      "valid": false,
+      "why": "FF2: <area>.<flag>, exactly two segments — the same grammar as a permission string, so the two sets can be intersected (FF5).",
+      "declaration": {
+        "name": "invoicing.pdf.renderer_v2",
+        "type": "boolean",
+        "default": false,
+        "kind": "release",
+        "scope": "tenant",
+        "description": "Render invoices with the second-generation PDF pipeline.",
+        "owner": "invoicing-team",
+        "created": "2026-09-01",
+        "expires": "2026-11-30",
+        "removal": "Delete the old pipeline."
+      }
+    },
+    {
+      "case": "a-release-flag-without-a-removal-condition-is-rejected",
+      "valid": false,
+      "why": "FF3 and FF11: the condition under which the flag goes is written at creation, when its author still knows it.",
+      "declaration": {
+        "name": "invoicing.pdf_renderer_v2",
+        "type": "boolean",
+        "default": false,
+        "kind": "release",
+        "scope": "tenant",
+        "description": "Render invoices with the second-generation PDF pipeline.",
+        "owner": "invoicing-team",
+        "created": "2026-09-01",
+        "expires": "2026-11-30"
+      }
+    },
+    {
+      "case": "an-owner-that-is-an-email-address-is-rejected",
+      "valid": false,
+      "why": "FF2: the owner is a team or role handle. The file is in the repository, and a person's address in it outlives the person's role.",
+      "declaration": {
+        "name": "invoicing.pdf_renderer_v2",
+        "type": "boolean",
+        "default": false,
+        "kind": "release",
+        "scope": "tenant",
+        "description": "Render invoices with the second-generation PDF pipeline.",
+        "owner": "someone@example.com",
+        "created": "2026-09-01",
+        "expires": "2026-11-30",
+        "removal": "Delete the old pipeline."
+      }
+    },
+    {
+      "case": "a-string-flag-with-a-boolean-default-is-rejected",
+      "valid": false,
+      "why": "FF1 and FF4: the default is a value of the flag's type, because it is what the typed call returns on failure.",
+      "declaration": {
+        "name": "search.ranking_model",
+        "type": "string",
+        "default": false,
+        "kind": "operational",
+        "scope": "global",
+        "description": "Which ranking model search uses.",
+        "owner": "search-team",
+        "created": "2026-09-01",
+        "review_by": "2027-09-01"
+      }
+    },
+    {
+      "case": "an-unknown-kind-is-rejected",
+      "valid": false,
+      "why": "FF3: four kinds, each with a lifetime. A fifth has no lifetime rule and therefore no end.",
+      "declaration": {
+        "name": "invoicing.pdf_renderer_v2",
+        "type": "boolean",
+        "default": false,
+        "kind": "permanent",
+        "scope": "tenant",
+        "description": "Render invoices with the second-generation PDF pipeline.",
+        "owner": "invoicing-team",
+        "created": "2026-09-01"
+      }
+    }
+  ],
+  "contexts": [
+    {
+      "case": "a-full-context-for-a-tenant-scoped-flag",
+      "valid": true,
+      "why": "FF6 in full: the targeting key is the tenant's public id, the id vocabulary is 040 OC2's, the environment is spelled as WC2 spells it, and the attributes are a plan tier and a region.",
+      "context": {
+        "targeting_key": "01923e01-9999-7000-8000-00000000000f",
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "user_id": "01923e01-1111-7000-8000-000000000001",
+        "environment": "production",
+        "release_version": "2.4.0",
+        "service": "invoicing",
+        "attributes": { "plan": "enterprise", "region": "eu" }
+      }
+    },
+    {
+      "case": "a-global-context-carries-only-the-environment",
+      "valid": true,
+      "why": "FF6: a global flag needs no targeting key; the environment is the one required key, in place of environment detection in code.",
+      "context": { "environment": "staging" }
+    },
+    {
+      "case": "an-email-attribute-is-rejected",
+      "valid": false,
+      "why": "FF6: the provider stores what it receives, and an email address is personal data in a third system. A rule that targets a person targets a public id.",
+      "context": {
+        "targeting_key": "01923e01-1111-7000-8000-000000000001",
+        "environment": "production",
+        "attributes": { "email": "someone@example.com" }
+      }
+    },
+    {
+      "case": "a-user-email-attribute-key-is-rejected",
+      "valid": false,
+      "why": "FF6: the denylist is a substring match on the key, so the common renamings do not pass it.",
+      "context": {
+        "targeting_key": "01923e01-1111-7000-8000-000000000001",
+        "environment": "production",
+        "attributes": { "user_email": "someone@example.com" }
+      }
+    },
+    {
+      "case": "an-at-sign-in-an-attribute-value-is-rejected",
+      "valid": false,
+      "why": "FF6: a string value containing @ is an email address in almost every case, whatever the key is called.",
+      "context": {
+        "targeting_key": "01923e01-1111-7000-8000-000000000001",
+        "environment": "production",
+        "attributes": { "support_contact": "ops@example.com" }
+      }
+    },
+    {
+      "case": "a-nested-object-attribute-is-rejected",
+      "valid": false,
+      "why": "FF6: attributes are flat scalars. A nested object is how a whole record travels to the provider.",
+      "context": {
+        "targeting_key": "01923e01-1111-7000-8000-000000000001",
+        "environment": "production",
+        "attributes": { "user": { "plan": "enterprise" } }
+      }
+    },
+    {
+      "case": "an-internal-key-as-targeting-key-is-rejected",
+      "valid": false,
+      "why": "IP1 through FF6: the targeting key is a public id; an integer is an internal key that never leaves the service, and here it would leave it to a provider.",
+      "context": {
+        "targeting_key": "4711",
+        "environment": "production"
+      }
+    },
+    {
+      "case": "a-top-level-name-key-is-rejected",
+      "valid": false,
+      "why": "FF6: the context is closed to the vocabulary; a person's name is not in it and cannot be added by putting it at the top level instead of under attributes.",
+      "context": {
+        "targeting_key": "01923e01-1111-7000-8000-000000000001",
+        "environment": "production",
+        "name": "Alice Example"
+      }
+    },
+    {
+      "case": "a-missing-environment-is-rejected",
+      "valid": false,
+      "why": "FF6: the environment is the one key every evaluation carries, because it is the one every rule may need and the one code may not detect for itself (030 SC3).",
+      "context": {
+        "targeting_key": "01923e01-1111-7000-8000-000000000001",
+        "attributes": { "plan": "enterprise" }
+      }
+    },
+    {
+      "case": "a-camel-case-attribute-key-is-rejected",
+      "valid": false,
+      "why": "FF6 and 050 HA8: attribute keys are snake_case on the wire, like every other field name that leaves the service.",
+      "context": {
+        "targeting_key": "01923e01-1111-7000-8000-000000000001",
+        "environment": "production",
+        "attributes": { "planTier": "enterprise" }
+      }
+    }
+  ],
+  "evaluated_sets": [
+    {
+      "case": "a-served-set-is-accepted",
+      "valid": true,
+      "why": "FF7: flag name to scalar value, and the instant the server evaluated it.",
+      "set": {
+        "schema_version": 1,
+        "evaluated_at": "2026-09-02T09:12:44.108Z",
+        "flags": {
+          "invoicing.pdf_renderer_v2": true,
+          "checkout.layout": "redesign"
+        }
+      }
+    },
+    {
+      "case": "a-set-with-a-bare-word-flag-name-is-rejected",
+      "valid": false,
+      "why": "FF2 through FF7: the browser's names are the declaration's names, so the client and the server are talking about the same flag.",
+      "set": {
+        "schema_version": 1,
+        "evaluated_at": "2026-09-02T09:12:44.108Z",
+        "flags": { "beta": true }
+      }
+    },
+    {
+      "case": "a-set-with-an-object-value-is-rejected",
+      "valid": false,
+      "why": "FF7: object-typed flags are not served to the client; a document of rules or settings in the browser is configuration the client cannot be trusted to evaluate.",
+      "set": {
+        "schema_version": 1,
+        "evaluated_at": "2026-09-02T09:12:44.108Z",
+        "flags": { "checkout.layout": { "variant": "redesign", "rules": [] } }
+      }
+    },
+    {
+      "case": "a-set-with-an-offset-timestamp-is-rejected",
+      "valid": false,
+      "why": "IP4 through FF7: emitted instants are UTC with a Z suffix.",
+      "set": {
+        "schema_version": 1,
+        "evaluated_at": "2026-09-02T11:12:44.108+02:00",
+        "flags": { "invoicing.pdf_renderer_v2": true }
+      }
+    }
+  ],
+  "evaluation": [
+    {
+      "case": "a-tenant-rule-matches",
+      "why": "FF1: the ordinary path. The provider has a rule for this tenant; the typed call returns its value with the specification's reason.",
+      "flag": "invoicing.pdf_renderer_v2",
+      "call": { "method": "getBooleanValue", "default": false },
+      "provider": {
+        "state": "ready",
+        "flags": {
+          "invoicing.pdf_renderer_v2": {
+            "rules": [ { "when": { "tenant_id": "01923e01-9999-7000-8000-00000000000f" }, "value": true, "variant": "on" } ],
+            "fallback": { "value": false, "variant": "off" }
+          }
+        }
+      },
+      "context": { "targeting_key": "01923e01-9999-7000-8000-00000000000f", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "environment": "production" },
+      "expect": { "value": true, "reason": "TARGETING_MATCH", "error_code": null, "findings": [] }
+    },
+    {
+      "case": "no-rule-matches-and-the-provider-fallback-answers",
+      "why": "FF1: another tenant meets no rule and receives the provider's fallback, reason STATIC — the provider answered, so this is not the declared default.",
+      "flag": "invoicing.pdf_renderer_v2",
+      "call": { "method": "getBooleanValue", "default": false },
+      "provider": {
+        "state": "ready",
+        "flags": {
+          "invoicing.pdf_renderer_v2": {
+            "rules": [ { "when": { "tenant_id": "01923e01-9999-7000-8000-00000000000f" }, "value": true, "variant": "on" } ],
+            "fallback": { "value": false, "variant": "off" }
+          }
+        }
+      },
+      "context": { "targeting_key": "01923e01-9999-7000-8000-000000000010", "tenant_id": "01923e01-9999-7000-8000-000000000010", "environment": "production" },
+      "expect": { "value": false, "reason": "STATIC", "error_code": null, "findings": [] }
+    },
+    {
+      "case": "a-declared-flag-the-provider-does-not-know-returns-the-declared-default",
+      "why": "FF2 and FF4: declared in the repository, not yet configured at the provider — the state of every flag between its first commit and its first dashboard entry. The provider reports FLAG_NOT_FOUND; the application receives the declared default and logs the first occurrence. No finding: the declaration exists.",
+      "flag": "invoicing.pdf_renderer_v2",
+      "call": { "method": "getBooleanValue", "default": false },
+      "provider": { "state": "ready", "flags": {} },
+      "context": { "targeting_key": "01923e01-9999-7000-8000-00000000000f", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "environment": "production" },
+      "expect": { "value": false, "reason": "ERROR", "error_code": "FLAG_NOT_FOUND", "findings": [] }
+    },
+    {
+      "case": "provider-unavailable-returns-the-declared-default",
+      "why": "FF4, the detector. The provider is down; the call returns the declared default, false, with PROVIDER_NOT_READY. An implementation that fails open — returns true on provider error, because it was written while the feature was being turned on — returns true here and passes every case in which the provider is up.",
+      "detector": true,
+      "flag": "invoicing.pdf_renderer_v2",
+      "call": { "method": "getBooleanValue", "default": false },
+      "provider": { "state": "unavailable", "flags": {} },
+      "context": { "targeting_key": "01923e01-9999-7000-8000-00000000000f", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "environment": "production" },
+      "expect": { "value": false, "reason": "ERROR", "error_code": "PROVIDER_NOT_READY", "findings": [] }
+    },
+    {
+      "case": "an-undeclared-flag-is-a-finding",
+      "why": "FF2, the detector. The provider holds a flag no declaration names — created in a dashboard, invisible in the repository. The boundary returns the call's default with FLAG_NOT_FOUND, raises undeclared_flag, and never asks the provider. An implementation that asks the provider first returns the provider's true here and passes every case whose flag is declared.",
+      "detector": true,
+      "flag": "billing.surprise_discount",
+      "call": { "method": "getBooleanValue", "default": false },
+      "provider": {
+        "state": "ready",
+        "flags": { "billing.surprise_discount": { "fallback": { "value": true, "variant": "on" } } }
+      },
+      "context": { "environment": "production" },
+      "expect": { "value": false, "reason": "ERROR", "error_code": "FLAG_NOT_FOUND", "findings": ["undeclared_flag"] }
+    },
+    {
+      "case": "a-type-mismatch-returns-the-declared-default",
+      "why": "FF1 and FF4: the provider answers with a string for a boolean flag. Evaluation is typed; the value is refused with TYPE_MISMATCH and the declared default is returned.",
+      "flag": "invoicing.pdf_renderer_v2",
+      "call": { "method": "getBooleanValue", "default": false },
+      "provider": {
+        "state": "ready",
+        "flags": { "invoicing.pdf_renderer_v2": { "fallback": { "value": "yes", "variant": "on" } } }
+      },
+      "context": { "targeting_key": "01923e01-9999-7000-8000-00000000000f", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "environment": "production" },
+      "expect": { "value": false, "reason": "ERROR", "error_code": "TYPE_MISMATCH", "findings": [] }
+    },
+    {
+      "case": "a-tenant-scoped-flag-without-a-tenant-returns-the-declared-default",
+      "why": "FF2 and FF6: the declaration says scope tenant and the context carries no tenant. The provider is not asked; the declared default returns with TARGETING_KEY_MISSING. A missing context denies, as 025 SD6 has it for isolation.",
+      "flag": "invoicing.pdf_renderer_v2",
+      "call": { "method": "getBooleanValue", "default": false },
+      "provider": {
+        "state": "ready",
+        "flags": { "invoicing.pdf_renderer_v2": { "fallback": { "value": true, "variant": "on" } } }
+      },
+      "context": { "environment": "production" },
+      "expect": { "value": false, "reason": "ERROR", "error_code": "TARGETING_KEY_MISSING", "findings": [] }
+    },
+    {
+      "case": "a-call-site-default-that-disagrees-with-the-declaration-is-a-finding",
+      "why": "FF4: the call site passed true where the declaration says false. The provider answered, so the value is the provider's; the disagreement is a finding for the diff, because on the day the provider is down the two defaults would give two different answers.",
+      "flag": "invoicing.pdf_renderer_v2",
+      "call": { "method": "getBooleanValue", "default": true },
+      "provider": {
+        "state": "ready",
+        "flags": { "invoicing.pdf_renderer_v2": { "fallback": { "value": false, "variant": "off" } } }
+      },
+      "context": { "targeting_key": "01923e01-9999-7000-8000-00000000000f", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "environment": "production" },
+      "expect": { "value": false, "reason": "STATIC", "error_code": null, "findings": ["default_mismatch"] }
+    },
+    {
+      "case": "a-global-operational-flag-flipped-by-an-operator",
+      "why": "FF3 and FF9: a kill switch is global, needs no targeting key, and an operator has set it at the provider. true here is the intervention, per FF4's naming rule.",
+      "flag": "payments.fraud_bypass",
+      "call": { "method": "getBooleanValue", "default": false },
+      "provider": {
+        "state": "ready",
+        "flags": { "payments.fraud_bypass": { "fallback": { "value": true, "variant": "bypass" } } }
+      },
+      "context": { "environment": "production" },
+      "expect": { "value": true, "reason": "STATIC", "error_code": null, "findings": [] }
+    },
+    {
+      "case": "a-string-flag-returns-its-declared-default-when-the-provider-is-down",
+      "why": "FF4 for a non-boolean: the declared default is the variant the code shipped with, and it is what an outage returns.",
+      "flag": "checkout.layout",
+      "call": { "method": "getStringValue", "default": "control" },
+      "provider": { "state": "unavailable", "flags": {} },
+      "context": { "targeting_key": "01923e01-1111-7000-8000-000000000001", "user_id": "01923e01-1111-7000-8000-000000000001", "environment": "production" },
+      "expect": { "value": "control", "reason": "ERROR", "error_code": "PROVIDER_NOT_READY", "findings": [] }
+    }
+  ],
+  "gating": [
+    {
+      "case": "entitled-and-permitted-is-served",
+      "why": "FF5: the entitlement says the capability is offered to this tenant and the permission says this subject may use it. Both yes; served.",
+      "entitlement": true,
+      "permission": "allow",
+      "expect": { "served": true, "status": 200 }
+    },
+    {
+      "case": "entitled-and-denied-is-refused",
+      "why": "FF5, the detector. The flag is on and the permission check denies; the request is refused. An implementation that serves because the flag was on has made a flag dashboard the access-control system, and it passes the other three cases.",
+      "detector": true,
+      "entitlement": true,
+      "permission": "deny",
+      "expect": { "served": false, "status": 403 }
+    },
+    {
+      "case": "not-entitled-and-permitted-is-not-wired",
+      "why": "FF5: the subject may use a capability the tenant does not have. The route answers as if the code were not deployed — 404 per 050 HA3 — so a dark capability is dark to enumeration.",
+      "entitlement": false,
+      "permission": "allow",
+      "expect": { "served": false, "status": 404 }
+    },
+    {
+      "case": "not-entitled-and-denied-is-not-wired",
+      "why": "FF5: the flag is evaluated first because it decides whether the route exists; a route that does not exist has no permission to deny.",
+      "entitlement": false,
+      "permission": "deny",
+      "expect": { "served": false, "status": 404 }
+    }
+  ],
+  "experiments": [
+    {
+      "case": "the-same-subject-sees-the-same-variant",
+      "why": "FF10: assignment is a pure function of the flag name and the targeting key, so three evaluations for one subject produce one variant and one exposure record.",
+      "flag": "checkout.layout",
+      "split": { "control": 50, "redesign": 50 },
+      "evaluations": [
+        { "targeting_key": "01923e01-1111-7000-8000-000000000001" },
+        { "targeting_key": "01923e01-1111-7000-8000-000000000001" },
+        { "targeting_key": "01923e01-1111-7000-8000-000000000001" }
+      ],
+      "expect": { "distinct_variants_per_subject": 1, "exposures_recorded": 1, "variants_within_declaration": true }
+    },
+    {
+      "case": "exposure-is-recorded-once-per-subject",
+      "why": "FF10 and FF8: three subjects evaluated twice each record three exposures, not six — once per subject at first exposure, never per evaluation.",
+      "flag": "checkout.layout",
+      "split": { "control": 50, "redesign": 50 },
+      "evaluations": [
+        { "targeting_key": "01923e01-1111-7000-8000-000000000001" },
+        { "targeting_key": "01923e01-1111-7000-8000-000000000002" },
+        { "targeting_key": "01923e01-1111-7000-8000-000000000003" },
+        { "targeting_key": "01923e01-1111-7000-8000-000000000001" },
+        { "targeting_key": "01923e01-1111-7000-8000-000000000002" },
+        { "targeting_key": "01923e01-1111-7000-8000-000000000003" }
+      ],
+      "expect": { "distinct_variants_per_subject": 1, "exposures_recorded": 3, "variants_within_declaration": true }
+    }
+  ],
+  "expiry": [
+    {
+      "case": "a-release-flag-in-date-raises-nothing",
+      "why": "FF3 and FF11: today is before expires and expires is within 180 days of created.",
+      "today": "2026-09-02",
+      "declaration": {
+        "name": "invoicing.pdf_renderer_v2", "type": "boolean", "default": false, "kind": "release", "scope": "tenant",
+        "description": "Render invoices with the second-generation PDF pipeline.", "owner": "invoicing-team",
+        "created": "2026-09-01", "expires": "2026-11-30", "removal": "Delete the old pipeline."
+      },
+      "expect": { "findings": [] }
+    },
+    {
+      "case": "a-release-flag-on-its-last-day-raises-nothing",
+      "why": "FF3: expires is the last day the flag is in date; the finding is raised the day after.",
+      "today": "2026-11-30",
+      "declaration": {
+        "name": "invoicing.pdf_renderer_v2", "type": "boolean", "default": false, "kind": "release", "scope": "tenant",
+        "description": "Render invoices with the second-generation PDF pipeline.", "owner": "invoicing-team",
+        "created": "2026-09-01", "expires": "2026-11-30", "removal": "Delete the old pipeline."
+      },
+      "expect": { "findings": [] }
+    },
+    {
+      "case": "a-release-flag-the-day-after-is-expired",
+      "why": "FF3 and FF11: the day after expires the sweep raises expired, naming the flag, its owner and its removal condition.",
+      "today": "2026-12-01",
+      "declaration": {
+        "name": "invoicing.pdf_renderer_v2", "type": "boolean", "default": false, "kind": "release", "scope": "tenant",
+        "description": "Render invoices with the second-generation PDF pipeline.", "owner": "invoicing-team",
+        "created": "2026-09-01", "expires": "2026-11-30", "removal": "Delete the old pipeline."
+      },
+      "expect": { "findings": ["expired"] }
+    },
+    {
+      "case": "an-operational-flag-past-review-is-review-overdue",
+      "why": "FF3: an operational flag does not expire, and a review date that has passed is the same finding under a different name — kept with a new date, or removed.",
+      "today": "2027-09-02",
+      "declaration": {
+        "name": "payments.fraud_bypass", "type": "boolean", "default": false, "kind": "operational", "scope": "global",
+        "description": "Skip the fraud provider.", "owner": "payments-oncall",
+        "created": "2026-09-01", "review_by": "2027-09-01"
+      },
+      "expect": { "findings": ["review_overdue"] }
+    },
+    {
+      "case": "an-expiry-beyond-180-days-exceeds-the-horizon",
+      "why": "FF3: a release flag planned to live nine months is an operational flag or a configuration value wearing a release flag's name. The finding is raised on the declaration, before the date arrives.",
+      "today": "2026-09-02",
+      "declaration": {
+        "name": "invoicing.pdf_renderer_v2", "type": "boolean", "default": false, "kind": "release", "scope": "tenant",
+        "description": "Render invoices with the second-generation PDF pipeline.", "owner": "invoicing-team",
+        "created": "2026-09-01", "expires": "2027-06-01", "removal": "Delete the old pipeline."
+      },
+      "expect": { "findings": ["expiry_horizon_exceeded"] }
+    },
+    {
+      "case": "an-expiry-exactly-180-days-out-is-admitted",
+      "why": "FF3: the ceiling is inclusive; 2027-02-28 is 180 days after 2026-09-01.",
+      "today": "2026-09-02",
+      "declaration": {
+        "name": "invoicing.pdf_renderer_v2", "type": "boolean", "default": false, "kind": "release", "scope": "tenant",
+        "description": "Render invoices with the second-generation PDF pipeline.", "owner": "invoicing-team",
+        "created": "2026-09-01", "expires": "2027-02-28", "removal": "Delete the old pipeline."
+      },
+      "expect": { "findings": [] }
+    },
+    {
+      "case": "an-experiment-past-expiry-with-no-decision-is-expired",
+      "why": "FF10 and FF11: an experiment expires with a decision; one whose date has passed is a finding like any other, and extending it is a new declaration.",
+      "today": "2026-11-01",
+      "declaration": {
+        "name": "checkout.layout", "type": "string", "default": "control", "kind": "experiment", "scope": "user",
+        "description": "Which checkout layout a user sees.", "owner": "growth-team",
+        "created": "2026-09-01", "expires": "2026-10-31", "removal": "Decision on conversion.", "variants": ["control", "redesign"]
+      },
+      "expect": { "findings": ["expired"] }
+    }
+  ]
+}

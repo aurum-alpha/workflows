@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/security-baseline/acceptance.schema.json",
+  "title": "Aurum Alpha vulnerability acceptance",
+  "description": "An accepted scanner finding (SB2 of standards/085-security-baseline.md): the advisory id, the reason it does not apply or is tolerated, and the date after which the entry is a finding again. The entry lives in each scanner's native exemption file beside the lockfile or Dockerfile; a checker reads the native file and validates each entry against #/$defs/entry, so the native field names are the rendered form and this is the contract. The top level is the checker's normalised view of one such file. The ninety-day window between accepted_on and expires is judged by the checker against the calendar, not by this schema. schemaVersion 1 — evolves additively per PC6.",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/schemaVersion",
+      "description": "The version of this shape; additive evolution per PC6."
+    },
+    "source": {
+      "type": "string",
+      "description": "The native file the entries were read from, relative to the repository root (SB2): the lockfile scanner's or the image scanner's exemption file.",
+      "minLength": 1
+    },
+    "acceptances": {
+      "type": "array",
+      "description": "Every accepted advisory in the file. An empty list is a valid file; a missing list is not a file (SB2).",
+      "items": { "$ref": "#/$defs/entry" }
+    }
+  },
+  "required": ["schemaVersion", "acceptances"],
+  "additionalProperties": false,
+  "$defs": {
+    "advisoryId": {
+      "type": "string",
+      "description": "An OSV advisory identifier: GHSA-xxxx-xxxx-xxxx, or a prefix, a year and a serial such as CVE-2025-12345, GO-2024-3105, PYSEC-2024-48, RUSTSEC-2024-0003. Never a package name, a version range or a pattern — an acceptance names one advisory (SB2).",
+      "pattern": "^(?:GHSA-[23456789cfghjmpqrvwx]{4}-[23456789cfghjmpqrvwx]{4}-[23456789cfghjmpqrvwx]{4}|[A-Z][A-Z0-9]{1,15}-[0-9]{4}-[0-9]{1,12})$"
+    },
+    "entry": {
+      "type": "object",
+      "description": "One accepted advisory (SB2).",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/advisoryId",
+          "description": "The advisory accepted (SB2)."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Why this advisory does not apply, or is tolerated, in this repository: the defect is unreachable, the vulnerable function is not called, no fixed release exists yet. Required; whether it is true is the review question the ledger row names (SB2).",
+          "minLength": 16
+        },
+        "expires": {
+          "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/date",
+          "description": "The calendar date after which the entry is a finding again, whether or not the advisory still reports. No acceptance is permanent (SB2)."
+        },
+        "accepted_on": {
+          "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/date",
+          "description": "When the decision was made. With it the checker bounds the window to ninety days; without it the checker uses the entry's commit date (SB2)."
+        },
+        "retire_when": {
+          "type": "string",
+          "description": "The condition under which the entry is removed before it expires: an upstream release, a dependency dropped, a feature removed (SB2).",
+          "minLength": 8
+        },
+        "owner": {
+          "type": "string",
+          "description": "The team or role that made the decision and re-reviews it at expiry, named as a role rather than a person (SB2).",
+          "minLength": 1
+        },
+        "scan": {
+          "type": "string",
+          "description": "Which scan the entry applies to (SB2): lockfile, reachability, or image.",
+          "enum": ["lockfile", "reachability", "image"]
+        }
+      },
+      "required": ["id", "reason", "expires"],
+      "additionalProperties": false
+    }
+  }
+}

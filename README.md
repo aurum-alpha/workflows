@@ -281,15 +281,23 @@ more standards land.
 | `010` | 1–18 | [`010-ci.md`](standards/010-ci.md) | Pipeline doctrine, the shared job catalog, build/release/publish | largely gated |
 | `020` | IP | [`020-identifiers.md`](standards/020-identifiers.md) | Identifiers and primitive representations: public vs internal ids, the format table, timestamps, money | review, corpus written |
 | `025` | SD | [`025-structured-data.md`](standards/025-structured-data.md) | Structured data: SQL as the query language, migrations as ordered `.sql` files shipped in the image, expand-only, declared isolation levels proven by enumeration, per-engine storage profile, schema invariants, transactions, hard delete by default, one database per service | review, corpus written |
+| `026` | BS | [`026-blob-storage.md`](standards/026-blob-storage.md) | Blob storage: the S3 API as the storage protocol behind a boundary module, one private bucket per service per environment, the key grammar, the object reference as the source of truth, every read and write served through the service by object id after the RBAC check and never a URL to the store, uploads the server streams and verifies, scan before serve, hard delete through the outbox and a purge job | review, corpus written |
+| `027` | DS | [`027-json-document-storage.md`](standards/027-json-document-storage.md) | JSON document storage (never files — those are 026's): the relational store is the system of record and its JSON column is the first answer; a document database is admitted beside it, the hybrid model, by declaration naming the test the column failed, with the engine class chosen by the test, in one of two roles, derived or primary; the envelope every document carries; additive change within a schema version and a three-release bump; the declaration step and the backfill as jobs; a derived store rebuilt, watched, and excluded from backup | review, corpus written |
+| `028` | BR | [`028-backup-and-recovery.md`](standards/028-backup-and-recovery.md) | Backup and recovery: a recovery declaration per stateful store (RPO, RTO, mechanism, retention, drill), derived stores rebuilt rather than backed up, three credentials with the backup's outside the service, restore exercised by a periodic drill that measures the objectives and gates deployment, and an erasure ledger replayed before readiness so a restore never resurrects erased data | review, corpus written |
 | `030` | SC | [`030-service.md`](standards/030-service.md) | The service contract: health and readiness, structured logging, configuration, graceful shutdown, runtime provenance | review, live gate available |
+| `032` | SE | [`032-secrets.md`](standards/032-secrets.md) | Secrets: delivered as environment variables or declared files, never fetched through a vendor SDK; one store per platform rendered into the environment by the runtime's own mechanism (operator or CSI driver, native injection, systemd credentials), the repository shipping only the mapping; every secret declared with an owner, an age and its images; `<SUBJECT>_<KIND>` names; nothing in the repository, the image, a log line, a URL or an error body; redaction by declared value; rotation by restart or dual window; a leak is rotated first and audited | review, corpus written |
 | `035` | WK | [`035-workers.md`](standards/035-workers.md) | Workers: the pool and the one-shot, images cut on closure, credential and configuration, one repository per service, the one-shot's command and exit codes, the seven-verb runner contract, declarations rendered at deployment | review, corpus written |
+| `038` | FF | [`038-feature-flags.md`](standards/038-feature-flags.md) | Feature flags: OpenFeature as the evaluation API with the provider as configuration, a declared flag with a kind and a lifetime, `false` as every boolean's default, a flag never standing in for a permission, a closed evaluation context, server-side evaluation with an evaluated set for the browser, a sweep that finds overdue flags | review, corpus written |
 | `040` | OC | [`040-observability.md`](standards/040-observability.md) | Observability transport and context propagation: W3C trace context, the id vocabulary, OTLP | review, corpus written |
 | `050` | HA | [`050-http.md`](standards/050-http.md) | Service interfaces: protocol selection (HTTP, gRPC, SSE, WebSocket), OpenAPI, RFC 9457 errors, cursor pagination, versioning, idempotency, backpressure, snake_case wire naming | review, corpus written |
 | `055` | AM | [`055-messaging.md`](standards/055-messaging.md) | Async messaging: CloudEvents 1.0 as the envelope, at-least-once with inbox and outbox, workers not timers, Standard Webhooks signing in and out | review, corpus written |
 | `057` | JB | [`057-jobs.md`](standards/057-jobs.md) | Jobs: the unit of work as an interface, the key as distinct from the delivery, three duplicate policies, the declaration, five outcomes, the run record, single-flight in the job, absence as the failure of a periodic job, backfills | review, corpus written |
+| `058` | NF | [`058-notifications.md`](standards/058-notifications.md) | Notifications: the record as the source of truth, a three-job pipeline over the async envelope, two classes with consent per category per channel, the security floor, RFC 8058 unsubscribe, suppression on the address, templates as versioned files, authorization at render time, the provider behind one adapter, the in-app channel as an API | review, corpus written |
 | `060` | AU | [`060-auth.md`](standards/060-auth.md) | Authentication: the identity tier, the proxy-minted identity token, identity linkage, provisioning, sessions, deployment topologies | review, corpus written |
 | `070` | RB | [`070-rbac.md`](standards/070-rbac.md) | Authorization: the permission and role model, scope containment, the check operation, and the decision corpus | review, corpus written |
 | `080` | AE | [`080-audit.md`](standards/080-audit.md) | Audit events: the record of consequential acts — actor separate from target, the action string is the permission string, the floor of what must emit, retention and erasure | review, corpus written |
+| `082` | DR | [`082-data-subject-rights.md`](standards/082-data-subject-rights.md) | Data subject rights: the personal-data inventory as a declaration, export and erasure as request resources with one status machine, the package format, three treatments with allowlist anonymisation, grace and dispatch, the legal hold, and the audit-plus-ledger proof | review, corpus written |
+| `085` | SB | [`085-security-baseline.md`](standards/085-security-baseline.md) | Security baseline: base images pinned by digest with the version in-band, three scans with expiring acceptances, the response header set per response class asserted by the start check, TLS on every non-private hop, rate limits on open and authentication routes, schema-validated and size-bounded input, `SECURITY.md` and `security.txt`, a CycloneDX SBOM per image per release, non-root images | review, corpus written |
 | `090` | WC | [`090-web-client.md`](standards/090-web-client.md) | The web client: what a browser may hold as a credential, runtime configuration, the API client module, presentation and i18n, frontend error reporting | review, corpus written |
 | `999` | — | [`999-enforcement.md`](standards/999-enforcement.md) | The ledger: every rule, its gate, its tier | — it is the register |
 | — | A | [`AGENTS.md`](AGENTS.md) | How coding agents work in an Aurum Alpha repository: one guidance source, the work queue, the approval gate | rules 1-5 gated, rest review |
@@ -300,9 +308,107 @@ Each issue carries the reasoning it was raised with, so the document can be
 written from the argument rather than from memory. Each lands with the next
 free number and its own prefix.
 
+## Acceptable solutions: the register of what satisfies a standard
+
+A standard states a rule and the reasoning behind it, and both are meant to
+outlive the tools that satisfy them. **The tools do not cooperate.** A provider
+is acquired and renamed, a package stops being maintained, a vendor's language
+coverage changes in a minor release, a protocol everyone implements arrives and
+makes the adapter question moot. A document that named those tools is then
+wrong in the way this repository exists to prevent — quietly, because prose
+does not fail. **A standard that lists what to buy has put its most perishable
+sentence inside its most durable document.**
+
+Removing the sentence is not the answer either. Someone starting a capability
+has to pick something, and a standard that pins a specification and names
+nothing that implements it has handed back the arbitrary decision this
+repository exists to take away.
+
+So the perishable half lives in a second class of document, under `solutions/`:
+**the acceptable solutions register**. One per standard that needs one, sharing
+that standard's number, so [`solutions/038-feature-flags.md`](solutions/038-feature-flags.md)
+answers [`standards/038-feature-flags.md`](standards/038-feature-flags.md) and
+the number is still the address.
+
+The pattern is borrowed from performance-based building codes, which state what
+a wall has to achieve and, in separate documents, name constructions deemed to
+satisfy it. Building the named construction settles compliance with no argument;
+building something else is permitted and carries the burden of demonstrating
+compliance another way. The requirement outlives the products, the products are
+revised without reopening the requirement, and nobody confuses the two, which
+are exactly the three properties wanted here.
+
+A register does one job: for one standard, name the routes known to satisfy its
+rules, say **which rule ids** each route satisfies, say which rules it leaves
+for the repository to build anyway, and carry the date each claim was last
+checked.
+
+Five rules, because each is a way this class fails quietly:
+
+1. **A register never states a rule.** Every requirement lives in the standard;
+   the register only claims that something meets one. The test is destructive
+   and worth applying to any sentence in doubt: **delete the whole register and
+   every rule must still stand, with every repository still able to comply** —
+   more slowly, arguing its own choice. A register sentence that fails that test
+   is a rule in the wrong document, where no ledger row covers it and no reader
+   looking for rules will find it.
+2. **Absence is not refusal.** An option the register does not name is not
+   forbidden; it is unexamined. A repository may take it by demonstrating
+   compliance against the standard's rules — and then it is entered here, so the
+   next repository does not repeat the demonstration. What *is* refused is
+   refused by a rule in the standard, and the register cites that rule.
+3. **A listing is a technical claim on a date, never an endorsement or a
+   purchase.** No prices, no contract terms, no vendor ranking, no comparison
+   table that reads as a bake-off. Commercial terms perish faster than anything
+   technical, and a register carrying them becomes a procurement document that
+   nobody updates and everyone quotes. The question a register answers is *does
+   this route comply*, not *what should we buy*.
+4. **Every entry carries the date it was last checked, and a stale entry reads
+   as stale.** The horizon is **180 days**: an entry not re-checked within it is
+   a finding, the same way an overdue flag is. A register may lower the horizon
+   and may not raise it. This is the whole mechanism of the class — an entry
+   that rots silently is worse than no entry, because it carries this
+   repository's authority while being wrong.
+5. **A register may name one default route**, argued, for a repository with no
+   reason to choose otherwise. That is not a ranking of vendors; it is the
+   charter's own purpose — an arbitrary decision made once — applied to the one
+   place a standard deliberately leaves open. The default is a technical
+   argument a reader can disagree with, and the register says what would change
+   it.
+
+**A tool the standard dictates is part of the rule and stays in the standard.**
+The register carries a choice the standard leaves open; it never carries a
+choice the standard has already closed. Where a document pins a component —
+because a rule is stated in that component's vocabulary, or because an
+enumeration in `contracts/` decides what is admitted and a checker holds a
+repository to it — the component is a rule, and moving it to a register would
+turn an enforced decision into a dated survey. The two are told apart by one
+question: **would naming something else here be a violation, or a choice?** A
+violation means it stays.
+
+Registers in existence today: `032`, `035`, `038`, `060`. A standard with no
+register is one of two things, and the difference matters: either its
+implementations have not been surveyed yet — a gap, tracked as an issue like
+any other — or it closes the choice itself, as the JSON document storage
+standard's engine roster does in `contracts/`. Neither is a statement that the
+standard admits nothing.
+
+**A register is vendored at handover like a standard**, and the freeze bites
+harder here: a client repository keeps a document whose claims stop being
+re-checked on the day it leaves. Rule 4 is what protects that reader, because
+the dates travel with the entries and a reader can see for themselves how old
+the survey is.
+
+Adding one follows the standards path, shortened: open an issue with the
+argument, write `solutions/<number>-<slug>.md` against the rule ids it claims to
+satisfy, register the class's checkable claims in the ledger, and add the number
+to the list above.
+
 ## What is here
 
 - `standards/` — the numbered documents above.
+- `solutions/` — the acceptable solutions registers: per standard, what is
+  known to satisfy its rules, and when that was last checked.
 - `contracts/` — the artifacts behind the application-layer standards: JSON
   Schemas and conformance corpora, one directory per capability.
 - `.github/workflows/job-*.yml` — the shared job catalog. One reusable workflow

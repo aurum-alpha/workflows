@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/backup-and-recovery/erasure-ledger.schema.json",
+  "title": "Aurum Alpha erasure ledger entry",
+  "description": "standards/028-backup-and-recovery.md BR6: one entry per erased subject per erasure request, written in the erasure job's own transaction to a table in the service's database and copied, through the outbox, to an append-only location in the backup failure domain. After any restore, every entry whose erased_at is later than the copy's as_of is replayed before the service reports ready, so that a restore never resurrects erased data. The entry carries identifiers and never personal data - it is kept for the whole erasure_horizon - and its property set is closed so that no personal field can be added to it later. schemaVersion 1 - evolves additively per PC6.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/schemaVersion",
+      "description": "PC6."
+    },
+    "entry_id": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/uuidv7",
+      "description": "BR6: the entry's own public id, minted by the erasure job; the outbox message that carries the copy uses it as the event id, so a redelivered copy is a repeat under 055 AM3."
+    },
+    "subject_id": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/publicId",
+      "description": "BR6: the erased subject's public id (020 IP1), never an internal key and never an email or a name. An id is not personal data; it is what replay erases by."
+    },
+    "subject_type": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "BR6: the entity the subject id names, in the service's own vocabulary: user, contact, applicant."
+    },
+    "tenant_id": {
+      "$ref": "https://contracts.aurumalpha.dev/observability/context.schema.json#/$defs/tenantId",
+      "description": "BR6: the tenant the subject belonged to (040 OC2), where tenant context exists, so replay runs the erasure in the right isolation context (025 SD6)."
+    },
+    "request_id": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/publicId",
+      "description": "BR6: the public id of the erasure request resource the data subject rights standard defines, so the entry joins to the request and its audit event (080 AE5)."
+    },
+    "erased_at": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp",
+      "description": "BR6: when the erasure job committed (020 IP4). Replay applies every entry later than the restored copy's as_of; an earlier entry replays as a no-op."
+    },
+    "entities": {
+      "type": "array",
+      "minItems": 1,
+      "description": "BR6: what the erasure touched and how, so that a replay and a verification know what to expect absent, transformed or redacted.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "entity": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "description": "The table, collection or bucket prefix, in 025 SD10's snake_case."
+          },
+          "treatment": {
+            "enum": ["delete", "anonymise", "redact"],
+            "description": "delete: the subject's rows or objects were removed (025 SD12). anonymise: rows were kept and the subject's fields transformed by the declared transformation. redact: audit events were kept and their identification replaced with a tombstone (080 AE7). A retained row under a legal basis does not appear here, because nothing was done to it."
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many rows, objects or events received the treatment; what a replay's verification compares against."
+          }
+        },
+        "required": ["entity", "treatment", "count"],
+        "additionalProperties": false
+      }
+    },
+    "trace_id": {
+      "$ref": "https://contracts.aurumalpha.dev/observability/context.schema.json#/$defs/traceId",
+      "description": "040 OC1: the erasure run's trace, so the entry leads to the run that wrote it."
+    }
+  },
+  "required": ["schema_version", "entry_id", "subject_id", "subject_type", "request_id", "erased_at", "entities"],
+  "additionalProperties": false
+}

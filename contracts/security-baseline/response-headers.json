@@ -1,0 +1,191 @@
+{
+  "contract": "security-baseline",
+  "schemaVersion": 1,
+  "description": "The response header set of SB3 in standards/085-security-baseline.md, as data. Three response classes: document (anything a browser renders as a page), api (a representation a program consumes: JSON, problem+json, an event stream), asset (a static file the document loads). For each class, each required header and how its value is judged: 'exact' compares the whole value case-insensitively; 'one-of' admits any listed value; 'hsts', 'csp-document', 'csp-api', 'permissions-policy', 'no-store', 'no-store-unless-declared-public' and 'immutable' are directive checks whose meaning is stated on the entry. 'forbidden' headers are a finding when present in any class; 'constrained' headers are a finding when their value breaks the stated constraint; the 'superseded' header is never a finding and never satisfies the header that superseded it. Findings are the slugs named on each entry; contracts/security-baseline/corpus.json 'headers' is judged by applying this file.",
+  "classes": {
+    "document": {
+      "is": "A response a browser renders as a page: the web client's shell, a server-rendered view, an error page.",
+      "headers": {
+        "strict-transport-security": {
+          "check": "hsts",
+          "min_max_age": 31536000,
+          "require_include_subdomains": true,
+          "preload": "admitted, never required; sent only on a registrable domain its owner has submitted to the preload list",
+          "findings": ["hsts.missing", "hsts.max_age_below_year", "hsts.include_subdomains_missing"],
+          "why": "A browser that has seen it never sends the first request in clear again; includeSubDomains because a cookie set on the apex reaches every subdomain and one unprotected subdomain is a cookie in clear."
+        },
+        "content-security-policy": {
+          "check": "csp-document",
+          "canonical": "default-src 'self'; script-src 'self' 'nonce-<nonce>' 'strict-dynamic'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+          "script_src": {
+            "must_include": ["'strict-dynamic'"],
+            "must_include_nonce": true,
+            "nonce_min_chars": 22,
+            "admitted_tokens": ["'self'", "'strict-dynamic'", "'nonce-<nonce>'", "'sha256-<hash>'", "'sha384-<hash>'", "'sha512-<hash>'", "'report-sample'"],
+            "anything_else_is": "csp.script_src_unsafe_source"
+          },
+          "directives": {
+            "default-src": "present",
+            "object-src": "'none'",
+            "base-uri": "'none'",
+            "frame-ancestors": "present; 'none' unless the origins allowed to frame are named",
+            "form-action": "present"
+          },
+          "report_only": "Content-Security-Policy-Report-Only is admitted during a rollout and does not satisfy the rule",
+          "findings": ["csp.missing", "csp.report_only_does_not_satisfy", "csp.default_src_missing", "csp.script_src_missing", "csp.script_src_nonce_missing", "csp.script_src_strict_dynamic_missing", "csp.script_src_unsafe_source", "csp.object_src_not_none", "csp.base_uri_not_none", "csp.frame_ancestors_missing", "csp.form_action_missing"],
+          "why": "Scripts run only when carrying this response's nonce and scripts they load are trusted transitively, so an injected script runs nowhere. No 'unsafe-inline', no 'unsafe-eval', no host or scheme allow-list in script-src."
+        },
+        "x-content-type-options": {
+          "check": "exact",
+          "value": "nosniff",
+          "findings": ["nosniff.missing"],
+          "why": "Content sniffing turns a user upload served as text into a script."
+        },
+        "referrer-policy": {
+          "check": "exact",
+          "value": "strict-origin-when-cross-origin",
+          "findings": ["referrer_policy.missing", "referrer_policy.wrong_value"],
+          "why": "A document's URL may carry an id; a cross-origin navigation gets the origin only."
+        },
+        "permissions-policy": {
+          "check": "permissions-policy",
+          "deny": ["camera", "microphone", "geolocation", "payment", "usb"],
+          "admitted_allowlists": ["()", "(self)"],
+          "findings": ["permissions_policy.missing", "permissions_policy.feature_not_denied"],
+          "why": "Features the product does not use are denied to every frame, the product's own included; a product that uses one names it (self) with a Conventions entry."
+        },
+        "cross-origin-opener-policy": {
+          "check": "exact",
+          "value": "same-origin",
+          "findings": ["coop.missing", "coop.wrong_value"],
+          "why": "Severs the window reference a cross-origin opener would otherwise hold."
+        },
+        "cross-origin-resource-policy": {
+          "check": "one-of",
+          "values": ["same-origin", "same-site"],
+          "findings": ["corp.missing", "corp.wrong_value"],
+          "why": "A response may be embedded only by the origin, or site, that owns it."
+        },
+        "cache-control": {
+          "check": "no-store",
+          "findings": ["cache_control.missing", "cache_control.not_no_store"],
+          "why": "A nonced document is uncacheable by construction: a cached copy carries a nonce the next response's policy does not accept."
+        }
+      }
+    },
+    "api": {
+      "is": "A representation a program consumes: JSON, problem+json, an event stream. A browser navigated to its URL renders it, so it is made inert.",
+      "headers": {
+        "strict-transport-security": {
+          "check": "hsts",
+          "min_max_age": 31536000,
+          "require_include_subdomains": true,
+          "findings": ["hsts.missing", "hsts.max_age_below_year", "hsts.include_subdomains_missing"],
+          "why": "HSTS is a property of the host, and the first response a browser sees from it may be any class."
+        },
+        "content-security-policy": {
+          "check": "csp-api",
+          "canonical": "default-src 'none'; frame-ancestors 'none'; sandbox",
+          "directives": {
+            "default-src": "'none'",
+            "frame-ancestors": "present",
+            "sandbox": "present"
+          },
+          "findings": ["csp.missing", "csp.report_only_does_not_satisfy", "csp.api_default_src_not_none", "csp.frame_ancestors_missing", "csp.sandbox_missing"],
+          "why": "Nothing may load, nothing may frame it, and sandbox makes it inert if rendered."
+        },
+        "x-content-type-options": {
+          "check": "exact",
+          "value": "nosniff",
+          "findings": ["nosniff.missing"],
+          "why": "A JSON body is never to be sniffed into HTML."
+        },
+        "referrer-policy": {
+          "check": "exact",
+          "value": "no-referrer",
+          "findings": ["referrer_policy.missing", "referrer_policy.wrong_value"],
+          "why": "An API URL is never a referrer anyone needs."
+        },
+        "cross-origin-resource-policy": {
+          "check": "one-of",
+          "values": ["same-origin", "same-site"],
+          "findings": ["corp.missing", "corp.wrong_value"],
+          "why": "same-site under 060 AU7's topology B, where the API is a subdomain of the document's site."
+        },
+        "cache-control": {
+          "check": "no-store-unless-declared-public",
+          "findings": ["cache_control.missing", "cache_control.not_no_store"],
+          "why": "An authenticated response is one person's data and never enters a shared cache; an endpoint the OpenAPI document declares public and cacheable states its own policy, and the header must still be present."
+        }
+      }
+    },
+    "asset": {
+      "is": "A static file the document loads: a hashed bundle chunk, a font, an image. Cacheable forever only because its name is its content hash.",
+      "headers": {
+        "strict-transport-security": {
+          "check": "hsts",
+          "min_max_age": 31536000,
+          "require_include_subdomains": true,
+          "findings": ["hsts.missing", "hsts.max_age_below_year", "hsts.include_subdomains_missing"],
+          "why": "HSTS is a property of the host."
+        },
+        "x-content-type-options": {
+          "check": "exact",
+          "value": "nosniff",
+          "findings": ["nosniff.missing"],
+          "why": "A font or an image served with the wrong type must not become a script."
+        },
+        "cross-origin-resource-policy": {
+          "check": "one-of",
+          "values": ["same-origin", "same-site"],
+          "findings": ["corp.missing", "corp.wrong_value"],
+          "why": "An asset is embedded by its own document."
+        },
+        "cache-control": {
+          "check": "immutable",
+          "min_max_age": 31536000,
+          "canonical": "public, max-age=31536000, immutable",
+          "findings": ["cache_control.missing", "cache_control.asset_not_immutable"],
+          "why": "The name is the content hash, so the bytes at that name never change; an asset without a hashed name is not this class and gets no-cache."
+        }
+      }
+    }
+  },
+  "forbidden": {
+    "x-xss-protection": {
+      "finding": "forbidden.x_xss_protection",
+      "why": "Every browser has removed the auditor it controlled, and '1; mode=block' introduced information leaks of its own."
+    },
+    "x-powered-by": {
+      "finding": "forbidden.x_powered_by",
+      "why": "Reconnaissance done for free."
+    }
+  },
+  "constrained": {
+    "server": {
+      "check": "no-version",
+      "finding": "server.version_disclosed",
+      "why": "Where the edge insists on a Server header it carries a product token and never a version."
+    }
+  },
+  "superseded": {
+    "x-frame-options": {
+      "by": "content-security-policy: frame-ancestors",
+      "finding_when_present": false,
+      "satisfies_frame_ancestors": false,
+      "why": "Browsers consult frame-ancestors first and ignore X-Frame-Options when it is present. Sending DENY beside frame-ancestors 'none' is harmless duplication; a response carrying X-Frame-Options and no frame-ancestors has relied on the header consulted second."
+    }
+  },
+  "nonce": {
+    "min_bits": 128,
+    "encoding": "base64",
+    "per_response": true,
+    "why": "Minted for this response from a cryptographic source and never reused; every <script> the document carries bears it."
+  },
+  "asserted_by": {
+    "job": "job-image-starts",
+    "api_class": "the /readyz response of the started image",
+    "document_class": "the / response of a started image that serves documents",
+    "delegated_to_edge": "a header set by the edge is declared in the repository's Conventions and asserted by a live check against the deployed environment"
+  }
+}

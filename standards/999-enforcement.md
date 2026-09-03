@@ -228,7 +228,10 @@ stays a review question.
 ## Charter: document conventions
 
 Rules from [`../README.md`](../README.md)'s "How these documents are
-written" and "The foundation: twelve-factor".
+written", "The foundation: twelve-factor" and "Acceptable solutions: the
+register of what satisfies a standard". D5 to D9 govern the registers under
+`solutions/`, which state no rules of their own and are therefore governed
+entirely from here.
 
 | # | Rule | Enforced by | Status |
 |---|---|---|---|
@@ -236,6 +239,11 @@ written" and "The foundation: twelve-factor".
 | D2 | Documents reference documents by working relative link — never a tracker number, never a bare name; a standard not yet written is linked at its roster row | `check-standards-docs` (proposed): no issue or pull-request reference in a standard's prose, and every relative link resolves | **review only** |
 | D3 | A rule restating a twelve-factor factor cites it; a rule departing from one says so, in the rule, with the reason | — resists honestly: whether a citation is apt, or a departure argued, is judgment | **review only** |
 | D4 | A rule is argued from principle, never from precedent, and a standard is not an inventory: it names, counts and describes no repository; a failure mode is stated as the general property it is, so the text does not reveal which repository, if any, taught it | — resists honestly: a grep finds repository names and counting phrases, not the fallacy, and is still worth running. The review question on every rule and every Decisions entry: *would this reason hold if no current repository existed?* | **review only** |
+| D5 | An acceptable solutions register states no rule: delete it and every rule still stands, with every repository still able to comply | the citation half is **static and decidable** — `check-solutions` (proposed): every rule id a register cites exists in the standard it shares a number with, which catches the drift that turns a claim into an orphan when a standard is renumbered. Whether a sentence is a claim or a rule in the wrong document resists honestly and is the review question on every register diff | **review only** |
+| D6 | Absence from a register is not refusal; what is refused is refused by a rule in the standard, which the register cites | — resists honestly. The observable half: a register's refusals table cites a rule id for every row, checked with D5's citation pass | **review only** |
+| D7 | A register entry is a technical claim on a date — never an endorsement, a price, a contract term or a vendor ranking | `check-solutions` (proposed): a currency symbol, or the pricing vocabulary, in a register is a finding. Close to no false positives, because the vocabulary has no other use on a page this class admits | **review only** |
+| D8 | Every register carries the date its claims were last checked; the horizon is 180 days, lowerable and not raisable; an entry past it is a finding | **static and decidable, and the mechanism of the whole class** — `check-solutions` (proposed): parse the checked date, compare to the run date, fail past the horizon. The same shape as 038 FF3's date comparison, over a different committed file, and worth folding into that checker rather than writing twice | **review only** |
+| D9 | A register may name at most one default route, argued, and says what would change it | — resists honestly: that an argument is good is judgment. That there is at most one is a review question a reader answers by reading the page | **review only** |
 
 D1 and D2 are the cheapest gates in this ledger — a grep each, no false
 positives — and they are the kind of rule that regresses silently, because a
@@ -253,6 +261,19 @@ One carve-out is unsettled and left visible rather than assumed: the CI
 standard's decisions log cites the change that settled each row, which is
 history rather than a live reference, and whether D2 admits that is a review
 question until someone rules on it.
+
+D5 to D9 land review-only under the charter's own sequence, and D8 is the row
+to watch: **a register whose staleness nothing detects is the exact failure the
+register class was created to prevent, one document further out.** The horizon
+is a date in a file compared to the run date — the cheapest check in this
+ledger after D1 — and until `check-solutions` exists, a register's freshness
+rests on someone reading the date, which is what the class says is not good
+enough. Writing it is the first follow-up this section is asking for, and it
+belongs beside `check-flag-declarations`, whose date comparison is the same
+comparison over a different file.
+D5's citation pass is worth the same trip: it is what stops a register drifting
+into an orphan after a standard is renumbered, and it is the only mechanical
+grip on the boundary between a claim and a rule.
 
 ## Service standard
 
@@ -557,8 +578,11 @@ OC1's row points here for the envelope half.
 Rules from [`035-workers.md`](035-workers.md) — the two worker models, how
 their images are cut, the one-shot's command and exit codes, the runner
 contract, and how a declaration reaches the runner. The runner is adopted
-from existing schedulers rather than built, so WK5 is a table of settings a
-renderer emits and a checker can read back.
+from existing schedulers rather than built, so WK5 states seven verbs and
+[`../solutions/035-workers.md`](../solutions/035-workers.md) maps them onto the
+settings a renderer emits and a checker can read back — the mapping being the
+part that moves with an orchestrator release, and the verbs the part that does
+not.
 
 | # | Rule | Enforced by | Status |
 |---|---|---|---|
@@ -605,3 +629,291 @@ relay as a pool job; AM6 states the two bindings, provenance and ownership;
 SD13 states its unit as the service in all its processes and the one-repository
 rule that follows.
 
+## Blob storage standard
+
+Rules from [`026-blob-storage.md`](026-blob-storage.md) — the S3 profile, the
+bucket as a backing service, the key, the object reference, reads served
+through the server, the upload the server streams, the scan posture, deletion and purge, and tenancy. The
+key, the reference and the upload policy are schemas; the upload and read
+behaviours are decided by running a service against the corpus.
+
+| # | Rule | Enforced by | Status |
+|---|---|---|---|
+| BS1 | The S3 API is the storage protocol under the stated profile (SigV4 in headers and never a presigned URL, configured addressing, the named operation set, SHA-256 checksums, strong read-after-write); the client sits behind one boundary module per service that has no operation returning a URL, and no vendor type crosses into a domain signature | the profile's configuration half is readable (`BLOB_ENDPOINT`, `BLOB_REGION`, `BLOB_BUCKET` declared per SC3); the boundary-module half **resists a checker honestly** — a gate reading source for an SDK type would be the PC4 violation. Review question on every diff that imports the client | **review only** |
+| BS2 | One bucket per service per environment; a backing service under the service's credential, in the server and pool images and never the migrate image; never shared between services; never public, and reachable from the service's processes alone | bucket configuration facts a checker reads from the platform: public-access block on, no anonymous ACL or policy, website hosting off, endpoint on the private network or under a policy admitting the service's credential alone (proposed `check-bucket-posture`); the one-credential rule is WK8's and SD13's credential check | **review only** |
+| BS3 | The key is `<tenant public id>/<entity>/<object public id>` (or the unscoped two-segment form), object id UUIDv7, entity snake_case; no filename, extension, date path or personal data; the key never appears in an API | **schema-decided** — `key.schema.json` under `job-contract-conformance`; twelve `keys` corpus cases | **review only** |
+| BS4 | The application stores an object reference (key, verified content type, size, checksum, status, scan, instants) in a row of its own database that owns the object; never a URL, bucket or endpoint; the row is the source of truth | **schema-decided** for the shape — `object-reference.schema.json`, closed, fourteen `references` cases — plus the two equalities the corpus states (key tail is the id, key head is the tenant); that the row genuinely owns the object is a schema review question once a checker reads foreign keys | **review only** |
+| BS5 | Reads are served by the server, by object id, after the id resolves to a row, the tenant matches and the 070 check passes; the response is the bytes (`200`, or `206` for a range) and never a redirect, a location or any URL; the server streams and sets `Content-Type`, an RFC 6266/8187 `Content-Disposition` and `private, no-store` from the row | decided by the `reads` corpus against a live service (proposed, `job-contract-conformance`): every served case expects the bytes, so an implementation answering a redirect fails all six served cases; that the boundary module has no URL-returning operation is a grep and a review question on every diff touching it | **review only** |
+| BS6 | Uploads are one request to the server, which checks the policy before the first byte, commits the pending row, streams the body to the store while hashing, counting and sniffing, and at the end verifies size, checksum and type against the declaration; a disagreement is a refusal that deletes the object and the row; a client never writes to the store; limits declared per entity in the upload policy | the policy is **schema-decided** (`upload-policy.schema.json`, ten `policies` cases, one of which refuses a read lifetime under any name); the sequence is decided by the `uploads` corpus against a live service. **One case is a verified detector**: a declared `image/png` over PDF bytes with size and checksum agreeing — an implementation that trusts the declared type, or sniffs and silently overwrites it, stores it and fails exactly that case | **review only** |
+| BS7 | An entity whose audience is others declares `scan: true`; the scan is a per-event job that writes `clean` or `infected` on the row; nothing is served before `clean`; `infected` deletes the object and keeps the row; an absent scanner fails closed | the posture is **schema-decided** — `others` without `scan` does not validate; the gate is decided by the `reads` corpus. **One case is a verified detector**: a stored object with `scan: pending` for a permitted subject in the right tenant — an implementation treating the verdict as advisory serves it and fails exactly that case | **review only** |
+| BS8 | Hard delete: the owning row's transaction writes `object.deleted` to the outbox and `object.delete` removes the bytes; retention past the row needs a declared reason and period; `object.purge` is a periodic single-flight job acting on pending rows past `upload_ttl`, objects with no row, and prefix/tenant disagreements; a lifecycle rule aborts incomplete multipart uploads | the outbox-and-delete sequence and the three purge findings are `uploads` corpus cases; the purge job's declaration is JB3's schema; the lifecycle rule is a bucket configuration fact. That the row delete and the outbox write share a transaction **resists a boundary gate**, exactly as AM4's does | **review only** |
+| BS9 | Default encryption on at the bucket; TLS to the endpoint; versioning off by default and, where on, governed by the backup standard; the application reads only the current version | bucket configuration facts (default encryption, versioning state) readable by the same proposed `check-bucket-posture`; the version-id rule is a review question on the boundary module | **review only** |
+| BS10 | The tenant boundary is the row's `tenant_id` against the request context plus the 070 check, proven by enumeration; the key prefix is a convenience and a prefix credential condition is a backstop, never the contract; missing context denies | decided by the `reads` corpus: another tenant's row with a valid grant, and a missing tenant context, are each refused; the enumeration form (every tenant's objects requested in every other tenant's context) is the proposed live gate in SD6's shape | **review only** |
+
+The corpus was run before landing: twelve key cases, fourteen reference cases,
+ten policy cases, fifteen upload sequences and thirteen read decisions all
+reproduce their expected results against a reference server and storage, and
+the two detectors were checked against deliberately weakened implementations —
+a server that records the client's declared content type without sniffing
+fails exactly `a-declared-type-that-disagrees-with-the-bytes-is-rejected` and
+passes the other fourteen sequences, and a server that serves before the scan
+verdict fails exactly `a-scan-pending-object-is-refused` and passes the other
+twelve decisions. A third weakened server, one that answers a redirect to the
+store instead of the bytes, fails every one of the six served decisions and
+none of the refusals, which is the shape a posture rule should have.
+
+## JSON document storage standard
+
+Rules from [`027-json-document-storage.md`](027-json-document-storage.md) — JSON
+documents, never files: when a document database is admitted beside the
+relational store's JSON column, which engine class for which test, in which role, what
+every document carries, how its shape changes without DDL, and what a copy
+owes its source. Most rules are 025's carried across, and DS3 says which; the
+admission and the envelope are schemas, the reader's version window and the
+release sequence are decided by running a reader and a rollout against the
+corpus.
+
+| # | Rule | Enforced by | Status |
+|---|---|---|---|
+| DS1 | The relational store is the system of record; the JSON column is the first answer; a document store is admitted only by a declaration naming which of three tests the column failed, and never for data a relational constraint governs | **schema-decided** for the declaration — `admission.schema.json` under `job-contract-conformance`, sixteen `admissions` cases; that a store exists without an admission is a credential fact (a document-store connection variable in a service's configuration with no admission beside it) checkable once credentials are declared per image (035 WK8); whether the stated reason is true is a review question | **review only** |
+| DS2 | Two roles, derived and primary; a derived store names its rebuild and is not backed up; a primary store is a database in every sense; a derived store the rebuild cannot reproduce is a misdeclared primary | the role's conditional fields are schema-decided (four `admissions` rejections); the profile's admitted roles are a runner cross-check; **whether a derived store is genuinely rebuildable resists a checker** and is the first review question on every admission | **review only** |
+| DS3 | Which 025 rules transfer: SD1's reasoning and keyset, SD5, SD6, SD7's form, SD8, SD9, SD12, SD13 verbatim; SD3 and SD4 in changed shape; SD2, SD10, SD11 do not | each transferred rule is gated by its own row above where a gate exists; the authored-query half **resists a clean gate for SD1's reason** — a gate reading source for a mapper is the PC4 violation — and stays the review question *can I paste this into the engine's shell?* | **review only** |
+| DS4 | The document's id is the entity's public id or a minted UUIDv7, never the engine's; every scoped document carries every containing isolation field; every index on a scoped collection leads with the outermost; isolation proven by enumeration over the admission's collections | `id_source` is schema-decided; the leading-index rule is a runner check over the admission (one `admissions` case); the enumeration gate is SD6's, walking the admission instead of a catalog (proposed, same suite); that the engine's identifier is not in use is a sample of documents against the envelope plus the review question | **review only** |
+| DS5 | Every document carries `id`, `tenant_id` where scoped, `schema_version`, `created_at`, `updated_at`; the envelope is open to the body | **schema-decided** — `document-envelope.schema.json` under `job-contract-conformance`, ten `envelopes` cases; the scoped-needs-tenant judgment is a runner check against the admission; one case is recorded as passing because a 24-hex engine identifier is a well-formed nanoid and no schema can tell them apart | **review only** |
+| DS6 | Additive within a version; a version for a non-additive change; a reader accepts N and N-1, upgrades N-1 on read, refuses everything else by name; a bump is three releases | **decided by the `evolution` and `rollouts` corpus parts** — eight reader cases and four release sequences. **One case is a verified detector**: a current-version document carrying an unknown optional field, which a reader that closes its schema refuses while passing the other seven | **review only** |
+| DS7 | A rewrite is a JB10 backfill, never a script; the collection and index declaration is applied by `documents.declare` at deployment, converging, under a declaration credential the runtime lacks, from the migrate image | the credential split is a runner check on the admission (two distinct names) and a credential fact per image once declared (WK8); that `documents.declare` runs as a deployment step is readable from the deployment's step order (035 WK6's renderer); that no script rewrites documents is a review question | **review only** |
+| DS8 | A derived store is written only by its projection, rebuilt by `documents.rebuild`, proven fresh by `documents.reconcile` under JB8, and excluded from backup by declaration | the three job names and `backup: rebuild` are schema-decided; the reconcile job's `stale_after` is JB8's alert read from its own declaration; the drill is 028's row; **that the projection is the only writer resists a checker** and is a review question | **review only** |
+| DS9 | An engine is admitted by a `storage-profiles.json` entry with every field filled; a search engine is derived only | the admission's engine enumeration and the profile's keys are asserted equal by the runner; the profile's admitted roles are a runner check (one `admissions` case); the native-type half is a catalog check per engine (proposed, alongside SD7's `check-storage-profile`) | **review only** |
+| DS10 | A document over 256 KiB is a blob with a reference; the admission's ceiling is at or below it; a document store holds no encoded file content | the ceiling is schema-decided (`maximum: 262144`, one `admissions` rejection) and the over-ceiling document is a runner check (one `envelopes` case); that the writer refuses rather than truncates, and that no field carries base64 file content, are review questions | **review only** |
+
+The corpus was run before landing. All sixteen admission cases, ten envelope
+cases, eight evolution cases and four rollout sequences reproduce their
+expected results against a reference reader and rollout simulation, the
+admission's engine enumeration was asserted equal to the profile file's keys,
+and the DS6 detector was checked against a deliberately closed reader — one
+that validates a document against its version's field list with
+`additionalProperties: false` — which passes seven of the eight evolution
+cases and fails exactly the one it exists to catch.
+
+Two rows above change as a result of this standard: 025's introduction says
+its rules do not transfer to a document store by analogy, and DS3 now states
+which transfer by argument; SD12's hard-delete default gains a document-store
+half (a derived document is deleted when its source row is, by the
+projection).
+
+## Backup and recovery standard
+
+Rules from [`028-backup-and-recovery.md`](028-backup-and-recovery.md) — the
+recovery declaration, the mechanism per kind of store, the credential split,
+the drill, retention, the erasure ledger, the restore as a deployment, and the
+runbook. The declaration and the ledger entry are schemas; the drill's
+freshness, its objectives and the restore's ordering are decided by running a
+recovery implementation against the corpus.
+
+| # | Rule | Enforced by | Status |
+|---|---|---|---|
+| BR1 | Every stateful backing service a service owns carries a recovery declaration in the repository per `recovery-declaration.schema.json`; a store with no declaration is a store with no backup | **schema-decided** for the declaration's shape under `job-contract-conformance`, sixteen `declarations` cases; that every store the configuration attaches appears in it is a review question until a checker compares the declaration to the declared configuration variables (030 SC3) | **review only** |
+| BR2 | The role decides whether there is a backup: a primary store is backed up by its engine's mechanism from the kind table, a derived store is rebuilt by a declared job or by reads and never backed up; a queue is not backed up; the service never performs its own backup | the role and kind rules are **schema-decided** — a derived store with retention or a drill, a primary store with a rebuild, a cache declared primary, a relational store under snapshot are all rejections in the `declarations` part; that a store declared derived is genuinely rebuildable, and that no job of the service dumps a table, are review questions | **review only** |
+| BR3 | Three credentials — backup, restore, runtime — and no process holds more than its role's; the backup credential lives outside every service image; the destination refuses deletion under any credential the service's deployables hold | — resists a repository-side checker honestly: where a credential lives is a fact about the platform's configuration and the destination's policy, not about the repository. The recovery image standing alone is readable from the CI catalog calls (035 WK2's row); the rest is a review question on the deployment | **review only** |
+| BR4 | Restore is exercised: `recovery.drill` is a periodic job that restores every primary store into a scratch environment, migrates, replays the ledger, rebuilds, verifies with the declared checks including readiness, measures the achieved RPO and RTO against the declaration, records the run and destroys the scratch; a drill older than `stale_after` alerts (057 JB8) and `recovery.assert_drilled` blocks the deployment | **decided by the `drills` corpus** — five `freshness` cases and three `objectives` cases; one freshness case separates an implementation reading the newest succeeded row from one reading the newest row of any outcome. The deployment gate is a blocking deployment-step job with a run record, so it is gated in every service that puts it in its deployment order; the alert is platform configuration read from the declaration, as JB8's is | **review only** |
+| BR5 | Backups are encrypted, in a different failure domain (`region`, `account`, or both), and retained between a declared floor and ceiling with `drill.cadence ≤ floor` and `ceiling ≤ erasure_horizon`; deletion past the ceiling is the destination's lifecycle rule | encryption and failure domain are **schema-decided**; the two retention relations and the cadence relation are **arithmetic rules the runner checks**, each with its own rejection case; that the declared failure domain is the deployed one is BR3's review question again | **review only** |
+| BR6 | Erasure survives a restore: an erasure ledger entry per `erasure-ledger.schema.json`, written in the erasure's transaction and copied through the outbox to the backup domain; after any restore every entry newer than `as_of` is replayed, reading the copy, before the service reports ready; audit events are redacted, never deleted | the entry is **schema-decided**, seven `ledger` cases. The replay is **decided by the `restore` scenario** and **both restore cases are verified detectors**: an implementation that reports ready before replaying fails exactly the at-readiness case; one that reads the ledger from the restored table fails both. That the table row shares the erasure's transaction is a call-graph fact (PC4) and stays a review question | **review only** |
+| BR7 | A restore is a deployment: restore every primary store to one `as_of`, migrate forward, replay the ledger, rebuild derived stores, roll out with readiness gating traffic; `recovery.restore` is an operator-triggered single-flight idempotent job that emits an audit event; what is lost after `as_of` is stated and its reconciliation named in the runbook | the order is observable at the boundary — the restore case asserts the schema is at the release's version when replay runs and that erased rows are absent at readiness — and is the same `restore` scenario; the audit event is 080 AE5's enumeration; the reconciliation of post-`as_of` effects is a review question on the runbook | **review only** |
+| BR8 | Recovery of an environment is a runbook in the repository's operations documentation at the path the declaration names, and the drill executes its commands | the path's presence is a file-exists check beside the schema (proposed, same job); that the runbook's steps and the drill's steps are the same steps resists a checker and is the review question stated in the rule | **review only** |
+
+The corpus was run before landing: sixteen declaration cases (four of them
+arithmetic rejections the schema cannot make), seven ledger cases and ten
+drill cases reproduce their expected results against a reference
+implementation. The two restore detectors were checked against deliberately
+weakened implementations: one that flips readiness before replaying fails
+exactly the at-readiness case and passes the other nine; one that reads the
+erasure ledger from the restored table rather than from its copy in the
+backup domain fails exactly the two detector cases and passes the other
+eight. A third weakening, a freshness check that reads the newest run of any
+outcome rather than the newest `succeeded` one, fails exactly the
+failed-drills case, which is 057 JB8's success-not-attempts rule caught at
+this standard's boundary.
+
+Two rows above change as a result of this standard: SD9's deferral of backup
+and restore to the roster now resolves to BR1 through BR7, and AE7's redaction
+is re-applied after a restore by BR6's replay rather than assumed to survive
+one.
+
+## Secrets standard
+
+Rules from [`032-secrets.md`](032-secrets.md) — how a secret reaches a
+process, what is declared about it, where it may never be, how it is rotated,
+and what a leak response is. The declaration is a schema; redaction and the
+repository scan are decided by running an implementation against the corpus;
+the leak response reuses the audit contract's schema, so an event that
+violates AE2 or AE4 fails those rows too.
+
+| # | Rule | Enforced by | Status |
+|---|---|---|---|
+| SE1 | A secret reaches a process as an environment variable or a file at a declared path, placed by the platform before start; application code never fetches one through a vendor SDK; a declared secret absent at start blocks serving (SC3) or exits `78` (WK4) | the absent-at-start half is SC3's lifecycle corpus case and WK4's `one_shot` case (`missing variable exits 78`); the no-fetch half **resists a checker honestly** — a call-graph fact PC4 keeps a gate away from. Review question: *what process talks to the secret store, and is it the application?* | **review only** |
+| SE2 | Every secret a service's processes read is declared per `secret-declaration.schema.json`, with id, kind, delivery, purpose, backing service, owner, issuer, age, rotation and images; an undeclared secret in the environment is a finding | **schema-decided** — thirteen `declarations` corpus cases under `job-contract-conformance`; the environment-vs-declaration diff is a live check in `job-image-starts` (proposed `check-secret-declaration`) | **review only** |
+| SE3 | The variable is `<SUBJECT>_<KIND>` with a closed kind set; an environment name is never the leading segment | **static and decidable** — the `secretName` pattern over every variable the declaration and `.env.example` list (fifteen `names` cases, one recorded as passing because the grammar cannot know a subject is vague); whether the subject names a real backing service is a review question | **review only** |
+| SE4 | No secret value in the repository at any point in history; `.env` ignored, `.env.example` names and placeholders only; a scanner blocks every push; a value found in history is leaked, not deleted | the scanner is the gate (class of tool, run in CI and as push protection); `forbidden_locations` corpus cases for tracked paths and `.env.example` lines, **one a verified detector** — a low-entropy real value an entropy-only scanner passes | **review only** |
+| SE5 | Never in an image, a log line, a URL or an error body; the emitter redacts by declared value first, by field name second, by shape only as a backstop | the Dockerfile half is **a grep with no false positives** (`ENV`/`ARG` naming a secret-grammar variable; proposed `check-image-secrets`); the log half is the `redaction` corpus against a running emitter under `job-contract-conformance`, **one case a verified detector** — a passphrase-shaped secret a shape-filtering redactor misses; the URL and error-body halves are HA3's problem+json validation plus review | **review only** |
+| SE6 | One credential per backing service per service (the migration credential the designed exception); each image carries the least its jobs declare and the migrate image shares no secret; platform-issued before static | the migrate-alone rule is **schema-decided**; the one-credential count is a runner check over the declaration (corpus case); the image set against `images` is checkable once credentials are declared per image, which this declaration is — the row WK8 and SD13 were waiting on; platform-before-static is a review question on each `issued_by: static` | **review only** |
+| SE7 | Every static secret has an owner and a `max_age_days` (default 90, ceiling 365); rotation is `restart` or `dual_window` with a procedure in the operations docs; a stale or never-rotated secret is a finding | the age and mode are schema-decided; the freshness comparison is four `rotation` corpus cases and, live, a check reading the platform store's rotation dates against the declaration (proposed `check-secret-freshness`); that the procedure is followed rather than worked around is review | **review only** |
+| SE8 | A leak is rotated first, investigated second, audited as `secret.rotate`/`secret.revoke` with the secret as target by declaration id and no value in the event; history is never rewritten; handover rotates every secret the repository ever referenced | the event shape is **decided by `leak_response` corpus cases** against `contracts/audit/event.schema.json` plus the no-value scan; the order of operations and the handover rotation are review questions, stated as such | **review only** |
+| SE9 | Development uses development backing services with credentials minted by the file that starts them; `.env.example` is the contract and matches the declaration; pipeline credentials are the CI store's, least-privilege, OIDC-federated where possible, never printed | the `.env.example`-matches-declaration diff is a static check beside SE2's; the compose admission is two `forbidden_locations` cases; that a development credential grants nothing outside the developer's machine is review | **review only** |
+| SE10 | One secret store per platform (versioned values, an access log naming the principal, per-environment and per-service scoping); the store renders into the environment by the runtime's own mechanism class — an operator or driver syncing into an orchestrator's native secret object, native injection on managed container services, an agent rendering the unit's environment file or credential directory — on the platform's side of the variable; the repository ships a mapping of declared name to store path and never a value; encrypted secret files in the repository are not a store | the mapping's names against the declaration is the same gate as `.env.example`'s (SE2, SE9); a value in the mapping is SE4's scanner; that the mechanism is one from the table and that the application process holds no store credential are review questions (a call-graph and a platform fact, PC4). Which implementations meet the four properties is [`../solutions/032-secrets.md`](../solutions/032-secrets.md)'s and carries a date, not a gate | **review only** |
+
+The corpus was run before landing: fifteen name cases, thirteen declaration
+cases, nine redaction cases, fourteen forbidden-location cases, four rotation
+cases and four leak-response cases all reproduce their expected results
+against a reference redactor, scanner and freshness check. Both detectors were
+checked against deliberately weakened implementations: a redactor that filters
+declared values through a shape test before honouring them passes eight of the
+nine redaction cases and fails exactly the passphrase; a scanner that knows
+the placeholder grammar but decides "real value" by entropy passes thirteen of
+the fourteen forbidden-location cases and fails exactly `SMTP_PASSWORD=hunter2`.
+
+Three rows above change as a result of this standard: SC3's row gains the
+secret half of its declared-variables check; WK8's and SD13's credential facts
+become checkable against `images` and `backing_service` in the declaration;
+SC2's row can name the redaction corpus for its no-secret half.
+
+## Feature flags standard
+
+Rules from [`038-feature-flags.md`](038-feature-flags.md) — the evaluation
+API, the declaration and its lifetime, the default, the boundary with
+authorization, the context, and the sweep. The evaluation API is an
+OpenFeature profile, so FF1 binds to a specification rather than an
+invention; the declaration, the context and the browser's evaluated set are
+schemas; the default rule and the authorization boundary are decided by
+running an evaluation boundary against the corpus.
+
+| # | Rule | Enforced by | Status |
+|---|---|---|---|
+| FF1 | Application code evaluates through the OpenFeature evaluation API; the provider is set from configuration at start; a vendor SDK is only ever a provider; an evaluation never throws; a provider down is `degraded`, never `503` | **resists a checker at its own level** — whether domain code imports a provider is a fact about source, and a gate reading source for it is the PC4 violation. The observable halves are live: the startup line names the provider (`job-image-starts`, proposed), and `/readyz` stays `200` with the provider unreachable (SC6's gate) | **review only** |
+| FF2 | Every flag is declared in the repository against `flag-declaration.schema.json`; the declaration is built into the image; an evaluation of an undeclared flag is a finding and never reaches the provider; flag names and permission strings are disjoint sets | **schema-decided** for the file: fifteen `declarations` cases. **One `evaluation` case is a verified detector** — a provider holding a flag no declaration names, which an implementation that asks the provider first answers from the provider and passes every other case. Disjointness is an intersection of two committed sets (proposed `check-flag-names`) | **review only** |
+| FF3 | Four kinds: `release` and `experiment` carry `expires` and `removal`, `operational` and `entitlement` carry `review_by`; `expires` is at most 180 days after `created`; the day after either date the flag is a finding | the kind-conditional fields are **schema-decided**; the 180-day horizon and the date comparison are decided by the `expiry` corpus part, seven cases (proposed `check-flag-declarations`, static over one committed file). That a kind was chosen honestly is a review question | **review only** |
+| FF4 | Every boolean flag defaults to `false` and is named for what `true` turns on; the call site's default is the declared default; every failure returns the declared default with `reason: ERROR` and the specification's code, logged once per flag per process | the boolean default is **schema-decided**. **One `evaluation` case is a verified detector**: the provider unavailable, which a fail-open implementation answers `true` and passes every case in which the provider is up. A call-site default disagreeing with the declaration is an `evaluation` finding case. Whether a non-boolean default is the shipped variant is a review question | **review only** |
+| FF5 | A flag decides whether a capability is shown or wired and never whether a subject is allowed; an `entitlement` flag is evaluated beside a permission, never instead; a flag appears in no grant, role, `/me` permission list or `check` argument; flag on and permission denied is `403`; flag off is `404` | **decided by the `gating` corpus** — four cases. **One is a verified detector**: entitlement on and permission denied, which an implementation treating the flag as authorization serves and passes the other three. `check-flag-names` (FF2's) catches a flag name in the permission set | **review only** |
+| FF6 | The evaluation context is `targeting_key`, `tenant_id`, `user_id`, `environment`, `release_version`, `service` and a flat `attributes` map; never an email, a name, an address, an IP, a birth date or free text; ids are public ids | **schema-decided** by `evaluation-context.schema.json` at the platform hook: ten `contexts` cases, including the key denylist, the `@`-in-value rule and a nested object. The denylist catches spellings and not the property, so *would this attribute identify a person* stays the review question on every new attribute | **review only** |
+| FF7 | Flags are evaluated by the server; the browser receives an evaluated set per `evaluated-set.schema.json` in the application configuration; the anonymous bootstrap carries only global flags; no provider credential in the bundle; a change takes effect on the next load or a documented refresh | the served document is **schema-decided** (four `evaluated_sets` cases) under `job-image-starts`; the no-credential half is WC2's proposed `check-bundle-config` grep for a provider hostname or SDK key in the build output. That the client renders from the set rather than evaluating rules is a review question | **review only** |
+| FF8 | Every evaluation is a `feature_flag.evaluation` event on the request's span with the OpenTelemetry attributes; never a log line per evaluation; the provider at start, the first error per flag per process, and a pushed change are logged with the flag's name in a field | the attribute names are checkable against the semantic conventions where the propagation corpus runs live (040's `job-contract-conformance`); the no-line-per-evaluation rule is a review question on every diff that logs | **review only** |
+| FF9 | Values live in the provider, existence in the declaration; the provider is attached by configuration, one of three admitted shapes stated in Conventions; the file provider's overrides are SC3 variables named `FLAG_<AREA>_<FLAG>`; no process holds another service's provider credential | the Conventions declaration is a grep; the variable naming is `check-service-contract`'s (SC3, proposed); the credential half is the per-image credential fact WK8's row waits on | **review only** |
+| FF10 | Assignment is a pure function of flag name and targeting key; exposure is recorded once per subject per experiment as an `experiment.exposed` event through the outbox; an experiment expires with a decision in `removal` | the `experiments` corpus part decides determinism and once-per-subject recording against a repository's assigner; that the event goes through the outbox is AM4's row; the decision is a review question at expiry | **review only** |
+| FF11 | Removal is one change: declaration, call sites and dead path together; `flags.sweep` is a periodic job under 057 with `stale_after`, reporting each overdue flag by name, owner and removal condition; the same comparison runs as a CI check on the declaration file | the CI half is `check-flag-declarations` (FF3's, proposed); the job's declaration is JB3's schema and its staleness is JB8's alert. A declaration with no call site resists a checker honestly — a grep for the name finds the common case and misses a generated accessor — and stays a review question | **review only** |
+
+The corpus was run before landing: fifteen declaration cases, ten context
+cases, four evaluated-set cases, ten evaluation cases, four gating cases,
+two experiment cases and seven expiry cases all reproduce their expected
+results against a reference evaluation boundary, and the three detectors
+were checked against deliberately weakened boundaries. The fail-open
+boundary — `true` on provider error — fails exactly the provider-unavailable
+case; the provider-first boundary — asking the provider before the
+declaration — fails exactly the undeclared-flag case; the
+flag-as-authorization handler fails exactly the entitled-and-denied case;
+each passes everything else.
+
+## Notifications standard
+
+Rules from [`058-notifications.md`](058-notifications.md) — the notification
+record, the decide-send-status pipeline over 055 and 057, consent and the
+floor, suppression, templates, render-time authorization, the provider
+adapter, and the in-app channel. The record, the preference and the category
+declaration are schemas; the decide, unsubscribe and render rules are decided
+by running an implementation against the corpus.
+
+| # | Rule | Enforced by | Status |
+|---|---|---|---|
+| NF1 | A notification is a message to a person with an identity record, through one of five channels, about a 055 event; operator alerts and audiences without an identity record are not notifications | — resists honestly: whether a message is to a person or to a rota is judgment. Review question: *who is the recipient's identity record, and which event caused this* | **review only** |
+| NF2 | The pipeline is `notify.decide` (per-event, idempotent on the event's `(source, id)`), `notify.send.<channel>` (idempotent or `at_most_once` per JB2, never `at_least_once` for transactional), and the provider's status webhooks re-enveloped under AM8; `notification.release` and `notification.purge` are periodic; all run in the pool with the provider credential in no server image | the job declarations are JB3's schema and WK2's image set; `status-events.json` fixes the event types and transitions; that decide writes rows and messages in one transaction is AM4's call-graph question | **review only** |
+| NF3 | One record per recipient per channel per event in the service's database, closed shape, no address and no body; a suppressed row names its reason; retention declared per category; the notification id in every log line and never the body; a transactional failure is an alert | **schema-decided** — `notification.schema.json` under `job-contract-conformance`: sixteen `records` cases including the address, body, missing-provider, missing-reason and security-by-preference rejections. Log fields are checkable against the OC4 block; the alert is platform configuration | **review only** |
+| NF4 | The recipient is a user public id; the address is resolved at send time from the identity record, referenced by `address_id` where a specific one is meant; optional notifications go only to a verified address, transactional may reach an unverified one | the no-address half is schema-decided (closed property set); `channelAddress` shape is schema-decided; the verified rule is decided by three `decide` cases. That the send job resolves rather than caches the address is a review question | **review only** |
+| NF5 | Two classes; declared categories with `security` required and `marketing` opt-in; consent per category per channel; a transactional preference switches channel only while one remains; RFC 8058 one-click on every optional email, `Auto-Submitted` on every notification email, neither unsubscribe header on transactional; `GET` changes nothing | **decided by three corpus parts**: `category-declaration.schema.json` and `preference.schema.json` for the declarations, eight `decide` cases for consent and the switch, nine `unsubscribe` header cases and four endpoint cases. **One endpoint case is a verified detector**: an implementation that withdraws consent on `GET` fails `a-get-on-the-unsubscribe-link-changes-nothing` and passes everything else. Whether a category's class was chosen honestly is a review question | **review only** |
+| NF6 | The floor: new-device sign-in, credential or second-factor change, contact change (to old and new), privileged role granted, export and deletion requests notify on every declared channel with no preference, quiet hours or rate limit consulted | **decided by the `decide` corpus, and its case is the verified detector**: `a-preference-cannot-suppress-the-security-floor` fails an implementation that treats `security` as one more transactional category and channel-switches it, which passes every other case. The schema refuses a `security` row suppressed by preference and a `security` preference row. That the product's list of privileged roles is complete is a review question | **review only** |
+| NF7 | A hard bounce suppresses the address for every class, a complaint suppresses optional, a soft bounce suppresses nothing; suppression clears only on re-verification; an erased subject produces no row and no address is retained | five `decide` cases (bounce on the floor and on optional, complaint on each class, erased subject) and the `channelAddress` schema. That the status-event consumer sets suppression is a live test against the webhook endpoint (proposed) | **review only** |
+| NF8 | Templates are files versioned with the code, rendered deterministically from id, version, locale, zone and payload; BCP 47 and IANA zone from the recipient; per-channel limits enforced at render; every template renders in every supported locale in CI | locale and zone formats are schema-decided (two `records` rejections); the render-in-CI rule is a test job a checker can see exists (proposed `check-templates`); purity of the render and the limits table are review questions | **review only** |
+| NF9 | `check(recipient, permission, scope)` at send time against the subject, per template field; links to authenticated routes; single-use short-lived tokens with the unsubscribe token the stated exception | **decided by the `render_authorization` corpus**: four cases including the required-field refusal. Link targets and token lifetimes are a review question on every template | **review only** |
+| NF10 | Collapse per key within the declared window; optional rate-limited per channel per day; quiet hours in the recipient's zone for optional only; `in_app` never deferred; transactional never deferred or limited; digests are periodic jobs | **decided by the `decide` corpus**: seven cases, including the Berlin/Los Angeles pair at one instant that fails an implementation evaluating quiet hours in UTC or the server's zone | **review only** |
+| NF11 | One adapter interface per channel (`send`, `verify`); idempotency key is the notification id; adapter chosen by configuration; provider credential only in the pool and jobs images; provider webhooks verified inside the adapter per AM8; no vendor SDK in domain code | the credential placement is WK8's credential fact; the webhook handling is AM8's `signing` and `delivery` corpora; the no-SDK rule **must not** be gated — a checker reading imports is the PC4 violation — and is the review question | **review only** |
+| NF12 | `in_app` records served by the service's API: cursor-paged list with `unread_count`, per-record read state, SSE stream as a hint with the list as the truth, rendered per request in the viewer's locale and zone, tenant-scoped | HA4's pagination and HA1/HA2's SSE rows cover the API shape; the `in_app` schema rules (no provider, `read_at`) are `records` cases; that the list is the truth and the stream a hint is a review question | **review only** |
+
+The corpus was run before landing: twenty-seven record cases, twenty-four
+decide cases, thirteen unsubscribe cases and four render cases all reproduce
+their expected results against a reference implementation, and the two
+detectors were checked against deliberately weakened implementations. A decide
+that consults preferences before asking whether the category is the floor
+passes twenty-three decide cases and fails exactly the one it exists to catch,
+by channel-switching a new-device sign-in away from email; an unsubscribe
+endpoint that withdraws consent on `GET` passes every other unsubscribe case
+and fails exactly `a-get-on-the-unsubscribe-link-changes-nothing`. The quiet
+hours cases were computed with the IANA database, not typed, so an
+implementation proves its zone arithmetic against them.
+
+## Data subject rights standard
+
+Rules from [`082-data-subject-rights.md`](082-data-subject-rights.md) — the
+inventory that says where personal data is, the request resources through
+which a person asks for a copy or for removal, the package, the erasure job
+and what survives it, and the hold. The inventory, the request and the
+manifest are schemas; the erasure, export, hold and transition behaviours are
+decided by running an implementation over one fixture.
+
+| # | Rule | Enforced by | Status |
+|---|---|---|---|
+| DR1 | Every store holding personal data is declared per `inventory.schema.json`, one entry per subject column, with a `none` entry for stores holding no personal data; a catalog table with no entry is a finding | **schema-decided** for the declaration (eight `inventory` cases) and **catalog-decided** for completeness: the `coverage` corpus part enumerates tables the way 025 SD6's gate does and names the undeclared table, the unknown column, the dangling `via`, the duplicate membership entry and the column with no tombstone (proposed `check-data-inventory`) | **review only** |
+| DR2 | Both rights are request resources with one status machine, one problem-type set, one open request per subject per kind, `Idempotency-Key` on creation, and step-up verification within fifteen minutes for erasure; a request open past its 72-hour deadline is an alert | the resource is **schema-decided** (eight `requests` cases: each status requires and forbids its fields); the `transitions` part decides the step-up refusal, the open-request `200`, the cancellation rules and the download route under `job-contract-conformance` (proposed); that the deadline alert is wired is platform configuration read from the request table | **review only** |
+| DR3 | The export is a zip of JSON Lines per exported entry plus a manifest and the subject's objects, built by a per-event job, bounded by tenant, free of internal keys, credentials and third-party columns, streamed through the download route as an attachment and deleted after seven days | the manifest is **schema-decided** (four `export` manifest cases); the package contents are decided by the `export` build cases — file list, counts, column sets — against a repository's builder (proposed, same job); whether an `export: false` has one of the three admitted reasons is a review question | **review only** |
+| DR4 | Fourteen days of cancellable grace, a periodic dispatcher and a per-event erasure job, entries treated children before parents in keyset batches, scoped rows for the tenant and global rows when the last membership goes, `revokeAppAccess` and never identity deletion | the treatment order and the tenant-and-membership boundary are **decided by the `erasure` corpus** (`entries-are-treated-children-before-parents`, `erasure-is-bounded-by-tenant-…`); the grace mechanics by the `transitions` dispatch cases; that suppression runs first and revocation runs last is a sequence a boundary does not show, and stays a review question | **review only** |
+| DR5 | Three treatments; anonymisation is an allowlist over structural columns with a fixed tombstone rule; `retain` needs a closed-set kind, a reference and an expiry, and is reduced at erasure time and purged at expiry; the audit store is anonymised with the AE7 stamp, never deleted | **decided by the `erasure` corpus, and two cases are verified detectors**: an implementation that scrubs identifying columns by name fails exactly `anonymise-is-an-allowlist-not-a-denylist`, and one that deletes every dependent row fails exactly `audit-rows-survive-redacted-by-subject`; the retain and purge cases cover the rest. Whether a treatment is the right one for its data and whether a basis is real are judgments | **review only** |
+| DR6 | A legal hold suspends every deletion for its subject — erasure and retention purge — and never export or cancellation; placing and releasing are audited; the hold is visible on the request by id and instant; a hold past `review_at` is a finding | **decided by the `hold` corpus** (four lifecycle sequences) and the `held` conditionals of `request.schema.json`; that a hold is reviewed is a review question, stated as one | **review only** |
+| DR7 | Every erasure ends by writing the `data_subject.erase` audit event, already conforming to AE7, and the 028 ledger entry, in the last batch's transaction; `completed` requires both ids in `result` | the `result` requirement is **schema-decided** (`a-completed-erasure-without-its-result-is-rejected`); that the two writes share the last batch's transaction is a call-graph fact PC4 keeps out of a gate, and is the review question on the job | **review only** |
+| DR8 | A tenant leaving is `tenant.offboard`: reduce then drop under one-database-per-tenant, an enumerated erasure over every scoped table under row-level isolation; subjects with other memberships keep their rows there | the row-level half is the same enumeration SD6's gate performs and the same treatments the `erasure` corpus decides; the one-database half is an operator runbook, and that it exists is a review question | **review only** |
+
+The corpus was run before landing. Eight inventory cases, six coverage cases,
+eight request cases, seven erasure cases, seven export cases, four hold
+sequences and twelve transition cases all reproduce their expected results
+against a reference implementation, and the two DR5 detectors were checked
+against deliberately weakened implementations: the one that scrubs columns by
+name (email, name, phone, ip, user agent) passes every erasure case but the
+allowlist case, where it leaves a free-text notes field carrying a phone
+number; the one that deletes every dependent row and reduces only the
+subject's own passes every erasure case but the audit case, where it removes
+the trail 080 AE4 says outlives its subject. Each fails exactly the case it
+exists to catch.
+
+Three rows above change as a result of this standard: SD12's soft-deleted
+personal data and AE7's redaction now have a document to point at instead of
+the roster row, and 028's erasure ledger has the standard that writes it.
+
+## Security baseline standard
+
+Rules from [`085-security-baseline.md`](085-security-baseline.md) — what a
+deployed service has before its domain is considered: what its image is built
+from, what is scanned, which headers every response carries, where TLS and
+rate limits apply, how input is bounded, how a finder reports, and what a
+release says about its contents. Secrets are [`032-secrets.md`](032-secrets.md)'s
+and register there. The header set is data, the pin grammar and the acceptance
+entry are schemas, and the disclosure policy is a schema over the sections a
+checker extracts from the markdown.
+
+| # | Rule | Enforced by | Status |
+|---|---|---|---|
+| SB1 | Every `FROM` line names its image by digest with the version in-band as the tag or in a trailing comment; `scratch`, a declared stage and `--platform` are the only exemptions; a build-argument reference is refused; build stages included | **static and decidable with no false positives** — an extension of `check-ci-conformance` PIN reading every `FROM` in every Dockerfile against `base-image.schema.json`'s grammar (proposed `check-ci-conformance` FROM); thirteen `from-lines` corpus cases, one a verified detector for a checker that reads only the first `FROM` | **review only** |
+| SB2 | Lockfile, reachability and image scans as shared jobs, each failing when it cannot run; new findings block from day one; an acceptance is an OSV id with a reason and an expiry, the window at most ninety days, an expired entry a finding | the entry shape is **schema-decided** by `acceptance.schema.json` read from each scanner's native file (proposed `check-scan-acceptances`); the calendar half is two `scan-acceptance` corpus cases; `job-osv-scan` and `job-go-govulncheck` exist, `job-image-scan` is proposed between `job-image-build` and `job-image-starts`. Whether a reason is true stays a review question | **review only** |
+| SB3 | Three response classes — document, API, asset — each with a fixed header set per `response-headers.json`; strict nonce-plus-`'strict-dynamic'` CSP on documents, an inert CSP on API responses, HSTS with `includeSubDomains` everywhere, `no-store` on documents and authenticated API responses; `X-XSS-Protection` and `X-Powered-By` never sent, `Server` without a version, `X-Frame-Options` never a substitute for `frame-ancestors` | **live and cheap** — `job-image-starts` already requests `/readyz`; asserting the API-class set on that response and the document-class set on `/` is one more assertion in a job every repository calls (proposed). Twenty-one `headers` corpus cases, **two verified detectors**: `X-Frame-Options` without `frame-ancestors`, and HSTS without `includeSubDomains`. A header delegated to the edge is declared in Conventions and is a live check against the deployed environment, and whether it is actually set there is the review question | **review only** |
+| SB4 | TLS on every hop that leaves a network the service owns, backing services included; TLS 1.2 floor, 1.3 preferred, Mozilla intermediate profile; certificates from the platform, never in the image, delivered as a secret file where the server terminates | the protocol floor and cipher profile are observable from outside with one handshake per listener (proposed live check); a private key in an image is a secret-scanning finding under the secrets standard; whether a hop declared private is private **resists a checker honestly** and stays the review question on the Conventions entry | **review only** |
+| SB5 | Every unauthenticated route and every authentication route is rate limited, per address and per presented identifier, at stated floors; the refusal is 050 HA7's `429` with `Retry-After` and the RFC 9457 envelope | the refusal shape is 050 HA7's corpus case under a live harness; that a limit exists on an unauthenticated route is a live test that sends more than the floor (proposed); whether the floors were chosen rather than defaulted is a review question | **review only** |
+| SB6 | Request bodies, query and path parameters are validated against the OpenAPI document before a handler runs and refused with the HA3 `errors` array; unknown request fields refused; `415` on an undeclared content type; 1 MiB JSON body, 32 levels, 8 KiB query string, refused with `413`/`414` before parsing | the size bounds and the unknown-field refusal are live behaviour cases (proposed, same harness as HA6/HA7); that the schemas the service enforces are the ones the document publishes is HA2's unfixable half and stays a review question | **review only** |
+| SB7 | `SECURITY.md` at the root with Reporting, Response (numbers inside the three-day and fourteen-day ceilings), Scope, Safe harbour and Disclosure sections; `/.well-known/security.txt` per RFC 9116 on every served origin; the channel changed at handover | **schema-decided** by `security-md.schema.json` over the sections a checker extracts (proposed `check-security-md`); six corpus cases; `security.txt` presence and `Expires` within a year are a live request against the started image; that the channel is monitored is a review question | **review only** |
+| SB8 | A CycloneDX 1.6 JSON SBOM per image, generated from the built image in the build run, attached to the release under `<image>.cdx.json` and pushed as an OCI referrer where supported | presence is a release fact: `job-version-release` can assert one asset per image the run built (proposed); that it was generated from the image rather than the source is a provenance fact the job itself controls once it generates it | **review only** |
+| SB9 | Least privilege is stated by 000 Terms, 032, 035 WK8, 025 SD3/SD9/SD13 and 080 AE6; this rule adds that the process in every runnable image runs as a non-root `USER` with a filesystem writable only where declared | `USER` is read from the same file SB1's checker reads, in the same pass (proposed, same extension); not yet in the corpus and this row says so; the writable-filesystem half is a runtime configuration fact | **review only** |
+| SB10 | Security-relevant acts audit under 080 AE5 and notify under the notifications standard's floor; leak response is 032's; this rule adds nothing | — a pointer rule; enforced by the rows it points at | **review only** |
+
+The corpus was run before landing. Twenty-one header cases, thirteen
+`FROM`-line cases, ten acceptance cases and six disclosure-policy cases
+reproduce their expected findings against a reference implementation driven
+by `response-headers.json` and the three schemas, and the three detectors
+were checked against deliberately weakened implementations: a header checker
+that lets `X-Frame-Options` satisfy the framing requirement fails exactly the
+one case it exists to catch and passes the other twenty; a header checker
+that tests HSTS for presence and `max-age` alone fails exactly the
+`includeSubDomains` case; a `FROM` checker that reads only the first `FROM`
+fails exactly the multi-stage case whose runtime stage is the unpinned one.

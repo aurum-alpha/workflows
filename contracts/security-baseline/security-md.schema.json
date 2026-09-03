@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/security-baseline/security-md.schema.json",
+  "title": "Aurum Alpha vulnerability disclosure policy",
+  "description": "The content SECURITY.md must state (SB7 of standards/085-security-baseline.md), in the structured form a checker extracts from the markdown section by section, plus the fields the served /.well-known/security.txt (RFC 9116) must carry. The markdown is what a finder reads; this shape is what a checker proves is present. schemaVersion 1 — evolves additively per PC6.",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/schemaVersion",
+      "description": "The version of this shape; additive evolution per PC6."
+    },
+    "reporting": {
+      "type": "object",
+      "description": "The Reporting section (SB7): where a finder sends a report and how.",
+      "properties": {
+        "channels": {
+          "type": "array",
+          "description": "At least one monitored channel (SB7). A repository handed over replaces these with the new owner's at handover.",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "description": "The kind of channel: a mailbox, a web form, or a hosting platform's private advisory mechanism (SB7).",
+                "enum": ["email", "form", "advisory"]
+              },
+              "location": {
+                "type": "string",
+                "description": "The address or URL of the channel, as a URI (a mailto: URI for a mailbox) (SB7).",
+                "format": "uri",
+                "minLength": 1
+              }
+            },
+            "required": ["kind", "location"],
+            "additionalProperties": false
+          }
+        },
+        "encryption": {
+          "type": "string",
+          "description": "Where a finder obtains a key to encrypt a report, as a URI; RFC 9116's Encryption field carries the same value (SB7).",
+          "format": "uri"
+        },
+        "report_should_include": {
+          "type": "array",
+          "description": "What the policy asks a report to contain: affected component, reproduction steps, impact (SB7).",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      },
+      "required": ["channels"],
+      "additionalProperties": false
+    },
+    "response": {
+      "type": "object",
+      "description": "The Response section (SB7): two numbers. A commitment without a number is not a commitment.",
+      "properties": {
+        "acknowledge_within_business_days": {
+          "type": "integer",
+          "description": "Business days within which the finder is told the report was received. Three is the ceiling (SB7).",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "triage_within_days": {
+          "type": "integer",
+          "description": "Calendar days within which the finder is told whether the report is accepted and at what severity. Fourteen is the ceiling (SB7).",
+          "minimum": 1,
+          "maximum": 14
+        }
+      },
+      "required": ["acknowledge_within_business_days", "triage_within_days"],
+      "additionalProperties": false
+    },
+    "scope": {
+      "type": "object",
+      "description": "The Scope section (SB7): what the policy covers and what it does not.",
+      "properties": {
+        "in_scope": {
+          "type": "array",
+          "description": "The systems, origins and repositories the policy covers (SB7).",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "out_of_scope": {
+          "type": "array",
+          "description": "What is excluded: third-party services, denial of service, social engineering, and anything else the policy names (SB7).",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      },
+      "required": ["in_scope"],
+      "additionalProperties": false
+    },
+    "safe_harbour": {
+      "type": "object",
+      "description": "The Safe harbour section (SB7): that good-faith research within scope will not be pursued, stated in plain words. A finder who fears the report will not send it.",
+      "properties": {
+        "stated": {
+          "const": true,
+          "description": "True when the section states the commitment; the schema admits no other value because a policy without it is not accepted (SB7)."
+        }
+      },
+      "required": ["stated"],
+      "additionalProperties": false
+    },
+    "disclosure": {
+      "type": "object",
+      "description": "The Disclosure section (SB7): whether and when the finder may publish, and whether they are credited.",
+      "properties": {
+        "coordinated": {
+          "type": "boolean",
+          "description": "Whether publication is coordinated with the fix (SB7)."
+        },
+        "finder_may_publish_after_days": {
+          "type": "integer",
+          "description": "The day count after which the finder may publish regardless, where the policy states one (SB7).",
+          "minimum": 1
+        },
+        "credit_offered": {
+          "type": "boolean",
+          "description": "Whether the finder is credited if they wish to be (SB7)."
+        }
+      },
+      "required": ["coordinated", "credit_offered"],
+      "additionalProperties": false
+    },
+    "security_txt": {
+      "type": "object",
+      "description": "The fields the served /.well-known/security.txt carries, per RFC 9116 (SB7).",
+      "properties": {
+        "contact": {
+          "type": "array",
+          "description": "RFC 9116 Contact: at least one URI, in order of preference (SB7).",
+          "minItems": 1,
+          "items": { "type": "string", "format": "uri", "minLength": 1 }
+        },
+        "expires": {
+          "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp",
+          "description": "RFC 9116 Expires, as an IP4 instant: no more than a year out and renewed before it passes, because an expired file tells a finder the policy may be abandoned (SB7). The one-year bound is judged against the calendar by the checker."
+        },
+        "policy": {
+          "type": "string",
+          "description": "RFC 9116 Policy: the URL where SECURITY.md is published (SB7).",
+          "format": "uri",
+          "minLength": 1
+        },
+        "preferred_languages": {
+          "type": "array",
+          "description": "RFC 9116 Preferred-Languages: BCP 47 tags (SB7).",
+          "minItems": 1,
+          "items": { "type": "string", "pattern": "^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$" }
+        },
+        "canonical": {
+          "type": "array",
+          "description": "RFC 9116 Canonical: where the file's home is, when this origin is not it (SB7).",
+          "items": { "type": "string", "format": "uri", "minLength": 1 }
+        },
+        "encryption": {
+          "type": "string",
+          "description": "RFC 9116 Encryption: where a finder obtains a key (SB7).",
+          "format": "uri"
+        }
+      },
+      "required": ["contact", "expires", "policy", "preferred_languages"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["schemaVersion", "reporting", "response", "scope", "safe_harbour", "disclosure", "security_txt"],
+  "additionalProperties": false
+}

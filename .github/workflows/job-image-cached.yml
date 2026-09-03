@@ -1,3 +1,4 @@
+# aurum-job: capability=image-cached language=- role=toolchain
 # Portfolio capability: conditionally rebuilt, registry-cached container image
 # (CI_STANDARD Principle 12 — one way per capability; C6). Generalizes
 # event-manager's create-docker-build-image / create-docker-prod-base-image

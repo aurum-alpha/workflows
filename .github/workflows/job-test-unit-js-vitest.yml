@@ -1,3 +1,4 @@
+# aurum-job: capability=test-unit language=js role=gate
 # Portfolio capability: test-unit for one deployable unit's TypeScript source
 # (CI_STANDARD Principle 12 — one way per capability). Language tier: vitest is
 # TypeScript tooling, not a framework's, so this one job serves a React client

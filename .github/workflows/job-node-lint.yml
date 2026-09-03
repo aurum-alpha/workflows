@@ -1,3 +1,4 @@
+# aurum-job: capability=lint language=js role=gate
 # Portfolio capability: lint (CI_STANDARD Principle 12 — one way per
 # capability). Single-job reusable workflow: the caller owns the job id and
 # needs: wiring; this file owns the entire job body. Callers pass

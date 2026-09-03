@@ -1,3 +1,4 @@
+# aurum-job: capability=coverage-upload language=- role=none
 # Portfolio capability: send this run's coverage and test results to Codecov, once,
 # from one job (CI_STANDARD Principle 12 — one way per capability).
 #

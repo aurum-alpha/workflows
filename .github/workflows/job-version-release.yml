@@ -1,3 +1,4 @@
+# aurum-job: capability=version-release language=- role=publish
 # Portfolio capability: mint the version-named emission — the git tag and the
 # GitHub release — for the one commit that changed the version file
 # (CI_STANDARD Principle 12, one way per capability; Principle 14, a version is

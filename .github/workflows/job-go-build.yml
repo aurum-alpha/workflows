@@ -1,3 +1,4 @@
+# aurum-job: capability=build language=go role=build
 # Portfolio capability: build for a Go deployable unit (CI_STANDARD Principle 12 —
 # one way per capability). The catalog had job-go-mod, fmt, vet, lint,
 # test-unit and govulncheck but no build, so the one job the standard insists

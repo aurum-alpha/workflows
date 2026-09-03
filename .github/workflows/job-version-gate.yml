@@ -1,3 +1,4 @@
+# aurum-job: capability=version-gate language=- role=policy
 # Portfolio capability: enforce version discipline on a pull request
 # (CI_STANDARD Principle 12 — one way per capability). Single-job reusable
 # workflow: the caller owns the job id and needs: wiring; this file owns the

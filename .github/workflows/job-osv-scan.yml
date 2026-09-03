@@ -1,3 +1,4 @@
+# aurum-job: capability=osv-scan language=- role=gate
 # Portfolio capability: lockfile vulnerability scanning (CI_STANDARD Principle 12 —
 # one way per capability).
 #

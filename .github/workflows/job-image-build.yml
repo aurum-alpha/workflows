@@ -1,3 +1,4 @@
+# aurum-job: capability=image-build language=- role=publish
 # Portfolio capability: build the container and stage it in the registry
 # (CI_STANDARD Principle 12). First of three — build, starts, publish.
 #

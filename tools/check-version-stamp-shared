@@ -7,9 +7,10 @@ Getting a different answer per build system is the whole failure this exists
 to stop — a Go repo and a firmware repo disagreeing about what 0.16.0 means is
 not a cosmetic difference, it is two versioning schemes wearing one name.
 
-It lives in two catalog jobs rather than one composite because a reusable
-workflow runs in the CALLER's checkout: it cannot reference a catalog
-composite without its own SHA pin, which makes every edit a two-commit dance.
+It lives in several workflows rather than one composite because a reusable
+workflow runs in the CALLER's checkout and cannot reach a catalog composite
+except by naming the catalog repository -- which used to mean a SHA pin, and so
+a two-commit dance for every edit.
 setup/node-pnpm's header records the portfolio making the same trade for the same
 reason, and says the two definitions "must stay step-for-step identical,
 because the moment they diverge the portfolio has two answers to one question".
@@ -20,6 +21,12 @@ block, so the duplicate is safe rather than merely intended to be.
 
 Comparison is on the DEDENTED text, so the two copies may sit at different
 YAML indentation and still agree; nothing else may differ.
+
+Every workflow file is scanned, not just the `job-*.yml` catalog jobs. This
+repository's own ci.yml carries a copy: it compiles nothing, so it has no build
+job to read `version` and `version_changed` off, and job-version-release takes
+both as inputs rather than deciding for itself. A copy the checker did not look
+at would be the divergence this exists to stop, wearing the name of the fix.
 
 Usage: check-version-stamp-shared [--repo-root .]
 """
@@ -52,11 +59,12 @@ def main() -> int:
     ap.add_argument("--repo-root", default=".", type=pathlib.Path)
     args = ap.parse_args()
 
-    workflows = sorted((args.repo_root / ".github/workflows").glob("job-*.yml"))
+    wf_dir = args.repo_root / ".github/workflows"
+    workflows = sorted(set(wf_dir.glob("*.yml")) | set(wf_dir.glob("*.yaml")))
     carriers = [(p, b) for p in workflows if (b := extract(p)) is not None]
 
     if not carriers:
-        print("no catalog job carries the shared version-stamp block")
+        print("no workflow carries the shared version-stamp block")
         return 0
 
     print(f"shared version-stamp block, {len(carriers)} copy(ies):")

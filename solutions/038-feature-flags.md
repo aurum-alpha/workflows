@@ -51,37 +51,52 @@ configuration" literally true: changing vendor becomes a URL and a credential
 rather than a package swap in every service. It also collapses Route A's whole
 verification burden, which is the burden that dates fastest.
 
-**Route C — a provider written in the repository.** FF1 admits this in terms:
-the contract is the API and the corpus, not the package. It is the right answer
-for FF9's second and third rows — a provider over the service's own table, or
-over the declaration file with SC3 overrides — and it is not a fallback. Both
-are a few dozen lines against an interface the SDK defines.
+**Route C — a thin adapter written in the repository, for entitlements only.**
+FF9's second shape: a provider over the product's own tables, where the value
+is what a tenant bought and already sits in the database. It is a few dozen
+lines against an interface the SDK defines, and it is not a flag system —
+nothing is being invented, because OpenFeature specifies the interface and the
+product already owns the data. **This is the only case in which writing a
+provider is admitted.** FF9 refuses the shape people reach for first, flag
+values shipped in a committed file, and refuses it on three grounds worth
+reading before anyone proposes it again.
 
 ## The default route
 
-A repository with no reason to choose otherwise walks this ladder and stops at
-the first rung that fits. The argument is FF9's: a flag system is a backing
-service, and the cheapest correct one is the one you do not run.
+**If a product needs feature flags at all, it takes an off-the-shelf flag
+service.** That is the whole answer, and the register's job is only to say
+which ones are known to work.
 
-1. **The declaration file, through a provider you write** (FF9 row 3, Route C).
-   Most services never need a value to move without a deployment. Environment
-   overrides are SC3 variables; there is no backing service, no credential, no
-   provider outage, and FF6 has nothing to leak because nothing leaves the
-   process. **What moves you off this rung:** the first flag that has to change
-   without a restart — an `operational` kill switch, in practice.
-2. **A self-hosted flag service that speaks OFREP** (FF9 row 1, Route B).
-   Values move at a propagation interval, the evaluation context stays inside
-   the network, and the vendor question stays open because the protocol is the
-   interface.
-3. **A hosted flag service** (FF9 row 1, Route A or B). Take this rung for a
-   reason someone can state: non-engineers editing targeting, an experimentation
-   platform with an analysis pipeline attached, an operational burden nobody
-   should carry. Under FF6 it is the rung where the evaluation context leaves
-   your network, so what may travel in it stops being theoretical.
+The reasoning is FF9's and it runs the opposite way to the usual instinct.
+The instinct is to start small — flag values in a file, a couple of
+environment overrides, no backing service to run — and graduate later. FF9
+refuses that, because a value that cannot move without a deployment is
+configuration rather than a flag, because building the small thing properly
+means specifying a file format, an override grammar, a precedence order, a
+reload rule and a typed accessor package per language, and because a product
+that later adds a real service is running two flag systems. The small start is
+not smaller; it is a bespoke flag system with the specification work still
+owed.
 
-`entitlement` flags are the exception at every rung and belong in FF9's second
-row — the service's own table, behind a provider you write — because what a
-tenant bought is domain data the product already stores.
+So the decision a repository actually faces is not *how small can we start*
+but a prior question with two honest answers:
+
+- **This product does not need flags.** Most do not. It has configuration
+  under SC3, it says so, and it stops. Nothing here applies.
+- **This product needs flags.** Then it runs a flag service from the table
+  below, and pays for it — a backing service, a credential, an outage mode
+  where every flag falls to its declared default. That price is the rule
+  working rather than a cost to route around.
+
+`entitlement` flags are the one exception, and they are not a smaller
+starting point: they belong in FF9's second shape, the product's own tables behind a thin adapter,
+because what a tenant bought is domain data the product already stores and
+does not belong in a third-party dashboard.
+
+**Where the choice is genuinely open** — and the register takes no side — is
+self-hosted against hosted. Self-hosted keeps FF6's evaluation context inside
+the network; hosted buys a dashboard non-engineers can use and an operational
+burden somebody else carries. Both are in the table.
 
 ## The register
 
@@ -93,7 +108,7 @@ languages you write before adopting any row.
 
 | Option | FF9 shape | OFREP | Provider maintained by | Notes against 038 |
 |---|---|---|---|---|
-| **flagd** | Flag service, or the declaration file in its file mode | Yes | The OpenFeature project itself | The project's own flag daemon, so it tracks the specification rather than following it. Its sources are files or gRPC, so it serves rungs 1 and 2 of the ladder with one thing to learn. |
+| **flagd** | Flag service | Yes | The OpenFeature project itself | The project's own flag daemon, so it tracks the specification rather than following it. Its state is fed from files or over gRPC, and it is a running service either way — the file is the operator's input to the daemon, never flag values shipped inside a release, which FF9 refuses. |
 | **GO Feature Flag** | Flag service | Yes | Vendor | Self-hosted relay with broad first-party provider coverage at the checked date. |
 | **Flipt** | Flag service | Yes | Vendor | Self-hosted or hosted; an early OFREP implementer. |
 | **Flagsmith** | Flag service | Verify | Vendor | Self-hostable or hosted; an OpenFeature founding member, so the provider is unlikely to be an afterthought. |
@@ -103,8 +118,7 @@ languages you write before adopting any row.
 | **ConfigCat** | Flag service (hosted) | Verify | Vendor | Providers moved from community to official maintenance before the checked date. |
 | **DevCycle** | Flag service (hosted) | Yes | Vendor | Server, client and OFREP support. |
 | **Split** | Flag service (hosted) | Verify | Vendor | Providers across several languages; verify yours. |
-| **A provider over the service's own table** | FF9 row 2 | n/a | You | The answer for `entitlement` flags. Values are domain data under 025 SD13 and never leave the service. |
-| **A provider over the declaration file** | FF9 row 3 | n/a | You | Rung 1. Overrides are `FLAG_<AREA>_<FLAG>` variables under SC3. |
+| **A thin adapter over the service's own tables** | FF9 shape 2 | n/a | You | `entitlement` flags only. Values are domain data under 025 SD13 and never leave the service. Not a flag system and not a substitute for one. |
 
 "Verify" in the OFREP column means the protocol was not confirmed for that
 option at the checked date, not that it is absent — check before letting it

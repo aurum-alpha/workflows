@@ -98,9 +98,11 @@ browser receives an evaluated set (FF7).
 and through nothing else.** The typed calls, the evaluation context and the
 `Details` result are the interface; the provider behind them is set once at
 process start, chosen by configuration (SC3), and never imported by domain
-code. A vendor SDK is only ever a provider. A repository that writes its own
-provider — over a file, a table, an internal service — is conformant, because
-the contract is the API and the corpus, not the package (PC4).
+code. A vendor SDK is only ever a provider. Whether a provider arrives as a
+package or is written here is a question this contract does not ask, because
+what binds is the API and the corpus rather than the package (PC4); **which
+shapes are admitted at all is FF9's**, and it admits writing one for exactly
+one narrow case.
 
 | Choice | This profile pins |
 |---|---|
@@ -166,6 +168,29 @@ the ceiling in its **Conventions** and may not raise it. The day after
 by the CI check that reads the same file, naming the flag, its owner and its
 removal condition. The kinds are disjoint: a flag that is a kill switch *and*
 a rollout has two lifetimes and satisfies neither, so it is two flags.
+
+**`review_by` is at most 365 days ahead of the day the declaration is read**,
+and the two ceilings are measured differently on purpose. `expires` is
+bounded from `created` because a release or an experiment has a **bounded
+life**: the whole point is that the flag ends. `review_by` is bounded from
+*today* because an operational or entitlement flag may legitimately live for
+years, so what is bounded is not its life but the **neglect** of it — the
+longest anyone may go without looking at it again.
+
+A ceiling measured from `created` would be satisfied once and never again; a
+required field with no ceiling at all is satisfied by typing a date in the
+next century, which is the accumulation failure FF3 exists to prevent
+arriving through the one kind that never expires. Measured forward from the
+reading, neither is possible: a distant date fails the day it is written and
+every day after, extension is always available and always a commit somebody
+reviews, and a flag kept for a decade is kept by ten deliberate acts rather
+than by one forgotten one. A repository may lower either ceiling in its
+**Conventions** and may not raise it.
+
+The number is a judgment, like 180: an annual look matches how recurring
+review is actually scheduled, and a shorter cycle on a kill switch that is
+working correctly becomes a rubber stamp — which is worse than a longer one
+that is honoured, because it produces a record of review nobody performed.
 
 ### FF4. Every boolean flag defaults to `false`, and evaluation failure returns the default
 
@@ -292,22 +317,37 @@ evaluation context. Evaluations are counted by `feature_flag.key` and
 ### FF9. Flag state lives with the provider, and the provider is attached by configuration
 
 **Values live in the provider; existence lives in the declaration (FF2).**
-The provider is named by configuration (factor IV); three shapes are
+The provider is named by configuration (factor IV); two shapes are
 admitted, and a repository says which in its **Conventions**:
 
 | Provider | State lives | Changes take effect | Fit |
 |---|---|---|---|
-| A flag service, ours or a vendor's | In that service | At its propagation interval, without a deployment | Operational flags, rollouts, experiments. |
-| The service's own database, behind a provider the repository writes | In a table the service owns (025 SD13) | On the next evaluation or cache expiry | Entitlements, where the value is domain data the product already stores. |
-| The declaration file itself | In the release, overridden per environment by configuration | At the next deployment or restart | A product with no runtime toggling need. |
+| A flag service, ours or a vendor's, taken off the shelf | In that service | At its propagation interval, without a deployment | Every flag with a runtime life: rollouts, experiments, kill switches, degraded modes. |
+| The service's own database, behind a thin adapter over data the product already owns | In a table the service owns (025 SD13) | On the next evaluation or cache expiry | Entitlements alone, where the value is what a tenant bought and already sits in the product's tables. |
 
-For the file provider, an environment's override of a default is
-configuration under SC3, named `FLAG_<AREA>_<FLAG>`, read at start and logged
-as SC3 requires of every optional variable. A product that needs a flag to
-move without a restart has outgrown the file provider and chooses another
-row. Whichever shape, no process holds a provider credential that is not its
-own service's (000 Terms, *credential*): a shared flag service is shared the
-way a mail relay is, each service attaching with its own credential.
+**A flag whose value ships in the release is not admitted**, and neither is
+the bespoke machinery that would make one work. The tempting third shape —
+flag values in a committed file, overridden per environment by variables — is
+refused on three grounds. **A value that cannot change without a deployment is
+not a flag**: the entire reason this capability exists is to separate
+deploying code from releasing it, so a value that needs a deployment to move
+is configuration, and SC3 already owns it in full. **Building it means
+specifying it** — a file format, an override grammar, a precedence order, a
+reload rule, a typed accessor package per language the portfolio writes, and
+a test suite for all of it — which is a solved problem being solved again
+badly, and PC1's refusal exactly. And **it is a second flag system**: a
+product running a file provider in one service and a flag service in another
+has two answers to *where does a flag value live*, which is the failure FF1
+opens by preventing.
+
+So the honest consequence, stated rather than hidden: **a product's first
+flag costs it a backing service.** That price is the rule working. A product
+unwilling to pay it does not have a cheaper flag; it has configuration, and
+should call it that.
+
+Whichever shape, no process holds a provider credential that is not its own
+service's (000 Terms, *credential*): a shared flag service is shared the way
+a mail relay is, each service attaching with its own credential.
 
 ### FF10. An experiment assigns deterministically, records exposure once, and ends with a decision
 
@@ -427,6 +467,19 @@ declaration still has a call site (FF11).
   Refusing the kind would put *what a tenant bought* into a system built for
   *what a subject may do* and make every plan change a grant change. It is
   admitted with FF5's rule that it never stands alone.
+- **Two provider shapes, and the flag values never ship in the release**
+  (2026-09-04). An earlier draft admitted a third shape — flag values in a
+  committed file, overridden per environment — as the cheap starting point for
+  a product with no runtime toggling need. It is refused, and the refusal
+  removes a rung rather than adding one. A value that needs a deployment to
+  move is not a flag but configuration, which SC3 already owns; building the
+  shape properly would mean specifying a file format, an override grammar, a
+  precedence order, a reload rule and a typed accessor package per language,
+  which is a solved problem re-solved worse and PC1's refusal exactly; and a
+  product running it beside a real flag service has two answers to where a
+  flag value lives. The consequence is stated rather than hidden: the first
+  flag costs a backing service. A product unwilling to pay that has
+  configuration, not a cheaper flag.
 - **The browser receives values, never rules** (2026-09-02). A client-side
   SDK evaluating targeting needs the provider's credential and ships every
   rule to every visitor; the evaluated set costs one field on a document the
@@ -434,6 +487,18 @@ declaration still has a call site (FF11).
 - **The 180-day ceiling on `expires`** (2026-09-02). A judgment stated so it
   can be argued with; without one the required field is satisfied by a date
   in the next decade. Repositories may lower it and may not raise it.
+- **`review_by` is bounded 365 days ahead of the reading date, not from
+  `created`** (2026-09-03). The ceiling on `expires` was written and the
+  matching one on `review_by` was not, which left the standard bounding the
+  flags already on their way out and leaving unbounded the two kinds most
+  likely to sit for a decade — the exact inversion of what FF3 is for. A
+  ceiling measured from `created` is the obvious fix and the wrong one: it is
+  satisfied once, and it wrongly reports a flag that has been legitimately
+  reviewed every year since. Measuring forward from the reading makes a
+  distant date fail on the day it is written, makes extension always
+  available and always a reviewed commit, and makes a decade of keeping a
+  flag cost ten deliberate acts. Both weakenings are in the corpus as
+  detectors so neither can return quietly.
 - **Exposure is an event through the outbox, once per subject**
   (2026-09-02). Per evaluation is FF8's volume failure in a second channel;
   nothing makes the experiment unanalysable. Once per subject at first
@@ -443,8 +508,8 @@ declaration still has a call site (FF11).
 ## Out of scope, deliberately
 
 - **Configuration.** [`030-service.md`](030-service.md) SC3, in full. A
-  value with no subject is a variable, and the file provider's overrides are
-  SC3 variables.
+  value with no subject is a variable — and so is a value that cannot change
+  without a deployment, whatever it is called (FF9).
 - **Authorization and entitlement data.** [`070-rbac.md`](070-rbac.md) owns
   the check; the service's database owns what a tenant bought. A flag reads
   the second and yields to the first.

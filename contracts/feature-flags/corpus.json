@@ -1,7 +1,7 @@
 {
   "contract": "feature-flags",
   "schemaVersion": 1,
-  "description": "The conformance corpus for standards/038-feature-flags.md. Six parts. 'declarations' is judged by flag-declaration.schema.json alone; 'contexts' by evaluation-context.schema.json alone; 'evaluated_sets' by evaluated-set.schema.json alone — each case is accepted or rejected and a rejection names the rule. 'evaluation' is judged by running an evaluation boundary: given the fixture declarations, a provider state and a context, the call must return exactly the stated value, reason and error code and raise exactly the stated findings (FF1, FF2, FF4, FF6). 'gating' is judged by serving a request behind an entitlement flag and a permission check together (FF5). 'experiments' is judged by evaluating a split flag repeatedly and counting distinct variants per subject and exposures recorded (FF10). 'expiry' is judged by comparing a declaration to a date and listing the findings the sweep raises (FF3, FF11). Three cases are detectors: 'provider-unavailable-returns-the-declared-default' fails an implementation that fails open on provider error; 'an-undeclared-flag-is-a-finding' fails an implementation that asks the provider before the declaration; 'entitled-and-denied-is-refused' fails an implementation that treats a flag as authorization.",
+  "description": "The conformance corpus for standards/038-feature-flags.md. Six parts. 'declarations' is judged by flag-declaration.schema.json alone; 'contexts' by evaluation-context.schema.json alone; 'evaluated_sets' by evaluated-set.schema.json alone — each case is accepted or rejected and a rejection names the rule. 'evaluation' is judged by running an evaluation boundary: given the fixture declarations, a provider state and a context, the call must return exactly the stated value, reason and error code and raise exactly the stated findings (FF1, FF2, FF4, FF6). 'gating' is judged by serving a request behind an entitlement flag and a permission check together (FF5). 'experiments' is judged by evaluating a split flag repeatedly and counting distinct variants per subject and exposures recorded (FF10). 'expiry' is judged by comparing a declaration to a date and listing the findings the sweep raises (FF3, FF11). Five cases are detectors: 'provider-unavailable-returns-the-declared-default' fails an implementation that fails open on provider error; 'an-undeclared-flag-is-a-finding' fails an implementation that asks the provider before the declaration; 'entitled-and-denied-is-refused' fails an implementation that treats a flag as authorization; 'a-review-date-beyond-the-year-exceeds-the-horizon' fails a sweep with no forward ceiling on review_by; 'a-long-lived-flag-reviewed-recently-is-admitted' fails a sweep bounding review_by from created rather than from the reading date.",
   "fixtures": {
     "declarations": [
       {
@@ -712,6 +712,41 @@
         "created": "2026-09-01", "expires": "2026-10-31", "removal": "Decision on conversion.", "variants": ["control", "redesign"]
       },
       "expect": { "findings": ["expired"] }
+    },
+    {
+      "case": "a-review-date-inside-the-year-is-admitted",
+      "why": "FF3: review_by is bounded ahead of the reading date, not from created; 300 days out is inside the 365-day ceiling.",
+      "today": "2026-09-03",
+      "declaration": {
+        "name": "payments.fraud_bypass", "type": "boolean", "default": false, "kind": "operational", "scope": "global",
+        "description": "Skip the fraud provider.", "owner": "payments-oncall",
+        "created": "2026-09-01", "review_by": "2027-06-30"
+      },
+      "expect": { "findings": [] }
+    },
+    {
+      "case": "a-review-date-beyond-the-year-exceeds-the-horizon",
+      "why": "FF3: a required date field with no forward ceiling is satisfied by a date in the next century. The finding is raised the day the date is written and every day after, so the flag never becomes one nobody looks at again.",
+      "today": "2026-09-03",
+      "detector": true,
+      "declaration": {
+        "name": "payments.fraud_bypass", "type": "boolean", "default": false, "kind": "operational", "scope": "global",
+        "description": "Skip the fraud provider.", "owner": "payments-oncall",
+        "created": "2026-09-01", "review_by": "2099-01-01"
+      },
+      "expect": { "findings": ["review_horizon_exceeded"] }
+    },
+    {
+      "case": "a-long-lived-flag-reviewed-recently-is-admitted",
+      "why": "FF3: an operational flag may legitimately live for years, so what is bounded is neglect and not life. A flag created long ago whose review date was last set inside the ceiling is in date — which a sweep bounding review_by from created would wrongly report.",
+      "today": "2026-09-03",
+      "detector": true,
+      "declaration": {
+        "name": "search.degraded_mode", "type": "boolean", "default": false, "kind": "operational", "scope": "global",
+        "description": "Serve search from the cached index only.", "owner": "search-team",
+        "created": "2021-03-01", "review_by": "2027-03-01"
+      },
+      "expect": { "findings": [] }
     }
   ]
 }

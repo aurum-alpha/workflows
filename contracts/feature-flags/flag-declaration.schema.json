@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.aurumalpha.dev/feature-flags/flag-declaration.schema.json",
   "title": "Aurum Alpha feature flag declaration",
-  "description": "standards/038-feature-flags.md FF2: one flag's declaration, committed beside the code that evaluates it and built into the image. The repository's declaration file is a list of these; a name appears once. The provider holds values; this holds existence and lifetime. Conditional rules the prose states and a reviewer would otherwise remember: release and experiment flags carry expires and removal and never review_by (FF3); operational and entitlement flags carry review_by and never expires (FF3); an experiment carries two or more variants (FF10); a boolean flag's default is false (FF4). The 180-day ceiling on expires after created (FF3) is a date computation the expiry corpus part decides, not this schema. schemaVersion 1 — evolves additively per PC6.",
+  "description": "standards/038-feature-flags.md FF2: one flag's declaration, committed beside the code that evaluates it and built into the image. The repository's declaration file is a list of these; a name appears once. The provider holds values; this holds existence and lifetime. Conditional rules the prose states and a reviewer would otherwise remember: release and experiment flags carry expires and removal and never review_by (FF3); operational and entitlement flags carry review_by and never expires (FF3); an experiment carries two or more variants (FF10); a boolean flag's default is false (FF4). The 180-day ceiling on expires after created, and the 365-day ceiling on review_by ahead of the reading date, (FF3) are date computations the expiry corpus part decides, not this schema. schemaVersion 1 — evolves additively per PC6.",
   "type": "object",
   "$defs": {
     "schemaVersion": { "const": 1 },
@@ -57,7 +57,7 @@
     },
     "review_by": {
       "$ref": "#/$defs/date",
-      "description": "FF3: the last day an operational or entitlement flag is in date without review; the day after, the sweep raises a finding. Forbidden on release and experiment flags."
+      "description": "FF3: the last day an operational or entitlement flag is in date without review; the day after, the sweep raises a finding. At most 365 days ahead of the day the declaration is read — measured forward from the reading and not from created, because what is bounded here is neglect rather than life (decided by the expiry corpus part, not this schema). Forbidden on release and experiment flags."
     },
     "removal": {
       "type": "string",

@@ -123,6 +123,36 @@ on:
         description: Newline-separated KEY=value build arguments.
         type: string
         default: ""
+      stamp:
+        description: >-
+          The version identity of THIS build, which becomes the image's
+          `org.opencontainers.image.version` label. Pass the build job's
+          `stamp` output: `1.0.0` on a release commit, `1.0.1-dev.<sha7>`
+          between releases, `dev` where the repo has no version file.
+
+          PASS `stamp`, NOT `version`. They are different answers and only one
+          of them is about this build. `version` is the RELEASE version — what
+          the last release was called, or what a release commit is about to
+          call one — so labelling a mid-stream image with it claims every merge
+          is 1.0.0. That is the mutable version Principle 14 puts the version
+          in a file to avoid, written into the image instead of into a tag,
+          and nothing downstream would catch it: a label is not compared
+          against anything.
+
+          THIS JOB DOES NOT DERIVE IT, and must not grow a copy of the shared
+          version-stamp block to do so. That block has one copy per BUILD
+          system and this job is not one — it packages what a build system
+          already produced, and a packaging job renders where a build job
+          decides.
+
+          Left unset the label reads `dev`. That is the answer, not a gap in
+          one: it is what the shared block itself returns for a repo with no
+          version file, it matches no version anyone could have cut, and
+          `org.opencontainers.image.revision` carries the commit either way.
+          A repo whose only provenance is its commit SHA — client-manager says
+          so in as many words — is correctly described by it.
+        type: string
+        default: dev
       runner:
         description: >-
           Override runs-on. Leave empty for the standard default. Set to a
@@ -381,12 +411,58 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # An empty `stamp` is a wiring mistake, not a caller who did not care:
+      # omitting the input gives `dev` from the default, so the only way to
+      # reach this step with nothing is to have passed something that
+      # evaluated to nothing — `needs.<job>.outputs.stamp` naming a job that
+      # exposes no such output, most likely, which GitHub resolves to the
+      # empty string and never mentions. Left alone that ships an image
+      # labelled `org.opencontainers.image.version=`, which reads as a broken
+      # build rather than an unversioned one and is worse than either answer
+      # this input can give.
+      - name: The version label must say something
+        env:
+          STAMP: ${{ inputs.stamp }}
+        run: |
+          set -euo pipefail
+          if [ -z "${STAMP//[[:space:]]/}" ]; then
+            echo "::error::stamp is empty. Omit the input to label this image" \
+                 "'dev'; pass a build job's \`stamp\` output to label it with" \
+                 "the version. An empty value is neither, and usually means" \
+                 "the expression named an output the build job does not have."
+            exit 1
+          fi
+          echo "org.opencontainers.image.version=${STAMP}"
+
       # Labels only. Tags are job-image-publish's business, and push-by-digest
       # below refuses a tagged reference outright.
+      #
+      # `org.opencontainers.image.version` is stated; every other label is
+      # metadata-action's default and correct. Left to the default this one is
+      # derived from the tag list, and with no `tags` input that list is the
+      # action's own default rules — whose entry on a push to main is
+      # `type=ref,event=branch`. So every image the portfolio has published
+      # carries `org.opencontainers.image.version=main`: a branch name in the
+      # field that names a version, on an image job-image-publish tagged
+      # `v0.1.0`. The two disagree and neither is checked against the other.
+      # `image.revision` was right throughout, which is why nothing noticed
+      # until someone read the labels of an image they had just tagged.
+      #
+      # It cannot be fixed where it was reported, in job-image-publish. Labels
+      # live in the image config and are fixed when the image is built;
+      # `imagetools create` writes a manifest pointing at bytes that already
+      # exist and changes nothing inside them. This run is the only one that
+      # can decide this label, which is also why the version has to arrive as
+      # an input rather than be worked out here (see `stamp` above).
+      #
+      # A custom label of the same key wins over the generated one —
+      # metadata-action documents the override, and this is that.
       - id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ steps.name.outputs.image }}
+          labels: |
+            org.opencontainers.image.version=${{ inputs.stamp }}
 
       # Pushed by digest, with no tag. The staged manifest is addressable and
       # unlisted: the next two jobs pull it by digest, and nothing appears in

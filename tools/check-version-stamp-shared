@@ -7,7 +7,7 @@ Getting a different answer per build system is the whole failure this exists
 to stop — a Go repo and a firmware repo disagreeing about what 0.16.0 means is
 not a cosmetic difference, it is two versioning schemes wearing one name.
 
-It lives in three workflows rather than one composite because a reusable
+It lives in several workflows rather than one composite because a reusable
 workflow runs in the CALLER's checkout and cannot reach a catalog composite
 except by naming the catalog repository -- which used to mean a SHA pin, and so
 a two-commit dance for every edit.

@@ -23,6 +23,64 @@ on:
         description: Built client, relative to workdir. Vite's configured target.
         type: string
         default: dist/public
+      version_file:
+        description: >-
+          File holding the SemVer this repo releases under (Principle 14 — a
+          version is a commit, not a tag), relative to the REPO ROOT and not to
+          `workdir`. The version belongs to the repository, not to the JS
+          project inside it (Principle 15), and a repo whose client sits in
+          `client/` still keeps one `.version` at the top.
+
+          A repo with nothing deciding from the string has no version file and
+          none is required: Principle 16 says such a repo has no version at
+          all. `version` then reads `dev`, `version_changed` is `false`, and
+          nothing downstream mints anything.
+        type: string
+        default: .version
+    outputs:
+      version:
+        description: >-
+          The version file's contents, verbatim. The image jobs tag with it and
+          job-version-release cuts a tag from it, so it is read once here rather
+          than parsed again by everything downstream. `dev` where the repo has
+          no version file.
+
+          This is the RELEASE version — what the last release was called, or
+          what this commit is about to call one. It is not what a mid-stream
+          build calls itself: see `stamp`.
+        value: ${{ jobs.build.outputs.version }}
+      version_changed:
+        description: >-
+          `true` when this commit changed the version file, `false` otherwise.
+
+          THIS IS THE RELEASE SWITCH. A version-named emission — a git tag, a
+          v<version> image tag, a GitHub release, a versioned package — is
+          produced only where this is true. Everything else on main publishes
+          under sha-<short> and latest, which name a commit rather than a
+          claim.
+
+          Read it in the caller as
+          `needs.<build-job>.outputs.version_changed == 'true'`, and hand it to
+          job-version-release, which mints from it and never re-derives it.
+          Without it, a v<version> image tag is re-applied on every merge and
+          silently re-points at new bytes — a mutable version, which is the
+          exact thing Principle 14 puts the version in a file to avoid.
+        value: ${{ jobs.build.outputs.version_changed }}
+      stamp:
+        description: >-
+          The version identity of THIS build: `version` on a release commit,
+          and a SemVer pre-release of the next patch — `0.2.1-dev.<sha7>` —
+          on every other commit.
+
+          NOTHING IN THIS JOB CONSUMES IT, and that is worth saying plainly
+          rather than leaving a caller to infer a guarantee that is not here.
+          A Vite bundle has no linker to stamp: the Go and PlatformIO jobs put
+          this string into the artifact with `-X` and a build flag, and this
+          job hands it out instead. It is the string a packaging or provenance
+          step renders (Principle 13), computed once by the block every build
+          system in the portfolio shares, so a JS repo that grows one does not
+          get to invent a second answer to what version a mid-stream build is.
+        value: ${{ jobs.build.outputs.stamp }}
 
 jobs:
   build:
@@ -31,8 +89,18 @@ jobs:
     permissions:
       contents: read
       packages: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      version_changed: ${{ steps.version.outputs.version_changed }}
+      stamp: ${{ steps.version.outputs.stamp }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # HEAD^ has to exist: the shared block below asks whether THIS commit
+          # changed the version file, and the default depth-1 clone has no
+          # parent to diff against. Same line, same reason, in job-go-build and
+          # job-build-cpp-pio.
+          fetch-depth: 2
       # The workdir is DEFAULTED, not restricted. `.` is the common shape --
       # the JS project is the repo -- and `client` is the second, its own pnpm
       # project inside a Go or PHP tree. A repo that keeps its UI anywhere else
@@ -72,6 +140,119 @@ jobs:
                  ".node-version, relative to the repo root."
             exit 1
           fi
+      # What version is this build, and did this commit cut a release. One
+      # answer, computed here, so nothing downstream re-derives it — the
+      # duplication job-version-release was extracted to end, arriving in a
+      # third build system.
+      #
+      # NO working-directory, and that is the one place this step deliberately
+      # differs from its copy in job-go-build. `git diff --name-only` prints
+      # paths from the repo root, and the block matches version_file against
+      # that list; running it inside `client/` would compare a root-relative
+      # path against a workdir-relative one and answer "not a release" for
+      # every release. The version is the repository's (Principle 15), so it is
+      # read where it lives.
+      #
+      # python3, not bash: the block is shared verbatim with the Go and
+      # PlatformIO jobs, and a checker fails this repository if the copies
+      # drift. Rewriting it in shell here would be the drift.
+      - name: Resolve the version
+        id: version
+        shell: python3 {0}
+        env:
+          VERSION_FILE: ${{ inputs.version_file }}
+        run: |
+          import os, pathlib, subprocess
+
+          # No version file is a valid answer, not an error: Principle 16 says a
+          # repo with nothing deciding from the string has no version at all.
+          vf = pathlib.Path(os.environ["VERSION_FILE"])
+          version = vf.read_text().strip() if vf.is_file() else "dev"
+          commit = subprocess.run(["git", "rev-parse", "--short=7", "HEAD"],
+                                  capture_output=True, text=True).stdout.strip() or "unknown"
+
+          # --- BEGIN shared: version stamp. KEEP EVERY COPY IDENTICAL.
+          # tools/check-version-stamp-shared compares this region across every workflow
+          # job that carries it and fails if they diverge, so editing one copy without
+          # the others turns this repo red rather than letting two build systems drift
+          # into two versioning semantics.
+          #
+          # It is duplicated rather than extracted because a reusable workflow runs in the
+          # CALLER's checkout and cannot reach a catalog composite except by naming the
+          # catalog repository. That used to mean a SHA pin, and so a two-commit dance
+          # for every edit; since the portfolio moved to @main it does not, and the
+          # reason for the duplicate has expired without the duplicate going with it.
+          # Extracting it is worth its own change. The checker is what makes it safe
+          # meanwhile.
+          def resolve_version_stamp(version_file, version, commit):
+              """Did THIS commit cut a release, and what should the build stamp?
+
+              Returns (changed, stamp). One answer, so nothing downstream re-derives it.
+
+              A release is a commit that changed the version file. fetch-depth: 2 makes
+              HEAD^ available; it resolves on a push (the previous commit) and on a pull
+              request (the base branch tip, because the merge ref's first parent is the
+              base). A root commit has no parent and is not a release: a repository's
+              first commit is not a release event.
+
+              Anything else is a PRE-RELEASE of the next PATCH, which is a floor rather
+              than a guess. Whatever the next release turns out to be it is at least
+              0.15.1, so the stamp sorts above the last release and below every release
+              that could follow:
+
+                  0.15.0  <  0.15.1-dev.abc  <  0.15.1-rc.1  <  0.15.1  <  0.16.0
+
+              Build metadata (0.15.0+dev.abc) would be wrong: SemVer ignores it in
+              precedence, so such a build compares EQUAL to the release it is not.
+              `dev` and not `beta` or `rc`, which belong to pre-releases a human cuts on
+              purpose; ordering is unaffected, since dev < rc by SemVer's ASCII rule.
+
+              Debian is NOT this string. dpkg reads `-` as the separator before the
+              debian-revision, so 0.15.1-dev.abc sorts ABOVE 0.15.1 there; a .deb wants
+              `~`. That rendering belongs to whichever job packages one.
+              """
+              import pathlib as _pathlib, re as _re, subprocess as _subprocess
+
+              def _cut_release():
+                  if not _pathlib.Path(version_file).is_file():
+                      return False
+                  if _subprocess.run(["git", "rev-parse", "--verify", "-q", "HEAD^"],
+                                     capture_output=True).returncode != 0:
+                      print("HEAD has no parent; treating this as not a release.")
+                      return False
+                  r = _subprocess.run(["git", "diff", "--name-only", "HEAD^", "HEAD"],
+                                      capture_output=True, text=True)
+                  if r.returncode != 0:
+                      # Never guess True. A false positive mints a version; a false
+                      # negative only withholds one, and a withheld release is a pull
+                      # request someone reopens.
+                      print(f"::warning::could not diff HEAD^..HEAD "
+                            f"({r.stderr.strip()}); treating this as not a release.")
+                      return False
+                  return version_file in r.stdout.split()
+
+              changed = _cut_release()
+              if changed or version == "dev":
+                  return changed, version
+              m = _re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", version)
+              if not m:
+                  # No next patch to be a pre-release of, so say so and order nothing.
+                  print(f"::warning::{version_file} reads {version!r}, which is not "
+                        "MAJOR.MINOR.PATCH; stamping it unordered.")
+                  return changed, f"{version}-dev.{commit}"
+              major, minor, patch = (int(g) for g in m.groups())
+              return changed, f"{major}.{minor}.{patch + 1}-dev.{commit}"
+          # --- END shared: version stamp ---
+
+          changed, stamp = resolve_version_stamp(
+              os.environ["VERSION_FILE"], version, commit)
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+              fh.write(f"version={version}\n")
+              fh.write(f"version_changed={'true' if changed else 'false'}\n")
+              fh.write(f"stamp={stamp}\n")
+          print(f"version={version} stamp={stamp} release={changed} commit={commit}")
+
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: ${{ inputs.workdir }}/.node-version

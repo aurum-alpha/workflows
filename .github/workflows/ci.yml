@@ -265,7 +265,7 @@ jobs:
   # `always()` rescues only the job that carries it. ci-ok carries one, so it
   # survives version-gate skipping on a push; this job did not, so it
   # inherited the skip through ci-ok and never ran. The 2673932 merge is the
-  # evidence: lint, conformance and ci-ok all green, release skipped with no
+  # evidence: lint, conformance and ci-ok all green, this job skipped with no
   # steps at all.
   #
   # version-gate skips on EVERY push to main — it is pull_request-only, since
@@ -282,7 +282,7 @@ jobs:
   # What is NOT in the `if:` is the push/main condition. The catalog job applies
   # that per-step, so gating the job to main here would be rule D5 — and it
   # would take back the pull-request rehearsal that is half the point.
-  release:
+  version-release:
     needs: [ci-ok, version-read]
     if: >-
       always()

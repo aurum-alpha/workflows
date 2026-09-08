@@ -281,6 +281,27 @@ class Undeclared(str):
     """
 
 
+CATALOG_USES_RE = re.compile(
+    r"([\w.-]+)/([\w.-]+)/\.github/workflows/([\w.-]+\.ya?ml)@"
+)
+
+
+def catalog_target(uses: str) -> str | None:
+    """`<repo>/<file.yml>` for a call into the catalog, else None.
+
+    One parse of `uses:`, shared by the declaration reader and rule ID, so the
+    two can never disagree about what counts as a catalog call.
+
+    A local path — `./.github/workflows/x.yml`, which is how the catalog calls
+    its own jobs — does not match, and that is deliberate rather than an
+    oversight: see rule ID for what it means and why it is not papered over.
+    """
+    m = CATALOG_USES_RE.match(uses.strip())
+    if not m or m.group(1) != CATALOG_OWNER:
+        return None
+    return f"{m.group(2)}/{m.group(3)}"
+
+
 def catalog_declaration(uses: str) -> dict[str, str] | Undeclared | None:
     """The `# aurum-job:` declaration of the catalog workflow this job calls.
 
@@ -293,13 +314,10 @@ def catalog_declaration(uses: str) -> dict[str, str] | Undeclared | None:
     A catalog file the clone does not carry is left to rule CAT, which already
     reports it with the catalog listing it searched.
     """
-    m = re.match(
-        r"([\w.-]+)/([\w.-]+)/\.github/workflows/([\w.-]+\.ya?ml)@", uses.strip()
-    )
-    if not m or m.group(1) != CATALOG_OWNER:
+    key = catalog_target(uses)
+    if key is None:
         return None
-    _, repo_name, fname = m.groups()
-    key = f"{repo_name}/{fname}"
+    repo_name, fname = key.split("/", 1)
     if key in _DECL_CACHE:
         return _DECL_CACHE[key]
     found = None
@@ -533,6 +551,58 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
     if not defines_catalog(repo):
         for finding in adoption_findings(text):
             bad("ADOPT", finding)
+
+    # --- ID: a job id ends in the capability it calls ---------------------
+    #
+    # Job ids are the handle a human uses to manage CI across a dozen
+    # repositories, so an id that does not name its capability costs a lookup
+    # every time someone reads a check name. The grammar is deliberately loose
+    # in front and strict at the end:
+    #
+    #     (?:[a-z0-9]+-)*<capability>(?:-[a-z0-9]+)?
+    #
+    # Everything BEFORE the capability is optional and unconstrained — purpose,
+    # language, framework, product, in whatever order the repo finds clear. One
+    # optional segment AFTER it is the tool slot, which is what lets
+    # `server-go-lint-errcheck` and `server-go-lint-staticcheck` differ while
+    # both plainly calling lint. A bare `osv-scan` passes, because a repo with
+    # one caller has nothing to disambiguate.
+    #
+    # What the rule does NOT do is compare the id's language segment to the
+    # declaration's `language=`. It would look like a free extra check and it
+    # would be wrong: the segments in front are unordered and unlabelled, so
+    # `client-ts-react-build` has no field the checker can point at and call
+    # the language. Guessing by position would fail the first id that puts
+    # product before language, which is a legal id.
+    id_callers: dict[str, list[str]] = {}
+    for job in sorted(jobs):
+        target = catalog_target(jobs[job].get("uses", ""))
+        if target is None:
+            continue
+        d = catalog_declaration(jobs[job].get("uses", ""))
+        if not isinstance(d, dict):
+            continue  # Undeclared: rule DECL owns that, and a guess here would be one.
+        cap = d["capability"]
+        id_callers.setdefault(target, []).append(job)
+        if not re.fullmatch(rf"(?:[a-z0-9]+-)*{re.escape(cap)}(?:-[a-z0-9]+)?", job):
+            bad("ID", f"'{job}' calls {target}, which declares capability={cap} — "
+                      f"the id must end in '{cap}', optionally followed by one tool "
+                      f"segment (e.g. '{cap}', 'server-go-{cap}', '{cap}-sometool')")
+
+    # Two callers of one catalog job cannot both be bare, and in practice
+    # neither may be: whichever kept the bare id would read as "the" caller and
+    # the other as a variant, when they are peers. event-manager calls
+    # job-image-cached twice — the builder image and the production base — and
+    # `build-image-cached` / `base-image-cached` say which is which at a glance.
+    for target, ids in sorted(id_callers.items()):
+        if len(ids) < 2:
+            continue
+        cap = catalog_declaration(jobs[ids[0]]["uses"])["capability"]
+        bare = [j for j in ids if j == cap]
+        for j in bare:
+            bad("ID", f"'{j}' is one of {len(ids)} callers of {target} "
+                      f"({', '.join(ids)}) — with more than one caller no id may be "
+                      f"the bare capability, or it reads as the canonical one")
 
     # --- P18: ci.yml is the pipeline -------------------------------------
     wf_dir = repo / ".github" / "workflows"

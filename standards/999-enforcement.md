@@ -46,6 +46,9 @@ will.
 | 18 | One workflow per repo | `check-ci-conformance` P18 | gated |
 | 19 | The catalog is the default; a local job is a claim | `check-ci-conformance` ADOPT (half) | mixed⁴ |
 | — | A job's kind is read off the workflow it calls | `check-ci-conformance` ROLE, DECL | gated |
+| — | A job id ends in the capability it calls | `check-ci-conformance` ID | gated |
+| — | With two callers of one catalog job, neither id is bare | `check-ci-conformance` ID | gated |
+| — | The catalog's own job ids follow the same grammar | — | **review only**⁵ |
 | — | Standard job DAG (build first) | `check-ci-conformance` D1–D3 | gated |
 | — | Every job blocks something | `check-ci-conformance` D6 | gated |
 | — | Something runs the image | `check-ci-conformance` D7 | gated |
@@ -90,16 +93,32 @@ release job anywhere would have caught it.
 
 ⁴ Two halves, and one of them is gated. What a stub must look like once it
 calls the catalog — the pin, the stub keys, `secrets: inherit`, the rollup — is
-checked. What is **not** yet checked is the half that decides which jobs are
-stubs at all: a job id naming a catalog capability must call that catalog job.
+checked. What is **not** checked is the half that decides which jobs are stubs
+at all: a job id naming a catalog capability must call that catalog job.
 
-The declarations that half needs now exist — every catalog job states its
-capability, language and role, and the row above reads them — so what remains is
-the id grammar itself,
-`<purpose>-<language>[-<framework>][-<product>]-<capability>[-<tool>]`, checked
-against the declaration of the job actually called. Six id shapes in the fleet
-disagree with the job they call today, so landing it is a rename as much as a
-rule. Until then, a local body whose id names a covered capability passes.
+Rule ID is the near half of that and now gated: a job that *does* call the
+catalog must be named for the capability it calls. The far half — a job that
+names a capability and calls nothing — stays a review question, because the
+checker reaches a job through its `uses:` line and a local body has none to
+follow. So a local body whose id names a covered capability still passes.
+
+This footnote previously said the grammar was
+`<purpose>-<language>[-<framework>][-<product>]-<capability>[-<tool>]` and that
+six ids disagreed with the job they called. Both were wrong. The prefix
+segments are optional and unordered, so the real grammar is
+`(?:[a-z0-9]+-)*<capability>(?:-[a-z0-9]+)?`; the mandatory form would have
+failed `osv-scan`, `coverage-upload` and `version-gate`, which are correct.
+And the count was nine, not six, across five repositories — measured by running
+the rule against every pre-rename tree rather than by reading ids.
+
+⁵ Rule ID resolves a job through an `aurum-alpha/workflows/...@main`
+reference. The catalog calls its own jobs by local path, which matches nothing,
+so the rule is silent on `workflows` itself. Extending it there would mean
+teaching the declaration reader a second address form, and that reader also
+feeds the D-rules — so it would change what those rules say about the catalog's
+own graph, which is a larger change than a naming rule should make. Held to by
+review instead: the catalog's `release` job was renamed `version-release` by
+hand, not by a failing gate.
 
 ² Gated in every repo whose `ci.yml` calls `job-version-gate`, and in no
 other. Unlike the ¹ checkers this one is not carried by

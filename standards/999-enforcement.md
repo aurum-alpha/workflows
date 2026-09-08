@@ -112,13 +112,23 @@ And the count was nine, not six, across five repositories — measured by runnin
 the rule against every pre-rename tree rather than by reading ids.
 
 ⁵ Rule ID resolves a job through an `aurum-alpha/workflows/...@main`
-reference. The catalog calls its own jobs by local path, which matches nothing,
-so the rule is silent on `workflows` itself. Extending it there would mean
-teaching the declaration reader a second address form, and that reader also
-feeds the D-rules — so it would change what those rules say about the catalog's
-own graph, which is a larger change than a naming rule should make. Held to by
-review instead: the catalog's `release` job was renamed `version-release` by
-hand, not by a failing gate.
+reference, so it is silent on `workflows` itself, which calls its own jobs by
+local path.
+
+That local path is deliberate rather than an oversight, and the silence is its
+price. A catalog pull request is the staging environment for a change to the
+catalog: it must run the rules *as the pull request changes them*, not the rules
+already on `main`. A self-reference at `@main` would mean a pull request editing
+a rule was judged by the version it replaces, so no rule change could exercise
+itself before landing. [`010-ci.md`](010-ci.md) carries the full argument, and
+records the same reasoning for the `ci-ok` composite action.
+
+Extending rule ID to a second address form would also reach further than a
+naming rule should: the same declaration reader feeds the D-rules, so it would
+change what those say about the catalog's own graph.
+
+Held to by review instead: the catalog's `release` job was renamed
+`version-release` by hand, not by a failing gate.
 
 ² Gated in every repo whose `ci.yml` calls `job-version-gate`, and in no
 other. Unlike the ¹ checkers this one is not carried by

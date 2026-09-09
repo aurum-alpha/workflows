@@ -1,0 +1,196 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/billing/catalog.schema.json",
+  "title": "Aurum Alpha billing catalog",
+  "description": "standards/075-billing.md BL1: the one versioned file in the repository that declares every plan, price, interval, currency, trial length and entitlement a product sells, validated in CI and built into the image. The billing provider is provisioned from it by a job and never authored directly. It carries the four closed sets of BL3 (capabilities, quota and allowance metrics, settings) and the two policies BL4 reads (the past-due grace period and the suspended set). Cross-references the schema cannot express and the corpus rejects instead: every plan gives a value for every declared metric and setting; every capability a plan lists is declared; ids are unique across capabilities, metrics and settings. Money is IP5's minor units by $ref, never restated. schemaVersion 1 — evolves additively per PC6.",
+  "type": "object",
+  "$defs": {
+    "entitlementId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "BL3: snake_case with no dot, for a capability, a metric or a setting. A permission always has exactly one dot (070 RB2) and a flag name always has one (038 FF2); a capability never does, so no identifier can be mistaken for the wrong kind by a reader or a linter."
+    },
+    "planId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "BL1: the plan's stable identifier, the value a ledger row records and a problem envelope names. Display names are the plan's 'name'."
+    },
+    "catalogVersion": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+      "description": "BL1: the version of this file. Every change bumps it; a ledger row records the version it was priced under (BL2) and the entitlement cache keys on it (BL4)."
+    },
+    "ceiling": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "BL3: a quota or allowance value. A non-negative integer in the metric's unit, or null for no ceiling. Zero is a ceiling: nothing may be created or consumed, which is what the suspended set yields."
+    },
+    "settingValue": {
+      "type": ["integer", "string", "boolean"],
+      "description": "BL3: a setting's value, of the type its declaration states. Read as configuration and never checked."
+    },
+    "price": {
+      "type": "object",
+      "description": "BL1: one price for one interval in one currency. The provisioning job creates a provider price object per entry and never edits one: a changed amount is a new entry and a new catalog version.",
+      "properties": {
+        "interval": {
+          "enum": ["month", "year"],
+          "description": "BL1: the billing period the price recurs on, and the period an allowance resets on (BL3)."
+        },
+        "amount": {
+          "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/money",
+          "description": "IP5: integer minor units plus an explicit ISO 4217 currency. A zero amount is a free plan (BL8)."
+        }
+      },
+      "required": ["interval", "amount"],
+      "additionalProperties": false
+    },
+    "capability": {
+      "type": "object",
+      "description": "BL3: a yes-or-no entitlement that gates whether a function is available to the tenant. Declared here whether or not any plan includes it, because the code that checks it exists either way (BL1).",
+      "properties": {
+        "id": { "$ref": "#/$defs/entitlementId" },
+        "description": { "type": "string", "minLength": 1 }
+      },
+      "required": ["id", "description"],
+      "additionalProperties": false
+    },
+    "metric": {
+      "type": "object",
+      "description": "BL3: a quota (a ceiling on what may exist at once) or an allowance (a ceiling on what may be consumed per billing period). The kind is declared once here, because the code does different things with the two values and a plan may not reinterpret a metric.",
+      "properties": {
+        "id": { "$ref": "#/$defs/entitlementId" },
+        "kind": {
+          "enum": ["quota", "allowance"],
+          "description": "BL3: quota is compared against the domain's own count at creation; allowance against a usage record the domain writes, reset on the period boundary."
+        },
+        "unit": {
+          "type": "string",
+          "minLength": 1,
+          "description": "BL3: the thing counted — 'seat', 'project', 'call'. For display and for the problem envelope's detail; the check compares integers."
+        },
+        "description": { "type": "string", "minLength": 1 }
+      },
+      "required": ["id", "kind", "unit", "description"],
+      "additionalProperties": false
+    },
+    "setting": {
+      "type": "object",
+      "description": "BL3: a value the plan fixes and the code reads as configuration. Never checked, so it has no denial.",
+      "properties": {
+        "id": { "$ref": "#/$defs/entitlementId" },
+        "type": {
+          "enum": ["integer", "string", "boolean"],
+          "description": "BL3: the type every plan's value for this setting takes."
+        },
+        "description": { "type": "string", "minLength": 1 }
+      },
+      "required": ["id", "type", "description"],
+      "additionalProperties": false
+    },
+    "plan": {
+      "type": "object",
+      "description": "BL1: one plan. Its prices, its trial length, the capabilities it includes, a value for every declared metric and setting, and display-only terms no code checks (BL3).",
+      "properties": {
+        "id": { "$ref": "#/$defs/planId" },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Display name. The pricing page renders this; the code never branches on it."
+        },
+        "prices": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/price" },
+          "description": "BL1: at least one price. A free tier is a plan whose only price has a zero amount (BL8)."
+        },
+        "trial_days": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "BL8: the trial length in days, zero for none. A sign-up onto a plan with a trial writes trial_started; onto one without, upgraded from no plan (BL2, BL9)."
+        },
+        "capabilities": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/entitlementId" },
+          "description": "BL3: the capabilities this plan includes. Every entry is declared in the catalog's capabilities; the corpus rejects one that is not."
+        },
+        "quotas": {
+          "type": "object",
+          "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
+          "additionalProperties": { "$ref": "#/$defs/ceiling" },
+          "description": "BL3: one value per declared quota metric, keyed by metric id. A plan missing a declared metric is rejected by the corpus, because an absent ceiling is neither zero nor unlimited and the function would have to guess."
+        },
+        "allowances": {
+          "type": "object",
+          "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
+          "additionalProperties": { "$ref": "#/$defs/ceiling" },
+          "description": "BL3: one value per declared allowance metric, keyed by metric id, consumed per billing period."
+        },
+        "settings": {
+          "type": "object",
+          "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
+          "additionalProperties": { "$ref": "#/$defs/settingValue" },
+          "description": "BL3: one value per declared setting, keyed by setting id, of the declared type."
+        },
+        "terms": {
+          "type": "object",
+          "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
+          "additionalProperties": { "type": "string" },
+          "description": "BL3: display-only terms — a support tier, an SLA. Rendered by a pricing page and checked by nothing; a term that code needs to check is a capability or a setting."
+        }
+      },
+      "required": ["id", "name", "prices", "trial_days", "capabilities", "quotas", "allowances", "settings"],
+      "additionalProperties": false
+    }
+  },
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "description": "PC6: the shape's version, distinct from the catalog's own 'version'."
+    },
+    "version": { "$ref": "#/$defs/catalogVersion" },
+    "past_due_grace_days": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "BL4: how long a past_due subscription keeps the full plan, counted from the payment_failed row's effective time, before the suspended set applies. A commercial policy, stated here so it is reviewed as a diff and never decided in a handler."
+    },
+    "suspended": {
+      "type": "object",
+      "description": "BL4: what a plan contributes once it has stopped contributing in full — after the grace period for past_due, after the period end for cancelled. Only capabilities are listed: every quota and allowance is zero and every setting keeps the plan's value, by rule.",
+      "properties": {
+        "capabilities": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/entitlementId" },
+          "description": "BL4: the capabilities that remain while suspended. Usually empty, because reading what exists and reaching billing settings are permission-gated routes and never capabilities; a product that has put either behind a capability names it here."
+        }
+      },
+      "required": ["capabilities"],
+      "additionalProperties": false
+    },
+    "capabilities": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/capability" },
+      "description": "BL3: the closed set of capabilities. A check against one not listed here is an error, not a denial (BL4)."
+    },
+    "metrics": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/metric" },
+      "description": "BL3: the closed set of quota and allowance metrics. Empty allowances are the normal case for a product with no metered feature."
+    },
+    "settings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/setting" },
+      "description": "BL3: the closed set of plan-fixed settings."
+    },
+    "plans": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/plan" },
+      "description": "BL1: the plans, in the order a pricing page presents them. Plan ids are unique; the corpus rejects a duplicate."
+    }
+  },
+  "required": ["schema_version", "version", "past_due_grace_days", "suspended", "capabilities", "metrics", "settings", "plans"],
+  "additionalProperties": false
+}

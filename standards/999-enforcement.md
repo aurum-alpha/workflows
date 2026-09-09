@@ -1005,3 +1005,39 @@ tenant isolation as a wire fact — everything else in this standard is either
 defence behind them or the process by which a host comes to exist — and
 neither fails today when it is wrong, because a test that exercises one
 tenant at a time never sends the request that would show it.
+
+## Billing standard
+
+Rules from [`075-billing.md`](075-billing.md) — the catalog, the subscription
+as a projection of an append-only ledger, the four kinds of entitlement, the
+pure derivation and its place in the request, the provider adapter, webhooks
+and reconciliation, plan-change and trial policy, sign-up, and audit and export.
+Authorization is [`070-rbac.md`](070-rbac.md)'s; the check runs after RB7's and
+before the domain operation.
+
+| # | Rule | Enforced by | Status |
+|---|---|---|---|
+| BL1 | The catalog is one versioned file in the repository, validated against `catalog.schema.json`, built into the image; `catalog.provision` authors the provider from it and never the reverse; prices grandfathered, entitlements current; a price appears nowhere else | **schema-decided** for the file, plus two corpus rejections the schema cannot express — a plan missing a declared metric, a plan listing an undeclared capability (proposed `check-billing-catalog`, static over one committed file). That the provider was provisioned from it and not edited by hand is BL6's finding; a price typed into content is a review question | **review only** |
+| BL2 | One projection per tenant written only by applying a ledger row; closed status, kind and actor sets; recorded and effective times; a future-effective row is the one pending change and a later-recorded row supersedes it; append-only by grant | the closed sets and the single `pending_change` are **schema-decided**; the fold is **decided by the corpus** — the plan before the last upgrade, the pending downgrade, the last and first day of a cancelled period, the superseded cancellation, two of them verified detectors. The `INSERT`/`SELECT`-only grant is AE6's proposed grant check applied to a second table | **review only** |
+| BL3 | Four kinds — capability, quota, allowance, setting — distinguished by what the code does with the value; ids `snake_case` with no dot, unique across the three sets; nothing per user; terms displayed and never checked | ids are **static and decidable** — every declared id matches `^[a-z][a-z0-9_]*$` and intersects neither the permission set nor the flag declaration (extends RB2's proposed `check-permission-names`); a per-user entitlement is a schema rejection; no-ceiling-is-not-zero and a quota at its ceiling are corpus cases. That a term is genuinely unchecked is a review question | **review only** |
+| BL4 | The derivation is a pure function of catalog, ledger, overrides and instant; the status policy; the fixed order 401 → 404 → 403 → `403 entitlement-required` → domain operation; usage passed in, never counted; the cache keyed on tenant, catalog version and last row and carrying `valid_until`; the `/me` block; never the provider on the request path | **decided entirely by the decision corpus** — twenty-eight cases across seven operations. **One corpus case is a verified detector for the cache rule**: the same capability inside and then outside a grace period with no row between, which a cache keyed on the ledger alone answers twice. The problem shape is schema-decided against `problem.schema.json` and the extension def. Purity and the request-path order resist a checker — a gate reading source for either is the PC4 violation — and stay review questions | **review only** |
+| BL5 | One adapter per provider behind one interface, selected by configuration; no vendor SDK in domain code; no provider credential in the server image; hosted checkout or tokenised fields, card data never on our servers; promotion codes validated at checkout | the startup line names the adapter (`job-image-starts`, proposed) and the credential half is WK8's per-image fact. Whether domain code imports the SDK is a fact about source and resists a checker at its own level; that no card field posts to our server is a review question on every payment route | **review only** |
+| BL6 | Provider events enter through AM8's four steps with `verify` inside the adapter and the provider event id on the row; `billing.reconcile` is periodic with `stale_after`, compares projection to provider, and raises a finding rather than writing | the endpoint order is 055's corpus; the duplicate-event rejection is a corpus case; the job's declaration is JB3's schema and its staleness JB8's alert. That a disagreement became a finding and not a quiet row is a review question on the job's body | **review only** |
+| BL7 | Upgrade immediate with proration; downgrade and cancellation as a future-effective row at period end; reactivation supersedes; above a new quota nothing deleted and nothing new created; no change in the provider's dashboard | the timings and the over-quota rule are **corpus-decided** — the pending downgrade before and after its effective time, the exceeded quota after it. A dashboard change is BL6's finding. That a route deletes nothing to fit a plan is a review question | **review only** |
+| BL8 | A trial is status `trialing` with `trial_end` and a `trial_started` row; `trial.expire` is periodic with `stale_after` and writes `trial_converted` or `trial_expired`; warnings under 058; free tier against trial declared in Conventions | the trial-contributes-the-full-plan and expired-trial-is-suspended cases are in the corpus; the job's declaration is JB3's schema; the Conventions declaration is a grep. That the notification category exists is NF5's row | **review only** |
+| BL9 | Sign-up runs in the product from a hand-off carrying only non-personal context; one transaction writes tenant, first administrator, projection with its first row, outbox events and audit events; identity via AU4's idempotent `ensureIdentity`; the provider customer keyed on the tenant id | resists a checker honestly: one transaction is a property of a code path, and a gate proving it would read source. The observable half — a tenant row with no subscription row — is a proposed schema invariant under SD10 (a foreign key the migration carries) | **review only** |
+| BL10 | Every ledger row emits an 080 event in the same transaction, action the declared `subscription.*` permission, actor mapped per AE2; the ledger and overrides are inventory entries that export; retention under a `retain` treatment with a named basis | the event-per-row is AE8's transaction test and AE5's proposed floor check over the `subscription.*` permissions; the inventory entries are DR1's schema. That the retention basis is genuine is a review question | **review only** |
+
+**The corpus is the gate to land first**, and it is BL4's row that promotes:
+an implementation loads the fixture, runs twenty-eight checks and ten
+rejections, and either reproduces every result or names the one it failed —
+no service, no provider, no network. It was run before landing against a
+reference implementation, and the six detectors were checked against
+deliberately weakened ones: the cache without `valid_until` fails exactly the
+inside-then-outside-grace case; the effective-order fold fails exactly the
+superseded cancellation; the pending-cancellation-read-as-cancelled fold fails
+exactly the last day of the period; the no-`expires_at` variant fails exactly
+the expired override; the projection-only and apply-at-recording variants fail
+their named case together with the other dated cases the shortcut breaks. Each
+passes everything else. BL1's and BL3's static checks over the committed
+catalog are the cheap second gate, in the shape of `check-permission-names`.

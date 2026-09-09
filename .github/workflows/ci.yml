@@ -47,6 +47,12 @@ jobs:
       - name: Check our own ci.yml against CI_STANDARD
         run: tools/check-ci-conformance --repo-root .
 
+      # Charter D10, the writing convention. Warn-only until the documents
+      # written before it are under the threshold; the ledger row moves to
+      # gated in its own change, and this flag goes with it.
+      - name: Measure the documents against the writing convention
+        run: tools/check-doc-style --warn-only --summary
+
       # #126 renamed a checker and left job-ci-conformance.yml invoking the
       # old path, and nothing noticed until a caller hit exit 127. This is the
       # cheapest possible check for that, and it lives here rather than in a

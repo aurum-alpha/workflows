@@ -1,0 +1,180 @@
+#!/usr/bin/env python3
+"""Measure the documents against the writing convention (charter D10).
+
+The charter says every document here is written in Simplified Technical
+English: one idea per sentence, a short sentence, a short paragraph, active
+voice, and words with one meaning. Most of that is judgment. This checker
+holds the part that is not:
+
+  D10a  a sentence in prose has at most 25 words
+  D10b  a paragraph has at most 6 sentences
+  D10c  the banned words do not appear: should, may, ensure, provide,
+        utilize, leverage, "in order to"
+  D10d  a dash does not join two clauses in prose
+
+What it reads: README.md, AGENTS.md, standards/*.md and solutions/*.md by
+default, or the paths given. What it skips: fenced code, tables, headings,
+HTML comments, and the target of every link. A list item is its own
+paragraph. A sentence ends at a full stop, a question mark or an exclamation
+mark followed by space and a capital, a quote, an asterisk or a bracket, so
+"e.g." and a version number do not end one.
+
+Run:                 tools/check-doc-style
+Report, never fail:  tools/check-doc-style --warn-only
+Totals only:         tools/check-doc-style --summary
+"""
+
+from __future__ import annotations
+
+import argparse
+import glob
+import pathlib
+import re
+import sys
+
+BANNED = [
+    (re.compile(r"\bshould\b", re.I), "should"),
+    (re.compile(r"\bmay\b"), "may"),
+    (re.compile(r"\bensures?\b", re.I), "ensure"),
+    (re.compile(r"\bprovides?\b", re.I), "provide"),
+    (re.compile(r"\butili[sz]es?\b", re.I), "utilize"),
+    (re.compile(r"\bleverages?\b", re.I), "leverage"),
+    (re.compile(r"\bin order to\b", re.I), "in order to"),
+]
+
+SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[A-Z*`\"'(\[])")
+WORD = re.compile(r"[A-Za-z0-9][A-Za-z0-9_'/.:-]*")
+FENCE = re.compile(r"^\s*(```|~~~)")
+LIST_ITEM = re.compile(r"^\s*(?:[-*+]|\d+\.)\s+")
+HTML_COMMENT = re.compile(r"<!--.*?-->", re.S)
+LINK_TARGET = re.compile(r"\]\([^)]*\)")
+INLINE_CODE = re.compile(r"`[^`]*`")
+
+
+def paragraphs(text: str):
+    """Yield (first_line_number, paragraph_text) for prose only."""
+    text = HTML_COMMENT.sub("", text)
+    lines = text.split("\n")
+    in_fence = False
+    buf: list[str] = []
+    start = 0
+
+    def flush():
+        nonlocal buf
+        if buf:
+            yield_para = (start, " ".join(s.strip() for s in buf))
+            buf = []
+            return yield_para
+        return None
+
+    for n, line in enumerate(lines, 1):
+        if FENCE.match(line):
+            in_fence = not in_fence
+            p = flush()
+            if p:
+                yield p
+            continue
+        if in_fence:
+            continue
+        stripped = line.strip()
+        if not stripped or stripped.startswith("|") or stripped.startswith("#"):
+            p = flush()
+            if p:
+                yield p
+            continue
+        if LIST_ITEM.match(line):
+            p = flush()
+            if p:
+                yield p
+            start = n
+            buf = [LIST_ITEM.sub("", line)]
+            continue
+        if not buf:
+            start = n
+        buf.append(line)
+    p = flush()
+    if p:
+        yield p
+
+
+def sentences(para: str) -> list[str]:
+    para = LINK_TARGET.sub("]", para)
+    return [s for s in SENTENCE_END.split(para) if s.strip()]
+
+
+def word_count(sentence: str) -> int:
+    sentence = INLINE_CODE.sub("code", sentence)
+    return len(WORD.findall(sentence))
+
+
+def check_file(path: pathlib.Path, max_words: int, max_sentences: int):
+    findings = []
+    text = path.read_text(encoding="utf-8")
+    n_sentences = 0
+    for line_no, para in paragraphs(text):
+        sents = sentences(para)
+        n_sentences += len(sents)
+        if len(sents) > max_sentences:
+            findings.append((line_no, "D10b", f"paragraph has {len(sents)} sentences (max {max_sentences})"))
+        for s in sents:
+            words = word_count(s)
+            if words > max_words:
+                findings.append((line_no, "D10a", f"{words} words: {s[:90]}"))
+            for rx, name in BANNED:
+                if rx.search(s):
+                    findings.append((line_no, "D10c", f"'{name}': {s[:90]}"))
+        if "—" in para or " -- " in para:
+            findings.append((line_no, "D10d", f"dash joins clauses: {para[:90]}"))
+    return findings, n_sentences
+
+
+def default_paths(root: pathlib.Path) -> list[pathlib.Path]:
+    out = [root / "README.md", root / "AGENTS.md"]
+    out += sorted(root.glob("standards/*.md"))
+    out += sorted(root.glob("solutions/*.md"))
+    return [p for p in out if p.exists()]
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("paths", nargs="*", help="files to check; default is the repository's documents")
+    ap.add_argument("--root", default=".", type=pathlib.Path)
+    ap.add_argument("--max-words", default=25, type=int)
+    ap.add_argument("--max-sentences", default=6, type=int)
+    ap.add_argument("--warn-only", action="store_true", help="report and exit 0")
+    ap.add_argument("--summary", action="store_true", help="totals per file, not every finding")
+    args = ap.parse_args()
+
+    paths = [pathlib.Path(p) for p in args.paths] or default_paths(args.root)
+    total = {"D10a": 0, "D10b": 0, "D10c": 0, "D10d": 0}
+    total_sentences = 0
+    rows = []
+    for path in paths:
+        findings, n = check_file(path, args.max_words, args.max_sentences)
+        total_sentences += n
+        counts = {k: sum(1 for f in findings if f[1] == k) for k in total}
+        for k in total:
+            total[k] += counts[k]
+        rows.append((str(path), n, counts))
+        if not args.summary:
+            for line_no, rule, msg in findings:
+                print(f"{path}:{line_no}: {rule} {msg}")
+
+    print(f"{'file':44} {'sents':>6} {'long':>6} {'para':>5} {'word':>5} {'dash':>5}")
+    for name, n, c in rows:
+        print(f"{name:44} {n:6} {c['D10a']:6} {c['D10b']:5} {c['D10c']:5} {c['D10d']:5}")
+    n_findings = sum(total.values())
+    pct = (100 * total["D10a"] // total_sentences) if total_sentences else 0
+    print(
+        f"TOTAL sentences {total_sentences}; long {total['D10a']} ({pct}%); "
+        f"long paragraphs {total['D10b']}; banned words {total['D10c']}; dashes {total['D10d']}"
+    )
+    if n_findings and not args.warn_only:
+        print(f"FAIL: {n_findings} finding(s)")
+        return 1
+    print("PASS" if not n_findings else f"WARN: {n_findings} finding(s), not gating")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

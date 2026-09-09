@@ -130,7 +130,18 @@ binary the repository no longer had.
 `check-package-scripts` passed it. knip caught it, from a job that is not about
 developer commands at all: *"Unlisted binaries (1): drizzle-kit"*. A gate that
 only ever adds cannot see a command outliving its reason, which is the
-commonest way one goes stale. Both halves are checked now.
+commonest way one goes stale.
+
+**The fix for that case reached one kind of command.** The rule covers every
+kind. `db:push` has a fixed name, so the checker could hold a list of names.
+`lint:client`, `format:server` and `test:unit:shared` carry a target, so no list
+can name them. Those three families stayed exempt from the second half until the
+gate was extended to them.
+
+They are identified by body rather than by name. A script running the catalog's
+own invocation, with no catalog job calling for it, is a command that outlived
+its gate. A repository's own `format:write` runs `prettier --write`, which no
+gate runs, so DC6 additions stay untouched.
 
 Shape is read from the repository's own `ci.yml`: which catalog jobs it calls,
 with which `workdir` and which `dir`. It is not read from a map of repository

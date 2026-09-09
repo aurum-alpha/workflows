@@ -2,15 +2,16 @@
 
 The acceptable solutions register for
 [`038-feature-flags.md`](../standards/038-feature-flags.md). It is not a
-standard and states no rule — read
+standard and states no rule. Read
 [the charter](../README.md#acceptable-solutions-the-register-of-what-satisfies-a-standard)
-for what this class of document may and may not do. Every requirement below is
-038's, cited by rule id; everything here is a claim that some route satisfies
-one, and the date that claim was last checked.
+for what this class of document is and is not permitted to do. Every
+requirement below is 038's, cited by rule id. Everything here is a claim that
+some route satisfies one, and the date that claim was last checked.
 
 Absence from this page is not refusal. An option nobody has entered is an
-option nobody has surveyed, and a repository may take it by demonstrating
-compliance against 038's rules — then enter it here so the next one need not.
+option nobody has surveyed. A repository is permitted to take it by
+demonstrating compliance against 038's rules. It then enters it here so the
+next one need not.
 
 ## What adopting anything does and does not do for you
 
@@ -23,7 +24,7 @@ they are what 038 invented rather than what it borrowed.
 |---|---|---|
 | FF1 | The **OpenFeature SDK for the language** supplies almost all of it: the typed calls, the `Details` result, the reason and error enumerations unmodified, the hook mechanism, and the no-op provider that FF1 makes the unconfigured default. A **provider** supplies only the connection to state. | Selecting the provider from configuration (SC3), the startup line that names it, registering the one platform hook set, and readiness staying `degraded` rather than `503` when the provider is down. |
 | FF2 | Nothing. A provider's own flag-definition format describes **state**, and 038 says plainly it is never the declaration. | The declaration file, its schema validation, the hook that answers `FLAG_NOT_FOUND` without asking the provider, and the disjointness of flag names from permission strings. |
-| FF3 | Nothing. Four kinds each with a lifetime field is this platform's invention; no provider models it. | All of it. |
+| FF3 | Nothing. Three kinds, each with a lifetime field, is this platform's invention; no provider models it. | All of it. |
 | FF4 | The SDK's default argument returns the declared default on every failure path, so the fail-closed half is free — **unless the evaluation boundary intercepts errors and substitutes its own answer**, which is the failure the corpus exists to catch. | The `false` rule, the naming rule, and keeping the call site's default equal to the declaration's. |
 | FF5 | Nothing, and this is the rule an adopted system makes *easier to break*: per-user targeting in a dashboard is one refactor from being the only thing stopping a request. | The 070 check on every guarded handler, and the 075 entitlement check beside it; the flag is asked first and decides neither. |
 | FF6 | The SDK supplies the context shape. Where the provider runs decides what leaves your network — the one place the register's rows genuinely differ on risk. | The closed vocabulary, the guard hook that rejects anything else, and the judgment on each new attribute. |
@@ -35,73 +36,74 @@ they are what 038 invented rather than what it borrowed.
 
 ## The two routes to FF1, and why one is preferred
 
-**Route A — a provider package for each language.** The vendor ships an
+**Route A: a provider package for each language.** The vendor ships an
 adapter; you configure it. What to verify before adopting: that a provider
 exists for *every* language the repository writes, server side, at the SDK
-specification version you pin, and who maintains it. A community-maintained
+specification version you pin. Also who maintains it. A community-maintained
 provider is a dependency with a bus factor, and its lag behind a specification
 version becomes your defect.
 
-**Route B — OFREP, the OpenFeature Remote Evaluation Protocol.** The backend
-speaks a standard HTTP contract and a community OFREP provider — which exists
-for several of the SDK languages, so confirm yours — talks to it, and no vendor
-adapter enters the dependency tree at all. **Prefer this route wherever the candidate supports
-it**, because it is the only one that makes FF1's "the provider is
-configuration" literally true: changing vendor becomes a URL and a credential
-rather than a package swap in every service. It also collapses Route A's whole
-verification burden, which is the burden that dates fastest.
+**Route B: OFREP, the OpenFeature Remote Evaluation Protocol.** The backend
+speaks a standard HTTP contract and a community OFREP provider talks to it.
+Such a provider exists for several of the SDK languages, so confirm yours. No
+vendor adapter enters the dependency tree at all. **Prefer this route wherever
+the candidate supports it.** It is the only one that makes FF1's "the provider
+is configuration" literally true. Changing vendor becomes a URL and a
+credential rather than a package swap in every service. It also collapses
+Route A's whole verification burden, which is the burden that dates fastest.
 
-**There is no third route.** An earlier version of this page had one, a thin
-adapter over the product's own tables for entitlement flags; it went with the
+**There is no third route.** An earlier version of this page had one: a thin
+adapter over the product's own tables for entitlement flags. It went with the
 entitlement kind. What a tenant has bought is derived and checked under the
 [billing standard](../standards/075-billing.md), and a flag provider has no
 business reading the product's tables. Writing a provider is not admitted for
 anything. FF9 also refuses the shape people reach for first, flag values
-shipped in a committed file, and refuses it on three grounds worth reading
+shipped in a committed file. It refuses it on three grounds worth reading
 before anyone proposes it again.
 
 ## The default route
 
 **If a product needs feature flags at all, it takes an off-the-shelf flag
-service.** That is the whole answer, and the register's job is only to say
-which ones are known to work.
+service.** That is the whole answer. The register's job is only to say which
+ones are known to work.
 
 The reasoning is FF9's and it runs the opposite way to the usual instinct.
-The instinct is to start small — flag values in a file, a couple of
-environment overrides, no backing service to run — and graduate later. FF9
-refuses that, because a value that cannot move without a deployment is
-configuration rather than a flag, because building the small thing properly
-means specifying a file format, an override grammar, a precedence order, a
-reload rule and a typed accessor package per language, and because a product
-that later adds a real service is running two flag systems. The small start is
-not smaller; it is a bespoke flag system with the specification work still
-owed.
+The instinct is to start small and graduate later: flag values in a file, a
+couple of environment overrides, no backing service to run. FF9 refuses that.
+A value that cannot move without a deployment is configuration rather than a
+flag. Building the small thing properly means specifying a file format, an
+override grammar, a precedence order and a reload rule. It also means a typed
+accessor package per language.
 
-So the decision a repository actually faces is not *how small can we start*
-but a prior question with two honest answers:
+And a product that later adds a real service is running two flag systems. The
+small start is not smaller; it is a bespoke flag system with the specification
+work still owed.
+
+So the decision a repository actually faces is not *how small can we start*.
+It is a prior question with two honest answers:
 
 - **This product does not need flags.** Most do not. It has configuration
   under SC3, it says so, and it stops. Nothing here applies.
 - **This product needs flags.** Then it runs a flag service from the table
-  below, and pays for it — a backing service, a credential, an outage mode
-  where every flag falls to its declared default. That price is the rule
-  working rather than a cost to route around.
+  below, and pays for it. The price is a backing service, a credential, and an
+  outage mode where every flag falls to its declared default. That price is
+  the rule working rather than a cost to route around.
 
 What a tenant has bought is not a reason to reach for any row below. It is an
-entitlement, not a flag: derived from the subscription and checked under the
-[billing standard](../standards/075-billing.md), and it does not belong in a
+entitlement, not a flag. It is derived from the subscription and checked under
+the [billing standard](../standards/075-billing.md). It does not belong in a
 third-party dashboard or in a flag provider of any kind.
 
-**Where the choice is genuinely open** — and the register takes no side — is
+**Where the choice is genuinely open**, and the register takes no side, is
 self-hosted against hosted. Self-hosted keeps FF6's evaluation context inside
-the network; hosted buys a dashboard non-engineers can use and an operational
+the network. Hosted buys a dashboard non-engineers can use and an operational
 burden somebody else carries. Both are in the table.
 
 ## The register
 
 Checked **2026-09-03** against each project's own documentation. Per-language
 provider coverage is the fastest-moving fact on this page and is deliberately
-not frozen into it: check the
+not frozen into it. Check the
 [OpenFeature ecosystem catalogue](https://openfeature.dev/ecosystem/) for the
 languages you write before adopting any row.
 
@@ -119,12 +121,12 @@ languages you write before adopting any row.
 | **Split** | Flag service (hosted) | Verify | Vendor | Providers across several languages; verify yours. |
 
 "Verify" in the OFREP column means the protocol was not confirmed for that
-option at the checked date, not that it is absent — check before letting it
+option at the checked date, not that it is absent. Check before letting it
 decide.
 
 ## Routes 038 refuses, and the rule that refuses them
 
-These are not omissions from the table; they are refused, and the refusal is a
+These are not omissions from the table. They are refused, and the refusal is a
 rule in the standard rather than a preference on this page.
 
 | Route | Refused by |
@@ -142,13 +144,13 @@ rule in the standard rather than a preference on this page.
 1. **Does it speak OFREP?** If yes, Route B, and questions 2 and 3 mostly stop
    mattering.
 2. **Does a provider exist for every language this repository writes, server
-   side?** FF7 removes the browser from the question, which is where coverage is
+   side?** FF7 removes the browser from the question, where coverage is
    thinnest.
 3. **Who maintains that provider, and against which specification version?**
 4. **Where does the evaluation context go?** Self-hosted keeps FF6's exposure
-   inside the network; hosted does not, and the review question on every
+   inside the network. Hosted does not, and the review question on every
    attribute gets sharper.
-5. **What does assignment hash?** Only if FF10 is in play — a rollout that
+5. **What does assignment hash?** Only if FF10 is in play. A rollout that
    re-randomises per evaluation is unanalysable.
 
 Price and contract terms are not on this list, and not on this page, per the
@@ -158,8 +160,8 @@ charter's third rule for this class.
 
 Every claim above carries the checked date at the head of the register. The
 horizon is the charter's 180 days; the next re-check is due **2027-03-02**. A
-re-check confirms, for each row: that the project is still maintained and still
-named what it is named, that its OpenFeature route is still the one stated, that
-the maintainer column is still true, and that no new option has become obvious
-enough that its absence is now misleading. Rows that fail are corrected or
-struck, and the date moves.
+re-check confirms, for each row, that the project is still maintained and
+still named what it is named. It confirms that its OpenFeature route is still
+the one stated and that the maintainer column is still true. It confirms that
+no new option has become obvious enough that its absence misleads. Rows that
+fail are corrected or struck, and the date moves.

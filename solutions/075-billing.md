@@ -2,25 +2,25 @@
 
 The acceptable solutions register for
 [`075-billing.md`](../standards/075-billing.md). It is not a standard and
-states no rule — read
+states no rule. Read
 [the charter](../README.md#acceptable-solutions-the-register-of-what-satisfies-a-standard)
-for what this class of document may and may not do. Every requirement below is
-075's, cited by rule id; everything here is a claim that some route satisfies
-one, and the date that claim was last checked.
+for what this class of document is and is not permitted to do. Every
+requirement below is 075's, cited by rule id. Everything here is a claim that
+some route satisfies one, and the date that claim was last checked.
 
 Absence from this page is not refusal. An option nobody has entered is an
-option nobody has surveyed, and a repository may take it by demonstrating
-compliance against 075's rules — then enter it here so the next one need not.
+option nobody has surveyed. A repository is permitted to take it by
+demonstrating compliance against 075's rules. It then enters it here so the
+next one need not.
 
 ## What adopting anything does and does not do for you
 
 The most expensive mistake available here is believing that choosing a billing
 provider implements the standard. A provider takes the money, and 075 is
 mostly about what the product does with the fact that it did. **Four of ten
-rules get nothing from a provider at all, and the other six get only the far
-side of a call the repository still has to make**, because the catalog, the
-ledger, the kinds and the check are what 075 invented rather than what it
-borrowed.
+rules get nothing from a provider at all**. The other six get only the far
+side of a call the repository still has to make. The catalog, the ledger, the
+kinds and the check are what 075 invented rather than what it borrowed.
 
 | Rule | What an adopted thing supplies | What is yours regardless |
 |---|---|---|
@@ -38,29 +38,29 @@ borrowed.
 ## The column that decides most
 
 **Merchant of record or not.** A merchant-of-record provider is the legal
-seller: it calculates, collects and remits sales tax and VAT in every
-jurisdiction it sells into, carries the liability, and issues the invoice in
-its own name. A payment-processor provider does none of that; the business
-is the seller, tax is the business's obligation — some processors compute it,
-none carry it — and the invoice is the business's.
+seller. It calculates, collects and remits sales tax and VAT in every
+jurisdiction it sells into. It carries the liability and issues the invoice in
+its own name. A payment-processor provider does none of that. The business is
+the seller, and tax is the business's obligation: some processors compute it,
+none carry it. The invoice is the business's.
 
 That is a property of who the business is and where it sells, not of any
-repository, so this register cannot decide it and names no default. What it
-can say is that the two shapes satisfy 075 identically: BL5's adapter hides
+repository. So this register cannot decide it and names no default. What it
+can say is that the two shapes satisfy 075 identically. BL5's adapter hides
 the difference, BL6's webhooks arrive the same way, and the catalog, ledger
 and check are the product's under either. The choice is made once per
 business, before the first repository picks a row.
 
 **Hosted against self-hosted** is the other genuinely open axis, and the
 register takes no side. A self-hosted option keeps subscription data inside
-the network and puts an operational burden on the team; a hosted one carries
+the network and puts an operational burden on the team. A hosted one carries
 the burden and holds the data. Both appear below.
 
 ## The register
 
 Checked **2026-09-08** against each provider's own documentation. Webhook
-schemes and catalog API coverage are the fastest-moving facts on this page:
-confirm both against the provider's current reference before letting a row
+schemes and catalog API coverage are the fastest-moving facts on this page.
+Confirm both against the provider's current reference before letting a row
 decide.
 
 | Option | Merchant of record | Payment capture (BL5) | Catalog by API (BL1) | Webhooks (BL6) | Metered usage (BL3 allowances) | Notes against 075 |
@@ -74,11 +74,11 @@ decide.
 | **Lago** | No. | None of its own: invoicing over a processor the adapter also wraps. | Yes: plans and billable metrics by API. | Own scheme, signature header over the body. | **Its reason to exist**, as the row above. | Open source and self-hostable, which keeps subscription data inside the network at the cost of running it. |
 
 "Verify" in a column means the claim was not confirmed for that option at the
-checked date, not that it is absent — check before letting it decide.
+checked date, not that it is absent. Check before letting it decide.
 
 ## Routes 075 refuses, and the rule that refuses them
 
-These are not omissions from the table; they are refused, and the refusal is a
+These are not omissions from the table. They are refused, and the refusal is a
 rule in the standard rather than a preference on this page.
 
 | Route | Refused by |
@@ -105,7 +105,7 @@ rule in the standard rather than a preference on this page.
 4. **Hosted checkout or tokenised fields for every payment method the
    product sells with?** BL5.
 5. **Does the product have allowances billed by consumption?** Only then does
-   metering decide anything; a capped allowance is compared against the
+   metering decide anything. A capped allowance is compared against the
    domain's own record and needs nothing from the provider.
 6. **Where does subscription data live?** Self-hosted keeps it inside the
    network; hosted does not.
@@ -117,9 +117,9 @@ charter's third rule for this class.
 
 Every claim above carries the checked date at the head of the register. The
 horizon is the charter's 180 days; the next re-check is due **2027-03-07**. A
-re-check confirms, for each row: that the provider is still maintained and
-still named what it is named, that its merchant-of-record status is unchanged,
-that its catalog API still creates and archives, that its webhook scheme is
-still the one stated, and that no new option has become obvious enough that
-its absence is now misleading. Rows that fail are corrected or struck, and the
-date moves.
+re-check confirms, for each row, that the provider is still maintained and
+still named what it is named. It confirms that its merchant-of-record status
+is unchanged and that its catalog API still creates and archives. It confirms
+that its webhook scheme is still the one stated, and that no new option has
+become obvious enough that its absence misleads. Rows that fail are corrected
+or struck, and the date moves.

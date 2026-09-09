@@ -1,104 +1,106 @@
 # The platform contract
 
-One of the Aurum Alpha engineering standards — read
+One of the Aurum Alpha engineering standards. Read
 [`../README.md`](../README.md) for the charter this is written under,
-and [`999-enforcement.md`](999-enforcement.md) for the tier each rule below actually
-holds.
+and [`999-enforcement.md`](999-enforcement.md) for the tier each rule below
+actually holds.
 
 This document states the doctrine every application-layer standard is written
-under: what form an opinion about a platform capability is allowed to
-take. The capabilities themselves — authentication, logging, jobs, audit, and
-the rest — each get their own standard, tracked in this repository's issues
-and indexed in the roster below. The charter says what a standard is; this
-document says what form one about a platform capability may take, and nothing
-more than that.
+under: what form an opinion about a platform capability is allowed to take.
+The capabilities themselves each get their own standard: authentication,
+logging, jobs, audit, and the rest. Each is tracked in this repository's
+issues and indexed in the roster below. The charter says what a standard is.
+This document says what form one about a platform capability can take, and
+nothing more than that.
 
 ## Why this exists
 
 Full-stack meta-frameworks have the right diagnosis. Authentication, RBAC,
-background jobs, audit trails, observability, admin surfaces — every product
-needs them, none of them differentiates a product, and an organisation that
+background jobs, audit trails, observability, admin surfaces: every product
+needs them, and none of them differentiates a product. An organisation that
 re-derives them per product ships worse versions of all of them. A framework
-answers each once and hands you the answer. That instinct — an opinion for
-everything, decided once — is correct, and this standard exists to keep it.
+answers each once and hands you the answer. That instinct, an opinion for
+everything decided once, is correct, and this standard exists to keep it.
 
 These capabilities are exactly the arbitrary decisions the charter's *What this
-is for* describes: every application must decide them, and no application's
+is for* describes. Every application must decide them, and no application's
 domain has an opinion about how. This document says what form our answer to one
 of them is allowed to take. **Each capability's own answer belongs to its
-standard, in the roster below — never here.**
+standard, in the roster below, never here.**
 
 What a framework gets wrong, for us, is the delivery vehicle. The answers
-arrive as a CLI, a runtime library, and a deploy tool. Three consequences,
-each fatal at this scale:
+arrive as a CLI, a runtime library, and a deploy tool. Three consequences
+follow, each fatal at this scale:
 
 - **The library is a dependency the application can never leave.** Every
   generated app imports the framework's auth, jobs and observability at
-  runtime; the framework's upgrade schedule becomes every product's upgrade
+  runtime. The framework's upgrade schedule becomes every product's upgrade
   schedule, and its abandonment becomes every product's problem.
 - **One-shot generation locks in and drifts at the same time.** Scaffolded
-  code is owned by the app and immediately starts diverging from the framework
-  that emitted it, while still depending on its runtime — locked in *and*
-  diverged, so upgrades become archaeology.
+  code is owned by the app and starts diverging from the framework at once.
+  It still depends on that framework's runtime. Locked in *and* diverged, so
+  upgrades become archaeology.
 - **The framework's language decides ours.** We build in Go, TypeScript, PHP
   and embedded C++. A library was never available as the single answer to
   anything.
 
-The charter already names the failure in the abstract: *a standard that only
+The charter already names the failure in the abstract. *A standard that only
 works while a particular repository is reachable is not a standard, it is a
-dependency.* A framework is that failure with a vendor attached. The remedy is
-not fewer opinions — it is the same density of opinion, delivered in a form
-that binds a Go service and a PHP service equally and keeps binding after
-handover.
+dependency*. A framework is that failure with a vendor attached. The remedy is
+not fewer opinions. It is the same density of opinion, delivered in a form
+that binds a Go service and a PHP service equally. That form keeps binding
+after handover.
 
 One more thing changed the economics. Frameworks cache opinions in generators
 and libraries because boilerplate was expensive for people to write. Coding
-agents write most of this organisation's code now, and for an agent the
-scarce input is not scaffolding — it is a precise statement of what the output
-must look like, and a gate that fails when it doesn't. A generator is a frozen
-cache of an opinion. A specification with a conformance test *is* the opinion,
-executable by any agent in any language, and it fails loudly when violated —
-which is the charter's law, applied to the application layer.
+agents write most of this organisation's code now. For an agent the scarce
+input is not scaffolding. It is a precise statement of what the output must
+look like, and a gate that fails when it does not. A generator is a frozen
+cache of an opinion.
+
+A specification with a conformance test *is* the opinion. Any agent can
+execute it in any language, and it fails loudly when violated. That is the
+charter's law, applied to the application layer.
 
 ## The rules
 
 ### PC1. An opinion is a contract, never a tool
 
-The answer to a platform capability is a **protocol** (behaviour stated at
-a boundary: an endpoint, a message, a log line, an environment variable) or an
-**interface specification** (a data model and operations with defined
-semantics, implementable in any language). It is never a CLI an application's
-lifecycle depends on, never a framework, never a shared runtime library an
-application must import, never a deploy tool.
+The answer to a platform capability is a **protocol** or an **interface
+specification**. A protocol is behaviour stated at a boundary: an endpoint, a
+message, a log line, an environment variable. An interface specification is a
+data model and operations with defined semantics, implementable in any
+language. The answer is never a CLI an application's lifecycle depends on,
+never a framework, never a deploy tool. It is never a shared runtime library an
+application must import.
 
-The corollary for what this repository may ship: **shared tooling verifies, or
-copies once.** A checker that fails a build, a conformance suite that runs a
-corpus, a template that is copied at a repository's birth and never consulted
-again — all allowed. A generator that stays attached to the application, a
-tool that owns deploy, a runtime every application imports — not allowed, whoever
-writes it. Building the framework in-house does not fix the framework problem;
-it relocates it to a vendor we have to staff.
+The corollary for what this repository can ship: **shared tooling verifies, or
+copies once**. Allowed: a checker that fails a build, a conformance suite that
+runs a corpus. Also allowed: a template that is copied at a repository's birth
+and never consulted again. Not allowed, whoever writes it: a generator that
+stays attached to the application, a tool that owns deploy, a runtime every
+application imports. Building the framework in-house does not fix the
+framework problem. It relocates it to a vendor we have to staff.
 
 ### PC2. Standard protocol first, profile second, internal contract last
 
-Where an industry standard suffices — OIDC for identity, OTLP for telemetry,
-W3C trace context for propagation, RFC 9457 for HTTP errors, CloudEvents for
-messages — the standard
-adopts it, as a **written profile**: the document pins the choices the
-standard leaves open, because "we use OIDC" unpinned is four implementations
-waiting to happen.
+Where an industry standard suffices, the standard adopts it as a **written
+profile**. Examples: OIDC for identity, OTLP for telemetry, W3C trace context
+for propagation, RFC 9457 for HTTP errors, CloudEvents for messages. The
+document pins the choices the standard leaves open, because "we use OIDC"
+unpinned is four implementations waiting to happen.
 
 This holds for methodologies as much as wire protocols. **The
 [twelve-factor app](https://12factor.net/) is the foundation under most of
-this roster**, and a capability standard that restates a factor cites it and
-pins what the factor leaves open, rather than re-deriving it in house style —
-see the charter's *The foundation: twelve-factor* for the citation rule and
+this roster**. A capability standard that restates a factor cites it and pins
+what the factor leaves open. It does not re-derive the factor in house style.
+See the charter's *The foundation: twelve-factor* for the citation rule and
 the one open tension.
 
 An **internal contract** is invented only where no standard suffices, and the
-capability's standard says why — naming the candidate that was evaluated and
+capability's standard says why. It names the candidate that was evaluated and
 the reason it fell short. An internal contract invented where a standard
-existed is a second answer to a solved question, which is the failure this
+existed is a second answer to a solved question. That is the failure this
 whole repository exists to prevent.
 
 ### PC3. A contract is stated in artifacts, not prose alone
@@ -106,17 +108,17 @@ whole repository exists to prevent.
 Each agreed capability contract carries, under `contracts/<capability>/` in
 this repository:
 
-- **The model** — schemas for its data shapes (JSON Schema for messages,
+- **The model**: schemas for its data shapes (JSON Schema for messages,
   events and log lines; OpenAPI fragments for endpoints).
-- **The operations** — where the contract is interface-level, signatures with
+- **The operations**: where the contract is interface-level, signatures with
   defined semantics, stated language-neutrally.
-- **The conformance corpus** — test cases *as data*: given-this-then-that
+- **The conformance corpus**: test cases *as data*. Given-this-then-that
   files any implementation in any language must pass.
 
 The corpus is the piece that makes a polyglot standard enforceable from one
 source. Prose drifts from N implementations silently; a corpus fails the one
 that drifted, by name. A capability standard without its artifacts is agreed
-in principle and unenforceable in fact — the ledger row says which state each
+in principle and unenforceable in fact. The ledger row says which state each
 is in.
 
 ### PC4. Gates check the boundary, never the implementation
@@ -125,47 +127,47 @@ A conformance gate runs the corpus against the implementation, hits the
 endpoint, validates the emitted line. It never checks which package is
 imported, which framework handled the route, or what the source looks like.
 The moment a gate tests an implementation choice, the choice has become a
-dependency and PC1 is broken by the enforcement mechanism itself. Any
+dependency. PC1 is then broken by the enforcement mechanism itself. Any
 implementation that passes the corpus is conformant, including one written
-from scratch in an afternoon — that escape hatch existing is the point.
+from scratch in an afternoon. That escape hatch existing is the point.
 
 ### PC5. A package conforms to the spec, never the reverse
 
-First-party convenience implementations of a contract — a Go module, a PHP
-package, an npm package — are allowed, so each product does not hand-roll the
-same envelope parser. They are allowed under a standing rule and three guard
-rails, and the standing rule is the title of this section: the spec and its
-corpus are normative, the package is downstream. A behaviour change lands in
-the spec first, in its own change, and the package follows.
+First-party convenience implementations of a contract are allowed: a Go
+module, a PHP package, an npm package. They exist so each product does not
+hand-roll the same envelope parser. They are allowed under a standing rule and
+three guard rails. The standing rule is the title of this section: the spec
+and its corpus are normative, the package is downstream. A behaviour change
+lands in the spec first, in its own change, and the package follows.
 
 - **One package per capability contract.** No `aurum-common`. A grab-bag
   package is the framework re-forming by accretion.
 - **No shared package depends on another shared package.** The moment they
   stack, importing one means importing the pile, and the pile is a framework.
-- **Every package release passes the contract's own corpus** — the same gate
-  a bespoke implementation faces, because per PC4 the gate cannot tell them
+- **Every package release passes the contract's own corpus.** That is the
+  same gate a bespoke implementation faces. Per PC4 the gate cannot tell them
   apart, and per this rule it must not.
 
-A repository may substitute its own implementation of any contract and stay
-green. At handover, a client repository that uses a shared package vendors it,
-exactly as it vendors the standards documents — which these packages survive
-because each is small, single-capability, and corpus-defined.
+A repository is permitted to substitute its own implementation of any contract
+and stay green. At handover, a client repository that uses a shared package
+vendors it, exactly as it vendors the standards documents. These packages
+survive that because each is small, single-capability, and corpus-defined.
 
 ### PC6. Contracts evolve additively
 
 Every versioned shape (envelopes, events, log lines) carries a schema-version
-field. Changes are additive — new optional fields, never a removed or
-repurposed one. A breaking change is a new version, and the contract states
-its deprecation window: how long implementations must accept the old version
+field. Changes are additive: new optional fields, never a removed or
+repurposed one. A breaking change is a new version. The contract states its
+deprecation window: how long implementations must accept the old version
 while emitting the new. A body of specifications without a change discipline
-re-creates the drift problem one level up, with the added indignity that the
+re-creates the drift problem one level up. The added indignity is that the
 documents were supposed to be the fix.
 
 ## Terms
 
 The words the standards share, defined once. A standard uses these words in
 these senses and defines only the words that are its own. Where a term's rules
-live in a standard, the entry points there; where that standard is not yet
+live in a standard, the entry points there. Where that standard is not yet
 written, it points at the roster row.
 
 ### Structure
@@ -178,21 +180,23 @@ written, it points at the roster row.
   member of it (the charter's D4).
 - **Repository.** The unit of versioning and of building. One repository has
   one version, and one build run produces every artifact it ships at that
-  version ([`010-ci.md`](010-ci.md), Principles 7 and 15). A repository may
+  version ([`010-ci.md`](010-ci.md), Principles 7 and 15). A repository can
   hold one service or many.
-- **Service.** A collection, never a process: the servers and workers that
-  together provide one capability under one name and one ownership, and the
-  backing services they attach. A service has one or more processes; it may
-  have no server, when it is workers only, or no worker. Where a service holds
-  state, that state lives in a stateful server it attaches, and the service
+- **Service.** A collection, never a process. It is the servers and workers
+  that together supply one capability under one name and one ownership, plus
+  the backing services they attach. A service has one or more processes. It
+  can have no server, when it is workers only, or no worker. Where a service
+  holds state, that state lives in a stateful server it attaches. The service
   owns that state exclusively: the schema, the bucket, the volume, the topic,
-  and the credential to it. Every process that holds that credential belongs
-  to the service ([`025-structured-data.md`](025-structured-data.md) SD13
-  states this for structured data). A service lives in exactly one repository,
-  because every process that touches one schema must be built beside that
-  schema's migrations, in one run, at one version; a repository may hold
-  several services. Services integrate only through a server's interface or
-  through messages, never through one another's state.
+  and the credential to it.
+
+  Every process that holds that credential belongs to the service
+  ([`025-structured-data.md`](025-structured-data.md) SD13 states this for
+  structured data). A service lives in exactly one repository. The reason:
+  every process that touches one schema must be built beside that schema's
+  migrations, in one run, at one version. A repository can hold several
+  services. Services integrate only through a server's interface or through
+  messages, never through one another's state.
 - **Process.** An operating-system process, in exactly that sense: one running
   program with its own process id, address space, environment, standard
   streams, signals, and exit code. Nothing more abstract is meant anywhere in
@@ -203,26 +207,28 @@ written, it points at the roster row.
 - **Server.** A long-running process that handles network requests on demand,
   synchronously, and runs no jobs. A server is **stateless** when nothing it
   holds needs to survive its restart, because its state lives in a stateful
-  server it attaches; every server the portfolio writes is stateless. A server
+  server it attaches. Every server the portfolio writes is stateless. A server
   is **stateful** when it maintains state across restarts and is itself where
   that state lives. Every persistence engine is a stateful server, and they
-  differ only in the shape of what they persist: structured data in a
-  relational database, documents in a document store, keys and values in a
-  cache, objects in an object store, files on a network filesystem, blocks on
-  a block-storage target, messages in a broker. None stands above the others;
-  each is a stateful server the portfolio attaches as a backing service rather
-  than writes, and the rules that bind what is inside it are the data
-  standards', not the service contract's.
+  differ only in the shape of what they persist.
+
+  The shapes: structured data in a relational database, documents in a
+  document store, keys and values in a cache, objects in an object store.
+  Also files on a network filesystem, blocks on a block-storage target,
+  messages in a broker. None stands above the others. Each is a stateful
+  server the portfolio attaches as a backing service rather than writes. The
+  rules that bind what is inside it are the data standards', not the service
+  contract's.
 - **Worker.** A process, long-running or short-running, that executes jobs
   outside any request, in response to a trigger. The long-running form, the
   **pool**, consumes a queue and is scaled by replicas against its backlog. The
   short-running form, the **one-shot**, runs one job and exits with the outcome
   as its exit code. Workers are [`035-workers.md`](035-workers.md)'s.
-- **Client.** Anything that initiates a request to a server: a browser running
-  the web client ([`090-web-client.md`](090-web-client.md)), another service's
-  process, a command-line tool, a third party. A client carries an identity
-  ([`060-auth.md`](060-auth.md)) and is authorized
-  ([`070-rbac.md`](070-rbac.md)); it never holds a credential to any
+- **Client.** Anything that initiates a request to a server. Examples: a
+  browser running the web client ([`090-web-client.md`](090-web-client.md)),
+  another service's process, a command-line tool, a third party. A client
+  carries an identity ([`060-auth.md`](060-auth.md)) and is authorized
+  ([`070-rbac.md`](070-rbac.md)). It never holds a credential to any
   service's state.
 - **Backing service.** A service a process consumes over the network, attached
   by configuration and never by code ([`030-service.md`](030-service.md) SC3;
@@ -240,7 +246,7 @@ written, it points at the roster row.
   version.
 - **Image.** An OCI container image, the unit of packaging and deployment. An
   image does one thing: it is a server, or a worker, or the migrate step, and
-  never more than one of those; images are cut on dependency closure,
+  never more than one of those. Images are cut on dependency closure,
   credential and configuration surface ([`010-ci.md`](010-ci.md), Principle
   15).
 - **Build run.** One execution of a repository's CI on one commit, producing
@@ -251,12 +257,12 @@ written, it points at the roster row.
   request that touches nothing else. Never an artifact's
   ([`010-ci.md`](010-ci.md), Principle 15).
 - **Release.** The officially published, versioned artifacts of one build
-  run, suitable for operational deployment: the images, bundles and rendered
-  manifests, tagged with the repository's version. A release is made by the
-  release pull request and publishes what main has already gated; it runs
-  nothing anywhere ([`010-ci.md`](010-ci.md)).
+  run, suitable for operational deployment. That is the images, bundles and
+  rendered manifests, tagged with the repository's version. A release is made
+  by the release pull request and publishes what main has already gated. It
+  runs nothing anywhere ([`010-ci.md`](010-ci.md)).
 - **Deployment.** Taking a release's artifacts and running them in one
-  environment: the deployment-triggered jobs run as steps in declared order
+  environment. The deployment-triggered jobs run as steps in declared order
   with the migrate step first, then the servers and workers roll out. A
   deployment names a release and an environment. Also the name of that
   trigger.
@@ -268,21 +274,21 @@ written, it points at the roster row.
   [`030-service.md`](030-service.md) SC3). A process's configuration surface is
   the set it reads.
 - **Credential.** A secret that grants a process access to a backing service.
-  One credential per backing service per service; the migration credential separate
-  from the runtime credential; and a database's credential present in the
-  deployables of one repository and no other, which is the checkable edge of a
-  service.
+  One credential per backing service per service; the migration credential
+  separate from the runtime credential. A database's credential is present in
+  the deployables of one repository and no other, which is the checkable edge
+  of a service.
 - **Runner.** The platform component that starts a one-shot worker on a tick,
   at a deployment step, or by an operator's hand. The platform states what a
   runner must do and builds none; every runtime it could sit on supplies one.
 - **Secret.** A configuration value whose disclosure grants access or lets
-  someone forge something a service trusts: a credential, a signing or
-  encryption key, a webhook secret. Every credential is a secret; not every
+  someone forge something a service trusts. Examples: a credential, a signing
+  or encryption key, a webhook secret. Every credential is a secret; not every
   secret is a credential. Delivered, declared, named, redacted and rotated per
   [`032-secrets.md`](032-secrets.md).
 - **Finding.** What a checker or a scan reports when a rule is broken at a
-  boundary it can see: a named slug, attributable to a rule, that a gate turns
-  red on and an audit prints. An acceptance
+  boundary it can see. It is a named slug, attributable to a rule, that a gate
+  turns red on and an audit prints. An acceptance
   ([`085-security-baseline.md`](085-security-baseline.md) SB2) is a finding a
   repository has recorded a dated reason to tolerate.
 
@@ -292,7 +298,7 @@ written, it points at the roster row.
   declared class, and an outcome. A job is never a process; it is packaged only
   by being inside a worker. Jobs are [`057-jobs.md`](057-jobs.md)'s.
 - **Run.** One execution of a job by a worker, with a run id, a trigger, a key,
-  and an outcome, and a record of all four in the service's database.
+  and an outcome. A record of all four lands in the service's database.
 - **Trigger.** What causes a run. There are four: a **message** arriving, a
   **tick** of a schedule, a **deployment** step, and an **operator**. A stream of
   triggers, which is only ever messages, goes to a pool; a single invocation
@@ -308,32 +314,31 @@ written, it points at the roster row.
 - **Queue.** The buffer, on a transport, from which a pool consumes, delivering
   each message at least once. A queue belongs to one service.
 - **Outbox.** The table in a service's database where a message is written in
-  the same transaction as the change that caused it, and from which a relay
-  job publishes it ([`055-messaging.md`](055-messaging.md) AM4). **Inbox.**
-  The table where a consumer records each `(source, id)` it has processed, in
-  the same transaction as the effect ([`055-messaging.md`](055-messaging.md)
-  AM3).
+  the same transaction as the change that caused it. A relay job publishes it
+  from there ([`055-messaging.md`](055-messaging.md) AM4). **Inbox.** The
+  table where a consumer records each `(source, id)` it has processed, in the
+  same transaction as the effect ([`055-messaging.md`](055-messaging.md) AM3).
 - **Schedule.** A five-field cron expression in UTC, declared beside a job in
   the repository and rendered to the runner at deployment. **Tick.** One firing
   of a schedule at one scheduled instant, identified by the job's name and
-  that instant, so two firings of one tick are one piece of work.
+  that instant. Two firings of one tick are therefore one piece of work.
 - **Operator.** A person with the standing to run a job by hand, deploy a
   release, or intervene in a running system. The fourth trigger.
 - **Migration.** One ordered `.sql` file that moves a database's schema forward
   and converges if run again. **The migrate step** is the deployment-triggered
-  job that applies the pending ones, run by a one-shot worker in its own image
+  job that applies the pending ones. A one-shot worker runs it in its own image
   with its own credential ([`025-structured-data.md`](025-structured-data.md)
   SD2, SD3).
 - **Backfill.** A job that populates data after an expand migration: long,
   single-flight, resumable, rate-bounded, and never inside the migration.
 - **Notification.** A message to a person with an identity record, through a
-  channel, about an event; recorded per recipient per channel in the sending
-  service's database ([`058-notifications.md`](058-notifications.md)). An
-  alert to an operator is not one.
-- **Flag.** A named, typed value a process asks for at a decision point,
-  whose answer may differ by environment, tenant or user without a new
-  release; declared in the repository, evaluated through the OpenFeature API,
-  and never an authorization input
+  channel, about an event. It is recorded per recipient per channel in the
+  sending service's database ([`058-notifications.md`](058-notifications.md)).
+  An alert to an operator is not one.
+- **Flag.** A named, typed value a process asks for at a decision point. Its
+  answer can differ by environment, tenant or user without a new release. It
+  is declared in the repository, evaluated through the OpenFeature API, and
+  never an authorization input
   ([`038-feature-flags.md`](038-feature-flags.md)).
 
 ### Data
@@ -341,27 +346,27 @@ written, it points at the roster row.
 - **System of record.** The store whose rows are the authority for an entity:
   the relational store ([`027-json-document-storage.md`](027-json-document-storage.md)
   DS1). Every other store holding a copy of that entity is *derived* from it
-  and rebuildable by a job; a store that is not rebuildable is *primary* and
+  and rebuildable by a job. A store that is not rebuildable is *primary* and
   is a database in every sense.
 - **Object.** Bytes under a key in an object store, owned by exactly one row
-  of one service's database, which holds its reference; the store is a
+  of one service's database, which holds its reference. The store is a
   stateful server attached as a backing service
   ([`026-blob-storage.md`](026-blob-storage.md)).
 - **Document.** A JSON document: a record a JSON document store reads and
-  writes whole, under one id, carrying its own `schema_version` because no
+  writes whole, under one id. It carries its own `schema_version` because no
   schema outside it records its shape
   ([`027-json-document-storage.md`](027-json-document-storage.md)). Never a
-  file — a PDF or a spreadsheet is an object — and never a row's substitute
+  file, since a PDF or a spreadsheet is an object. Never a row's substitute
   where a relational constraint governs the data.
 - **Backup.** A copy of a stateful server's state taken by the engine's own
-  mechanism under a credential no process of the service holds, kept in a
-  different failure domain, and proven restorable by a drill
+  mechanism under a credential no process of the service holds. It is kept in
+  a different failure domain, and proven restorable by a drill
   ([`028-backup-and-recovery.md`](028-backup-and-recovery.md)). Not a replica,
   which applies every mistake within seconds.
 - **Erasure ledger.** The record, per erased subject per request, of what an
-  erasure removed, transformed or redacted, kept in the service's database and
-  copied to the backup domain, and replayed after any restore before the
-  service is readmitted to traffic
+  erasure removed, transformed or redacted. It is kept in the service's
+  database and copied to the backup domain. It is replayed after any restore
+  before the service is readmitted to traffic
   ([`028-backup-and-recovery.md`](028-backup-and-recovery.md) BR6).
 - **Subject.** A person about whom a service holds data, identified inside the
   service by the application's own user public id
@@ -374,18 +379,20 @@ The charter ([`../README.md`](../README.md)) defines the words about the
 documents themselves: **standard**, **rule**, **contract**, **corpus**,
 **gate**, and the enforcement **tiers**. They are not restated here.
 **Capability**, in this document's sense, is one of the concerns in the roster
-below: something every product needs, nothing in any product's domain has an
-opinion about, and the platform therefore decides once.
+below. It is something every product needs, nothing in any product's domain
+has an opinion about, and the platform therefore decides once.
 
 ## The capability roster
 
 Every platform capability these standards have an opinion on, or has decided to
 have one. **A capability's absence from this table is a claim that we have
-considered it and declined** — so a reader can distinguish "not yet
-written" (a row saying so) from "not considered" (a gap in this table, which
-is a defect in this document). A row gains its link when the standard lands;
-the ledger tracks what is enforced. Where a capability has no document yet,
-the work is an issue in this repository.
+considered it and declined**. A reader can then distinguish "not yet written"
+from "not considered". The first is a row saying so. The second is a gap in
+this table, which is a defect in this document.
+
+A row gains its link when the standard lands; the ledger tracks what is
+enforced. Where a capability has no document yet, the work is an issue in this
+repository.
 
 | Capability | The standard takes the form of | Document |
 |---|---|---|
@@ -426,25 +433,25 @@ the work is an issue in this repository.
 Two rows deserve a word on why they are the worked examples:
 
 **Authorization** is the model interface-level contract. Its standard defines
-the domain model (subject, role, permission, grant, scope) as schemas, the
-operations (`check`, `grants-for`) as signatures with semantics — deny by
-default, how tenancy scopes a grant — and a corpus of decision cases: given
-these grants, this check returns deny. Three languages implement it; one
-corpus judges all three. When someone asks what "an interface spec, not a
-library" means, the answer is that standard.
+the domain model (subject, role, permission, grant, scope) as schemas. It
+defines the operations (`check`, `grants-for`) as signatures with semantics:
+deny by default, how tenancy scopes a grant. It carries a corpus of decision
+cases: given these grants, this check returns deny. Three languages implement
+it; one corpus judges all three. When someone asks what "an interface spec,
+not a library" means, the answer is that standard.
 
 **Async messaging** is the model of PC2 working as intended, and it did not
 go the way this paragraph first predicted. Its standard was expected to
-evaluate CloudEvents and then invent an envelope; the evaluation found that
-CloudEvents suffices, so the envelope is a profile and the invention is confined
-to what no wire standard covers — delivery: at-least-once, the inbox and the
-outbox, the worker. The discipline PC2 demands is visible in what did *not* get
-invented.
+evaluate CloudEvents and then invent an envelope. The evaluation found that
+CloudEvents suffices. So the envelope is a profile, and the invention is
+confined to what no wire standard covers. That is delivery: at-least-once, the
+inbox and the outbox, the worker. The discipline PC2 demands is visible in
+what did *not* get invented.
 
 ## Enforcement
 
 Registered in [`999-enforcement.md`](999-enforcement.md) under "Platform
-standard", every rule review-only today with its gate named there — the rows
+standard", every rule review-only today with its gate named there. The rows
 are the record, and they are not repeated here.
 
 What no checker will prove: that an opinion was delivered as a contract
@@ -457,6 +464,6 @@ every capability standard, and this document is what the reviewer points at.
   own path: issue, document, ledger rows, artifacts.
 - The first corpus run in anger. Authorization is the candidate, as the
   worked example above argues.
-- The template repositories — the copy-once mechanism PC1 permits — are
-  follow-on work once enough contracts exist for a template to have
-  something to conform to.
+- The template repositories, the copy-once mechanism PC1 permits, are
+  follow-on work. They wait until enough contracts exist for a template to
+  have something to conform to.

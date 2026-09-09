@@ -1,112 +1,113 @@
 # Aurum Alpha engineering standards
 
-`aurum-alpha/workflows` is the definition of how this organisation builds
-software: the standards themselves, and the shared CI infrastructure that
-implements them — reusable workflows, composite actions, conformance checkers
+`aurum-alpha/workflows` defines how this organisation builds software. It
+holds the standards themselves and the shared CI infrastructure that
+implements them: reusable workflows, composite actions, conformance checkers
 and shared configuration. This page is the charter. It says what a standard is
 here, what makes one binding, and indexes the rest. It states no engineering
-rules itself — every rule belongs to a numbered document under `standards/`.
+rules itself. Every rule belongs to a numbered document under `standards/`.
 
-Not a convenience library of things several repos happened to need — the
-answer, per language and per capability, that repos are standardized *onto*
-rather than each arriving at independently.
+This repository is not a convenience library of things several repos happened
+to need. It is the answer, per language and per capability, that repos are
+standardized *onto*, so that each does not arrive at its own.
 
-That was already true of continuous integration, and the CI standard is the
-worked example the rest of this follows: a document that states the rule and
-the reasoning, a catalog that implements it once, and a checker that fails the
-build when a repo drifts. The scope is now every layer of a product, not just
-its pipeline.
+Continuous integration already worked this way, and the CI standard is the
+worked example the rest follows. A document states the rule and the reasoning.
+A catalog implements it once. A checker fails the build when a repo drifts.
+The scope is now every layer of a product, not only its pipeline.
 
-**Two repos solving the same problem two ways is not diversity, it is the absence
-of an opinion — and an organisation with no opinion re-litigates the same
-decision every time someone starts a service.**
+**Two repos solving the same problem two ways is not diversity. It is the
+absence of an opinion.** An organisation with no opinion re-litigates the same
+decision every time someone starts a service.
 
 ## What this is for
 
 Every application faces two kinds of decision, and only one of them is its own.
 
-Which pagination style, which error envelope, which identifier format, where
-the session lives, what an audit row contains: real decisions, decided badly
-more often than not, and **not decisions any particular product's problem has
-an opinion about**. An invoicing system is not better or worse at invoicing for
-having picked cursor pagination over offset. The choice still has to be made,
-so each repository makes it alone, differently, and at the cost of an argument
-that has already been had elsewhere.
+The first kind: which pagination style, which error envelope, which identifier
+format, where the session lives, what an audit row contains. These are real
+decisions, decided badly more often than not. **No particular product's problem
+has an opinion about them.** Cursor pagination over offset makes an invoicing
+system no better or worse at invoicing. The choice still has
+to be made. So each repository makes it alone, differently, at the cost of an
+argument that has already been had elsewhere.
 
-The other kind is the domain: what an invoice *is* here, when it may be voided,
-who is allowed to. That is the part a client is paying for and the only part
-where a repository's own judgment is the right input.
+The other kind is the domain: what an invoice *is* here, when it can be voided,
+who is permitted to void it. That is the part a client pays for. It is the only
+part where a repository's own judgment is the right input.
 
 So the purpose, in three steps:
 
-1. **Remove the arbitrary decision from every repository, wherever the decision
-   is not material to that application's purpose or domain.** Not to make the
-   choices uniform for its own sake, but because a decision that could go
-   either way should go one way once, here, with the reasoning written down.
-2. **Which leaves each repository spending its judgment on business logic** —
-   the domain, the workflow, the thing that is actually specific to it.
-3. **Which is why this makes development faster, not slower.** A standards
-   effort is assumed to be a tax. This one is the opposite: the decisions it
-   removes were never free, they were being paid for repeatedly, in argument
-   and in divergence, by people who had something better to think about.
+1. **Remove the arbitrary decision from every repository** wherever it is not
+   material to that application's purpose or domain. The aim is not uniform
+   choices for their own sake. A decision that could go either way goes one way
+   once, here, with the reasoning written down.
+2. **Each repository then spends its judgment on business logic**: the domain,
+   the workflow, the thing that is specific to it.
+3. **This is why the standards make development faster, not slower.** A
+   standards effort is assumed to be a tax. This one is the opposite. The
+   decisions it removes were never free. They were paid for repeatedly, in
+   argument and in divergence, by people who had something better to think
+   about.
 
 That is also why the standards are written as contracts with conformance tests
-rather than as advice. An arbitrary decision is only genuinely removed once
-nobody has to remember it.
+rather than as advice. An arbitrary decision is only removed once nobody has to
+remember it.
 
 ## Scope: internal and client work alike
 
-These standards bind everything Aurum Alpha builds — the products we operate and
+These standards bind everything Aurum Alpha builds: the products we operate and
 the systems we build for clients. A client engagement is not an exemption. It is
 the case that matters most, because it is the code that leaves.
 
-**A standard must survive handover.** A client repository follows these rules and
-then, at handover, stops being able to reach this repository at all: no shared
-job to call, no checker to run, no catalog to resolve. A standard that only works
-while `aurum-alpha/workflows` is reachable is not a standard, it is a dependency.
+**A standard must survive handover.** A client repository follows these rules.
+At handover it stops being able to reach this repository at all: no shared job
+to call, no checker to run, no catalog to resolve. A standard that only works
+while `aurum-alpha/workflows` is reachable is not a standard. It is a
+dependency.
 
-Three consequences, and they constrain how every document here is written:
+Three consequences follow, and they constrain how every document here is
+written:
 
-1. **State the rule, not just the mechanism.** A reader with no access to this
-   repo must be able to read the rule, understand why it exists, and comply. The
-   shared job is how *we* comply cheaply; it is never the only description of
-   what compliance is.
-2. **Every standard must be satisfiable without this repo.** Where a rule is
-   normally met by calling a shared workflow, the document says what the
-   workflow does in terms a person could reimplement.
-3. **Handover is a copy, not a link.** A repository leaving the portfolio vendors the
-   standards it was built to, so the rules travel with the code. What it loses is
-   the updates, which is correct — it is no longer ours.
+1. **State the rule, not only the mechanism.** A reader outside this repo must
+   be able to read the rule, see why it exists, and comply. The shared job is
+   how *we* comply cheaply. It is never the only description of what compliance
+   is.
+2. **Every standard must be satisfiable without this repo.** A rule is often
+   met by calling a shared workflow. In that case the document says what the
+   workflow does, in terms a person could reimplement.
+3. **Handover is a copy, not a link.** A repository leaving the portfolio
+   vendors the standards it was built to. The rules then travel with the code.
+   What it loses is the updates, which is correct: it is no longer ours.
 
 ## The law
 
 **A rule is not done when it is written. It is done when something fails if it
 is broken.**
 
-Every rule in the CI standard was written down first and violated afterwards, in
-a repo whose CI was green the entire time, because writing a rule and enforcing
-it are different acts and only the second one holds. A principle nobody can fail
+Every rule in the CI standard was written down first and violated afterwards,
+in a repo whose CI was green the entire time. Writing a rule and enforcing it
+are different acts, and only the second one holds. A principle nobody can fail
 is a preference.
 
 That history also taught what *kind* of rule survives. Three rules failed the
-same way in three disguises: one keyed on a file, one keyed on a filename, one
-keyed on an outcome with no mechanism named. The common shape is that **a rule
-naming anything other than the act itself stops applying the moment the act
-moves.** Write rules against acts, then make something fail when the act is
-wrong.
+same way in three disguises. One keyed on a file, one keyed on a filename, one
+keyed on an outcome with no mechanism named. The common shape: **a rule naming
+anything other than the act itself stops applying the moment the act moves**.
+Write rules against acts, then make something fail when the act is wrong.
 
 ### Three tiers, and the difference between them matters
 
-- **gated** — a violation turns that repo's required check red. This is
+- **gated**: a violation turns that repo's required check red. This is
   enforcement.
-- **audit only** — a checker exists but runs from a workstation when someone
+- **audit only**: a checker exists but runs from a workstation when someone
   remembers. This is a habit, and habits are what drifted in the first place.
-  Every one of these is a candidate for folding into the gate. A checker nothing
-  runs does not degrade to weaker enforcement — it degrades to a checker that is
-  itself wrong, silently.
-- **review only** — nothing mechanical. Some rules resist automation honestly.
-  Saying so is the point: an unenforced rule should be visibly unenforced, not
-  quietly assumed. A rule that resists a checker gets the next best thing — a
+  Every one of these is a candidate for folding into the gate. A checker
+  nothing runs does not degrade to weaker enforcement. It degrades to a checker
+  that is itself wrong, silently.
+- **review only**: nothing mechanical. Some rules resist automation honestly.
+  Saying so is the point: an unenforced rule must be visibly unenforced, not
+  quietly assumed. A rule that resists a checker gets the next best thing: a
   review question someone has to answer, not a line someone has to remember.
 
 ### A new standard's rules start review-only and name their gates
@@ -115,9 +116,9 @@ Landing a standard and landing its enforcement in one change is how standards
 stall. So the sequence is fixed:
 
 1. The standard lands with every rule registered in
-   [`standards/999-enforcement.md`](standards/999-enforcement.md), at the tier that
-   rule actually holds — for a new standard, usually **review only**.
-2. Each rule names, in that ledger, **the gate it is eventually getting** — or
+   [`standards/999-enforcement.md`](standards/999-enforcement.md), at the tier
+   that rule actually holds. For a new standard that is usually **review only**.
+2. Each rule names, in that ledger, **the gate it is eventually getting**. Or it
    states plainly that it resists one and will stay review-only.
 3. Promoting a rule to gated is its own change, and the ledger row moves with it.
 
@@ -126,94 +127,98 @@ cannot have one is not finished. That is exactly the failure the law above
 describes, arriving one document earlier.
 
 **The tier describes the rule's enforcement, never the document's standing.** A
-merged document is binding — see the writing conventions below.
+merged document is binding. See the writing conventions below.
 
 ## The foundation: twelve-factor
 
 **[The Twelve-Factor App](https://12factor.net/) is the ground these standards
-are built on**, not a reference we consulted. Config in the environment, logs
-as event streams, strict build/release/run separation, disposable processes
-that shut down gracefully — most of what the CI standard and the platform
-contract say about how a service behaves is twelve-factor, applied here
-with the open choices pinned.
+are built on**, not a reference we consulted. The factors cover config in the
+environment, logs as event streams, strict build/release/run separation, and
+disposable processes that shut down gracefully. Most of what the CI standard
+and the platform contract say about a service's behaviour is twelve-factor,
+applied here with the open choices pinned.
 
 Two consequences for how these documents are written:
 
 - **Where a rule restates a factor, the document cites the factor as its
-  justification.** "Logs go to stdout because we said so" is a preference;
-  "logs go to stdout per [factor XI](https://12factor.net/logs), because the
-  application must not concern itself with routing or storage" is an argument
-  a reader can check against a source older and more tested than we are.
+  justification.** "Logs go to stdout because we said so" is a preference.
+  "Logs go to stdout per [factor XI](https://12factor.net/logs), because the
+  application must not concern itself with routing or storage" is an argument.
+  A reader can check it against a source older and more tested than we are.
   Claiming a well-known idea as a house invention also costs credibility with
   exactly the engineers we want reading these documents.
 - **Where a rule departs from a factor, the document says so, in the rule,
-  with the reason.** A silent departure is worse than a stated one: the next
+  with the reason**. A silent departure is worse than a stated one. The next
   reader assumes we did not know.
 
-What a standard here adds on top of a factor is the part twelve-factor
-deliberately leaves open — the *specific* names, formats and endpoints that
-let four languages interoperate. Factor III says config lives in the
-environment; it does not say what the variables are called. That pinning is
-ours, and it is the only part that is.
+A standard here adds the part twelve-factor deliberately leaves open. That is
+the *specific* names, formats and endpoints that let four languages
+interoperate. Factor III says config lives in the environment. It does not say
+what the variables are called. That pinning is ours, and it is the only part
+that is.
 
-**Known departures: none today.** One tension that was open is settled the
-way [factor XII](https://12factor.net/admin-processes) states it: admin and
-management tasks run as one-off processes, and the jobs and workers
-capabilities on the platform roster take exactly that shape, a one-shot worker
-built from the same release as the servers, rather than an interface
-registered inside a server. Their standards state that against factor XII
-rather than around it.
+**Known departures: none today.** One tension that was open is now settled. It
+is settled the way [factor XII](https://12factor.net/admin-processes) states
+it: admin and management tasks run as one-off processes. The jobs and workers
+capabilities on the platform roster take exactly that shape. Each is a one-shot
+worker built from the same release as the servers, not an interface registered
+inside a server. Their standards state that against factor XII rather than
+around it.
 
 ## How these documents are written
 
-Four conventions. Each one stops a failure that is quiet.
+Each convention below stops a failure that is quiet.
 
 **A merged document is binding, and says nothing about its own status.** No
-document carries a `Status: proposed` or `Status: agreed` header. Review happens
-in the pull request; merging it is the approval. A status line on a merged
-document is either wrong (it still says "proposed") or noise (it says "agreed",
-which every merged document is). What varies per rule is how it is *enforced*,
-and that lives in one place: the ledger.
+document carries a `Status: proposed` or `Status: agreed` header. Review
+happens in the pull request. Merging it is the approval. A status line on a
+merged document is either wrong or noise. Wrong, because it still says
+"proposed"; noise, because it says "agreed", which every merged document is.
+What varies per rule is how it is *enforced*, and that lives in one place: the
+ledger.
 
-**A document references other documents, never a tracker.** Relative markdown
-links between `.md` files, always — a reference a reader can click and open,
-not a name they have to go hunting for. An issue or pull request number in
+**A document references other documents, never a tracker.** It uses relative
+markdown links between `.md` files, always. A reader can click such a reference
+and open it, rather than hunt for a name. An issue or pull request number in
 doctrine is a citation to something a reader outside this repository cannot
-open, that says nothing once merged, and that ages into a dead reference — a
+open. It says nothing once merged, and it ages into a dead reference: a
 document citing its own paperwork.
 
 Where a rule depends on a standard **not yet written**, the reference still
-has to be a working link, so it points at the row that tracks it:
+has to be a working link. So it points at the row that tracks it:
 `[the secrets standard](standards/000-platform.md#the-capability-roster)`.
-That link resolves today, lands the reader on a row that says "not yet
-written", and becomes a direct link to the document when one lands. A bare
-name is not a reference and a link to a file that does not exist is a 404;
-this is the form that is neither. Pending work is still tracked as issues
-here; the documents just do not cite them.
+That link resolves today and lands the reader on a row that says "not yet
+written". It becomes a direct link to the document when one lands. A bare name
+is not a reference, a link to a missing file is a 404, and this form is
+neither. Pending work is still tracked as issues here; the documents just do
+not cite them.
 
 **A rule is argued from principle, never from precedent.** Every rule carries
-its reason, and the reason is a property of the rule — what it prevents, what
-it costs, why the alternative fails — stated so that a reader with no knowledge
-of this organisation's history could check it. *Another repository already does
-this* is not a reason. It is a report that a decision was once made, and it
-says nothing about whether the decision was right; a rule resting on it
-inherits every mistake of the place it was copied from and cannot be examined
-without going there. Where an existing implementation has a good argument, the
-document makes the argument and drops the attribution. The argument stands on
-its own or it does not stand.
+its reason. The reason is a property of the rule: what it prevents, what it
+costs, why the alternative fails. It is stated so that a reader with no
+knowledge of this organisation's history could check it. *Another repository
+already does this* is not a reason. It is a report that a decision was once
+made, and it says nothing about whether the decision was right.
+
+A rule resting on precedent inherits every mistake of the place it was copied
+from. It cannot be examined without going there. Where an existing
+implementation has a good argument, the document makes the argument and drops
+the attribution. The argument stands on its own or it does not stand.
 
 **A standard is not an inventory of what exists.** It names no repository,
-counts no repositories, and describes no repository's current state — not as
-justification, not as motivation, not as colour. What a repository does today
-is irrelevant to a rule that binds every repository, current and future, and a
-document that opens by surveying the estate has made its argument contingent
-on a survey that is stale the day it merges. Where an incident taught the
-author a rule, the document states the failure mode as the general property it
-is — *a timer in the request process runs once per replica* — so that a reader
-cannot tell from the text which repository, if any, taught it. The Decisions
-log at the foot of every standard is where this bites hardest: each entry is
-the reason a choice went one way, and an entry that reads *as done in …* or
-*because N products do …* is a decision nobody made.
+counts no repositories, and describes no repository's current state. It does
+not do so as justification, as motivation, or as colour. What a repository
+does today is irrelevant to a rule that binds every repository, current and
+future. A document that opens by surveying the estate has made its argument
+contingent on a survey that is stale the day it merges.
+
+Where an incident taught the author a rule, the document states the failure
+mode as the general property it is. *A timer in the request process runs once
+per replica* is that form. A reader then cannot tell from the text which
+repository, if any, taught it. The Decisions log at the foot of every standard
+is where this bites hardest. Each entry is the reason a choice went one way. An
+entry that reads *as done in …* or *because N products do …* is a decision
+nobody made.
 
 **A document is written in Simplified Technical English.** The writing rules
 of [ASD-STE100](https://www.asd-ste100.org/) are the standard for every
@@ -234,10 +239,11 @@ The rules we hold to, stated in our words:
   job writes the row*, not *the row is written*.
 - **A rule is an instruction.** *Put the catalog in the repository.* *Do not
   set `Domain=`.* A requirement uses *must*. A permission uses *can* or *is
-  permitted*. The words *should*, *may* and *ensure* do not appear.
+  permitted*. The banned words do not appear; `tools/check-doc-style --help`
+  lists them.
 - **A word has one meaning.** A technical name such as *tenant*, *webhook*
-  or *cursor* is used as its standard names it, and is not varied for
-  style. A noun cluster has at most three words.
+  or *cursor* is used as its standard names it. It is not varied for style.
+  A noun cluster has at most three words.
 - **A full stop joins two ideas.** A dash does not. A sentence that needs a
   dash to hold together is two sentences.
 - **A table, a list, a code block or a diagram carries what it carries
@@ -253,13 +259,13 @@ one meaning per word, stays a review question.
 ## Non-compliance is tracked where the code is
 
 This repository holds the standard. **It does not hold the list of who is
-failing it.** Gaps in the standards or the catalog are issues *here*; a
+failing it.** Gaps in the standards or the catalog are issues *here*. A
 repository that does not yet meet a standard has work in *its own* tracker.
 
 A repo that does not yet comply has work to do in its own issue tracker,
 against its own code, prioritized against its own roadmap. Recording that here
-turns the standard into a scoreboard, gives every standards change a second
-diff to maintain, and puts a client repository's shortcomings in a repository it
+turns the standard into a scoreboard. It gives every standards change a second
+diff to maintain. It puts a client repository's shortcomings in a repository it
 will never own.
 
 The rule, therefore: **no document under `standards/` names a repository at
@@ -268,21 +274,21 @@ deliberately not covered by that:
 
 - **The CI standard's decisions log**, which cites the change that settled
   each row. That is a record of this repository's own history, not a
-  description of another repository's state, and it is the one place a
-  citation of the past is admitted. It does not extend to a standard's rules or
-  its reasoning, which name no repository at all — see D4.
+  description of another repository's state. It is the one place a citation of
+  the past is admitted. It does not extend to a standard's rules or its
+  reasoning, which name no repository at all. See D4.
 - **Checker allow-lists,** and only where the entry names a *waived rule*.
   `tools/` carries per-repo entries because a gate has to know what it is
-  currently letting through. Each entry states the gap it represents — a debt
-  with a name, not a permission — and the target state for every list is empty.
+  currently letting through. Each entry states the gap it represents: a debt
+  with a name, not a permission. The target state for every list is empty.
 
 **A checker never holds a list of who is subject to it.** That is the carve-out
-above read backwards, and it is not admitted: the gates run inside each
-repository's own CI, so calling a gate is what subjects a repository to it, and
-a name list gating who gets judged can only be redundant with that call or
+above read backwards, and it is not admitted. The gates run inside each
+repository's own CI, so calling a gate is what subjects a repository to it. A
+name list gating who gets judged can only be redundant with that call, or
 disagree with it. Where a repository has standing debt it declares the window
-itself, through a job input in its own `ci.yml`, which is the same rule as the
-paragraphs above — the state lives with the code. A checker that decides what to
+itself, through a job input in its own `ci.yml`. That is the same rule as the
+paragraphs above: the state lives with the code. A checker that decides what to
 report from a repository's *name* has made this repository the scoreboard by
 another route.
 
@@ -293,22 +299,23 @@ governs, in any repository. The **Enforcement** column says how much of it is
 held mechanically today; the ledger says which rule is which.
 
 **Each document has a number, and the number is its address.** It is stable for
-the life of the document, never reused and never reassigned — an address that
-moves is worse than none, because every citation that used it now points
-somewhere else silently. Numbers are spaced by ten so a document can be
-inserted where the reading order wants it; otherwise a new standard takes the
-next free slot. `000` is where to start. `999` is the ledger, last because it
-indexes everything above it. `AGENTS.md` carries no number because Cursor,
-Claude Code and `check-agent-docs` all address it by name at the repository
-root, which is an address already.
+the document's life, never reused and never reassigned. An address that moves
+is worse than none, because every citation that used it now points somewhere
+else silently. Numbers are spaced by ten so a document can be inserted where
+the reading order wants it. Otherwise a new standard takes the next free slot.
+`000` is where to start. `999` is the ledger, last because it indexes
+everything above it.
 
-**Every rule has a short id**, and the **Prefix** column is the map: the CI
+`AGENTS.md` carries no number. Cursor, Claude Code and `check-agent-docs` all
+address it by name at the repository root, which is an address already.
+
+**Every rule has a short id**, and the **Prefix** column is the map. The CI
 standard's principles are bare numbers, and each other standard carries a
-mnemonic prefix. The id names a section in the standard's own document (the
-rule and its reasoning) and a row in the ledger (the mechanism that enforces it
-and the tier it actually holds). Document number plus rule id is a full
-citation: `060 AU5` names one rule in one document and still will after ten
-more standards land.
+mnemonic prefix. The id names a section in the standard's own document, which
+holds the rule and its reasoning. It also names a row in the ledger, which
+holds the mechanism that enforces it and the tier it actually holds. Document
+number plus rule id is a full citation. `060 AU5` names one rule in one
+document, and still will after ten more standards land.
 
 | # | Prefix | Document | Covers | Enforcement |
 |---|---|---|---|---|
@@ -340,123 +347,130 @@ more standards land.
 | `999` | — | [`999-enforcement.md`](standards/999-enforcement.md) | The ledger: every rule, its gate, its tier | — it is the register |
 | — | A | [`AGENTS.md`](AGENTS.md) | How coding agents work in an Aurum Alpha repository: one guidance source, the work queue, the approval gate | rules 1-5 gated, rest review |
 
-Standards still to be written are tracked as issues in this repository, and the
-platform contract's capability roster names which capability is waiting on one.
-Each issue carries the reasoning it was raised with, so the document can be
-written from the argument rather than from memory. Each lands with the next
+Standards still to be written are tracked as issues in this repository. The
+platform contract's capability roster names which capability is waiting on
+one. Each issue carries the reasoning it was raised with, so the document can
+be written from the argument rather than from memory. Each lands with the next
 free number and its own prefix.
 
 ## Acceptable solutions: the register of what satisfies a standard
 
 A standard states a rule and the reasoning behind it, and both are meant to
 outlive the tools that satisfy them. **The tools do not cooperate.** A provider
-is acquired and renamed, a package stops being maintained, a vendor's language
-coverage changes in a minor release, a protocol everyone implements arrives and
+is acquired and renamed. A package stops being maintained. A vendor's language
+coverage changes in a minor release. A protocol everyone implements arrives and
 makes the adapter question moot. A document that named those tools is then
-wrong in the way this repository exists to prevent — quietly, because prose
-does not fail. **A standard that lists what to buy has put its most perishable
-sentence inside its most durable document.**
+wrong in the way this repository exists to prevent: quietly, because prose
+does not fail.
+
+**A standard that lists what to buy has put its most perishable sentence inside
+its most durable document.**
 
 Removing the sentence is not the answer either. Someone starting a capability
-has to pick something, and a standard that pins a specification and names
-nothing that implements it has handed back the arbitrary decision this
-repository exists to take away.
+has to pick something. A standard that pins a specification and names nothing
+that implements it has handed back the arbitrary decision this repository
+exists to take away.
 
 So the perishable half lives in a second class of document, under `solutions/`:
-**the acceptable solutions register**. One per standard that needs one, sharing
-that standard's number, so [`solutions/038-feature-flags.md`](solutions/038-feature-flags.md)
-answers [`standards/038-feature-flags.md`](standards/038-feature-flags.md) and
-the number is still the address.
+**the acceptable solutions register**. There is one per standard that needs
+one, sharing that standard's number. So
+[`solutions/038-feature-flags.md`](solutions/038-feature-flags.md) answers
+[`standards/038-feature-flags.md`](standards/038-feature-flags.md), and the
+number is still the address.
 
-The pattern is borrowed from performance-based building codes, which state what
-a wall has to achieve and, in separate documents, name constructions deemed to
-satisfy it. Building the named construction settles compliance with no argument;
-building something else is permitted and carries the burden of demonstrating
-compliance another way. The requirement outlives the products, the products are
-revised without reopening the requirement, and nobody confuses the two, which
-are exactly the three properties wanted here.
+The pattern is borrowed from performance-based building codes. Those state
+what a wall has to achieve and, in separate documents, name constructions
+deemed to satisfy it. Building the named construction settles compliance with
+no argument. Building something else is permitted and carries the burden of
+demonstrating compliance another way. The requirement outlives the products,
+the products are revised without reopening the requirement, and nobody
+confuses the two. Those are exactly the three properties wanted here.
 
-A register does one job: for one standard, name the routes known to satisfy its
-rules, say **which rule ids** each route satisfies, say which rules it leaves
-for the repository to build anyway, and carry the date each claim was last
-checked.
+A register does one job. For one standard, it names the routes known to
+satisfy its rules and says **which rule ids** each route satisfies. It says
+which rules the route leaves for the repository to build anyway, and carries
+the date each claim was last checked.
 
 Five rules, because each is a way this class fails quietly:
 
 1. **A register never states a rule.** Every requirement lives in the standard;
    the register only claims that something meets one. The test is destructive
-   and worth applying to any sentence in doubt: **delete the whole register and
-   every rule must still stand, with every repository still able to comply** —
-   more slowly, arguing its own choice. A register sentence that fails that test
-   is a rule in the wrong document, where no ledger row covers it and no reader
-   looking for rules will find it.
+   and worth applying to any sentence in doubt. **Delete the whole register,
+   and every rule must still stand, with every repository still able to
+   comply**. Compliance is then slower, with each repository arguing its own
+   choice. A register sentence that fails that test is a rule in the wrong
+   document. No ledger row covers it there, and no reader looking for rules
+   will find it.
 2. **Absence is not refusal.** An option the register does not name is not
-   forbidden; it is unexamined. A repository may take it by demonstrating
-   compliance against the standard's rules — and then it is entered here, so the
-   next repository does not repeat the demonstration. What *is* refused is
-   refused by a rule in the standard, and the register cites that rule.
+   forbidden; it is unexamined. A repository is permitted to take it by
+   demonstrating compliance against the standard's rules. It is then entered
+   here, so the next repository does not repeat the demonstration. What *is*
+   refused is refused by a rule in the standard, and the register cites that
+   rule.
 3. **A listing is a technical claim on a date, never an endorsement or a
-   purchase.** No prices, no contract terms, no vendor ranking, no comparison
+   purchase.** No prices, no contract terms, no vendor ranking. No comparison
    table that reads as a bake-off. Commercial terms perish faster than anything
-   technical, and a register carrying them becomes a procurement document that
+   technical. A register carrying them becomes a procurement document that
    nobody updates and everyone quotes. The question a register answers is *does
-   this route comply*, not *what should we buy*.
+   this route comply*, not *what to buy*.
 4. **Every entry carries the date it was last checked, and a stale entry reads
-   as stale.** The horizon is **180 days**: an entry not re-checked within it is
-   a finding, the same way an overdue flag is. A register may lower the horizon
-   and may not raise it. This is the whole mechanism of the class — an entry
-   that rots silently is worse than no entry, because it carries this
-   repository's authority while being wrong.
-5. **A register may name one default route**, argued, for a repository with no
-   reason to choose otherwise. That is not a ranking of vendors; it is the
-   charter's own purpose — an arbitrary decision made once — applied to the one
-   place a standard deliberately leaves open. The default is a technical
-   argument a reader can disagree with, and the register says what would change
-   it.
+   as stale.** The horizon is **180 days**. An entry not re-checked within it
+   is a finding, the same way an overdue flag is. A register is permitted to
+   lower the horizon and is not permitted to raise it. This is the whole
+   mechanism of the class. An entry that rots silently is worse than no entry,
+   because it carries this repository's authority while being wrong.
+5. **A register is permitted to name one default route**, argued, for a
+   repository with no reason to choose otherwise. That is not a ranking of
+   vendors. It is the charter's own purpose, an arbitrary decision made once,
+   applied to the one place a standard deliberately leaves open. The default is
+   a technical argument a reader can disagree with, and the register says what
+   would change it.
 
 **A tool the standard dictates is part of the rule and stays in the standard.**
-The register carries a choice the standard leaves open; it never carries a
-choice the standard has already closed. Where a document pins a component —
-because a rule is stated in that component's vocabulary, or because an
-enumeration in `contracts/` decides what is admitted and a checker holds a
-repository to it — the component is a rule, and moving it to a register would
-turn an enforced decision into a dated survey. The two are told apart by one
-question: **would naming something else here be a violation, or a choice?** A
-violation means it stays.
+The register carries a choice the standard leaves open. It never carries a
+choice the standard has already closed. A document pins a component in two
+cases. Either a rule is stated in that component's vocabulary, or an
+enumeration in `contracts/` decides what is admitted. In the second case a
+checker holds a repository to it. In both the component is a rule, and moving it to a register
+would turn an enforced decision into a dated survey.
 
-Registers in existence today: `032`, `035`, `038`, `060`, `075`, `091`. A standard with no
-register is one of two things, and the difference matters: either its
-implementations have not been surveyed yet — a gap, tracked as an issue like
-any other — or it closes the choice itself, as the JSON document storage
-standard's engine roster does in `contracts/`. Neither is a statement that the
-standard admits nothing.
+The two are told apart by one question: **would naming something else here be
+a violation, or a choice?** A violation means it stays.
+
+Registers in existence today: `032`, `035`, `038`, `060`, `075`, `091`. A
+standard with no register is one of two things, and the difference matters.
+Either its implementations have not been surveyed yet, which is a gap, tracked
+as an issue like any other. Or it closes the choice itself, as the JSON
+document storage standard's engine roster does in `contracts/`. Neither is a
+statement that the standard admits nothing.
 
 **A register is vendored at handover like a standard**, and the freeze bites
-harder here: a client repository keeps a document whose claims stop being
-re-checked on the day it leaves. Rule 4 is what protects that reader, because
-the dates travel with the entries and a reader can see for themselves how old
-the survey is.
+harder here. A client repository keeps a document whose claims stop being
+re-checked on the day it leaves. Rule 4 is what protects that reader. The
+dates travel with the entries, and a reader can see for themselves how old the
+survey is.
 
-Adding one follows the standards path, shortened: open an issue with the
-argument, write `solutions/<number>-<slug>.md` against the rule ids it claims to
-satisfy, register the class's checkable claims in the ledger, and add the number
-to the list above.
+Adding one follows the standards path, shortened. Open an issue with the
+argument. Write `solutions/<number>-<slug>.md` against the rule ids it claims
+to satisfy. Register the class's checkable claims in the ledger, and add the
+number to the list above.
 
 ## What is here
 
-- `standards/` — the numbered documents above.
-- `solutions/` — the acceptable solutions registers: per standard, what is
+- `standards/`: the numbered documents above.
+- `solutions/`: the acceptable solutions registers. Per standard, what is
   known to satisfy its rules, and when that was last checked.
-- `contracts/` — the artifacts behind the application-layer standards: JSON
+- `contracts/`: the artifacts behind the application-layer standards. JSON
   Schemas and conformance corpora, one directory per capability.
-- `.github/workflows/job-*.yml` — the shared job catalog. One reusable workflow
+- `.github/workflows/job-*.yml`: the shared job catalog. One reusable workflow
   per capability, consumed by every repository that has that capability.
-- `tools/check-*` — the conformance checkers. Each runs both inside a
+- `tools/check-*`: the conformance checkers. Each runs both inside a
   repository's own CI and as a portfolio-wide sweep, from one source.
-- `config/`, `setup/` — shared configuration and composite actions.
-- `dependency-versions.json` — the package versions every adopting repository
-  is held to: the package manager, the dev/build toolchain, and the handful of
-  runtime packages that have converged. It names versions, never repositories.
+- `config/`, `setup/`: shared configuration and composite actions.
+- `dependency-versions.json`: the package versions every adopting repository
+  is held to. It names the package manager, the dev/build toolchain, and the
+  handful of runtime packages that have converged. It names versions, never
+  repositories.
 
 ## Adding or changing a standard
 
@@ -471,6 +485,6 @@ to the list above.
 4. **Add the row to the index above.**
 
 Changing an existing rule follows the same path. A rule that has been violated
-in production gets its incident written into the document beside it — that
-evidence is the reason these documents get followed, and the reason the next
-person does not re-litigate a decision already paid for once.
+in production gets its incident written into the document beside it. That
+evidence is the reason these documents get followed. It is also the reason the
+next person does not re-litigate a decision already paid for once.

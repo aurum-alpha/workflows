@@ -2,15 +2,16 @@
 
 The acceptable solutions register for
 [`091-web-estate.md`](../standards/091-web-estate.md). It is not a standard
-and states no rule — read
+and states no rule. Read
 [the charter](../README.md#acceptable-solutions-the-register-of-what-satisfies-a-standard)
-for what this class of document may and may not do. Every requirement below is
-091's, cited by rule id; everything here is a claim that some route satisfies
-one, and the date that claim was last checked.
+for what this class of document is and is not permitted to do. Every
+requirement below is 091's, cited by rule id. Everything here is a claim that
+some route satisfies one, and the date that claim was last checked.
 
 Absence from this page is not refusal. An option nobody has entered is an
-option nobody has surveyed, and a repository may take it by demonstrating
-compliance against 091's rules — then enter it here so the next one need not.
+option nobody has surveyed. A repository is permitted to take it by
+demonstrating compliance against 091's rules. It then enters it here so the
+next one need not.
 
 This register covers the front door, which is the surface 091 specifies in
 full. The product and internal surfaces are served by processes under the
@@ -18,11 +19,11 @@ standards that already govern them, and their registers are those standards'.
 
 ## What adopting anything does and does not do for you
 
-Four kinds of thing get chosen when a front door is started: an origin that
+Four kinds of thing get chosen when a front door is started. An origin that
 serves it, a generator that builds it, a source its content comes from, and a
 processor its one form posts to. None of them is the standard. **Five of the
-eight rules are the repository's whatever is adopted**, because they govern
-where things sit and what crosses between them, which no tool decides.
+eight rules are the repository's whatever is adopted.** They govern where
+things sit and what crosses between them, which no tool decides.
 
 | Rule | What an adopted thing supplies | What is yours regardless |
 |---|---|---|
@@ -39,20 +40,20 @@ where things sit and what crosses between them, which no tool decides.
 
 WE3 says a front door has environments and its origin renders the web client
 standard's bootstrap document from its own. Every host in the first table is
-entered against that one property, because it is the one on which static
-hosts genuinely differ and the one a repository discovers late — after the
-build has been carrying the production booking link into development for a
-month.
+entered against that one property. It is the one on which static hosts
+genuinely differ, and the one a repository discovers late. Late means after
+the build has been carrying the production booking link into development for
+a month.
 
 Three shapes satisfy it, and the table names which shape each host takes:
 
 - **A process at the origin renders the document at start** from its
   environment. A static server in a container does this with a template and
-  the environment, and the image is built once with the directory inside it.
+  the environment. The image is built once with the directory inside it.
 - **The deployment step writes the document into the served directory** from
   the deployment's environment, after the build and before the files are
-  live. The build never touches the document, so the artifact is identical;
-  the deployment is what differs per environment, which is
+  live. The build never touches the document, so the artifact is identical.
+  The deployment is what differs per environment, which is
   [factor V](https://12factor.net/build-release-run)'s separation exactly.
 - **An edge function at the origin serves the document's path** from the
   host's per-environment variables, in front of a directory it otherwise
@@ -64,30 +65,32 @@ last table with the rule.
 ## The default route
 
 **Content in the repository, no content system, and whichever generator the
-repository's maintainers already know.** That is the whole default, and it is
+repository's maintainers already know.** That is the whole default. It is
 argued from WE4 and WE5 rather than from any tool's merits.
 
 A front door starts with a few dozen pages and one or two people editing
-them. At that size the repository is the editing surface: a content file is
-a form with one field, a pull request is the review, and WE5's test passes
-trivially because there is nothing outside the repository to depend on.
-Every content system in the table below adds a declared source, a pull, a
-credential name and a second place content can be — each admitted, each a
-cost — in exchange for an editing surface that non-engineers prefer. **The
-exchange is worth making when there are people to make it for**, and not
-before.
+them. At that size the repository is the editing surface. A content file is a
+form with one field, and a pull request is the review. WE5's test passes
+trivially because there is nothing outside the repository to depend on. Every
+content system in the table below adds a declared source, a pull, a
+credential name and a second place content can be. Each is admitted, each a
+cost, in exchange for an editing surface that non-engineers prefer.
 
-What would change the default: a volume of editors who do not write markup
-and whose changes are routine enough that a pull request per change is
-friction rather than review; a requirement for structured content shared
-with another surface, where a content system's schema earns its keep; or a
-localisation workflow with translators who need a tool. Any of those moves a
-repository to a declared source, and the register says which are known to
-satisfy WE4 in that role.
+**The exchange is worth making when there are people to make it for**, and
+not before.
+
+What would change the default is one of three things. The first is a volume
+of editors who do not write markup and whose changes are routine. For them a
+pull request per change is friction rather than review. The second is a
+requirement for structured content shared with another surface, where a
+content system's schema earns its keep. The third is a localisation workflow
+with translators who need a tool. Any of those moves a repository to a
+declared source, and the register says which are known to satisfy WE4 in that
+role.
 
 The origin and the generator have no default here, deliberately. WE3's
-property is met by every host in the table that is not refused, and the
-generators differ on things 091 has no opinion about — templating, build
+property is met by every host in the table that is not refused. The
+generators differ on things 091 has no opinion about: templating, build
 speed, the framework a team already uses. The register takes no side where
 the standard takes none.
 
@@ -95,7 +98,7 @@ the standard takes none.
 
 Checked **2026-09-08** against each project's own documentation. The
 per-environment mechanism of each static host is the fastest-moving fact on
-this page; confirm it against the host's current documentation before letting
+this page. Confirm it against the host's current documentation before letting
 a row decide.
 
 ### Static origins and edges, against WE3
@@ -133,10 +136,10 @@ arrangement or one the repository has to impose.
 | **Notion, as a build source** | A declared source. | A pull through its API, committed as content files. | The schema of a database lives in the tool's interface and nowhere in code, so the pull validates what it fetched against a declaration the repository holds, and a property renamed in the tool is a build failure rather than a silent blank. Suited to copy that people already write there; not suited as the schema of record for anything. |
 
 For every row but the first, the shape 091 admits is the one in the third
-column: the source is pulled into the repository, the pull is a change, the
+column. The source is pulled into the repository, the pull is a change, the
 build reads the repository. A system's own live publishing, preview hosting
-or client-side fetching is not a route this register enters, and the last
-table says which rule refuses it.
+or client-side fetching is not a route this register enters. The last table
+says which rule refuses it.
 
 ### Form and lead processors, against WE6
 
@@ -148,7 +151,7 @@ table says which rule refuses it.
 
 ## Routes 091 refuses, and the rule that refuses them
 
-These are not omissions from the tables; they are refused, and the refusal is
+These are not omissions from the tables. They are refused, and the refusal is
 a rule in the standard rather than a preference on this page.
 
 | Route | Refused by |
@@ -167,19 +170,19 @@ a rule in the standard rather than a preference on this page.
 
 1. **Can the origin render the document per environment, without the build
    knowing the environment?** If not, stop; WE3 refuses it. If yes, note
-   which of the three shapes it uses, because the pipeline has to implement
-   that shape and not another.
+   which of the three shapes it uses. The pipeline has to implement that
+   shape and not another.
 2. **Does the host build, or accept a prebuilt directory?** Only the second
    keeps the artifact identical. Every host in the table can; check that the
    pipeline uses it.
 3. **Does the generator keep content out of components by default?** A
-   content layer is the difference between WE4 being the shape of the
-   repository and WE4 being a discipline the review has to hold.
+   content layer decides that. With one, WE4 is the shape of the repository.
+   Without one, WE4 is a discipline the review has to hold.
 4. **Is there anyone to run a content system for?** If not, the default
    route. If so, which row's pull the repository can declare and land as a
    change.
 5. **Where does the one form post, and is the address in
-   `surface_settings`?** A form endpoint compiled into the page is the WE3
+   `surface_settings`**? A form endpoint compiled into the page is the WE3
    failure in a small place.
 6. **Does a clean checkout build and pass its gates with nothing else?**
    WE5's test, run once before the first deployment and cheaply thereafter.
@@ -190,10 +193,12 @@ charter's third rule for this class.
 ## Re-checking this register
 
 Every claim above carries the checked date at the head of the register. The
-horizon is the charter's 180 days; the next re-check is due **2027-03-07**. A
-re-check confirms, for each row: that the project or host is still maintained
-and still named what it is named; that its per-environment mechanism is still
-the one stated and still separate from its build; that prebuilt deployment is
-still offered; that a content source's pull route still exists; and that no
-new option has become obvious enough that its absence is now misleading. Rows
-that fail are corrected or struck, and the date moves.
+horizon is the charter's 180 days; the next re-check is due **2027-03-07**.
+
+A re-check confirms, for each row, that the project or host is still
+maintained and still named what it is named. It confirms that its
+per-environment mechanism is still the one stated and still separate from its
+build. It confirms that prebuilt deployment is still offered and that a
+content source's pull route still exists. It confirms that no new option has
+become obvious enough that its absence misleads. Rows that fail are corrected
+or struck, and the date moves.

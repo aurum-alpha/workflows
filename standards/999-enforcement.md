@@ -951,3 +951,57 @@ one case it exists to catch and passes the other twenty; a header checker
 that tests HSTS for presence and `max-age` alone fails exactly the
 `includeSubDomains` case; a `FROM` checker that reads only the first `FROM`
 fails exactly the multi-stage case whose runtime stage is the unpinned one.
+
+## Web estate standard
+
+Rules from [`091-web-estate.md`](091-web-estate.md) — the three surface classes, the
+front door as a built directory, and the seams between surfaces.
+
+| # | Rule | Enforced by | Status |
+|---|---|---|---|
+| WE1 | Three surface classes — front door, product, internal — each with a fixed identity posture, and a surface belongs to one | — **resists a checker**: which class a surface is in is an arrangement of processes and hosts, and a gate reading source to decide would be the PC4 violation. Review question: *what identity does this surface hold, and which population can reach it* | **review only** |
+| WE2 | The host convention is the class boundary: apex and `www` front door, `app.` and tenant hosts product, internal on a zone the product never sets a cookie for; the class is decidable from the name | a per-repository host declaration checked against the edge configuration and the certificate list (proposed). The declaration does not exist yet; until it does the review question is *which zone is this host in, and could a product cookie reach it* | **review only** |
+| WE3 | The front door is a built directory, not a service: no session, no credential, no authenticated call; it has environments, and its origin renders the WC2 bootstrap document from its own environment | **the one to build first, and mostly already named**: the WC2 static check of the build output (proposed `check-bundle-config`) applies to the front door's directory unchanged, and the served document validates against its schema. This standard adds one live assertion on the same origin — no `Set-Cookie` on any response (proposed) | **review only** |
+| WE4 | Content is data in the repository; a change lands as a reviewed diff and a build; a CMS is admitted only as a declared source whose content lands in the repository before the build reads it; a pricing page renders from a catalog it does not own | a build from a clean checkout with the network closed proves the build reads only the repository (proposed, shared with WE5). That the diff is *readable as prose* is a review question | **review only** |
+| WE5 | Every surface is maintainable from its repository alone: hand it to someone with no other access and a copy change produces a reviewable pull request that passes the gates, or the missing dependency is the defect | the test is a job — clean checkout, build, gates, no other access — and it stays review-only until such a job exists; a gate running with the pipeline's own access would not be asking the question | **review only** |
+| WE6 | Four seams, each an existing contract: sign-up handoff link with non-personal context; lead capture to a declared processor or a rate-limited, schema-validated intake endpoint; product→internal as 055 events; internal→product over 050 with 070 permissions and 080 events. No other route crosses a seam | — **resists a checker**: a route between surfaces is visible only in deployment topology. The front door's half is reviewable in its build output — no form action pointing at the product's API, no personal field on the sign-up link — and that is the review question | **review only** |
+| WE7 | An automated actor on any surface is a workload identity: OIDC federation from the pipeline (032 SE9), never a long-lived key, never a borrowed human session; on internal tools a 070 subject with its own grants | the pipeline half is 032's gate — a static deploy credential in the CI secret store where the host accepts federation is a finding there. The borrowed-session half resists a checker; review question: *whose name is on the audit event this automation writes* | **review only** |
+| WE8 | Campaign pages live in the front door's zone, as paths or subdomains of the apex, never in the product's zone | the same host declaration as WE2, once it exists: a front-door build deployed to a host declared product is the finding. Until then, review | **review only** |
+
+**WE3 is the one to build first**, and it is nearly free: the front door's
+directory is a build output, so the static check the web client standard
+already proposes for WC2 runs against it unchanged, and the only new
+assertion is that the origin never sets a cookie. The failure it catches — an
+environment value baked into the directory, or a session appearing on a
+surface that has no controls for one — is exactly the quiet kind. The rest
+of this standard governs where things sit, which no boundary shows; the rows
+above state the review question for each so that unenforced is visibly
+unenforced.
+
+## Tenant hostnames standard
+
+Rules from [`092-tenant-hostnames.md`](092-tenant-hostnames.md) — what a hostname
+decides before and after login, the session cookie's scope, and how a
+tenant host's certificate comes to exist. The session rule is the
+[authentication standard](060-auth.md)'s and the scope rule is
+[`070-rbac.md`](070-rbac.md) RB10's.
+
+| # | Rule | Enforced by | Status |
+|---|---|---|---|
+| TH1 | A tenant is an authentication boundary and a role is an authorization boundary within one; scope comes from the session, never from a header or the hostname | — **resists a checker**: where a decision is made is architecture. Review question: *where does this handler get its tenant, and could a request have supplied it* | **review only** |
+| TH2 | Before login the hostname chooses the tenant's entry and the tenant the session binds to; after login it is only checked for agreement with the session's tenant; the tenant of a request is never derived from `Host` | the agreement half is a live behaviour case — a session for tenant A presented on tenant B's host is refused (proposed, with TH3). That nothing reads `Host` as an authorization input resists a checker for PC4's reason and is TH1's review question | **review only** |
+| TH3 | Unknown host is `404` at the edge, never `403`; host and session disagree is `403` plus an `auth.access_denied` audit event; an identity in several tenants binds to the host's at login; an identity with no grant here is 060 AU6 | **the one to build first, with TH4, as one live check**: request an unknown host and require `404` with no `Set-Cookie`; present a tenant-A session to a tenant-B host and require `403` and the audit event (proposed) | **review only** |
+| TH4 | The session cookie is host-only — `Domain=` never set, `__Host-` prefix — so a cookie for one tenant host never reaches another; AU7's default topology per host | **observable from outside**: a login response's `Set-Cookie` either carries `__Host-` and no `Domain=` or it does not, in the shape 060 AU7's own cookie check takes (proposed) | **review only** |
+| TH5 | One OIDC callback host per topology; the exchange completes at the relying party tier and the browser returns to the tenant host with an opaque, single-use, seconds-lived handle, never a token | the observable half — no token in any URL the browser is redirected through — is a 090 WC1 corpus case, not a new gate. That the handle is single-use and bound to the host is a behaviour case (proposed): redeem it twice and require the second to fail | **review only** |
+| TH6 | A pre-issued wildcard for subdomains; a custom domain walks `pending → verified → active`, with `broken` on drift and a 058 notification, driven by a `periodic` 057 job against two DNS records shown at onboarding; a verified hostname belongs to one tenant ever | the declaration half is 057's gate — the job exists, `periodic`, with `stale_after`. The transitions are a fixture against a fake zone (proposed); the drift case needs a customer's DNS to move and stays review | **review only** |
+| TH7 | No certificate is ever requested for a host the tenant table does not hold; the ACME client's allowlist is the tenant table | a periodic comparison of certificate transparency for the product's zones and ACME account against the tenant table (proposed); any certificate naming a host the table does not hold is the finding. Review-only until that job exists | **review only** |
+| TH8 | Every response from a tenant host carries `X-Robots-Tag: noindex` and every HTML document the robots meta element; `robots.txt` is not a substitute | a header check on every tenant-host response in the shape 085 SB3's start check already asserts its header set (proposed) — one more header, on hosts of one class | **review only** |
+
+**TH3 and TH4 are the ones to build first, and they are one check.** Both
+are answers the edge gives to a request anyone can send: an unknown host
+answered `404` with no cookie, and a login answered with a `__Host-` cookie
+that a second tenant host never receives. Together they are the whole of
+tenant isolation as a wire fact — everything else in this standard is either
+defence behind them or the process by which a host comes to exist — and
+neither fails today when it is wrong, because a test that exercises one
+tenant at a time never sends the request that would show it.

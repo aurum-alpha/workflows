@@ -419,6 +419,8 @@ the work is an issue in this repository.
 | API client contract | One generated client module owning problem+json parsing, idempotency keys, bounded retries and cursor paging at the boundary | [`090-web-client.md`](090-web-client.md) WC3 |
 | Presentation, formatting & i18n | The other half of the base-representation rule: viewer's locale and zone, `Intl` formatting, currency exponents | [`090-web-client.md`](090-web-client.md) WC4 |
 | Frontend observability | The browser does not originate the server's trace; correlation by request id; a closed error-report shape | [`090-web-client.md`](090-web-client.md) WC5 |
+| Web estate and the front door | Three surface classes — front door, product, internal — each with a fixed identity posture and decidable from the host name; the front door as a built directory with environments, no session or credential, its origin rendering the web client's bootstrap document; content as data in the repository with a CMS only as a declared source; every surface maintainable from its repository alone; four seams that are existing contracts; automated actors as workload identities | [`091-web-estate.md`](091-web-estate.md) |
+| Tenant hostnames | The hostname chooses a tenant's entry before login and is only checked for agreement after; `404` at the edge for a host that names no tenant; host-only session cookies with `Domain=` never set; one callback host per topology; a pre-issued wildcard for subdomains and a `pending → verified → active` state machine for custom domains with the tenant table as the certificate allowlist; tenant hosts `noindex` | [`092-tenant-hostnames.md`](092-tenant-hostnames.md) |
 
 Two rows deserve a word on why they are the worked examples:
 

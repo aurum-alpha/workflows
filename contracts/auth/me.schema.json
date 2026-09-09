@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.aurumalpha.dev/auth/me.schema.json",
   "title": "Aurum Alpha client identity document",
-  "description": "What a client fetches at load to know who is signed in and what to render. Governed by standards/060-auth.md AU6. THE PERMISSIONS HERE ARE ADVISORY: the client uses them to decide what to render, never to decide what is allowed, and every one is enforced again on the server on every request. The permission vocabulary itself belongs to the RBAC standard, not here. schemaVersion 1 — evolves additively per PC6.",
+  "description": "What a client fetches at load to know who is signed in and what to render. Governed by standards/060-auth.md AU6. THE PERMISSIONS AND ENTITLEMENTS HERE ARE ADVISORY: the client uses them to decide what to render, never to decide what is allowed, and every one is enforced again on the server on every request. The permission vocabulary belongs to the RBAC standard and the entitlement vocabulary to the billing standard, not here. schemaVersion 1 — the entitlements block and session.tenant_id were added additively per PC6.",
   "type": "object",
   "properties": {
     "schema_version": { "type": "integer", "const": 1 },
@@ -31,11 +31,56 @@
       "description": "For showing a person what they are. Not the thing the interface branches on — that is 'permissions'.",
       "items": { "type": "string", "minLength": 1 }
     },
+    "entitlements": {
+      "type": "object",
+      "description": "What the session's tenant has bought, derived under standards/075-billing.md BL4 and as ADVISORY as 'permissions': the client shows and hides from it, the server enforces every capability, quota and allowance again on every request. Present wherever a product sells plans. The vocabulary — capability ids, metric ids, plan ids — is the billing standard's catalog, not this document's.",
+      "properties": {
+        "plan_id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "The plan the tenant's subscription is on, by the catalog's id." },
+        "status": { "type": "string", "enum": ["trialing", "active", "past_due", "cancelled"], "description": "The subscription status, so a client can show a trial banner or a past-due notice without a second call." },
+        "capabilities": {
+          "type": "array",
+          "description": "The capabilities the tenant currently has. snake_case with no dot, so a capability can never be mistaken for a permission (075 BL3).",
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }
+        },
+        "quotas": {
+          "type": "object",
+          "description": "Ceilings on what may exist at once, by metric id.",
+          "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
+          "additionalProperties": { "type": "integer", "minimum": 0 }
+        },
+        "allowances": {
+          "type": "object",
+          "description": "Ceilings on what may be consumed in the current billing period, by metric id, with the period's end so the client can say when it resets.",
+          "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "limit": { "type": "integer", "minimum": 0 },
+              "period_ends_at": { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp" }
+            },
+            "required": ["limit", "period_ends_at"],
+            "additionalProperties": false
+          }
+        },
+        "settings": {
+          "type": "object",
+          "description": "Values the plan fixes and the product reads as configuration, by setting id.",
+          "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
+          "additionalProperties": { "type": ["string", "integer", "boolean"] }
+        }
+      },
+      "required": ["plan_id", "status", "capabilities"],
+      "additionalProperties": false
+    },
     "session": {
       "type": "object",
-      "description": "So the client can warn before a session lapses rather than losing work to a surprise redirect.",
+      "description": "So the client can warn before a session lapses rather than losing work to a surprise redirect, and so it knows which tenant this session is bound to (AU8).",
       "properties": {
-        "expires_at": { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp" }
+        "expires_at": { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp" },
+        "tenant_id": {
+          "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/publicId",
+          "description": "The one tenant this session was bound to at login (AU8). Display and routing only: the server reads the tenant from its own session record, never from anything the client echoes back (070 RB10)."
+        }
       },
       "required": ["expires_at"],
       "additionalProperties": false

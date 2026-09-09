@@ -30,8 +30,8 @@
       "type": ["boolean", "string", "number", "object"]
     },
     "kind": {
-      "enum": ["release", "operational", "experiment", "entitlement"],
-      "description": "FF3: which lifetime the flag has. release and experiment expire; operational and entitlement are reviewed."
+      "enum": ["release", "operational", "experiment"],
+      "description": "FF3: which lifetime the flag has. release and experiment expire; operational is reviewed. There is no entitlement kind: what a tenant bought is the billing standard's (075 BL3), derived from its subscription and checked beside the permission, never a flag."
     },
     "scope": {
       "enum": ["global", "tenant", "user"],

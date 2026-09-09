@@ -22,8 +22,10 @@ declared, defaulted, bounded, observed and removed. **What it does not define
 is configuration, authorization, or entitlement data.** A value that is the
 same for every request in an environment is configuration under SC3; whether
 a subject may do something is a permission under 070; what a tenant has
-bought is domain data in the service's own database. A flag may read the
-last of those and may gate the first two, and the rules say how far.
+bought is an entitlement under the [billing standard](075-billing.md), derived
+from the tenant's subscription and checked beside the permission. A flag
+gates whether code is wired; it decides none of the three, and the rules say
+how far it may stand near them.
 
 ## Why this exists
 
@@ -129,13 +131,13 @@ a release can evaluate is a fact about the release.
 | `name` | `<area>.<flag>`, lowercase `snake_case` segments, exactly two | The key passed to the evaluation API, the `feature_flag.key` on the span, the name in the sweep's finding. |
 | `type` | `boolean` · `string` · `number` · `object` | Which typed call evaluates it. |
 | `default` | A value of `type` | FF4. What every evaluation returns when the provider does not answer. |
-| `kind` | `release` · `operational` · `experiment` · `entitlement` | FF3. Which lifetime fields are required and how long it may live. |
+| `kind` | `release` · `operational` · `experiment` | FF3. Which lifetime fields are required and how long it may live. |
 | `scope` | `global` · `tenant` · `user` | Which id is the targeting key; a scoped flag evaluated without it returns the default with `TARGETING_KEY_MISSING`. |
 | `description` | text | What `true`, or each variant, turns on. |
 | `owner` | a team or role handle | Who is asked when the sweep finds it overdue. |
 | `created` | RFC 3339 `full-date` (IP4) | The start of the lifetime FF3 bounds. |
 | `expires` | `full-date` | `release` and `experiment` only; required there. |
-| `review_by` | `full-date` | `operational` and `entitlement` only; required there. |
+| `review_by` | `full-date` | `operational` only; required there. |
 | `removal` | text | `release` and `experiment` only; required there: the condition under which the flag and its call sites are deleted. |
 | `variants` | list of admitted values | `experiment` requires two or more; admitted on any `string` or `number` flag. |
 | `served_to_client` | boolean, default `false` | FF7. Whether the browser's evaluated set carries it. |
@@ -151,14 +153,22 @@ permission (FF5) or a permission toggled by a dashboard.
 A flag that exists only in a dashboard is a value nobody in the repository
 can see — the settings-table failure, returning through the vendor.
 
-### FF3. A flag has one of four kinds, and every kind has an end
+### FF3. A flag has one of three kinds, and every kind has an end
 
 | Kind | It is for | Lives until | Lifetime field | Removal |
 |---|---|---|---|---|
 | `release` | Shipping code dark and turning it on: a dark launch, a rollout, a per-tenant preview. | The feature is on everywhere or abandoned. | `expires`, required | The flag and both code paths go; the surviving path is the code. |
 | `experiment` | Measuring: two or more variants assigned to subjects, with a decision at the end. | The decision. | `expires`, required | The winning variant becomes the code; the exposure record is kept. |
 | `operational` | An intervention without a deployment: a kill switch, a degraded mode, a rate cap. | An operator could still need it. | `review_by`, required | At review, kept with a new date or removed. |
-| `entitlement` | A capability a tenant has or has not: a plan tier, a contract term, a beta programme. | The product sells it. | `review_by`, required | At review, kept with a new date or promoted to domain data. |
+
+**What a tenant has bought is not a kind of flag.** A plan tier, a contract
+term, a seat count: each is an entitlement, derived from the tenant's
+subscription under the [billing standard](075-billing.md) BL3 and checked by
+that standard's own operation (BL4) beside the 070 permission. The test that
+separates the two is *who flips it*: an engineer or an operator flips a flag;
+a payment flips an entitlement. A flag that stays on because a customer pays
+for it has no bounded life and no engineer who may turn it off, and so it is
+an entitlement wearing a flag's name — refused here and admitted there.
 
 **`expires` is at most 180 days after `created`.** A release flag that plans
 to live longer is an operational flag or a configuration value wearing a
@@ -173,7 +183,7 @@ a rollout has two lifetimes and satisfies neither, so it is two flags.
 and the two ceilings are measured differently on purpose. `expires` is
 bounded from `created` because a release or an experiment has a **bounded
 life**: the whole point is that the flag ends. `review_by` is bounded from
-*today* because an operational or entitlement flag may legitimately live for
+*today* because an operational flag may legitimately live for
 years, so what is bounded is not its life but the **neglect** of it — the
 longest anyone may go without looking at it again.
 
@@ -222,10 +232,11 @@ catch**, because it passes every test written while the provider was up.
 **A flag decides whether a capability is shown or wired. It never decides
 whether a subject is allowed.** The server's `check(subject, permission,
 scope)` under 070 runs on every request that reaches a guarded handler,
-whatever any flag evaluated to. An `entitlement` flag is evaluated *in
-addition to* a permission, never instead of one: the flag says whether the
-capability is offered to this tenant, the permission whether this subject may
-use it, and both must say yes.
+whatever any flag evaluated to. Nor does a flag decide what a tenant has
+bought: that is the [billing standard](075-billing.md)'s entitlement check,
+which runs beside the permission (BL4). The order a guarded handler asks is
+fixed — the release flag, then the permission, then the entitlement — because
+each answers a different question and a denial has to name which one said no.
 
 - **A flag never appears where a permission is expected.** Not in a grant, a
   role, the `/me` document's `permissions` list ([`060-auth.md`](060-auth.md)
@@ -317,13 +328,20 @@ evaluation context. Evaluations are counted by `feature_flag.key` and
 ### FF9. Flag state lives with the provider, and the provider is attached by configuration
 
 **Values live in the provider; existence lives in the declaration (FF2).**
-The provider is named by configuration (factor IV); two shapes are
-admitted, and a repository says which in its **Conventions**:
+The provider is named by configuration (factor IV), and it is **a flag
+service taken off the shelf** — ours or a vendor's, self-hosted or hosted —
+named in the repository's **Conventions**:
 
 | Provider | State lives | Changes take effect | Fit |
 |---|---|---|---|
 | A flag service, ours or a vendor's, taken off the shelf | In that service | At its propagation interval, without a deployment | Every flag with a runtime life: rollouts, experiments, kill switches, degraded modes. |
-| The service's own database, behind a thin adapter over data the product already owns | In a table the service owns (025 SD13) | On the next evaluation or cache expiry | Entitlements alone, where the value is what a tenant bought and already sits in the product's tables. |
+
+An earlier version of this table had a second row, a thin adapter over the
+product's own tables for entitlements. It went when entitlements stopped being
+a kind of flag (FF3): with no entitlement to read, there is nothing in the
+product's tables a flag provider has any business reading, and a provider over
+domain data was a second read path to a question the [billing
+standard](075-billing.md) answers with one.
 
 **A flag whose value ships in the release is not admitted**, and neither is
 the bespoke machinery that would make one work. The tempting third shape —
@@ -345,7 +363,7 @@ flag costs it a backing service.** That price is the rule working. A product
 unwilling to pay it does not have a cheaper flag; it has configuration, and
 should call it that.
 
-Whichever shape, no process holds a provider credential that is not its own
+No process holds a provider credential that is not its own
 service's (000 Terms, *credential*): a shared flag service is shared the way
 a mail relay is, each service attaching with its own credential.
 
@@ -392,7 +410,7 @@ finding turns a silent accumulation into a named piece of work for its owner.
 | Turn the new PDF renderer on for one tenant, then all | `release` | `tenant` | Two code paths until the old one goes; expires with the rollout. |
 | Ten percent of users see the redesigned checkout; measure conversion | `experiment` | `user` | Assignment by hash of the user id; exposure recorded once; expires with the decision. |
 | Stop calling the fraud provider if it degrades | `operational` | `global` | An operator's intervention; `payments.fraud_bypass` defaults `false`; reviewed yearly. |
-| Enterprise tenants get the audit export | `entitlement` | `tenant` | What the tenant bought, evaluated beside `audit.export` the permission, never instead of it. |
+| Enterprise tenants get the audit export | refused | — | An entitlement under the [billing standard](075-billing.md): what the tenant bought is derived from its subscription and checked beside `audit.export` the permission. A payment flips it, so it is not a flag. |
 | Show the beta banner in staging only | `release` | `global` | An `environment` rule at the provider, in place of `if (env === "staging")` in code. |
 | The API base URL | refused | — | Configuration under SC3: one value per environment, no subject. |
 | `feature_enabled`, default `true`, so a provider outage keeps the feature on | refused | — | FF4: the default is off and the flag is named for what `true` turns on. An outage returns the system to normal, never to the feature. |
@@ -403,7 +421,7 @@ Per PC3, under [`contracts/feature-flags/`](../contracts/feature-flags/):
 
 - **`flag-declaration.schema.json`** — FF2's declaration, with FF3's
   conditional requirements: `release` and `experiment` carry `expires` and
-  `removal` and never `review_by`; `operational` and `entitlement` carry
+  `removal` and never `review_by`; `operational` carries
   `review_by` and never `expires`; an `experiment` carries two or more
   `variants`; a boolean flag's `default` is `false` (FF4). Dates `$ref` the
   identifiers contract.
@@ -419,7 +437,7 @@ Per PC3, under [`contracts/feature-flags/`](../contracts/feature-flags/):
   context, the value, reason and error code returned — including the
   provider-down case that separates fail-closed from fail-open, and the
   undeclared-flag case that separates consulting the declaration from asking
-  the provider first. `gating`: an entitlement flag and a permission decision
+  the provider first. `gating`: a flag and a permission decision
   together, including the case that separates a flag from an authorization
   check. `experiments` and `expiry`: assignment and exposure; a date and the
   sweep's findings.
@@ -453,22 +471,35 @@ declaration still has a call site (FF11).
   lifetime needs; extending it in place would make a generated file the
   source of truth for owners and dates. The declaration is the source and
   the manifest is derived.
-- **Four kinds, each with a lifetime field, and no flag without one**
+- **Every kind has a lifetime field, and no flag is without one**
   (2026-09-02). An optional expiry is the accumulation failure with a field
-  that permits it. Operational and entitlement flags do not expire, so they
-  carry a review date; the invariant is a date after which every flag is a
-  finding.
+  that permits it. An operational flag does not expire, so it
+  carries a review date; the invariant is a date after which every flag is a
+  finding. (This entry said *four kinds* when written; see the entry of
+  2026-09-08 for why it is three.)
 - **Every boolean defaults to `false`; the flag is named for what `true`
   turns on** (2026-09-02). A per-flag safe default makes the safe value a
   judgment at every declaration, and the fail-open outage — a provider down
   turning every kill switch on — is exactly the judgment that gets made
   wrong. Fixing the default fixes the naming.
-- **An entitlement is a flag, evaluated beside a permission** (2026-09-02).
-  Refusing the kind would put *what a tenant bought* into a system built for
-  *what a subject may do* and make every plan change a grant change. It is
-  admitted with FF5's rule that it never stands alone.
-- **Two provider shapes, and the flag values never ship in the release**
-  (2026-09-04). An earlier draft admitted a third shape — flag values in a
+- **An entitlement is not a flag; the billing standard owns the check**
+  (2026-09-08, reversing the entry of 2026-09-02). The earlier entry admitted
+  an `entitlement` kind so that *what a tenant bought* would not be forced
+  into the authorization model, and that half of the argument still holds:
+  it is not a permission either. What the flag shape could not carry became
+  clear once entitlements were specified in full: a flag evaluation returns a
+  value and a reason from a closed enumeration, so it cannot say *denied
+  because the plan lacks this, upgrade to that*; it has no notion of a
+  numeric ceiling with a billing period; and a thin adapter over the
+  product's tables made two read paths for one question, which is the
+  one-way principle broken in the standard written to serve it. The kind is
+  removed, the [billing standard](075-billing.md) defines the entitlement
+  check with its own decision, reason and corpus, and what survives here is
+  the ordering rule in FF5: a flag is asked first, a permission second, an
+  entitlement third, and none decides for another.
+- **One provider shape, and the flag values never ship in the release**
+  (2026-09-04; the adapter shape withdrawn 2026-09-08 with the entitlement
+  kind). An earlier draft admitted a third shape — flag values in a
   committed file, overridden per environment — as the cheap starting point for
   a product with no runtime toggling need. It is refused, and the refusal
   removes a rung rather than adding one. A value that needs a deployment to
@@ -510,9 +541,10 @@ declaration still has a call site (FF11).
 - **Configuration.** [`030-service.md`](030-service.md) SC3, in full. A
   value with no subject is a variable — and so is a value that cannot change
   without a deployment, whatever it is called (FF9).
-- **Authorization and entitlement data.** [`070-rbac.md`](070-rbac.md) owns
-  the check; the service's database owns what a tenant bought. A flag reads
-  the second and yields to the first.
+- **Authorization and entitlements.** [`070-rbac.md`](070-rbac.md) owns
+  whether a subject may act; the [billing standard](075-billing.md) owns what
+  a tenant has bought and the check that reads it. A flag decides neither and
+  is asked before both.
 - **The provider's internals.** Targeting-rule syntax, percentage rollouts,
   segment definitions and dashboards are the provider's, behind the
   interface. This document binds what crosses it.

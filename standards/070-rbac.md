@@ -399,6 +399,37 @@ cheaper correct answer.
 A stated maximum TTL bounds what invalidation misses. It is a backstop, not the
 mechanism.
 
+### RB10. The scope of a request comes from the authenticated session, never from the request
+
+RB7 makes scope an argument. This rule says where the argument comes from:
+**the tenant a request is checked against is read from the authenticated
+identity — the session the [authentication standard](060-auth.md) bound to
+exactly one tenant at login (AU8) — and never from anything the client sent.**
+Not a header, not a query parameter, not a body field, and not the hostname
+the request arrived on.
+
+The reason is that every one of those is the caller's to choose. A scope taken
+from a header is a scope the caller selected, and a `check` whose scope
+argument the subject supplies is a check the subject can pass by naming a
+tenant they hold a grant in and a resource they do not. The session's tenant
+is the one value the caller cannot pick after authenticating, which is what
+makes it fit to be the argument.
+
+Two things remain legitimate and are not exceptions:
+
+- **A resource's own tenant is compared against the session's.** A request
+  for `/invoices/inv_42` resolves the invoice's tenant from the row and
+  refuses when it differs from the session's, per 025's isolation rule. That
+  is the scope being *checked*, not *chosen*.
+- **A narrower scope inside the tenant may come from the path.** A project
+  under a tenant is named by the route, and RB5's containment decides whether
+  the tenant-level grant covers it. The path may narrow the scope the session
+  fixed; it may never widen it or change the tenant.
+
+Where a product gives tenants their own hostnames, the hostname's role stops
+at routing and at an agreement check, and the [tenant hostnames
+standard](092-tenant-hostnames.md) says so; the scope still comes from here.
+
 ## The artifacts
 
 Per PC3, under [`contracts/rbac/`](../contracts/rbac/):
@@ -462,3 +493,9 @@ specification rather than as prose.
   ambient-context design one implementation already has, which is convenient at
   every call site and produced a cross-tenant cache defect. Purity is what the
   corpus needs, and the corpus is what makes this standard enforceable.
+- **The scope argument comes from the session, never from the request**
+  (2026-09-08): RB7 fixed that scope is passed and left open who supplies it.
+  Tenant hostnames forced the question, because a hostname is the most
+  plausible-looking source of a tenant and is still a value the client chose.
+  The rule is stated generally — no header, parameter, body field or hostname —
+  so that the next plausible-looking source is already refused.

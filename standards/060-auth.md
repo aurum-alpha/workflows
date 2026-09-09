@@ -356,10 +356,17 @@ identity and permissions at load, shaped by
   names for display.
 - `permissions` — a flat list the interface can test against.
 - `roles` — for showing someone what they are, not for branching on.
-- `session` — when it expires, so the client can warn before it lapses.
+- `entitlements` — what the session's tenant has bought, derived under the
+  [billing standard](075-billing.md) BL4: the plan, the capabilities, and the
+  quotas, allowances and settings by metric. Present wherever a product sells
+  plans; as advisory as `permissions`, and for the same reason.
+- `session` — when it expires, so the client can warn before it lapses, and
+  the tenant it is bound to (AU8).
 
-**The client uses permissions to decide what to render, never to decide what is
-allowed.** Every one is enforced again on the server, on every request. A client
+**The client uses permissions and entitlements to decide what to render, never
+to decide what is allowed.** Every one is enforced again on the server, on
+every request — the permission by `check` under 070, the entitlement by the
+billing standard's check beside it. A client
 that hides a button has improved the experience; a server that trusts the client
 having hidden it has a vulnerability. This is stated in exactly those words
 because the endpoint makes the wrong reading available for the first time.
@@ -475,6 +482,49 @@ genuinely simpler for a single-backend product and for local development. It is
 not the default because its costs are paid permanently and its saving is paid
 once.
 
+### AU8. A session is an authentication into exactly one tenant
+
+Where a product has tenants, **a tenant is an authentication boundary, and a
+role is an authorization boundary inside one.** The two sentences decide
+everything below, and they decide which standard owns what: this document
+binds a session to a tenant; the [RBAC standard](070-rbac.md) decides what a
+subject may do inside it and reads the tenant from the session (RB10).
+
+- **A session is bound to one tenant at login and never changes it.** The
+  binding is made when the session is created, from the tenant the entry
+  point belongs to, and it is recorded in the session, not inferred later. A
+  person who works in two tenants authenticates twice and holds two sessions.
+  There is no *switch tenant* inside a session: a switch is a new binding,
+  which is a new login.
+- **This is true whatever the topology.** A product serving every tenant from
+  one host under AU7's topology A still
+  binds each session to one tenant; a product giving tenants their own
+  hostnames under the [tenant hostnames standard](092-tenant-hostnames.md)
+  makes the same binding on a host-only cookie, so that a session for one
+  tenant's host is never presented to another's.
+- **The session cookie is host-only wherever hosts differ by tenant.**
+  `Domain=` is never set on it, so the browser scopes it to the exact host
+  that set it. Topology B's widened cookie is admitted for one product's
+  `app.` and `api.` hosts and is not admitted across tenant hosts, because
+  a cookie that reaches every tenant's host is a credential for the wrong
+  tenant waiting for a routing mistake.
+- **An identity in several tenants is not a session in several tenants.** The
+  identity link of AU3 may exist in more than one tenant's user table; the
+  session names one of them. Which one is decided by where the person logged
+  in, never by a choice the client sends afterwards.
+- **A subject with no user in the session's tenant is refused as AU6 says**:
+  `403`, session ended. That the same identity has a user in another tenant
+  changes nothing here.
+
+The reason the binding is fixed rather than switchable is RB7's: a check is a
+pure function of subject, permission and scope, and the scope has to come from
+somewhere the caller cannot choose. A session that can change tenant on request
+is ambient state by another name, and the cross-tenant cache defect RB7
+describes returns through it.
+
+Roles are unaffected. A person with three roles in one tenant has one session
+and three grants; the roles are 070's and the session does not know them.
+
 ## The artifacts
 
 Per PC3, under [`contracts/auth/`](../contracts/auth/):
@@ -532,7 +582,23 @@ are gateable and the parts that are architecture are not.**
   day rather than derived from a threat model. A repository with a sharper threat
   model sets its own and says why; the value of a standard default is that products
   without one stop inventing.
-- **Multi-tenancy is out of scope** (2026-09-01): Auth0 Organizations, a Keycloak
+- **Multi-tenancy at the provider is out of scope** (2026-09-01): Auth0 Organizations, a Keycloak
   realm per customer, and a single realm with groups solve the same problem in
   three different shapes, and which is right depends on the provider and on the
   commercial architecture rather than on this contract.
+- **The session's tenant binding is in scope, and it is one tenant per
+  session** (2026-09-08): the entry above left the whole of multi-tenancy to
+  the provider, and that was too much. How a provider models tenants is
+  still not this document's business; whether a session may span or switch
+  tenants is, because it decides the scope argument 070 RB7 needs and the
+  cookie attributes AU7 pins. Tenant hostnames made the question concrete —
+  a person on one tenant's host presenting a session made on another's — and
+  the answer that keeps the check pure is a binding made once at login. The
+  alternative, an active-tenant selector in the session, is the ambient-scope
+  design RB7 already rejects.
+- **`/me` carries entitlements beside permissions** (2026-09-08): a client
+  that sells plans needs to know what the tenant bought to decide what to
+  draw, and the only alternative to carrying it here was a second bootstrap
+  document. It is added under the same advisory rule as `permissions`, and
+  the vocabulary is the [billing standard](075-billing.md)'s, not this
+  document's.

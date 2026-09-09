@@ -386,7 +386,7 @@ turn an enforced decision into a dated survey. The two are told apart by one
 question: **would naming something else here be a violation, or a choice?** A
 violation means it stays.
 
-Registers in existence today: `032`, `035`, `038`, `060`. A standard with no
+Registers in existence today: `032`, `035`, `038`, `060`, `075`, `091`. A standard with no
 register is one of two things, and the difference matters: either its
 implementations have not been surveyed yet — a gap, tracked as an issue like
 any other — or it closes the choice itself, as the JSON document storage

@@ -1,7 +1,7 @@
 {
   "contract": "feature-flags",
   "schemaVersion": 1,
-  "description": "The conformance corpus for standards/038-feature-flags.md. Six parts. 'declarations' is judged by flag-declaration.schema.json alone; 'contexts' by evaluation-context.schema.json alone; 'evaluated_sets' by evaluated-set.schema.json alone — each case is accepted or rejected and a rejection names the rule. 'evaluation' is judged by running an evaluation boundary: given the fixture declarations, a provider state and a context, the call must return exactly the stated value, reason and error code and raise exactly the stated findings (FF1, FF2, FF4, FF6). 'gating' is judged by serving a request behind an entitlement flag and a permission check together (FF5). 'experiments' is judged by evaluating a split flag repeatedly and counting distinct variants per subject and exposures recorded (FF10). 'expiry' is judged by comparing a declaration to a date and listing the findings the sweep raises (FF3, FF11). Five cases are detectors: 'provider-unavailable-returns-the-declared-default' fails an implementation that fails open on provider error; 'an-undeclared-flag-is-a-finding' fails an implementation that asks the provider before the declaration; 'entitled-and-denied-is-refused' fails an implementation that treats a flag as authorization; 'a-review-date-beyond-the-year-exceeds-the-horizon' fails a sweep with no forward ceiling on review_by; 'a-long-lived-flag-reviewed-recently-is-admitted' fails a sweep bounding review_by from created rather than from the reading date.",
+  "description": "The conformance corpus for standards/038-feature-flags.md. Six parts. 'declarations' is judged by flag-declaration.schema.json alone; 'contexts' by evaluation-context.schema.json alone; 'evaluated_sets' by evaluated-set.schema.json alone — each case is accepted or rejected and a rejection names the rule. 'evaluation' is judged by running an evaluation boundary: given the fixture declarations, a provider state and a context, the call must return exactly the stated value, reason and error code and raise exactly the stated findings (FF1, FF2, FF4, FF6). 'gating' is judged by serving a request behind a flag and a permission check together (FF5). 'experiments' is judged by evaluating a split flag repeatedly and counting distinct variants per subject and exposures recorded (FF10). 'expiry' is judged by comparing a declaration to a date and listing the findings the sweep raises (FF3, FF11). Five cases are detectors: 'provider-unavailable-returns-the-declared-default' fails an implementation that fails open on provider error; 'an-undeclared-flag-is-a-finding' fails an implementation that asks the provider before the declaration; 'flag-on-and-denied-is-refused' fails an implementation that treats a flag as authorization; 'a-review-date-beyond-the-year-exceeds-the-horizon' fails a sweep with no forward ceiling on review_by; 'a-long-lived-flag-reviewed-recently-is-admitted' fails a sweep bounding review_by from created rather than from the reading date.",
   "fixtures": {
     "declarations": [
       {
@@ -40,17 +40,6 @@
         "owner": "payments-oncall",
         "created": "2026-09-01",
         "review_by": "2027-09-01"
-      },
-      {
-        "name": "reporting.audit_export",
-        "type": "boolean",
-        "default": false,
-        "kind": "entitlement",
-        "scope": "tenant",
-        "description": "The tenant's plan includes the audit export. Evaluated beside the audit.export permission, never instead of it.",
-        "owner": "platform-team",
-        "created": "2026-09-01",
-        "review_by": "2027-03-01"
       }
     ]
   },
@@ -108,9 +97,9 @@
       }
     },
     {
-      "case": "an-entitlement-flag-with-a-review-date",
-      "valid": true,
-      "why": "FF3 and FF5: an entitlement is tenant-scoped, reviewed rather than expired, and its description names the permission it is evaluated beside.",
+      "case": "an-entitlement-kind-is-rejected",
+      "valid": false,
+      "why": "FF3: what a tenant bought is not a kind of flag. A payment flips it, not an engineer, so it has no bounded life and no operator who may turn it off; it is an entitlement under the billing standard (075 BL3), derived from the subscription and checked beside the permission. A declaration that names the kind is refused at the schema.",
       "declaration": {
         "name": "reporting.audit_export",
         "type": "boolean",
@@ -577,31 +566,31 @@
   ],
   "gating": [
     {
-      "case": "entitled-and-permitted-is-served",
-      "why": "FF5: the entitlement says the capability is offered to this tenant and the permission says this subject may use it. Both yes; served.",
-      "entitlement": true,
+      "case": "flag-on-and-permitted-is-served",
+      "why": "FF5: the flag says the code path is wired and the permission says this subject may use it. Both yes; served.",
+      "flag": true,
       "permission": "allow",
       "expect": { "served": true, "status": 200 }
     },
     {
-      "case": "entitled-and-denied-is-refused",
+      "case": "flag-on-and-denied-is-refused",
       "why": "FF5, the detector. The flag is on and the permission check denies; the request is refused. An implementation that serves because the flag was on has made a flag dashboard the access-control system, and it passes the other three cases.",
       "detector": true,
-      "entitlement": true,
+      "flag": true,
       "permission": "deny",
       "expect": { "served": false, "status": 403 }
     },
     {
-      "case": "not-entitled-and-permitted-is-not-wired",
-      "why": "FF5: the subject may use a capability the tenant does not have. The route answers as if the code were not deployed — 404 per 050 HA3 — so a dark capability is dark to enumeration.",
-      "entitlement": false,
+      "case": "flag-off-and-permitted-is-not-wired",
+      "why": "FF5: the subject may use a capability the flag has not wired. The route answers as if the code were not deployed — 404 per 050 HA3 — so a dark capability is dark to enumeration.",
+      "flag": false,
       "permission": "allow",
       "expect": { "served": false, "status": 404 }
     },
     {
-      "case": "not-entitled-and-denied-is-not-wired",
+      "case": "flag-off-and-denied-is-not-wired",
       "why": "FF5: the flag is evaluated first because it decides whether the route exists; a route that does not exist has no permission to deny.",
-      "entitlement": false,
+      "flag": false,
       "permission": "deny",
       "expect": { "served": false, "status": 404 }
     }

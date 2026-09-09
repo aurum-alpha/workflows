@@ -107,6 +107,38 @@ served it, shaped by
 [`contracts/web-client/runtime-config.schema.json`](../contracts/web-client/runtime-config.schema.json).
 That origin renders it from *its own* environment.
 
+**The delivery is pinned, because the document is the one thing every surface
+fetches before it can do anything else.** It is served at `/config.json` on the
+origin that served the bundle, as `application/json` with
+`Cache-Control: no-store`, and the bundle awaits it before first render. The
+path is fixed so that a front door on a static host, a product behind a proxy
+and an internal tool are bootstrapped identically; `no-store` is what lets a
+deployment change a value without a rebuild or a cache purge. How the origin
+renders it is the origin's business: a serving process substitutes from its
+environment at request time, and a static host's **deploy step writes the file
+into the artifact directory** from the deployment's environment — the build
+never touches it, so the artifact stays identical across environments.
+
+The document carries, and carries only:
+
+| Field | What it is | Present for |
+|---|---|---|
+| `schema_version` | the shape's version, `3` | every surface |
+| `environment` | `development` · `test` · `staging` · `production` | every surface |
+| `surface_class` | `front_door` · `product` · `internal`, per the [web estate standard](091-web-estate.md) WE1 | every surface |
+| `api_origin` | the origin the API client (WC3) calls: scheme, host, port | product and internal; absent on a front door |
+| `login_path` · `logout_path` | where a top-level navigation begins a session, and the path that ends it server-side | product and internal; absent on a front door |
+| `global_flags` | the anonymous, global subset of the evaluated flag set ([`038-feature-flags.md`](038-feature-flags.md) FF7) | optional |
+| `surface_settings` | per-surface, per-environment scalars — a booking link, a form endpoint — under keys **the repository declares** in a schema its CI validates the served document against | optional |
+
+Every field is named for what it is, and there is no wrapper object and no
+free-form bag: a name that says less than the value is (`url` for an origin) or
+nothing at all (`auth` around two paths) costs every reader a lookup, and a map
+with undeclared keys is where a secret arrives without anyone deciding it
+should. `surface_settings` is the one open map, and it is open only to keys the
+repository has declared, which is what makes an undeclared key a finding rather
+than a feature.
+
 **Three things are involved and only the middle one is this document**, because
 conflating them produces a config that cannot be correct in every topology:
 
@@ -154,7 +186,10 @@ the browser can use its effect without ever seeing it.
 The authenticated application configuration's `flags` member is the evaluated
 set of [`038-feature-flags.md`](038-feature-flags.md) FF7, shaped by
 `contracts/feature-flags/evaluated-set.schema.json`; the browser renders from
-it and evaluates nothing.
+it and evaluates nothing. The bootstrap's `global_flags` is the anonymous
+subset of the same set — global scope, boolean, declared `served_to_client` —
+because the bootstrap is served before anyone is known and a tenant- or
+user-scoped value cannot exist yet.
 
 ### WC3. One API client module, generated, owning the boundary rules
 
@@ -271,8 +306,10 @@ arrives from a caller who can put anything in it.
 
 Per PC3, under [`contracts/web-client/`](../contracts/web-client/):
 
-- **`runtime-config.schema.json`** — the document WC2 requires the server to
-  serve and the client to fetch, including the provenance fields WC5 needs.
+- **`runtime-config.schema.json`** — the document WC2 requires the origin to
+  serve at `/config.json` and the client to fetch, at schema version 3: the
+  surface class, the environment, and the API origin and session paths a
+  product or internal surface needs and a front door must not carry.
 - **`error-report.schema.json`** — the client error report of WC5,
   `$ref`-ing the identifiers contract for its timestamp and the observability
   contract for the request id, so one spelling covers the browser and the
@@ -312,6 +349,21 @@ someone else's machine.
 
 ## Decisions
 
+- **Schema version 3: every field named for what it is, one contract for
+  three surfaces, and the path pinned** (2026-09-08): the second version
+  worked for a product behind a proxy and for nothing else. A front door has
+  no API and no session, so a required `api_base_url` and `auth` object made
+  the contract unusable for the one surface that most needs an
+  environment-specific document, and the names themselves under-described
+  their values — `url` for what was always an origin, `auth` around two paths
+  that say what they are on their own. Version 3 renames (`api_origin`,
+  `login_path`, `logout_path`, `global_flags`), adds `surface_class` so the
+  conditional requirement can follow the [web estate
+  standard](091-web-estate.md)'s classes, adds `surface_settings` for the
+  scalars a front door's pages need under keys the repository declares, and
+  pins `/config.json` with `no-store` so a static host's deploy step and a
+  serving process satisfy the same rule. Renames are breaking under PC6; the
+  deprecation window is nil because no implementation consumed version 2.
 - **WC1 carries the browser's half only; the architecture is the
   authentication standard's** (2026-09-01): the first draft of this rule
   chose the Backend-For-Frontend pattern, pinned the session cookie's

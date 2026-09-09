@@ -273,6 +273,7 @@ entirely from here.
 | D7 | A register entry is a technical claim on a date — never an endorsement, a price, a contract term or a vendor ranking | `check-solutions` (proposed): a currency symbol, or the pricing vocabulary, in a register is a finding. Close to no false positives, because the vocabulary has no other use on a page this class admits | **review only** |
 | D8 | Every register carries the date its claims were last checked; the horizon is 180 days, lowerable and not raisable; an entry past it is a finding | **static and decidable, and the mechanism of the whole class** — `check-solutions` (proposed): parse the checked date, compare to the run date, fail past the horizon. The same shape as 038 FF3's date comparison, over a different committed file, and worth folding into that checker rather than writing twice | **review only** |
 | D9 | A register may name at most one default route, argued, and says what would change it | — resists honestly: that an argument is good is judgment. That there is at most one is a review question a reader answers by reading the page | **review only** |
+| D10 | A document is written in Simplified Technical English: one idea per sentence; at most 25 words in a descriptive sentence and 20 in an instruction; at most six sentences in a paragraph; active voice; no *should*, *may* or *ensure*; no dash joining two clauses | `tools/check-doc-style` measures the mechanical half: sentence length, paragraph length, the banned words, dashes in prose. It runs in this repository's CI in warn-only mode. It gates when the documents are under the threshold, and that promotion is its own change. One idea per sentence, active voice and one meaning per word are review questions | **audit only** |
 
 D1 and D2 are the cheapest gates in this ledger — a grep each, no false
 positives — and they are the kind of rule that regresses silently, because a
@@ -303,6 +304,12 @@ comparison over a different file.
 D5's citation pass is worth the same trip: it is what stops a register drifting
 into an orphan after a standard is renumbered, and it is the only mechanical
 grip on the boundary between a claim and a rule.
+
+D10 is the one row in this section with a checker that exists. It is audit
+only by choice, not by omission. The documents were written before the
+convention, and a gate that fails every one of them on the day it lands is
+noise. The checker prints the distance on every run. The row moves to gated
+when the count reaches zero, in its own change.
 
 ## Service standard
 

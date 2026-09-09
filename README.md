@@ -166,7 +166,7 @@ rather than around it.
 
 ## How these documents are written
 
-Three conventions, because all three failures are quiet ones.
+Four conventions. Each one stops a failure that is quiet.
 
 **A merged document is binding, and says nothing about its own status.** No
 document carries a `Status: proposed` or `Status: agreed` header. Review happens
@@ -214,6 +214,41 @@ cannot tell from the text which repository, if any, taught it. The Decisions
 log at the foot of every standard is where this bites hardest: each entry is
 the reason a choice went one way, and an entry that reads *as done in …* or
 *because N products do …* is a decision nobody made.
+
+**A document is written in Simplified Technical English.** The writing rules
+of [ASD-STE100](https://www.asd-ste100.org/) are the standard for every
+document in this repository. They were made for maintenance manuals, where a
+sentence that is misread costs an aircraft. A rule that is misread here costs
+a product the same way, one release later. The readers include engineers
+whose first language is not English, and agents that turn a sentence into
+code. Both read a short sentence correctly. Neither reads a long one the same
+way twice.
+
+The rules we hold to, stated in our words:
+
+- **A sentence gives one idea.** A descriptive sentence has at most 25 words.
+  An instruction has at most 20.
+- **A paragraph has one topic and at most six sentences.** The first
+  sentence states the topic.
+- **The voice is active and the tense is present.** The actor is named: *the
+  job writes the row*, not *the row is written*.
+- **A rule is an instruction.** *Put the catalog in the repository.* *Do not
+  set `Domain=`.* A requirement uses *must*. A permission uses *can* or *is
+  permitted*. The words *should*, *may* and *ensure* do not appear.
+- **A word has one meaning.** A technical name such as *tenant*, *webhook*
+  or *cursor* is used as its standard names it, and is not varied for
+  style. A noun cluster has at most three words.
+- **A full stop joins two ideas.** A dash does not. A sentence that needs a
+  dash to hold together is two sentences.
+- **A table, a list, a code block or a diagram carries what it carries
+  best.** Prose is not used where a table is clearer.
+
+A document written before this convention converges on it. Any passage that
+changes meets it. `tools/check-doc-style` measures the distance: sentence
+length, paragraph length, the banned words, and dashes in prose. It reports
+in this repository's CI and does not gate until the documents are under the
+threshold. The judgement half of the convention, one idea per sentence and
+one meaning per word, stays a review question.
 
 ## Non-compliance is tracked where the code is
 

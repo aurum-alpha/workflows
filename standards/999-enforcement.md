@@ -185,7 +185,7 @@ and the repositories had.
 |---|---|---|---|
 | DC1 | A command name means the same thing in every repository | `check-package-scripts` S5 | gated¹ |
 | DC2 | A script's body is the invocation its gate runs | `check-package-scripts` S2 | gated¹ |
-| DC3 | The repository's shape decides which commands exist | `check-package-scripts` S1 | gated¹ |
+| DC3 | The repository's shape decides which commands exist, in both directions | `check-package-scripts` S1 | gated¹ |
 | DC4 | No second name for a command that already has one | `check-package-scripts` S3 | gated¹ |
 | DC5 | A script never reaches a local binary through the package manager | `check-package-scripts` S4 | gated¹ |
 | DC6 | An added command follows the same rules | `check-package-scripts` S3, S4 | gated¹ |

@@ -1,71 +1,121 @@
 {
   "contract": "web-client",
   "schemaVersion": 1,
-  "description": "Conformance corpus for standards/090-web-client.md. 'validity': the value must validate (or fail) against the named schema root \u2014 'runtime-config' or 'error-report'. 'behaviour': black-box cases a live client and its serving process must satisfy; the harness drives the stimulus and asserts 'expect'. An implementation passes the whole file or names the case it fails.",
+  "description": "Conformance corpus for standards/090-web-client.md. 'validity': the value must validate (or fail) against the named schema root \u2014 'runtime-config' or 'error-report'. 'behaviour': black-box cases a live client and its serving process must satisfy; the harness drives the stimulus and asserts 'expect'. An implementation passes the whole file or names the case it fails. The runtime-config cases are at schema version 3: field names say what each field is, surface_class tells one contract which estate surface it serves (091 WE1), and the document is fetched from /config.json.",
   "validity": [
     {
       "id": "config-minimal-ok",
       "def": "runtime-config",
       "value": {
-        "schema_version": 2,
+        "schema_version": 3,
         "environment": "production",
-        "api_base_url": "https://app.example.com",
-        "auth": {
-          "login_path": "/auth/login",
-          "logout_path": "/auth/logout"
-        }
+        "surface_class": "product",
+        "api_origin": "https://app.example.com",
+        "login_path": "/auth/login",
+        "logout_path": "/auth/logout"
       },
       "valid": true,
-      "note": "the whole document a client needs: where the API is, how to start and end a session, and what it is running (WC1, WC2)"
+      "note": "the whole document a product client needs: which surface and environment it is, where the API is, and how to start and end a session (WC1, WC2, 091 WE1)"
     },
     {
-      "id": "config-with-features-ok",
+      "id": "config-with-global-flags-ok",
       "def": "runtime-config",
       "value": {
-        "schema_version": 2,
+        "schema_version": 3,
         "environment": "staging",
-        "api_base_url": "https://staging.example.com",
-        "auth": {
-          "login_path": "/auth/login",
-          "logout_path": "/auth/logout"
-        },
-        "features": {
-          "new_billing_ui": true,
-          "export_csv": false
+        "surface_class": "product",
+        "api_origin": "https://staging.example.com",
+        "login_path": "/auth/login",
+        "logout_path": "/auth/logout",
+        "global_flags": {
+          "billing.new_ui": true,
+          "export.csv": false
         }
       },
       "valid": true,
-      "note": "the same bundle, same commit, different environment \u2014 which is the WC2 property the whole rule exists for"
+      "note": "the same bundle, same commit, different environment \u2014 which is the WC2 property the whole rule exists for; the flags are the anonymous global subset of 038 FF7, named as flags are"
+    },
+    {
+      "id": "config-front-door-ok",
+      "def": "runtime-config",
+      "value": {
+        "schema_version": 3,
+        "environment": "production",
+        "surface_class": "front_door",
+        "surface_settings": {
+          "booking_url": "https://book.example.com/intro",
+          "lead_form_endpoint": "https://forms.example.com/f/abc"
+        }
+      },
+      "valid": true,
+      "note": "a front door has no session and no API, so it carries neither api_origin nor a login path; what it does carry is the per-environment values its pages need, under keys its own repository declares (091 WE3, WE4)"
+    },
+    {
+      "id": "config-internal-ok",
+      "def": "runtime-config",
+      "value": {
+        "schema_version": 3,
+        "environment": "production",
+        "surface_class": "internal",
+        "api_origin": "https://tools.example.internal",
+        "login_path": "/auth/login",
+        "logout_path": "/auth/logout"
+      },
+      "valid": true,
+      "note": "an internal surface is shaped like a product surface: it has a session and an API. What differs is the identity provider behind login_path, which this document does not name (091 WE1)"
+    },
+    {
+      "id": "config-rejects-product-without-api-origin",
+      "def": "runtime-config",
+      "value": {
+        "schema_version": 3,
+        "environment": "production",
+        "surface_class": "product",
+        "login_path": "/auth/login",
+        "logout_path": "/auth/logout"
+      },
+      "valid": false,
+      "note": "a product client cannot ask the API where the API is; the conditional requirement is the ordering problem WC2 exists to solve"
+    },
+    {
+      "id": "config-rejects-front-door-with-api-origin",
+      "def": "runtime-config",
+      "value": {
+        "schema_version": 3,
+        "environment": "production",
+        "surface_class": "front_door",
+        "api_origin": "https://app.example.com"
+      },
+      "valid": false,
+      "note": "a front door that is told where an API is has been given the means to call one; 091 WE3 says it calls no authenticated API, and the schema holds the shape of that"
     },
     {
       "id": "config-rejects-unknown-property",
       "def": "runtime-config",
       "value": {
-        "schema_version": 2,
+        "schema_version": 3,
         "environment": "production",
-        "api_base_url": "https://app.example.com",
-        "auth": {
-          "login_path": "/auth/login",
-          "logout_path": "/auth/logout"
-        },
+        "surface_class": "product",
+        "api_origin": "https://app.example.com",
+        "login_path": "/auth/login",
+        "logout_path": "/auth/logout",
         "oidc_client_secret": "s3cr3t"
       },
       "valid": false,
       "note": "the closed property set is the enforcement of 'nothing secret goes here' \u2014 this document is served to every anonymous visitor (WC2)"
     },
     {
-      "id": "config-rejects-provider-detail-in-auth",
+      "id": "config-rejects-provider-detail",
       "def": "runtime-config",
       "value": {
-        "schema_version": 2,
+        "schema_version": 3,
         "environment": "production",
-        "api_base_url": "https://app.example.com",
-        "auth": {
-          "login_path": "/auth/login",
-          "logout_path": "/auth/logout",
-          "client_id": "spa-prod",
-          "issuer": "https://id.example.com"
-        }
+        "surface_class": "product",
+        "api_origin": "https://app.example.com",
+        "login_path": "/auth/login",
+        "logout_path": "/auth/logout",
+        "client_id": "spa-prod",
+        "issuer": "https://id.example.com"
       },
       "valid": false,
       "note": "the browser is not an OAuth participant, so it is told where to navigate and nothing about the provider. The closed set is what keeps a client_id or issuer from arriving here and inviting the page to do an exchange itself (WC1)"
@@ -74,35 +124,79 @@
       "id": "config-rejects-frontend-build-provenance",
       "def": "runtime-config",
       "value": {
-        "schema_version": 2,
+        "schema_version": 3,
         "environment": "production",
-        "api_base_url": "https://app.example.com",
-        "auth": {
-          "login_path": "/auth/login",
-          "logout_path": "/auth/logout"
-        },
+        "surface_class": "product",
+        "api_origin": "https://app.example.com",
+        "login_path": "/auth/login",
+        "logout_path": "/auth/logout",
         "build": {
           "version": "2.4.1",
           "commit": "9f3c1ab"
         }
       },
       "valid": false,
-      "note": "the correction that produced schemaVersion 2: a serving origin cannot know which frontend build the browser is running, so provenance is compiled into the bundle and never served (WC2)"
+      "note": "the correction that produced schemaVersion 2 and still holds at 3: a serving origin cannot know which frontend build the browser is running, so provenance is compiled into the bundle and never served (WC2)"
     },
     {
-      "id": "config-rejects-relative-login-path-without-slash",
+      "id": "config-rejects-version-2-shape",
       "def": "runtime-config",
       "value": {
         "schema_version": 2,
         "environment": "production",
         "api_base_url": "https://app.example.com",
         "auth": {
-          "login_path": "auth/login",
+          "login_path": "/auth/login",
           "logout_path": "/auth/logout"
         }
       },
       "valid": false,
+      "note": "the version 2 names are gone, not aliased: api_base_url was always an origin and the auth wrapper named nothing. No implementation consumed version 2, so the deprecation window is nil and the old shape is simply invalid (PC6)"
+    },
+    {
+      "id": "config-rejects-relative-login-path-without-slash",
+      "def": "runtime-config",
+      "value": {
+        "schema_version": 3,
+        "environment": "production",
+        "surface_class": "product",
+        "api_origin": "https://app.example.com",
+        "login_path": "auth/login",
+        "logout_path": "/auth/logout"
+      },
+      "valid": false,
       "note": "a login path resolved against the current route sends the user somewhere different depending on where they were when the session expired"
+    },
+    {
+      "id": "config-rejects-api-origin-with-a-path",
+      "def": "runtime-config",
+      "value": {
+        "schema_version": 3,
+        "environment": "production",
+        "surface_class": "product",
+        "api_origin": "https://app.example.com/api/v1",
+        "login_path": "/auth/login",
+        "logout_path": "/auth/logout"
+      },
+      "valid": false,
+      "note": "an origin is scheme, host and port; the version prefix is 050 HA5's and belongs to the generated client (WC3), not to a value the serving host renders"
+    },
+    {
+      "id": "config-rejects-nested-surface-setting",
+      "def": "runtime-config",
+      "value": {
+        "schema_version": 3,
+        "environment": "production",
+        "surface_class": "front_door",
+        "surface_settings": {
+          "booking": {
+            "url": "https://book.example.com",
+            "label": "Book a call"
+          }
+        }
+      },
+      "valid": false,
+      "note": "a nested object here is application configuration wearing a bootstrap's name; the bootstrap carries scalars the serving origin's environment can render, and anything with structure belongs on /api/config (WC2)"
     },
     {
       "id": "report-api-error-ok",
@@ -221,7 +315,7 @@
   "behaviour": [
     {
       "id": "bundle-contains-no-environment-values",
-      "stimulus": "grep the built bundle for the api_base_url of any environment",
+      "stimulus": "grep the built bundle for the api_origin of any environment, and for any value of surface_settings",
       "expect": {
         "matches": "none"
       },
@@ -231,10 +325,21 @@
       "id": "same-bundle-serves-two-environments",
       "stimulus": "serve the identical build output from a staging server and a production server",
       "expect": {
-        "each_client": "fetches a runtime config naming its own environment and api_base_url",
+        "each_client": "fetches /config.json naming its own environment and api_origin",
         "bundle_bytes": "identical"
       },
       "note": "the property WC2 is actually protecting; a build-time bake fails here and nowhere else"
+    },
+    {
+      "id": "bootstrap-is-served-at-config-json-and-not-cached",
+      "stimulus": "GET /config.json from the origin that served the bundle, twice, with a deployment between that changes one surface_settings value",
+      "expect": {
+        "status": 200,
+        "content_type": "application/json",
+        "cache_control": "no-store",
+        "second_response": "carries the new value"
+      },
+      "note": "the path is pinned so every surface, a CDN-hosted front door included, is bootstrapped the same way; no-store is what lets a deployment change a value without a rebuild or a cache purge (WC2)"
     },
     {
       "id": "no-token-in-web-storage-after-login",

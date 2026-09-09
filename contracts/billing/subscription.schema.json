@@ -1,0 +1,375 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/billing/subscription.schema.json",
+  "title": "Aurum Alpha subscription, ledger, override and entitlement decision",
+  "description": "The shapes of standards/075-billing.md BL2 and BL4: the subscription projection, the append-only ledger row, the override, the decision the check returns, the derived entitlement set that feeds /me (060 AU6), and the extension members the entitlement-required problem carries inside 050 HA3's envelope. This file fixes the model; contracts/billing/entitlements.json fixes the behaviour. Ids and timestamps are $refs into the identifiers contract, never restated. schemaVersion 1 — evolves additively per PC6.",
+  "$defs": {
+    "status": {
+      "enum": ["trialing", "active", "past_due", "cancelled"],
+      "description": "BL2: the closed status set. BL4's policy maps each to what the plan contributes: trialing and active the full plan; past_due the full plan for the catalog's grace period, then the suspended set; cancelled the suspended set, the row having taken effect at period end."
+    },
+    "ledgerKind": {
+      "enum": [
+        "trial_started",
+        "trial_converted",
+        "trial_expired",
+        "upgraded",
+        "downgraded",
+        "cancelled",
+        "reactivated",
+        "payment_failed",
+        "payment_recovered",
+        "override_granted",
+        "override_revoked"
+      ],
+      "description": "BL2: the closed set of transitions. A sign-up onto a paid plan with no trial is upgraded from no plan; an expired trial is a cancellation that never paid. A kind outside this set is a schema failure, not a new row."
+    },
+    "actorType": {
+      "enum": ["user", "internal_admin", "provider_webhook", "job"],
+      "description": "BL2: the closed set of actors. Maps to 080 AE2's actor.type as user, user, service and system respectively (BL10)."
+    },
+    "actor": {
+      "type": "object",
+      "description": "BL2: who caused the row. For user and internal_admin the id is the application's own public id for the person (IP1); for job the job's name; for provider_webhook the provider's source name as 055 AM8 re-envelopes it.",
+      "properties": {
+        "type": { "$ref": "#/$defs/actorType" },
+        "id": { "type": "string", "minLength": 1 }
+      },
+      "required": ["type", "id"],
+      "additionalProperties": false
+    },
+    "planRef": {
+      "type": ["string", "null"],
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "BL1: a plan id from the catalog, or null for no plan — before the first row, and after a cancellation has taken effect."
+    },
+    "entitlementId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "BL3: a capability, metric or setting id. snake_case, no dot."
+    },
+    "pendingChange": {
+      "type": "object",
+      "description": "BL2: the one change scheduled to take effect later, derived from the single ledger row whose effective_at is still in the future. There is no array of these: a second pending change is a schema failure, and a row recorded while one is pending supersedes it.",
+      "properties": {
+        "kind": {
+          "enum": ["downgraded", "cancelled"],
+          "description": "BL7: only a downgrade or a cancellation waits for period end. An upgrade and a reactivation take effect at recording."
+        },
+        "to_plan": { "$ref": "#/$defs/planRef" },
+        "effective_at": { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp" },
+        "ledger_id": {
+          "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/publicId",
+          "description": "BL2: the row this pending change is. A pending change is never anything but a row."
+        }
+      },
+      "required": ["kind", "to_plan", "effective_at", "ledger_id"],
+      "additionalProperties": false
+    },
+    "subscription": {
+      "type": "object",
+      "description": "BL2: the projection, one per tenant, written only by applying a ledger row — except the period boundaries, which mirror the provider's events because the period is when the provider charges (BL6). It is the current answer; the ledger is the truth.",
+      "properties": {
+        "tenant_id": {
+          "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/publicId",
+          "description": "BL3: entitlements attach to the tenant and to nothing smaller. There is no user_id here and never will be."
+        },
+        "plan": { "$ref": "#/$defs/planRef" },
+        "status": { "$ref": "#/$defs/status" },
+        "current_period_start": { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp" },
+        "current_period_end": {
+          "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp",
+          "description": "BL2, BL7: the instant a pending downgrade or cancellation takes effect and the instant an allowance resets (BL3)."
+        },
+        "trial_end": {
+          "oneOf": [
+            { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp" },
+            { "type": "null" }
+          ],
+          "description": "BL8: when the trial ends; null when there is none or it has ended. The trial.expire job reads it; the banner reads it; the function already knows it."
+        },
+        "catalog_version": {
+          "type": "string",
+          "minLength": 1,
+          "description": "BL1: the catalog version the tenant is priced under. Prices are grandfathered by this; entitlements are always the current catalog's."
+        },
+        "provider": {
+          "type": "object",
+          "description": "BL5, BL9: the provider's ids for this tenant, absent until the provider confirms them, because the local transaction commits before the boundary call is acknowledged.",
+          "properties": {
+            "customer_id": { "type": ["string", "null"], "minLength": 1 },
+            "subscription_id": { "type": ["string", "null"], "minLength": 1 }
+          },
+          "required": ["customer_id", "subscription_id"],
+          "additionalProperties": false
+        },
+        "pending_change": {
+          "oneOf": [
+            { "$ref": "#/$defs/pendingChange" },
+            { "type": "null" }
+          ]
+        },
+        "last_ledger_id": {
+          "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/publicId",
+          "description": "BL4: the most recently recorded row, one third of the entitlement cache key. Every row changes it, so every row invalidates by construction."
+        }
+      },
+      "required": ["tenant_id", "plan", "status", "current_period_start", "current_period_end", "trial_end", "catalog_version", "provider", "pending_change", "last_ledger_id"],
+      "additionalProperties": false
+    },
+    "ledgerRow": {
+      "type": "object",
+      "description": "BL2: one transition, append-only. The service's grant on this table carries INSERT and SELECT and nothing else (080 AE6's discipline). A correction is a new row with a reason. Every row also emits an audit event in the same transaction (BL10).",
+      "properties": {
+        "id": { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/publicId" },
+        "tenant_id": { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/publicId" },
+        "kind": { "$ref": "#/$defs/ledgerKind" },
+        "actor": { "$ref": "#/$defs/actor" },
+        "recorded_at": {
+          "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp",
+          "description": "BL2: when the row was written. Rows are applied in this order."
+        },
+        "effective_at": {
+          "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp",
+          "description": "BL2: when the transition takes effect. Equal to recorded_at for an immediate change; later for a downgrade or cancellation at period end, which makes the row the pending change until then. The function of BL4 applies a row only once 'at' has reached this instant, which is what lets it answer for any date."
+        },
+        "from_plan": { "$ref": "#/$defs/planRef" },
+        "to_plan": { "$ref": "#/$defs/planRef" },
+        "from_status": {
+          "oneOf": [
+            { "$ref": "#/$defs/status" },
+            { "type": "null" }
+          ],
+          "description": "BL2: null only on a tenant's first row."
+        },
+        "to_status": { "$ref": "#/$defs/status" },
+        "catalog_version": {
+          "type": "string",
+          "minLength": 1,
+          "description": "BL1: the catalog version this change was priced under — grandfathered pricing without a mechanism."
+        },
+        "provider_event_id": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "description": "BL6: the provider's event id where a webhook caused the row, unique per tenant, so a redelivered event is a repeat under 055 AM3 and never a second row. Null for rows the product or a person originated."
+        },
+        "override_id": {
+          "oneOf": [
+            { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/publicId" },
+            { "type": "null" }
+          ],
+          "description": "BL2: the override an override_granted or override_revoked row concerns. Null for every other kind."
+        },
+        "reason": {
+          "type": ["string", "null"],
+          "description": "BL7, BL10: the justification an internal administrator gave. Required by review on every internal_admin row; carried to the audit event's reason."
+        }
+      },
+      "required": ["id", "tenant_id", "kind", "actor", "recorded_at", "effective_at", "from_plan", "to_plan", "from_status", "to_status", "catalog_version", "provider_event_id", "override_id", "reason"],
+      "additionalProperties": false
+    },
+    "override": {
+      "type": "object",
+      "description": "BL2: one adjustment to one entitlement for one tenant, granted by an internal administrator with a 070 permission and written as an override_granted ledger row. It applies from granted_at until expires_at or revoked_at, at any status (BL4). There is no user-level override: a per-user grant is a permission (BL3).",
+      "properties": {
+        "id": { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/publicId" },
+        "tenant_id": { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/publicId" },
+        "kind": {
+          "enum": ["capability", "quota", "allowance", "setting"],
+          "description": "BL3: which of the four kinds the target is."
+        },
+        "target": { "$ref": "#/$defs/entitlementId" },
+        "value": {
+          "type": ["boolean", "integer", "string", "null"],
+          "description": "BL4: the effective value while the override lives — true for a capability granted, a ceiling or null for a quota or allowance, the setting's value for a setting. Where the plan also speaks, this wins."
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "description": "BL7: why. Required, because an override with no reason is a comp nobody can explain on the audit trail."
+        },
+        "granted_by": {
+          "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/publicId",
+          "description": "BL10: the administrator's public id; the audit event's actor."
+        },
+        "granted_at": { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp" },
+        "expires_at": {
+          "oneOf": [
+            { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp" },
+            { "type": "null" }
+          ],
+          "description": "BL4: the instant after which the override contributes nothing. Null admits an open-ended override and is the review question on every grant."
+        },
+        "revoked_at": {
+          "oneOf": [
+            { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp" },
+            { "type": "null" }
+          ],
+          "description": "BL2: set by an override_revoked row. The override row is not deleted; the ledger explains it."
+        }
+      },
+      "required": ["id", "tenant_id", "kind", "target", "value", "reason", "granted_by", "granted_at", "expires_at", "revoked_at"],
+      "additionalProperties": false
+    },
+    "reason": {
+      "type": "object",
+      "description": "BL4: why the decision came out as it did — which plan or which override decided, or that the suspended set applied. Present on every decision, allowed or not, because a denial has to say which plan refused so the problem envelope can name it.",
+      "properties": {
+        "source": {
+          "enum": ["plan", "override", "suspended"],
+          "description": "BL4: plan when the plan's own definition decided; override when an override did; suspended when the status policy replaced the plan with the suspended set."
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "BL4: the plan id, the override's public id, or the status (past_due or cancelled) that caused suspension."
+        }
+      },
+      "required": ["source", "id"],
+      "additionalProperties": false
+    },
+    "decision": {
+      "type": "object",
+      "description": "BL4: what entitled, withinQuota and withinAllowance return. Never a bare boolean, for 070 RB8's reason. The reason is logged and shown to an administrator; the caller receives the entitlement-required problem, which names the plan and the entitlement and nothing else.",
+      "properties": {
+        "allowed": { "type": "boolean" },
+        "reason": { "$ref": "#/$defs/reason" }
+      },
+      "required": ["allowed", "reason"],
+      "additionalProperties": false
+    },
+    "sourcedValue": {
+      "type": "object",
+      "description": "BL4: a quota, allowance or setting value with the source that decided it.",
+      "properties": {
+        "value": { "type": ["integer", "string", "boolean", "null"] },
+        "source": { "$ref": "#/$defs/reason" }
+      },
+      "required": ["value", "source"],
+      "additionalProperties": false
+    },
+    "sourcedAllowance": {
+      "type": "object",
+      "description": "BL3, BL4: an allowance value with the period it resets on, taken from the subscription's current period.",
+      "properties": {
+        "value": { "type": ["integer", "null"] },
+        "period_start": { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp" },
+        "period_end": { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp" },
+        "source": { "$ref": "#/$defs/reason" }
+      },
+      "required": ["value", "period_start", "period_end", "source"],
+      "additionalProperties": false
+    },
+    "entitlementSet": {
+      "type": "object",
+      "description": "BL4: the derived set for one tenant at one instant — never stored, the output of entitlementsFor. The same shape is the 'entitlements' block of the /me document (060 AU6), advisory there exactly as 'permissions' is: the server enforces on every request.",
+      "properties": {
+        "tenant_id": { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/publicId" },
+        "at": { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp" },
+        "plan": { "$ref": "#/$defs/planRef" },
+        "status": { "$ref": "#/$defs/status" },
+        "suspended": {
+          "type": "boolean",
+          "description": "BL4: whether the status policy replaced the plan's contribution with the suspended set at 'at'."
+        },
+        "catalog_version": {
+          "type": "string",
+          "minLength": 1,
+          "description": "BL1, BL4: the version of the catalog the set was derived from — the current one, not the version the tenant is priced under. Entitlements are current; prices are grandfathered. One third of the cache key."
+        },
+        "capabilities": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/entitlementId" },
+          "description": "BL4: the true, complete, sorted list of capabilities the tenant holds at 'at', from the plan's contribution and live overrides together."
+        },
+        "quotas": {
+          "type": "object",
+          "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
+          "additionalProperties": { "$ref": "#/$defs/sourcedValue" }
+        },
+        "allowances": {
+          "type": "object",
+          "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
+          "additionalProperties": { "$ref": "#/$defs/sourcedAllowance" }
+        },
+        "settings": {
+          "type": "object",
+          "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
+          "additionalProperties": { "$ref": "#/$defs/sourcedValue" }
+        },
+        "pending_change": {
+          "oneOf": [
+            { "$ref": "#/$defs/pendingChange" },
+            { "type": "null" }
+          ],
+          "description": "BL7: so the client can say 'moves to team on the 20th' without a second request."
+        },
+        "trial_end": {
+          "oneOf": [
+            { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp" },
+            { "type": "null" }
+          ]
+        },
+        "valid_until": {
+          "oneOf": [
+            { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp" },
+            { "type": "null" }
+          ],
+          "description": "BL4: the earliest instant after 'at' at which this set would differ with no new ledger row — a grace period ending, a period ending, a trial ending, an override expiring, a pending row taking effect. Null when none is known. A cache honours it; a cache keyed on the ledger alone serves a plan through the end of its grace period."
+        }
+      },
+      "required": ["tenant_id", "at", "plan", "status", "suspended", "catalog_version", "capabilities", "quotas", "allowances", "settings", "pending_change", "trial_end", "valid_until"],
+      "additionalProperties": false
+    },
+    "entitlementRequired": {
+      "type": "object",
+      "description": "BL4: the entitlement-required response, which is 050 HA3's problem+json envelope (contracts/http/problem.schema.json) with two extension members, 'entitlement' and 'plan', as RFC 9457 admits. Every member the envelope requires is required here with the meaning HA3 gives it; this def narrows type and status and adds the two members, and nothing else may appear. Not 402: RFC 9110 reserves it and intermediaries mishandle it; HA3 makes type, not status, the thing a client branches on.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "pattern": "^https://errors\\.aurumalpha\\.dev/[a-z][a-z0-9-]*/entitlement-required$",
+          "description": "HA3: the portfolio form, with the service's own segment."
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "description": "HA3: the same string for every instance of this type."
+        },
+        "status": { "const": 403 },
+        "detail": {
+          "type": "string",
+          "minLength": 1,
+          "description": "HA3: this occurrence's reason — which plan, which entitlement, which limit. Never the person's grants (070 RB8)."
+        },
+        "instance": {
+          "type": "string",
+          "description": "HA3: the request path, where one exists."
+        },
+        "request_id": {
+          "$ref": "https://contracts.aurumalpha.dev/observability/context.schema.json#/$defs/requestId"
+        },
+        "entitlement": {
+          "type": "object",
+          "description": "BL4: what was missing. A statement about the tenant, not the person, which is why it may cross the boundary where 070 RB8's reason does not.",
+          "properties": {
+            "kind": { "enum": ["capability", "quota", "allowance"] },
+            "id": { "$ref": "#/$defs/entitlementId" },
+            "limit": {
+              "type": ["integer", "null"],
+              "description": "BL3: the ceiling that was reached, for a quota or allowance. Absent for a capability."
+            }
+          },
+          "required": ["kind", "id"],
+          "additionalProperties": false
+        },
+        "plan": {
+          "$ref": "#/$defs/planRef",
+          "description": "BL4: the tenant's current plan, so the client can render which plan would satisfy the request. Null when the tenant has none."
+        }
+      },
+      "required": ["type", "title", "status", "detail", "request_id", "entitlement", "plan"],
+      "additionalProperties": false
+    }
+  }
+}

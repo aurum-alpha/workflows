@@ -1,0 +1,826 @@
+{
+  "contract": "billing",
+  "schemaVersion": 1,
+  "description": "The decision corpus for standards/075-billing.md — the artifact that makes a polyglot entitlement standard enforceable from one source. An implementation loads 'catalog', 'subscriptions', 'ledger' and 'overrides' from the fixture, takes 'now' as the clock, then evaluates every case in 'checks' and either reproduces each expected result or names the case it failed. No running service, no provider and no network: the corpus is data and entitlementsFor(catalog, subscription, ledger, overrides, at) is a pure function of its arguments, which is what BL4 requires and why it requires it. A case's 'at' is the instant asked about; where absent it is 'now'. A case with 'before' is evaluated after the 'before' check, in the same process, against the same cache. The 'rejections' are stimuli an implementation must refuse or error on. Six cases are detectors, each written against a specific shortcut and checked against a reference implementation weakened that way. Four fail exactly one case: 'the-same-capability-inside-and-then-outside-the-grace-period' fails a cache of the current set keyed on tenant, catalog version and last ledger row without valid_until, once the clock moves; 'a-superseded-cancellation-never-takes-effect' fails a fold that applies rows in effective order rather than recorded order; 'the-last-day-of-a-cancelled-period-is-still-the-plan' fails an implementation that reads a pending cancellation as the status cancelled and suspends on it; 'an-override-that-expired-yesterday-contributes-nothing' fails an implementation that never reads expires_at. Two fail with company: 'the-plan-before-the-last-upgrade' fails an implementation that answers from the projection instead of the ledger, together with every other case asked about a date the projection does not describe; 'a-pending-downgrade-is-not-yet-applied' fails an implementation that applies every row at its recorded time, together with the cancelled-period case above and 'the-same-count-before-the-downgrade'. Each weakened implementation passes everything else.",
+  "fixture": {
+    "now": "2026-09-08T12:00:00.000Z",
+    "catalog": {
+      "schema_version": 1,
+      "version": "2026-09",
+      "past_due_grace_days": 14,
+      "suspended": {
+        "capabilities": []
+      },
+      "capabilities": [
+        { "id": "audit_export", "description": "Export the tenant's audit trail." },
+        { "id": "sso", "description": "Single sign-on through the tenant's own identity provider." },
+        { "id": "custom_domains", "description": "Serve the product on a hostname the tenant owns." },
+        { "id": "priority_routing", "description": "Declared and checked in code, sold by no plan yet. In the catalog so the check is not an error; in no plan so it is always refused." }
+      ],
+      "metrics": [
+        { "id": "seats", "kind": "quota", "unit": "seat", "description": "Users that may exist in the tenant at once." },
+        { "id": "projects", "kind": "quota", "unit": "project", "description": "Projects that may exist in the tenant at once." },
+        { "id": "api_calls", "kind": "allowance", "unit": "call", "description": "API calls per billing period, from the domain's usage record." }
+      ],
+      "settings": [
+        { "id": "history_days", "type": "integer", "description": "How many days of history the tenant can see. Read as configuration; never checked." }
+      ],
+      "plans": [
+        {
+          "id": "starter",
+          "name": "Starter",
+          "prices": [
+            { "interval": "month", "amount": { "amount": 1900, "currency": "USD" } },
+            { "interval": "year", "amount": { "amount": 19000, "currency": "USD" } }
+          ],
+          "trial_days": 14,
+          "capabilities": [],
+          "quotas": { "seats": 3, "projects": 5 },
+          "allowances": { "api_calls": 1000 },
+          "settings": { "history_days": 30 },
+          "terms": { "support": "community" }
+        },
+        {
+          "id": "team",
+          "name": "Team",
+          "prices": [
+            { "interval": "month", "amount": { "amount": 4900, "currency": "USD" } },
+            { "interval": "year", "amount": { "amount": 49000, "currency": "USD" } }
+          ],
+          "trial_days": 14,
+          "capabilities": ["audit_export"],
+          "quotas": { "seats": 10, "projects": 25 },
+          "allowances": { "api_calls": 10000 },
+          "settings": { "history_days": 90 },
+          "terms": { "support": "email" }
+        },
+        {
+          "id": "business",
+          "name": "Business",
+          "prices": [
+            { "interval": "month", "amount": { "amount": 14900, "currency": "USD" } },
+            { "interval": "year", "amount": { "amount": 149000, "currency": "USD" } }
+          ],
+          "trial_days": 0,
+          "capabilities": ["audit_export", "sso", "custom_domains"],
+          "quotas": { "seats": 50, "projects": null },
+          "allowances": { "api_calls": 100000 },
+          "settings": { "history_days": 365 },
+          "terms": { "support": "priority", "sla": "99.9" }
+        }
+      ]
+    },
+    "subscriptions": [
+      {
+        "tenant_id": "ten_acme00000001",
+        "plan": "team",
+        "status": "active",
+        "current_period_start": "2026-09-01T00:00:00.000Z",
+        "current_period_end": "2026-10-01T00:00:00.000Z",
+        "trial_end": null,
+        "catalog_version": "2026-09",
+        "provider": { "customer_id": "cus_acme", "subscription_id": "sub_acme" },
+        "pending_change": null,
+        "last_ledger_id": "led_000000000003"
+      },
+      {
+        "tenant_id": "ten_globex000001",
+        "plan": "business",
+        "status": "past_due",
+        "current_period_start": "2026-08-15T00:00:00.000Z",
+        "current_period_end": "2026-09-15T00:00:00.000Z",
+        "trial_end": null,
+        "catalog_version": "2026-01",
+        "provider": { "customer_id": "cus_globex", "subscription_id": "sub_globex" },
+        "pending_change": null,
+        "last_ledger_id": "led_000000000005"
+      },
+      {
+        "tenant_id": "ten_initech00001",
+        "plan": "team",
+        "status": "active",
+        "current_period_start": "2026-08-09T00:00:00.000Z",
+        "current_period_end": "2026-09-09T00:00:00.000Z",
+        "trial_end": null,
+        "catalog_version": "2026-01",
+        "provider": { "customer_id": "cus_initech", "subscription_id": "sub_initech" },
+        "pending_change": {
+          "kind": "cancelled",
+          "to_plan": null,
+          "effective_at": "2026-09-09T00:00:00.000Z",
+          "ledger_id": "led_000000000008"
+        },
+        "last_ledger_id": "led_000000000008"
+      },
+      {
+        "tenant_id": "ten_umbrella0001",
+        "plan": "business",
+        "status": "active",
+        "current_period_start": "2026-08-20T00:00:00.000Z",
+        "current_period_end": "2026-09-20T00:00:00.000Z",
+        "trial_end": null,
+        "catalog_version": "2026-01",
+        "provider": { "customer_id": "cus_umbrella", "subscription_id": "sub_umbrella" },
+        "pending_change": {
+          "kind": "downgraded",
+          "to_plan": "team",
+          "effective_at": "2026-09-20T00:00:00.000Z",
+          "ledger_id": "led_000000000010"
+        },
+        "last_ledger_id": "led_000000000010"
+      },
+      {
+        "tenant_id": "ten_hooli0000001",
+        "plan": "starter",
+        "status": "active",
+        "current_period_start": "2026-09-01T00:00:00.000Z",
+        "current_period_end": "2026-10-01T00:00:00.000Z",
+        "trial_end": null,
+        "catalog_version": "2026-01",
+        "provider": { "customer_id": "cus_hooli", "subscription_id": "sub_hooli" },
+        "pending_change": null,
+        "last_ledger_id": "led_000000000014"
+      },
+      {
+        "tenant_id": "ten_vandelay0001",
+        "plan": "team",
+        "status": "trialing",
+        "current_period_start": "2026-09-01T09:00:00.000Z",
+        "current_period_end": "2026-09-15T09:00:00.000Z",
+        "trial_end": "2026-09-15T09:00:00.000Z",
+        "catalog_version": "2026-09",
+        "provider": { "customer_id": "cus_vandelay", "subscription_id": "sub_vandelay" },
+        "pending_change": null,
+        "last_ledger_id": "led_000000000015"
+      },
+      {
+        "tenant_id": "ten_wayne0000001",
+        "plan": "team",
+        "status": "active",
+        "current_period_start": "2026-09-01T00:00:00.000Z",
+        "current_period_end": "2026-10-01T00:00:00.000Z",
+        "trial_end": null,
+        "catalog_version": "2026-01",
+        "provider": { "customer_id": "cus_wayne", "subscription_id": "sub_wayne" },
+        "pending_change": null,
+        "last_ledger_id": "led_000000000018"
+      },
+      {
+        "tenant_id": "ten_stark0000001",
+        "plan": null,
+        "status": "cancelled",
+        "current_period_start": "2026-08-01T09:00:00.000Z",
+        "current_period_end": "2026-08-15T09:00:00.000Z",
+        "trial_end": null,
+        "catalog_version": "2026-01",
+        "provider": { "customer_id": "cus_stark", "subscription_id": null },
+        "pending_change": null,
+        "last_ledger_id": "led_000000000020"
+      }
+    ],
+    "ledger": [
+      {
+        "id": "led_000000000001",
+        "tenant_id": "ten_acme00000001",
+        "kind": "trial_started",
+        "actor": { "type": "user", "id": "usr_ana000000001" },
+        "recorded_at": "2026-03-01T09:00:00.000Z",
+        "effective_at": "2026-03-01T09:00:00.000Z",
+        "from_plan": null,
+        "to_plan": "starter",
+        "from_status": null,
+        "to_status": "trialing",
+        "catalog_version": "2026-01",
+        "provider_event_id": null,
+        "override_id": null,
+        "reason": null
+      },
+      {
+        "id": "led_000000000002",
+        "tenant_id": "ten_acme00000001",
+        "kind": "trial_converted",
+        "actor": { "type": "provider_webhook", "id": "/billing-provider" },
+        "recorded_at": "2026-03-15T09:00:00.000Z",
+        "effective_at": "2026-03-15T09:00:00.000Z",
+        "from_plan": "starter",
+        "to_plan": "starter",
+        "from_status": "trialing",
+        "to_status": "active",
+        "catalog_version": "2026-01",
+        "provider_event_id": "evt_0002",
+        "override_id": null,
+        "reason": null
+      },
+      {
+        "id": "led_000000000003",
+        "tenant_id": "ten_acme00000001",
+        "kind": "upgraded",
+        "actor": { "type": "user", "id": "usr_ana000000001" },
+        "recorded_at": "2026-08-10T10:00:00.000Z",
+        "effective_at": "2026-08-10T10:00:00.000Z",
+        "from_plan": "starter",
+        "to_plan": "team",
+        "from_status": "active",
+        "to_status": "active",
+        "catalog_version": "2026-09",
+        "provider_event_id": null,
+        "override_id": null,
+        "reason": null
+      },
+      {
+        "id": "led_000000000004",
+        "tenant_id": "ten_globex000001",
+        "kind": "upgraded",
+        "actor": { "type": "user", "id": "usr_ben000000001" },
+        "recorded_at": "2026-01-15T08:00:00.000Z",
+        "effective_at": "2026-01-15T08:00:00.000Z",
+        "from_plan": null,
+        "to_plan": "business",
+        "from_status": null,
+        "to_status": "active",
+        "catalog_version": "2026-01",
+        "provider_event_id": null,
+        "override_id": null,
+        "reason": null
+      },
+      {
+        "id": "led_000000000005",
+        "tenant_id": "ten_globex000001",
+        "kind": "payment_failed",
+        "actor": { "type": "provider_webhook", "id": "/billing-provider" },
+        "recorded_at": "2026-08-26T12:00:00.000Z",
+        "effective_at": "2026-08-26T12:00:00.000Z",
+        "from_plan": "business",
+        "to_plan": "business",
+        "from_status": "active",
+        "to_status": "past_due",
+        "catalog_version": "2026-01",
+        "provider_event_id": "evt_0005",
+        "override_id": null,
+        "reason": null
+      },
+      {
+        "id": "led_000000000006",
+        "tenant_id": "ten_initech00001",
+        "kind": "trial_started",
+        "actor": { "type": "user", "id": "usr_cara00000001" },
+        "recorded_at": "2026-02-09T00:00:00.000Z",
+        "effective_at": "2026-02-09T00:00:00.000Z",
+        "from_plan": null,
+        "to_plan": "team",
+        "from_status": null,
+        "to_status": "trialing",
+        "catalog_version": "2026-01",
+        "provider_event_id": null,
+        "override_id": null,
+        "reason": null
+      },
+      {
+        "id": "led_000000000007",
+        "tenant_id": "ten_initech00001",
+        "kind": "trial_converted",
+        "actor": { "type": "provider_webhook", "id": "/billing-provider" },
+        "recorded_at": "2026-02-23T00:00:00.000Z",
+        "effective_at": "2026-02-23T00:00:00.000Z",
+        "from_plan": "team",
+        "to_plan": "team",
+        "from_status": "trialing",
+        "to_status": "active",
+        "catalog_version": "2026-01",
+        "provider_event_id": "evt_0007",
+        "override_id": null,
+        "reason": null
+      },
+      {
+        "id": "led_000000000008",
+        "tenant_id": "ten_initech00001",
+        "kind": "cancelled",
+        "actor": { "type": "user", "id": "usr_cara00000001" },
+        "recorded_at": "2026-08-20T15:00:00.000Z",
+        "effective_at": "2026-09-09T00:00:00.000Z",
+        "from_plan": "team",
+        "to_plan": null,
+        "from_status": "active",
+        "to_status": "cancelled",
+        "catalog_version": "2026-01",
+        "provider_event_id": null,
+        "override_id": null,
+        "reason": null
+      },
+      {
+        "id": "led_000000000009",
+        "tenant_id": "ten_umbrella0001",
+        "kind": "upgraded",
+        "actor": { "type": "user", "id": "usr_dev000000001" },
+        "recorded_at": "2026-05-20T08:00:00.000Z",
+        "effective_at": "2026-05-20T08:00:00.000Z",
+        "from_plan": null,
+        "to_plan": "business",
+        "from_status": null,
+        "to_status": "active",
+        "catalog_version": "2026-01",
+        "provider_event_id": null,
+        "override_id": null,
+        "reason": null
+      },
+      {
+        "id": "led_000000000010",
+        "tenant_id": "ten_umbrella0001",
+        "kind": "downgraded",
+        "actor": { "type": "user", "id": "usr_dev000000001" },
+        "recorded_at": "2026-09-02T10:00:00.000Z",
+        "effective_at": "2026-09-20T00:00:00.000Z",
+        "from_plan": "business",
+        "to_plan": "team",
+        "from_status": "active",
+        "to_status": "active",
+        "catalog_version": "2026-09",
+        "provider_event_id": null,
+        "override_id": null,
+        "reason": null
+      },
+      {
+        "id": "led_000000000011",
+        "tenant_id": "ten_hooli0000001",
+        "kind": "trial_started",
+        "actor": { "type": "user", "id": "usr_eve000000001" },
+        "recorded_at": "2026-04-01T09:00:00.000Z",
+        "effective_at": "2026-04-01T09:00:00.000Z",
+        "from_plan": null,
+        "to_plan": "starter",
+        "from_status": null,
+        "to_status": "trialing",
+        "catalog_version": "2026-01",
+        "provider_event_id": null,
+        "override_id": null,
+        "reason": null
+      },
+      {
+        "id": "led_000000000012",
+        "tenant_id": "ten_hooli0000001",
+        "kind": "trial_converted",
+        "actor": { "type": "provider_webhook", "id": "/billing-provider" },
+        "recorded_at": "2026-04-15T09:00:00.000Z",
+        "effective_at": "2026-04-15T09:00:00.000Z",
+        "from_plan": "starter",
+        "to_plan": "starter",
+        "from_status": "trialing",
+        "to_status": "active",
+        "catalog_version": "2026-01",
+        "provider_event_id": "evt_0012",
+        "override_id": null,
+        "reason": null
+      },
+      {
+        "id": "led_000000000013",
+        "tenant_id": "ten_hooli0000001",
+        "kind": "override_granted",
+        "actor": { "type": "internal_admin", "id": "adm_dana00000001" },
+        "recorded_at": "2026-06-01T09:00:00.000Z",
+        "effective_at": "2026-06-01T09:00:00.000Z",
+        "from_plan": "starter",
+        "to_plan": "starter",
+        "from_status": "active",
+        "to_status": "active",
+        "catalog_version": "2026-01",
+        "provider_event_id": null,
+        "override_id": "ovr_000000000001",
+        "reason": "pilot programme: eight seats until the pilot review"
+      },
+      {
+        "id": "led_000000000014",
+        "tenant_id": "ten_hooli0000001",
+        "kind": "override_granted",
+        "actor": { "type": "internal_admin", "id": "adm_dana00000001" },
+        "recorded_at": "2026-08-15T09:00:00.000Z",
+        "effective_at": "2026-08-15T09:00:00.000Z",
+        "from_plan": "starter",
+        "to_plan": "starter",
+        "from_status": "active",
+        "to_status": "active",
+        "catalog_version": "2026-01",
+        "provider_event_id": null,
+        "override_id": "ovr_000000000002",
+        "reason": "audit export for the customer's security review"
+      },
+      {
+        "id": "led_000000000015",
+        "tenant_id": "ten_vandelay0001",
+        "kind": "trial_started",
+        "actor": { "type": "user", "id": "usr_fay000000001" },
+        "recorded_at": "2026-09-01T09:00:00.000Z",
+        "effective_at": "2026-09-01T09:00:00.000Z",
+        "from_plan": null,
+        "to_plan": "team",
+        "from_status": null,
+        "to_status": "trialing",
+        "catalog_version": "2026-09",
+        "provider_event_id": null,
+        "override_id": null,
+        "reason": null
+      },
+      {
+        "id": "led_000000000016",
+        "tenant_id": "ten_wayne0000001",
+        "kind": "upgraded",
+        "actor": { "type": "user", "id": "usr_gus000000001" },
+        "recorded_at": "2026-07-01T08:00:00.000Z",
+        "effective_at": "2026-07-01T08:00:00.000Z",
+        "from_plan": null,
+        "to_plan": "team",
+        "from_status": null,
+        "to_status": "active",
+        "catalog_version": "2026-01",
+        "provider_event_id": null,
+        "override_id": null,
+        "reason": null
+      },
+      {
+        "id": "led_000000000017",
+        "tenant_id": "ten_wayne0000001",
+        "kind": "cancelled",
+        "actor": { "type": "user", "id": "usr_gus000000001" },
+        "recorded_at": "2026-08-05T10:00:00.000Z",
+        "effective_at": "2026-09-01T00:00:00.000Z",
+        "from_plan": "team",
+        "to_plan": null,
+        "from_status": "active",
+        "to_status": "cancelled",
+        "catalog_version": "2026-01",
+        "provider_event_id": null,
+        "override_id": null,
+        "reason": null
+      },
+      {
+        "id": "led_000000000018",
+        "tenant_id": "ten_wayne0000001",
+        "kind": "reactivated",
+        "actor": { "type": "user", "id": "usr_gus000000001" },
+        "recorded_at": "2026-08-20T10:00:00.000Z",
+        "effective_at": "2026-08-20T10:00:00.000Z",
+        "from_plan": "team",
+        "to_plan": "team",
+        "from_status": "active",
+        "to_status": "active",
+        "catalog_version": "2026-01",
+        "provider_event_id": null,
+        "override_id": null,
+        "reason": null
+      },
+      {
+        "id": "led_000000000019",
+        "tenant_id": "ten_stark0000001",
+        "kind": "trial_started",
+        "actor": { "type": "user", "id": "usr_hal000000001" },
+        "recorded_at": "2026-08-01T09:00:00.000Z",
+        "effective_at": "2026-08-01T09:00:00.000Z",
+        "from_plan": null,
+        "to_plan": "team",
+        "from_status": null,
+        "to_status": "trialing",
+        "catalog_version": "2026-01",
+        "provider_event_id": null,
+        "override_id": null,
+        "reason": null
+      },
+      {
+        "id": "led_000000000020",
+        "tenant_id": "ten_stark0000001",
+        "kind": "trial_expired",
+        "actor": { "type": "job", "id": "trial.expire" },
+        "recorded_at": "2026-08-15T09:05:00.000Z",
+        "effective_at": "2026-08-15T09:05:00.000Z",
+        "from_plan": "team",
+        "to_plan": null,
+        "from_status": "trialing",
+        "to_status": "cancelled",
+        "catalog_version": "2026-01",
+        "provider_event_id": null,
+        "override_id": null,
+        "reason": null
+      }
+    ],
+    "overrides": [
+      {
+        "id": "ovr_000000000001",
+        "tenant_id": "ten_hooli0000001",
+        "kind": "quota",
+        "target": "seats",
+        "value": 8,
+        "reason": "pilot programme: eight seats until the pilot review",
+        "granted_by": "adm_dana00000001",
+        "granted_at": "2026-06-01T09:00:00.000Z",
+        "expires_at": "2026-09-07T12:00:00.000Z",
+        "revoked_at": null
+      },
+      {
+        "id": "ovr_000000000002",
+        "tenant_id": "ten_hooli0000001",
+        "kind": "capability",
+        "target": "audit_export",
+        "value": true,
+        "reason": "audit export for the customer's security review",
+        "granted_by": "adm_dana00000001",
+        "granted_at": "2026-08-15T09:00:00.000Z",
+        "expires_at": "2026-11-15T09:00:00.000Z",
+        "revoked_at": null
+      }
+    ]
+  },
+  "checks": [
+    {
+      "id": "a-capability-the-plan-includes",
+      "operation": "entitled",
+      "check": { "tenant": "ten_acme00000001", "capability": "audit_export" },
+      "expect": { "allowed": true, "reason": { "source": "plan", "id": "team" } },
+      "note": "the base case: an active tenant on a plan that carries the capability"
+    },
+    {
+      "id": "a-capability-the-plan-does-not-include",
+      "operation": "entitled",
+      "check": { "tenant": "ten_acme00000001", "capability": "sso" },
+      "expect": { "allowed": false, "reason": { "source": "plan", "id": "team" } },
+      "note": "refused, and the reason names the plan that refused, because the problem envelope has to say which plan the tenant is on (BL4)"
+    },
+    {
+      "id": "a-capability-in-the-catalog-and-in-no-plan",
+      "operation": "entitled",
+      "check": { "tenant": "ten_acme00000001", "capability": "priority_routing" },
+      "expect": { "allowed": false, "reason": { "source": "plan", "id": "team" } },
+      "note": "declared, so not an error; sold by nothing, so refused for every tenant. Distinct from an undeclared capability, which is a rejection below (BL1, BL4)"
+    },
+    {
+      "id": "the-plan-before-the-last-upgrade",
+      "operation": "entitled",
+      "check": { "tenant": "ten_acme00000001", "capability": "audit_export", "at": "2026-08-01T12:00:00.000Z" },
+      "expect": { "allowed": false, "reason": { "source": "plan", "id": "starter" } },
+      "note": "DETECTOR. The tenant upgraded from starter to team on 10 August; asked about 1 August, the answer is starter's. An implementation that answers from the projection rather than folding the ledger to 'at' returns team and fails here while passing every current-time case (BL2, BL4)"
+    },
+    {
+      "id": "a-quota-from-the-plan",
+      "operation": "quotaFor",
+      "check": { "tenant": "ten_acme00000001", "metric": "seats" },
+      "expect": { "value": 10, "source": { "source": "plan", "id": "team" } },
+      "note": "the ceiling and where it came from"
+    },
+    {
+      "id": "a-setting-read-as-configuration",
+      "operation": "settingFor",
+      "check": { "tenant": "ten_acme00000001", "setting": "history_days" },
+      "expect": { "value": 90, "source": { "source": "plan", "id": "team" } },
+      "note": "a setting is read, never checked; it still says which plan fixed it (BL3)"
+    },
+    {
+      "id": "an-allowance-mid-period",
+      "operation": "allowanceFor",
+      "check": { "tenant": "ten_acme00000001", "metric": "api_calls" },
+      "expect": {
+        "value": 10000,
+        "period_start": "2026-09-01T00:00:00.000Z",
+        "period_end": "2026-10-01T00:00:00.000Z",
+        "source": { "source": "plan", "id": "team" }
+      },
+      "note": "the ceiling and the period it resets on, taken from the subscription's current period; the usage itself is the domain's record and is not here (BL3)"
+    },
+    {
+      "id": "an-allowance-fully-consumed",
+      "operation": "withinAllowance",
+      "check": { "tenant": "ten_acme00000001", "metric": "api_calls", "used": 10000 },
+      "expect": { "allowed": false, "reason": { "source": "plan", "id": "team" } },
+      "note": "the domain passed its usage record; ten thousand used against a ceiling of ten thousand leaves nothing. The check keeps no counter of its own (BL4)"
+    },
+    {
+      "id": "an-allowance-with-one-call-left",
+      "operation": "withinAllowance",
+      "check": { "tenant": "ten_acme00000001", "metric": "api_calls", "used": 9999 },
+      "expect": { "allowed": true, "reason": { "source": "plan", "id": "team" } },
+      "note": "the boundary from the other side"
+    },
+    {
+      "id": "past-due-one-day-inside-the-grace-period",
+      "operation": "entitled",
+      "check": { "tenant": "ten_globex000001", "capability": "sso" },
+      "expect": { "allowed": true, "reason": { "source": "plan", "id": "business" } },
+      "note": "payment failed on 26 August at noon; the catalog's grace is fourteen days, so the plan contributes in full until 9 September at noon. Asked on 8 September at noon, the tenant has a day left (BL4)"
+    },
+    {
+      "id": "the-same-capability-inside-and-then-outside-the-grace-period",
+      "operation": "entitled",
+      "check": { "tenant": "ten_globex000001", "capability": "sso", "at": "2026-09-10T12:00:00.000Z" },
+      "expect": { "allowed": false, "reason": { "source": "suspended", "id": "past_due" } },
+      "before": {
+        "operation": "entitled",
+        "check": { "tenant": "ten_globex000001", "capability": "sso" },
+        "expect": { "allowed": true }
+      },
+      "note": "DETECTOR, and THE CACHE CASE. Evaluate 'before' at now, then this check one day past the grace period, with no ledger row between the two. A cache keyed on tenant, catalog version and last ledger row alone sees nothing change and returns allowed twice; a cache that honours the set's valid_until — the grace end, 9 September at noon — does not. This is why the entitlement cache carries a time boundary that a permission cache never needed (BL4)"
+    },
+    {
+      "id": "a-suspended-quota-is-zero",
+      "operation": "quotaFor",
+      "check": { "tenant": "ten_globex000001", "metric": "seats", "at": "2026-09-10T12:00:00.000Z" },
+      "expect": { "value": 0, "source": { "source": "suspended", "id": "past_due" } },
+      "note": "the suspended set: every quota and allowance is zero, so nothing new is created, and the source says why (BL4)"
+    },
+    {
+      "id": "a-setting-survives-suspension",
+      "operation": "settingFor",
+      "check": { "tenant": "ten_globex000001", "setting": "history_days", "at": "2026-09-10T12:00:00.000Z" },
+      "expect": { "value": 365, "source": { "source": "plan", "id": "business" } },
+      "note": "a setting keeps the plan's value while suspended, because how long history is kept is exactly what governs a tenant that has stopped paying (BL4)"
+    },
+    {
+      "id": "the-derived-set-with-its-next-boundary",
+      "operation": "entitlementsFor",
+      "check": { "tenant": "ten_globex000001" },
+      "expect": {
+        "tenant_id": "ten_globex000001",
+        "at": "2026-09-08T12:00:00.000Z",
+        "plan": "business",
+        "status": "past_due",
+        "suspended": false,
+        "catalog_version": "2026-09",
+        "capabilities": ["audit_export", "custom_domains", "sso"],
+        "quotas": {
+          "projects": { "value": null, "source": { "source": "plan", "id": "business" } },
+          "seats": { "value": 50, "source": { "source": "plan", "id": "business" } }
+        },
+        "allowances": {
+          "api_calls": {
+            "value": 100000,
+            "period_start": "2026-08-15T00:00:00.000Z",
+            "period_end": "2026-09-15T00:00:00.000Z",
+            "source": { "source": "plan", "id": "business" }
+          }
+        },
+        "settings": {
+          "history_days": { "value": 365, "source": { "source": "plan", "id": "business" } }
+        },
+        "pending_change": null,
+        "trial_end": null,
+        "valid_until": "2026-09-09T12:00:00.000Z"
+      },
+      "note": "the whole set, as /me carries it (060 AU6): capabilities sorted and complete, every value with its source, and valid_until naming the grace end rather than the later period end, because it is the earliest instant the set would differ with no new row. catalog_version is the catalog the set was derived from, not the version the tenant is priced under: entitlements are current, prices are grandfathered (BL1, BL4)"
+    },
+    {
+      "id": "no-ceiling-is-not-zero",
+      "operation": "withinQuota",
+      "check": { "tenant": "ten_globex000001", "metric": "projects", "current": 100000 },
+      "expect": { "allowed": true, "reason": { "source": "plan", "id": "business" } },
+      "note": "business has no ceiling on projects; null means unlimited, and an implementation that treats it as zero refuses everything (BL3)"
+    },
+    {
+      "id": "the-last-day-of-a-cancelled-period-is-still-the-plan",
+      "operation": "entitled",
+      "check": { "tenant": "ten_initech00001", "capability": "audit_export" },
+      "expect": { "allowed": true, "reason": { "source": "plan", "id": "team" } },
+      "note": "DETECTOR. The tenant cancelled on 20 August; the row takes effect at period end, 9 September at midnight. On 8 September the plan still contributes in full: the tenant keeps what it paid for. An implementation that applies the suspended set from the recorded time refuses here and passes every other case (BL2, BL7)"
+    },
+    {
+      "id": "the-first-day-after-a-cancelled-period",
+      "operation": "entitled",
+      "check": { "tenant": "ten_initech00001", "capability": "audit_export", "at": "2026-09-09T12:00:00.000Z" },
+      "expect": { "allowed": false, "reason": { "source": "suspended", "id": "cancelled" } },
+      "note": "twelve hours after the row took effect: no plan, the suspended set, and the reason names the status that caused it (BL4)"
+    },
+    {
+      "id": "a-pending-downgrade-is-not-yet-applied",
+      "operation": "entitled",
+      "check": { "tenant": "ten_umbrella0001", "capability": "sso" },
+      "expect": { "allowed": true, "reason": { "source": "plan", "id": "business" } },
+      "note": "DETECTOR. A downgrade to team was recorded on 2 September, effective 20 September. Until then it is the pending change and business contributes in full. An implementation that applies a downgrade at recording refuses here (BL2, BL7)"
+    },
+    {
+      "id": "a-pending-downgrade-once-applied",
+      "operation": "entitled",
+      "check": { "tenant": "ten_umbrella0001", "capability": "sso", "at": "2026-09-21T12:00:00.000Z" },
+      "expect": { "allowed": false, "reason": { "source": "plan", "id": "team" } },
+      "note": "the day after the row took effect, the same question has team's answer"
+    },
+    {
+      "id": "a-quota-already-exceeded-after-a-downgrade",
+      "operation": "withinQuota",
+      "check": { "tenant": "ten_umbrella0001", "metric": "seats", "current": 27, "at": "2026-09-21T12:00:00.000Z" },
+      "expect": { "allowed": false, "reason": { "source": "plan", "id": "team" } },
+      "note": "twenty-seven seats exist and team allows ten. Nothing is deleted and nothing new is created: the twenty-eighth is refused until the count is under the ceiling (BL7)"
+    },
+    {
+      "id": "the-same-count-before-the-downgrade",
+      "operation": "withinQuota",
+      "check": { "tenant": "ten_umbrella0001", "metric": "seats", "current": 27 },
+      "expect": { "allowed": true, "reason": { "source": "plan", "id": "business" } },
+      "note": "the same domain count against the plan still in force: business allows fifty"
+    },
+    {
+      "id": "an-override-that-expired-yesterday-contributes-nothing",
+      "operation": "quotaFor",
+      "check": { "tenant": "ten_hooli0000001", "metric": "seats" },
+      "expect": { "value": 3, "source": { "source": "plan", "id": "starter" } },
+      "note": "DETECTOR. The seats override of eight expired on 7 September at noon; asked on 8 September at noon, the plan's three is the answer. An implementation that never reads expires_at returns eight and passes every other case (BL4)"
+    },
+    {
+      "id": "the-same-override-the-day-before-it-expired",
+      "operation": "quotaFor",
+      "check": { "tenant": "ten_hooli0000001", "metric": "seats", "at": "2026-09-06T12:00:00.000Z" },
+      "expect": { "value": 8, "source": { "source": "override", "id": "ovr_000000000001" } },
+      "note": "the override wins over the plan while it lives, and the source names it rather than the plan (BL4)"
+    },
+    {
+      "id": "a-capability-granted-by-a-live-override",
+      "operation": "entitled",
+      "check": { "tenant": "ten_hooli0000001", "capability": "audit_export" },
+      "expect": { "allowed": true, "reason": { "source": "override", "id": "ovr_000000000002" } },
+      "note": "starter does not carry audit_export; an administrator granted it until November with a reason, and the reason on the row is what an administrator reads on a support call (BL2, BL4)"
+    },
+    {
+      "id": "a-trial-contributes-the-full-plan",
+      "operation": "entitled",
+      "check": { "tenant": "ten_vandelay0001", "capability": "audit_export" },
+      "expect": { "allowed": true, "reason": { "source": "plan", "id": "team" } },
+      "note": "trialing is the full plan; a trial that shows less than the plan is a demonstration of something else (BL8)"
+    },
+    {
+      "id": "a-quota-at-its-ceiling-refuses-one-more",
+      "operation": "withinQuota",
+      "check": { "tenant": "ten_vandelay0001", "metric": "projects", "current": 25 },
+      "expect": { "allowed": false, "reason": { "source": "plan", "id": "team" } },
+      "note": "twenty-five exist and team allows twenty-five; the question is whether one more fits, and it does not (BL3)"
+    },
+    {
+      "id": "a-superseded-cancellation-never-takes-effect",
+      "operation": "entitled",
+      "check": { "tenant": "ten_wayne0000001", "capability": "audit_export" },
+      "expect": { "allowed": true, "reason": { "source": "plan", "id": "team" } },
+      "note": "DETECTOR. A cancellation recorded on 5 August, effective 1 September, was superseded by a reactivation recorded on 20 August. Rows are applied in recorded order and a row recorded while another is pending supersedes it, so on 8 September the tenant is active on team. An implementation that sorts by effective time applies the reactivation and then the cancellation, and refuses here while passing every other case (BL2)"
+    },
+    {
+      "id": "an-expired-trial-is-suspended",
+      "operation": "entitled",
+      "check": { "tenant": "ten_stark0000001", "capability": "audit_export" },
+      "expect": { "allowed": false, "reason": { "source": "suspended", "id": "cancelled" } },
+      "note": "the trial.expire job wrote trial_expired with actor job; an expired trial is a cancellation that never paid, and the suspended set applies from that instant (BL8)"
+    }
+  ],
+  "rejections": [
+    {
+      "id": "catalog-with-a-dotted-capability-id-is-refused",
+      "stimulus": "validate a catalog whose capabilities include the id 'audit.export'",
+      "expect": { "refused": true },
+      "note": "a capability never has a dot; a permission always has exactly one. The schema refuses it so that no identifier can be mistaken for the wrong kind (BL3)"
+    },
+    {
+      "id": "ledger-row-with-an-unknown-kind-is-refused",
+      "stimulus": "insert a ledger row of kind 'renewed'",
+      "expect": { "refused": true },
+      "note": "the kind set is closed; a renewal changes neither plan nor status and updates the projection's period fields without a row. A transition outside the set is a schema failure, not a new row (BL2)"
+    },
+    {
+      "id": "subscription-with-two-pending-changes-is-refused",
+      "stimulus": "store a projection carrying two pending changes, or record a second future-effective row for a tenant without it superseding the first",
+      "expect": { "refused": true },
+      "note": "pending_change is one object or null, never an array, and a row recorded while another is pending supersedes it. Two scheduled changes have no defined order and the projection cannot show both (BL2)"
+    },
+    {
+      "id": "per-user-entitlement-is-refused",
+      "stimulus": "store an override or a subscription carrying a user_id, declare a capability whose subject is a user, or call entitled() with a user rather than a tenant",
+      "expect": { "refused": true },
+      "note": "nothing is per user. What one person may do inside a tenant is a permission under 070; a per-seat price is a quota on seats. The schemas have no field for it and the operations take no user (BL3)"
+    },
+    {
+      "id": "plan-missing-a-declared-metric-is-refused",
+      "stimulus": "validate a catalog that declares the quota metric 'projects' and a plan whose quotas omit it",
+      "expect": { "refused": true },
+      "note": "every plan gives a value for every declared metric and setting; an absent ceiling is neither zero nor unlimited and the function would have to guess. A cross-reference the schema cannot express, so the corpus holds it (BL1)"
+    },
+    {
+      "id": "plan-listing-an-undeclared-capability-is-refused",
+      "stimulus": "validate a catalog in which a plan's capabilities include 'white_glove' and no capability of that id is declared",
+      "expect": { "refused": true },
+      "note": "a plan composes capabilities the catalog declares, the way a role composes permissions the code declares (070 RB3). A capability that appears only in a plan has no check behind it and grants nothing silently (BL1, BL3)"
+    },
+    {
+      "id": "float-price-is-refused",
+      "stimulus": "validate a catalog in which a price's amount is 19.99",
+      "expect": { "refused": true },
+      "note": "money is integer minor units plus an explicit currency (020 IP5); the schema refers to that def and admits nothing else (BL1)"
+    },
+    {
+      "id": "check-against-an-undeclared-capability-errors",
+      "stimulus": "call entitled() with 'audit_exprot'",
+      "expect": { "error": true },
+      "note": "an error, not a denial. A denial is indistinguishable from a correct refusal and hides the typo forever (BL4, the same reasoning as 070 RB1)"
+    },
+    {
+      "id": "ledger-row-update-or-delete-is-refused",
+      "stimulus": "issue UPDATE or DELETE against a ledger row under the service's own credential",
+      "expect": { "refused": true },
+      "note": "append-only means the writes are the only writes: INSERT and SELECT, and no code path that alters a row. A correction is a new row with a reason (BL2, 080 AE6's discipline)"
+    },
+    {
+      "id": "duplicate-provider-event-is-refused",
+      "stimulus": "record a second ledger row carrying a provider_event_id already recorded for the tenant",
+      "expect": { "refused": true },
+      "note": "a redelivered webhook is a repeat under 055 AM3 and never a second transition; the provider's event id on the row is what makes the constraint checkable without provider-specific logic (BL6)"
+    }
+  ]
+}

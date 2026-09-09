@@ -178,6 +178,13 @@ and status; humans read `detail`. A service that changes `detail` wording is
 free to; one that changes what `type` means has broken its clients, and per
 PC6 that is a new `type`, not an edited one.
 
+**A slug may be pinned portfolio-wide** where clients across products branch
+on the same class and would otherwise each invent a spelling. The standard
+that owns the condition pins it and this table does not repeat it; the first
+is `entitlement-required`, a `403` whose `errors` name the capability or
+metric the tenant's plan lacks, under the [billing standard](075-billing.md)
+BL4.
+
 The same redaction rule as SC2 applies with more force, because this
 envelope crosses the trust boundary: never a secret, never a credential,
 never a record's contents, never an internal hostname, path or stack. **What

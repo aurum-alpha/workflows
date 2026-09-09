@@ -215,6 +215,26 @@ jobs:
         run: .aurum-catalog/tools/check-lint-configs --root .ci-root --repo "$REPO"
         continue-on-error: ${{ inputs.warn_only }}
 
+      # The other half of every gate above: the one a person reaches from a
+      # terminal. Principle 2 has always said local equals CI, and the
+      # enforcement ledger recorded Principle 9 -- canonical script names -- as
+      # gated. It was not. Nothing anywhere read a `scripts` block, and the
+      # measured result was six repos whose Dockerfiles told the reader to run
+      # a `build` script none of them defined.
+      #
+      # This does not make package.json the definition of a gate; Principle 2's
+      # amendment settled that the shared job is. It derives what each script
+      # must say FROM the jobs the caller's own ci.yml calls, so the script is
+      # a projection of the catalog command rather than a second copy of it.
+      # See standards/015-commands.md.
+      - name: package.json carries the standard commands
+        if: ${{ !cancelled() }}
+        env:
+          REPO: ${{ steps.repo.outputs.name }}
+          AURUM_CATALOG_ROOT: .aurum-catalog
+        run: .aurum-catalog/tools/check-package-scripts --root .ci-root --repo "$REPO"
+        continue-on-error: ${{ inputs.warn_only }}
+
       # AGENTS.md says there is one source of agent guidance and only one. What
       # it could not say, until this step existed, is what happens when a repo
       # has seven. Nothing happened: the trees sat there agreeing by luck, and

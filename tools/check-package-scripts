@@ -1,0 +1,363 @@
+#!/usr/bin/env python3
+"""Assert every package.json offers the standard commands, and that each one
+runs what CI runs.
+
+Principle 2 is "Local = CI": a developer must be able to run any gate locally
+with one command and get what CI gets. Principle 9 is "canonical script names".
+The enforcement ledger recorded the first as review-only and the second as
+gated. The second was not gated. Nothing anywhere read a `scripts` block.
+
+*Measured 2026-09-09, before this checker existed. Ten package.json files across
+twelve repositories, no two alike:*
+
+  - *gofast's Dockerfile ran `pnpm run build` against a client that has no
+    `build` script, so `docker compose build` — the local development path its
+    own AGENTS.md gives — could not succeed. CI never noticed, because CI does
+    not build that Dockerfile.*
+  - *client-manager's `tools/checks/lint` ran `pnpm -C client run lint` against
+    a client that has no `lint` script. It is a row in the gate manifest, so
+    `./tools/check` could not go green; CI stayed green throughout, because CI
+    calls job-lint-js-oxlint instead.*
+  - *Six repositories' Dockerfiles instructed the reader to "run build first".
+    None of the six defined `build`. The command existed only inside two
+    catalog jobs, so the only way to produce the artifact locally was to read
+    workflow YAML and retype it — which is the exact condition Principle 2
+    calls a defect in the gate.*
+  - *event-manager's `typecheck` was `tsc --noEmit` while the gate ran
+    `tsc -b --noEmit`. Without `-b` the project references are never built, so
+    the local command and the gate checked different things and agreed by
+    coincidence.*
+
+Every one of those is a command a person runs. None of them was reachable by
+any check, which is why they were all found by reading rather than by a red
+pipeline.
+
+WHAT THIS DOES NOT DO, and the distinction is the whole design. It does not
+make package.json the definition of a gate. Principle 2's 2026-08-17 amendment
+settled that the shared job is the single definition, and it was right: a
+per-repo script as the source of truth makes the catalog a wrapper around
+eleven opinions, and the portfolio already paid for that once with a checker
+whose only job was policing byte-identity between copies that kept diverging.
+
+So the script is a PROJECTION of the catalog command, not a second copy of it.
+The expected body is DERIVED here from the same jobs CI calls, using the same
+inputs the repo's own ci.yml passes them. A repo cannot hold a script that
+disagrees with its gate, because the disagreement is what this reports. That
+is how both principles get to be true at once: one definition, reachable by one
+command, and a machine holding the two together.
+
+  S1  every command the repo's shape requires is present
+  S2  each one's body is what the catalog invokes, with this repo's own inputs
+  S3  no second name for a command that already has one
+  S4  no script reaches a local binary through the package manager
+  S5  a command name means the same thing in every repo
+
+S5 is the rule with no wiggle room and the one that motivated this. `dev:client`
+starts the client's dev server whether the backend behind it is Express, Go or
+PHP. A repo does not get to call that `dev` because its client is the only thing
+in its package.json — the name says what the command does, not what else the
+repo happens to contain.
+
+Run against local clones:  tools/check-package-scripts --root /workspace
+Run against one repo:      tools/check-package-scripts --root DIR --repo NAME
+"""
+
+import argparse
+import json
+import pathlib
+import re
+import sys
+
+import yaml
+
+# ---------------------------------------------------------------------------
+# The contract, derived from the catalog jobs named beside each entry.
+#
+# These strings are not a style preference. Each is the invocation its job
+# runs, minus the `pnpm exec` prefix that a package.json script does not need
+# because the package manager already puts node_modules/.bin on PATH. When a
+# job's command changes, this table changes in the same commit and every repo
+# fails until it follows — which is the intended blast radius, and the same one
+# check-lint-configs carries for a shared config.
+# ---------------------------------------------------------------------------
+
+# job-build-js-vite.yml     : pnpm exec vite build
+BUILD = "vite build"
+
+# job-build-js-esbuild.yml  : the bundle, with the NODE_ENV define that keeps
+# the dev-server import out of the output. The define is not decoration — six
+# repos once shipped an image that died at load without it — so a script that
+# drops it is not the same command wearing a shorter name.
+BUILD_SERVER = (
+    "esbuild server/index.ts --platform=node --bundle --packages=external "
+    "--format=esm --define:process.env.NODE_ENV='\"production\"' "
+    "--outfile=dist/index.js"
+)
+
+# job-typecheck-ts-tsc.yml  : pnpm exec tsc -b --noEmit
+TYPECHECK = "tsc -b --noEmit"
+
+# job-lint-js-oxlint.yml    : pnpm exec oxlint "$LINT_DIR" --type-aware --deny-warnings
+#
+# --deny-warnings is part of the command even in a repo running the job
+# warn_only, and that is deliberate. warn_only is a property of the JOB — it
+# decides whether a finding fails the build — not of the invocation. A script
+# that drops the flag to feel better locally reports a different set of
+# findings from the one the repo is burning down.
+def lint(target: str) -> str:
+    return f"oxlint {target} --type-aware --deny-warnings"
+
+
+# job-test-unit-js-vitest.yml : the job generates a coverage-exclusion array
+# per unit, so its full command line cannot be written as a fixed string and
+# this is the one entry that is not byte-equal to CI.
+#
+# What it reproduces is the VERDICT. --dir and --passWithNoTests decide which
+# tests run and whether an empty unit passes; the generated --coverage.exclude
+# flags only move the denominator of a number that is uploaded, never compared
+# against a threshold in the job. So the script agrees with CI about pass and
+# fail, and says less about coverage. That limit is stated rather than papered
+# over: a rule that claimed byte-equality here would be a rule nobody could
+# satisfy, and the portfolio has enough of those.
+def test_unit(unit: str) -> str:
+    scope = "" if unit == "." else f" --dir {unit}"
+    return f"vitest run{scope} --passWithNoTests --coverage"
+
+
+TEST_WATCH = "vitest"
+
+# The dev and runtime commands, which no catalog job runs. They are here for
+# S5 rather than S2: CI has no opinion on them, and eleven repos will still
+# invent eleven spellings of "start the client" unless one is written down.
+DEV_CLIENT = "vite dev"
+DEV_ALL = (
+    'concurrently -k -n client,server -c cyan,magenta '
+    '"pnpm dev:client" "pnpm dev:server"'
+)
+START = "NODE_ENV=production node dist/index.js"
+DB_PUSH = "drizzle-kit push"
+
+# dev:server carries the repo's own port, which is the one value in this file
+# that is legitimately per-repo: two repos on one workstation cannot both bind
+# 3000. Everything around the port is fixed.
+DEV_SERVER = re.compile(
+    r"^NODE_ENV=development PORT=(\d{2,5}) tsx watch server/index\.ts$"
+)
+
+# S4. A script that says `pnpm vitest` or `npm run build` is reaching a binary
+# the package manager has already put on PATH, through the package manager. It
+# costs a process, and it is how `pnpm vitest --coverage` and `vitest` end up
+# looking like two different commands in two repos that meant the same thing.
+VIA_PACKAGE_MANAGER = re.compile(r"(^|&&\s*|\|\|\s*|;\s*)(pnpm|npm|npx|yarn)\s")
+
+# The catalog jobs this checker reads a repo's shape from. A repo's ci.yml is
+# the statement of what it builds and gates; asking it beats a hardcoded map of
+# repo names, which is the thing that went stale for two renames in
+# check-dependency-versions and taught this repo not to keep one.
+JOBS = {
+    "vite": "job-build-js-vite.yml",
+    "esbuild": "job-build-js-esbuild.yml",
+    "oxlint": "job-lint-js-oxlint.yml",
+    "tsc": "job-typecheck-ts-tsc.yml",
+    "vitest": "job-test-unit-js-vitest.yml",
+}
+
+
+def catalog_calls(ci: dict) -> list[tuple[str, str, dict]]:
+    """Every catalog job this workflow calls, as (kind, workdir, inputs)."""
+    out = []
+    for job in (ci.get("jobs") or {}).values():
+        if not isinstance(job, dict):
+            continue
+        uses = job.get("uses")
+        if not isinstance(uses, str):
+            continue
+        inputs = job.get("with") or {}
+        if not isinstance(inputs, dict):
+            inputs = {}
+        for kind, filename in JOBS.items():
+            if filename in uses:
+                out.append((kind, str(inputs.get("workdir", ".")), inputs))
+    return out
+
+
+def expected(pkg_dir: pathlib.Path, calls: list) -> dict[str, object]:
+    """The scripts this package must carry, and what each must say.
+
+    A value is a string to match exactly, or a compiled pattern for the one
+    entry (dev:server) that carries a per-repo port.
+    """
+    kinds = {kind for kind, _, _ in calls}
+    want: dict[str, object] = {}
+
+    # A Node server in this package: the entry the esbuild job bundles, and the
+    # thing that makes `start`, `dev:server` and an orchestrating `dev` mean
+    # something. Read off the file rather than off a dependency list, because
+    # tsx is a devDependency in repos that have no server to run with it.
+    has_server = (pkg_dir / "server" / "index.ts").is_file()
+
+    manifest = json.loads((pkg_dir / "package.json").read_text())
+    deps = {**manifest.get("dependencies", {}), **manifest.get("devDependencies", {})}
+
+    if "vite" in kinds or (pkg_dir / "vite.config.ts").is_file():
+        want["dev:client"] = DEV_CLIENT
+        want["build"] = BUILD
+
+    if "esbuild" in kinds:
+        want["build:server"] = BUILD_SERVER
+
+    if has_server:
+        want["dev:server"] = DEV_SERVER
+        want["dev"] = DEV_ALL
+        want["start"] = START
+
+    if "tsc" in kinds:
+        want["typecheck"] = TYPECHECK
+
+    # One lint target gets `lint`; several get `lint:<target>` each, because a
+    # bare `lint` that covers one of three trees is a name that lies. The
+    # targets come from the repo's own calls, so a repo that lints
+    # src/client/react is asked for exactly that.
+    targets = [i.get("dir") for k, _, i in calls if k == "oxlint" and i.get("dir")]
+    if len(targets) == 1:
+        want["lint"] = lint(targets[0])
+    else:
+        for target in targets:
+            want[f"lint:{pathlib.PurePath(target).name}"] = lint(target)
+
+    units = [str(i.get("dir", ".")) for k, _, i in calls if k == "vitest"]
+    if units:
+        want["test:watch"] = TEST_WATCH
+    if len(units) == 1:
+        want["test:unit"] = test_unit(units[0])
+    else:
+        for unit in units:
+            want[f"test:unit:{unit}"] = test_unit(unit)
+
+    if "drizzle-kit" in deps:
+        want["db:push"] = DB_PUSH
+
+    return want
+
+
+def check_package(label: str, pkg_dir: pathlib.Path, calls: list) -> list[str]:
+    manifest = json.loads((pkg_dir / "package.json").read_text())
+    scripts = manifest.get("scripts") or {}
+    want = expected(pkg_dir, calls)
+    findings = []
+
+    for name, body in sorted(want.items()):
+        got = scripts.get(name)
+        if got is None:
+            shown = body.pattern if hasattr(body, "pattern") else body
+            findings.append(f"S1 {label}: missing `{name}` — should be: {shown}")
+            continue
+        if hasattr(body, "pattern"):
+            if not body.match(got):
+                findings.append(
+                    f"S2 {label}: `{name}` is {got!r}, "
+                    f"which does not match {body.pattern}"
+                )
+        elif got != body:
+            findings.append(
+                f"S2 {label}: `{name}` is {got!r}\n"
+                f"   the catalog runs: {body}"
+            )
+
+    # S3. Two names for one command is the drift this whole file exists to
+    # stop, and it does not announce itself: jewelry-factory carried `db:push`
+    # and `migrate` as the same string, and its own AGENTS.md called the second
+    # name a trap while both kept working.
+    bodies: dict[str, str] = {}
+    for name, body in scripts.items():
+        if body in bodies and name not in want:
+            findings.append(
+                f"S3 {label}: `{name}` duplicates `{bodies[body]}` — same command, "
+                "two names. Delete the one that is not canonical."
+            )
+        bodies.setdefault(body, name)
+
+    # S4. Reaching a local binary through the package manager. `pnpm dev:client`
+    # inside the orchestrating `dev` is the one legitimate case: there it is
+    # calling a SCRIPT, which is the only way to reach one.
+    for name, body in sorted(scripts.items()):
+        if name == "dev":
+            continue
+        if VIA_PACKAGE_MANAGER.search(body):
+            findings.append(
+                f"S4 {label}: `{name}` runs a local binary through the package "
+                f"manager ({body!r}). Scripts already have node_modules/.bin on PATH."
+            )
+
+    # S5. The names that mean one thing everywhere. `dev` orchestrates a whole
+    # local stack; a package that holds only a client has no stack to
+    # orchestrate, and its client dev server is `dev:client` like everyone
+    # else's.
+    if "dev" in scripts and "dev" not in want:
+        findings.append(
+            f"S5 {label}: `dev` is defined, but this package owns no server to "
+            "run beside the client. The client's dev server is `dev:client`."
+        )
+
+    return findings
+
+
+def check_repo(root: pathlib.Path, repo: str) -> tuple[list[str], int]:
+    ci = root / repo / ".github" / "workflows" / "ci.yml"
+    if not ci.is_file():
+        return [], 0
+
+    parsed = yaml.safe_load(ci.read_text()) or {}
+    calls = catalog_calls(parsed)
+    if not calls:
+        return [], 0
+
+    findings: list[str] = []
+    checked = 0
+    for workdir in sorted({wd for _, wd, _ in calls}):
+        pkg_dir = root / repo / workdir
+        if not (pkg_dir / "package.json").is_file():
+            # job-*-js-* already fails on a workdir with no package.json, and
+            # says so by name. Reporting it again here would be a second voice
+            # on one fact.
+            continue
+        checked += 1
+        label = repo if workdir == "." else f"{repo}/{workdir}"
+        findings += check_package(label, pkg_dir, [c for c in calls if c[1] == workdir])
+    return findings, checked
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--root", default="/workspace", type=pathlib.Path)
+    ap.add_argument("--repo", action="append", help="limit to specific repo(s)")
+    args = ap.parse_args()
+
+    repos = args.repo or sorted(p.name for p in args.root.iterdir() if p.is_dir())
+
+    findings: list[str] = []
+    checked = 0
+    for repo in repos:
+        repo_findings, repo_checked = check_repo(args.root, repo)
+        checked += repo_checked
+        findings += repo_findings
+        if repo_checked and not repo_findings:
+            print(f"{repo}: {repo_checked} package(s) conform")
+
+    if findings:
+        for finding in findings:
+            print(finding)
+        print(
+            f"\nFAIL: {len(findings)} finding(s). Every command above is one a "
+            "person runs; a command that does not exist, or that runs something "
+            "other than the gate, is indistinguishable from a passing gate if "
+            "nobody reads the error. See standards/015-commands.md."
+        )
+        return 1
+
+    print(f"\nPASS: {checked} package(s) carry the standard commands")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

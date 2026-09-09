@@ -26,10 +26,10 @@
 # (Principle 2), and this repository now has a checker that says so.
 #
 # The version therefore lives in each repo's package.json, exactly pinned like
-# oxlint and tsc, not in this file. It is asserted portfolio-wide in
-# dependency-versions.json once every repo carries it, and not before —
-# asserting a package before its adoption wave fails the repos whose turn has
-# not come, which is the mistake oxlint's entry records.
+# oxlint and tsc, not in this file. dependency-versions.json asserts it at
+# 3.9.6 — asserted where present, so a repo that has not adopted is skipped
+# rather than failed, and every repo that adopts is held to the one version
+# from its first commit.
 name: job-fmt-js-prettier
 
 on:

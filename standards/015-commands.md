@@ -170,6 +170,7 @@ tool. The document then keeps working when the tool's flags move.
 | `start` | `NODE_ENV=production node dist/index.js` | the package has a Node server |
 | `typecheck` | `tsc -b --noEmit` | `job-typecheck-ts-tsc` |
 | `lint` / `lint:<target>` | `oxlint <dir> --type-aware --deny-warnings` | `job-lint-js-oxlint`, one per call |
+| `format` / `format:<target>` | `prettier --check <dir>` | `job-fmt-js-prettier`, one per call |
 | `test:unit` / `test:unit:<unit>` | `vitest run [--dir <unit>] --passWithNoTests --coverage` | `job-test-unit-js-vitest`, one per call |
 | `test:watch` | `vitest` | the package has tests |
 | `db:push` | `drizzle-kit push` | drizzle-kit is a dependency |
@@ -177,6 +178,12 @@ tool. The document then keeps working when the tool's flags move.
 **`<port>` is the one value that is legitimately per-repository.** Two of these
 cannot both bind the same port on one workstation. Everything around it is
 fixed.
+
+**`format` checks, and the fix-up command is deliberately not canonical.**
+`--check` is the verdict the gate reads. `--write` is a different command, and
+no job runs it. A repository that wants one types `prettier --write <dir>`, or
+adds its own script under DC6. Naming it in this table would give the portfolio
+a canonical command with no gate behind it.
 
 **A name is suffixed only where there are several of the thing.** One lint
 target is `lint`. Three are `lint:client`, `lint:server`, `lint:shared`. A bare

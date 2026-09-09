@@ -118,6 +118,20 @@ It is not a fixed list applied to everything. A package that builds a client has
 has `start`, `dev:server` and an orchestrating `dev`. One with drizzle has
 `db:push`. A package with none of those has none of them, and that is a pass.
 
+**The rule runs both ways.** The second half was learned the hard way. A
+canonical command present while its condition is false is as wrong as one
+missing.
+
+flight-watch is the case. Its drizzle stack was deleted: `drizzle-kit`, and the
+`db:push` that called it. A branch adding the standard commands was open at the
+time, against an older base. Merged, the two produced a `db:push` invoking a
+binary the repository no longer had.
+
+`check-package-scripts` passed it. knip caught it, from a job that is not about
+developer commands at all: *"Unlisted binaries (1): drizzle-kit"*. A gate that
+only ever adds cannot see a command outliving its reason, which is the
+commonest way one goes stale. Both halves are checked now.
+
 Shape is read from the repository's own `ci.yml`: which catalog jobs it calls,
 with which `workdir` and which `dir`. It is not read from a map of repository
 names kept in the catalog. This portfolio has already had a name map go stale

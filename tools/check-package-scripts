@@ -46,7 +46,8 @@ disagrees with its gate, because the disagreement is what this reports. That
 is how both principles get to be true at once: one definition, reachable by one
 command, and a machine holding the two together.
 
-  S1  every command the repo's shape requires is present
+  S1  every command the repo's shape requires is present, and no canonical
+      command whose shape condition is false
   S2  each one's body is what the catalog invokes, with this repo's own inputs
   S3  no second name for a command that already has one
   S4  no script reaches a local binary through the package manager
@@ -264,6 +265,21 @@ def expected(pkg_dir: pathlib.Path, calls: list) -> dict[str, object]:
     return want
 
 
+# Why each canonical command exists, phrased as the condition that puts it
+# there. Read by the S1 message when a command is present without its reason.
+CANONICAL = {
+    "dev": "it needs a Node server to orchestrate beside the client",
+    "dev:client": "it needs a client to serve",
+    "dev:server": "it needs a Node server",
+    "build": "it needs a vite build job",
+    "build:server": "it needs an esbuild job",
+    "start": "it needs a Node server",
+    "typecheck": "it needs a tsc job",
+    "test:watch": "it needs a vitest job",
+    "db:push": "it needs drizzle-kit as a dependency",
+}
+
+
 def check_package(label: str, pkg_dir: pathlib.Path, calls: list) -> list[str]:
     manifest = json.loads((pkg_dir / "package.json").read_text())
     scripts = manifest.get("scripts") or {}
@@ -287,6 +303,26 @@ def check_package(label: str, pkg_dir: pathlib.Path, calls: list) -> list[str]:
                 f"S2 {label}: `{name}` is {got!r}\n"
                 f"   the catalog runs: {body}"
             )
+
+    # S1, the other half. DC3 says the SHAPE decides which commands exist, so a
+    # canonical command present while its condition is false is as wrong as one
+    # missing. This half did not exist, and flight-watch is why it does now.
+    #
+    # That repo's drizzle stack was deleted -- drizzle-kit and the db:push that
+    # called it -- while a branch adding the standard commands was open against
+    # an older base. Merged, the two produced a db:push invoking a binary the
+    # repository no longer had. This checker PASSED it. knip caught it, in a
+    # job that is not about developer commands at all:
+    # "Unlisted binaries (1): drizzle-kit".
+    #
+    # A gate that only ever adds is a gate that cannot see a command outliving
+    # its reason, which is the commonest way one goes stale.
+    for name in sorted(set(CANONICAL) & set(scripts) - set(want)):
+        findings.append(
+            f"S1 {label}: `{name}` is defined, but nothing in this package calls "
+            f"for it ({CANONICAL[name]}). The shape decides which commands exist, "
+            "so this one goes."
+        )
 
     # S3. Two names for one command is the drift this whole file exists to
     # stop, and it does not announce itself: jewelry-factory carried `db:push`

@@ -27,14 +27,14 @@ can disagree eventually will.
 | # | Principle | Enforced by | Status |
 |---|---|---|---|
 | 1 | One source of truth per pin | — | **review only** |
-| 2 | Local = CI | — | **review only** |
+| 2 | Local = CI | `check-package-scripts` (TS); Go and PHP unchecked | mixed⁶ |
 | 3 | Fail closed | `check-ci-conformance` P3 | gated |
 | 4 | Standard runner line | `check-ci-conformance` P4 | gated |
 | 5 | Ephemeral-runner assumptions | — | **review only** |
 | 6 | Concurrency everywhere | `check-ci-conformance` P6 | gated |
 | 7 | BUILD ONCE | — | **review only** |
 | 8 | No multi-stage prod Dockerfiles | — | **review only** |
-| 9 | Canonical script names | `check-ci-conformance` | gated¹ |
+| 9 | Canonical script names | `check-package-scripts` | gated¹ |
 | 10 | Lint output through standard channels | — | **review only** |
 | 11 | Registry auth in user-level npmrc | — | **review only** |
 | 12 | One way per capability | `check-ci-conformance` | gated¹ |
@@ -112,6 +112,22 @@ failed `osv-scan`, `coverage-upload` and `version-gate`, which are correct.
 And the count was nine, not six, across five repositories. It was measured by
 running the rule against every pre-rename tree rather than by reading ids.
 
+⁶ Two halves, and the TypeScript one is now gated. `check-package-scripts`
+proves that every command a person runs is present, and equal to what the gate
+runs. It derives that from the catalog jobs the repo's own `ci.yml` calls. Go
+and PHP have no equivalent. Their commands live in `Makefile` targets,
+`tools/checks/*` and composer scripts, which no checker reads, so Principle 2
+stays a review question there.
+
+**Row 9 claimed `check-ci-conformance` and was false.** That checker never read
+a `scripts` block. Nothing in the portfolio did. The row was written when the
+principle was, and it recorded an intention as a mechanism. That is the failure
+this whole ledger exists to make visible, appearing in the ledger itself.
+
+Reading ten `package.json` files on 2026-09-09 found it. Nothing had gone red.
+By then, six repositories' Dockerfiles were telling readers to run a `build`
+script none of them defined.
+
 ⁵ Rule ID resolves a job through an `aurum-alpha/workflows/...@main`
 reference, so it is silent on `workflows` itself, which calls its own jobs by
 local path.
@@ -157,6 +173,31 @@ Where a CI rule reads **review only** above, `010-ci.md` explains why. BUILD
 ONCE needs to know what an artifact is, and the per-stack DAG needs to know
 which stack a job belongs to. Those resist a checker honestly. The rest are
 candidates for the gate.
+
+## Developer commands standard
+
+Rules from [`015-commands.md`](015-commands.md). `tools/check-package-scripts`
+derives what each command says from the catalog jobs the repository's own
+`ci.yml` calls. So the rule and the gate cannot drift apart, the way the rule
+and the repositories had.
+
+| # | Rule | Enforced by | Status |
+|---|---|---|---|
+| DC1 | A command name means the same thing in every repository | `check-package-scripts` S5 | gated¹ |
+| DC2 | A script's body is the invocation its gate runs | `check-package-scripts` S2 | gated¹ |
+| DC3 | The repository's shape decides which commands exist | `check-package-scripts` S1 | gated¹ |
+| DC4 | No second name for a command that already has one | `check-package-scripts` S3 | gated¹ |
+| DC5 | A script never reaches a local binary through the package manager | `check-package-scripts` S4 | gated¹ |
+| DC6 | An added command follows the same rules | `check-package-scripts` S3, S4 | gated¹ |
+| DC7 | A document naming a command names one that exists | — | **review only**⁷ |
+| — | `test:unit` reproduces the gate's verdict, not its coverage telemetry | `check-package-scripts` S2 | gated¹ |
+
+⁷ A checker can see that a script exists. It cannot tell whether a sentence in
+a runbook is about that script, or about a command someone imagined. That is
+how two `AGENTS.md` files came to name scripts that were never there, and a
+third to warn agents away from one already deleted. Promoting this row means
+parsing prose for command-shaped strings, and resolving each against a
+`scripts` block. That is worth doing. It is not claimed until it is done.
 
 ## Agent standard
 

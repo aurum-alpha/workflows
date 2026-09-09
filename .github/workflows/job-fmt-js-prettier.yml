@@ -1,0 +1,200 @@
+# aurum-job: capability=fmt language=js role=gate
+# Portfolio capability: formatting for one deployable unit's JS/TS source.
+#
+# The Go side has had `job-go-fmt` since the beginning and the JS side had
+# nothing, so `gofmt -l .` was a gate in three repos while nine JS codebases
+# formatted themselves by hand. This is the JS answer to the same question, and
+# it is named for its tool (`<function>-<language>-<runner>`) because oxfmt
+# exists, is prettier-compatible, and is the likeliest thing to replace
+# prettier here. When it does, the swap is a visible rename rather than a
+# silent change of behaviour inside a file whose name never moved.
+#
+# WHY PRETTIER AND NOT OXFMT TODAY. The fleet standardised its linter on oxc,
+# so oxfmt is the obvious sibling — and it is 0.67.0, pre-1.0, released days
+# before this job was written. A formatter rewrites every file it touches, so
+# adopting one before it commits to a stable output is buying a second
+# whole-fleet reformat. prettier 3.9.6 is the current stable release. Revisit
+# at oxfmt 1.0.
+#
+# THE INVOCATION IS THE `format` SCRIPT'S BODY, MINUS `pnpm exec`. That is
+# DC2 in standards/015-commands.md, and it is the reason this job runs
+# prettier out of the repo's own node_modules rather than fetching it.
+# `pnpm dlx prettier@<pin>` would work and would need no devDependency, but a
+# script cannot mirror it: DC5 forbids a script reaching a binary through the
+# package manager, so the local command would have to differ from the gate.
+# A gate a person cannot reproduce with one command is a defect in the gate
+# (Principle 2), and this repository now has a checker that says so.
+#
+# The version therefore lives in each repo's package.json, exactly pinned like
+# oxlint and tsc, not in this file. It is asserted portfolio-wide in
+# dependency-versions.json once every repo carries it, and not before —
+# asserting a package before its adoption wave fails the repos whose turn has
+# not come, which is the mistake oxlint's entry records.
+name: job-fmt-js-prettier
+
+on:
+  workflow_call:
+    inputs:
+      workdir:
+        description: >-
+          Directory holding package.json and .node-version, relative to the
+          repo root. Defaults to `.`, the repo root, for a repo whose JS
+          project *is* the repo; `client` is the other common shape, a React
+          app in its own pnpm project inside a Go or PHP tree. Same input,
+          same meaning and same validation as job-lint-js-oxlint.
+        type: string
+        default: "."
+      dir:
+        description: >-
+          Path to check, relative to `workdir`. A prettier path argument and
+          nothing more — `client`, `server`, `shared`, `src/client/react`.
+
+          ONE PATH PER CALL, which is job-lint-js-oxlint's rule and is kept
+          here deliberately. A formatter has one verdict for a tree and it
+          would be cheaper to pass every path to a single invocation, so the
+          argument for splitting is not cost: it is that a repo gets a separate
+          check per tree instead of one verdict over all of them, and that the
+          gate hangs off the same deployable unit its build does. `client-fmt`
+          red and `server-fmt` green says where to look; one `fmt` job red does
+          not. It is also what lets the `format:<target>` scripts exist one per
+          tree, the same way `lint:<target>` does.
+
+          Prettier formats every file type it recognises under the path given,
+          markdown and YAML included. That is the reason `dir` should name a
+          source tree rather than the repo root — pointing this at `.` in a
+          repo whose JS project is the repo would put AGENTS.md and ci.yml in
+          scope, which is not what a JS formatting gate is for.
+        type: string
+        required: true
+      warn_only:
+        description: >-
+          Report findings without failing the job. Same contract as
+          job-lint-js-oxlint's input of the same name, and it is here for that
+          symmetry rather than because this gate expects to need it.
+
+          READ THIS BEFORE SETTING IT TRUE. Principle 3 allows
+          continue-on-error as a stabilization window with an expiry
+          expectation, and a formatter has no gradient to burn down: lint debt
+          falls file by file as people edit files, which is what makes the
+          oxlint window honest, but a file is prettier-clean or it is not and
+          nobody hand-reformats one file. The whole debt clears with one
+          `prettier --write` per tree. So the honest window here is measured in
+          one pull request — the one that reformats — and a repo that leaves
+          this true across releases has a permanently red check nobody reads,
+          which is worse than no gate.
+        type: boolean
+        default: false
+
+jobs:
+  fmt:
+    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      # `dir` is a prettier path argument, so the two things worth rejecting
+      # are the two that would misfire rather than fail: an empty value, which
+      # prettier reads as no pattern at all, and a leading dash, which it would
+      # read as a flag. A path that does not exist needs no check — prettier
+      # exits non-zero with "No files matching the pattern were found", which
+      # is a loud failure and the behaviour we want on a typo. Same guard,
+      # same reasoning, as job-lint-js-oxlint.
+      - name: Validate check path
+        env:
+          FMT_DIR: ${{ inputs.dir }}
+        run: |
+          set -euo pipefail
+          case "$FMT_DIR" in
+            "")  echo "::error::dir is empty. prettier would check nothing."
+                 exit 1 ;;
+            -*)  echo "::error::dir must be a path, not a flag; got" \
+                      "'$FMT_DIR'."; exit 1 ;;
+          esac
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Defaulted, not restricted, and validated after checkout because the
+      # second half needs a tree. Byte-for-byte the guard job-lint-js-oxlint
+      # carries, for the same reason: the catalog standardises the toolchain,
+      # not the tree.
+      - name: Validate workdir
+        env:
+          WD: ${{ inputs.workdir }}
+        run: |
+          set -euo pipefail
+          case "$WD" in
+            "") echo "::error::workdir is empty; use '.' for the repo root."
+                exit 1 ;;
+            /*) echo "::error::workdir must be relative to the repo root;" \
+                     "got '$WD'."; exit 1 ;;
+            ..|../*|*/../*|*/..)
+                echo "::error::workdir must not escape the repo root;" \
+                     "got '$WD'."; exit 1 ;;
+          esac
+          if [ ! -f "$WD/package.json" ]; then
+            echo "::error::no package.json at workdir '$WD'." \
+                 "The workdir names the directory holding package.json and" \
+                 ".node-version, relative to the repo root."
+            exit 1
+          fi
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ${{ inputs.workdir }}/.node-version
+          # Org registry for private @aurum-alpha packages; harmless no-op for
+          # repos that don't consume the scope (pnpm 10+ only reads auth from
+          # the user-level npmrc this writes).
+          registry-url: https://npm.pkg.github.com
+          scope: "@aurum-alpha"
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: ${{ inputs.workdir }}/package.json
+          # The default dest is ~/setup-pnpm, shared by every job on a
+          # persistent self-hosted host; two installing pnpm at once race and
+          # one dies on ENOTEMPTY. runner.temp is per-job — the same fix as
+          # "Isolate Go caches to runner.temp" in the Go jobs. Kept identical
+          # to the other JS jobs.
+          standalone: true
+          dest: ${{ runner.temp }}/setup-pnpm
+      - name: Get pnpm store directory
+        shell: bash
+        working-directory: ${{ inputs.workdir }}
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+      - working-directory: ${{ inputs.workdir }}
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+        run: pnpm install --frozen-lockfile
+
+      # The config is the repo's own .prettierrc.yaml, vendored from
+      # config/.prettierrc.yaml in this repository and held byte-identical by
+      # tools/check-lint-configs — the same arrangement .oxlintrc.json has, for
+      # the same reason. It is NOT passed with --config: prettier resolves it
+      # by walking up from each file, which is what lets one file at the repo
+      # root serve client/, server/ and shared/ alike.
+      #
+      # Ignores are NOT shared and there is no fleet .prettierignore. Prettier 3
+      # reads .gitignore by default (--ignore-path defaults to
+      # [.gitignore, .prettierignore]), so dist/, coverage/ and build output are
+      # already out of scope everywhere without a file. What is left is
+      # genuinely repo-local — vendored design-system tokens, committed
+      # reference data — which is Principle 2's "repo-specific policy goes in
+      # the repo, as configuration the tool reads". A repo needing one adds its
+      # own .prettierignore; a byte-identical shared copy of eleven different
+      # local facts would be a fiction.
+      #
+      # `dir` goes through the environment and quoted, never interpolated into
+      # the script body: it is caller-supplied text, and ${{ }} inside `run:` is
+      # substituted before bash ever sees it.
+      - name: Check formatting of ${{ inputs.dir }}
+        working-directory: ${{ inputs.workdir }}
+        continue-on-error: ${{ inputs.warn_only }}
+        env:
+          FMT_DIR: ${{ inputs.dir }}
+        run: |
+          set -euo pipefail
+          pnpm exec prettier --check "$FMT_DIR"

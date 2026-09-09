@@ -108,6 +108,18 @@ def lint(target: str) -> str:
     return f"oxlint {target} --type-aware --deny-warnings"
 
 
+# job-fmt-js-prettier.yml   : pnpm exec prettier --check "$FMT_DIR"
+#
+# The formatter has no flag to carry the way lint carries --deny-warnings:
+# --check IS the verdict, and --write is a different command that no gate runs.
+# So the fix-up invocation stays uncanonical on purpose. A repo that wants one
+# types `prettier --write <dir>`; naming it here would give the portfolio a
+# canonical command with no gate behind it, and DC6 already permits a repo to
+# add its own.
+def fmt(target: str) -> str:
+    return f"prettier --check {target}"
+
+
 # job-test-unit-js-vitest.yml : the job generates a coverage-exclusion array
 # per unit, so its full command line cannot be written as a fixed string and
 # this is the one entry that is not byte-equal to CI.
@@ -158,6 +170,7 @@ JOBS = {
     "vite": "job-build-js-vite.yml",
     "esbuild": "job-build-js-esbuild.yml",
     "oxlint": "job-lint-js-oxlint.yml",
+    "prettier": "job-fmt-js-prettier.yml",
     "tsc": "job-typecheck-ts-tsc.yml",
     "vitest": "job-test-unit-js-vitest.yml",
 }
@@ -224,6 +237,17 @@ def expected(pkg_dir: pathlib.Path, calls: list) -> dict[str, object]:
     else:
         for target in targets:
             want[f"lint:{pathlib.PurePath(target).name}"] = lint(target)
+
+    # Formatting takes the same shape as lint, and for the same reason: one
+    # tree is `format`, several are `format:<target>`. The job is one path per
+    # call, so the targets come from the repo's own calls rather than a list
+    # kept here.
+    fmt_targets = [i.get("dir") for k, _, i in calls if k == "prettier" and i.get("dir")]
+    if len(fmt_targets) == 1:
+        want["format"] = fmt(fmt_targets[0])
+    else:
+        for target in fmt_targets:
+            want[f"format:{pathlib.PurePath(target).name}"] = fmt(target)
 
     units = [str(i.get("dir", ".")) for k, _, i in calls if k == "vitest"]
     if units:

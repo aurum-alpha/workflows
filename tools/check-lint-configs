@@ -94,7 +94,14 @@ import sys
 # repos pin job-ci-conformance at v2.2.5, whose standard_ref default is the
 # v2.2.4 commit, which contains the wave that shortened this tuple. So every
 # caller was already running the one-entry list before the file was removed.
-CONFIGS = (".oxlintrc.json",)
+# ADDING to this tuple is safe in a way REMOVING from it is not, and the
+# asymmetry is worth stating beside the paragraph above. A repo with no copy of
+# a listed config is reported as "nothing to check" and passes, so a
+# standard_ref carrying a longer list than the portfolio has adopted costs
+# nothing; a standard_ref carrying a SHORTER list than config/ holds is the
+# case that exits 2 for repos that changed nothing. So .prettierrc.yaml goes in
+# with the file, and the adoption waves land behind it at their own pace.
+CONFIGS = (".oxlintrc.json", ".prettierrc.yaml")
 
 # Where a repo may keep its copy, in order. Repo root covers the repos whose JS
 # project IS the repo; client/ covers the ones whose React app is its own pnpm

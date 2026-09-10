@@ -18,21 +18,22 @@ exists to stop.
 
 ## Why this exists
 
-When a client asks *who changed this, and when*, whether an answer exists
-currently depends on which product they bought. Most of the portfolio has no
-audit trail at all. One product has one, and it is worth looking at closely.
-Every way it goes wrong is a way the next one will go wrong by default.
+When a client asks *who changed this, and when*, an answer exists only where
+the product chose to keep one. Without a standard, most products keep no
+audit trail at all. The one a product builds on its own is worth looking at
+closely. Every way it goes wrong is a way the next one will go wrong by
+default.
 
-That product carries `tenant_access_audit_log`: a table with `user_id`,
+Take a table of the usual shape, `tenant_access_audit_log`, with `user_id`,
 `action`, `organization_id`, `role_id`, `access_type`, `reason`, `ip_address`,
 `user_agent`, `created_at`. It has a closed seven-value action enum with a
-well-kept PHP enum class behind it, and two considered indexes. It also has a
-sibling table that was created, renamed, and later dropped.
+well-kept enum class behind it, and two considered indexes.
 
-**Nothing writes to it**. The only files in that repository that name the table
-are the migrations that create and rename it, and a database diagram. The action
-enum is referenced by nothing. It is a well-designed empty table, which is the
-most expensive kind: it looks like the question was answered.
+**The first way it goes wrong is that nothing writes to it**. The only files
+that name the table are the migrations that create it, and a database
+diagram. The action enum is referenced by nothing. It is a well-designed
+empty table, which is the most expensive kind: it looks like the question was
+answered.
 
 Four things are wrong with it beyond being empty, and each is instructive:
 
@@ -382,7 +383,7 @@ event.
 
 **Where the change and the audit event share a datastore, they share a
 transaction**. Both land or neither does. This is cheap, and it is available in
-every engine we run. It converts the audit trail from a best-effort
+every admitted engine. It converts the audit trail from a best-effort
 side-channel into a property of the write.
 
 Sometimes they genuinely cannot: the change is in an external system, or the
@@ -464,10 +465,10 @@ named below are commitments.
   into SIEM shape. Its taxonomy is closed and security-shaped; an event carries
   domain meaning OCSF has no class for. Mapping at the SIEM boundary keeps
   both, which is what PC2 means by scoping an invention.
-- **Actor and target are two required fields** (2026-09-01): the portfolio's one
-  existing audit table fused them and cannot answer who granted access. This is
-  the single most consequential field-level decision in the document. It was
-  made by reading a table rather than by reasoning from first principles.
+- **Actor and target are two required fields** (2026-09-01): an audit table
+  that fuses them cannot answer who granted access. This is the single most
+  consequential field-level decision in the document. It is made by reading
+  the table in the Why section rather than by reasoning from first principles.
 - **The action string is the permission string** (2026-09-01): the alternative
   is a past-tense audit vocabulary alongside the imperative permission
   vocabulary. That is two names for one concept, a mapping table between them,

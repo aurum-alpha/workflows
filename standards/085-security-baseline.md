@@ -42,8 +42,8 @@ a name nobody changed. **A scan that can be skipped is skipped exactly when it
 hurts**, because the day it finds something is the day it is inconvenient. An
 exemption with no expiry is a permanent decision made in a hurry.
 
-**Framework defaults differ**, so four languages ship four header postures and
-a reviewer cannot tell a deliberate omission from an unconsidered one. **An
+**Framework defaults differ**, so each framework ships its own header posture
+and a reviewer cannot tell a deliberate omission from an unconsidered one. **An
 unstated disclosure channel is a public one**: a finder who cannot find an
 address posts the finding where they can.
 
@@ -88,7 +88,7 @@ draft, and `Retry-After` alone tells a client what to do. **Disclosure is RFC
 human document its `Policy` field points at.
 
 **The SBOM is CycloneDX**, an ECMA standard (ECMA-424) with a JSON form. It
-has generators for every ecosystem in the portfolio, and a VEX profile that
+has generators for every ecosystem in use here, and a VEX profile that
 carries an SB2 acceptance downstream. SPDX is an ISO standard too. Its centre
 of gravity is licence provenance, and its security profile is less tooled.
 

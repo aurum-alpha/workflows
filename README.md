@@ -205,20 +205,36 @@ from. It cannot be examined without going there. Where an existing
 implementation has a good argument, the document makes the argument and drops
 the attribution. The argument stands on its own or it does not stand.
 
-**A standard is not an inventory of what exists.** It names no repository,
-counts no repositories, and describes no repository's current state. It does
-not do so as justification, as motivation, or as colour. What a repository
-does today is irrelevant to a rule that binds every repository, current and
-future. A document that opens by surveying the estate has made its argument
-contingent on a survey that is stale the day it merges.
+**A standard names no repository, ever.** Not as justification, not as
+motivation, not as colour, not as an example, not as an incident report. It
+does not count repositories. It does not describe any repository's current
+state, past state, or distance from the rule.
+
+A standard is a specification. It stands on principle. Which repositories
+comply, and how far each one is from compliance, is not the standard's
+concern. That is tracked where the code is, and nowhere in this repository's
+documents.
+
+The reason is durability. A rule that binds every repository, current and
+future, cannot depend on what one repository does today. A document that
+surveys the estate has made its argument contingent on a survey that is stale
+the day it merges. A document that names the repository an incident came from
+has made a reader go there to check the argument.
 
 Where an incident taught the author a rule, the document states the failure
 mode as the general property it is. *A timer in the request process runs once
-per replica* is that form. A reader then cannot tell from the text which
-repository, if any, taught it. The Decisions log at the foot of every standard
-is where this bites hardest. Each entry is the reason a choice went one way. An
-entry that reads *as done in …* or *because N products do …* is a decision
-nobody made.
+per replica* is that form. A reader cannot tell from the text which
+repository, if any, taught it, and does not need to. The Decisions log at the
+foot of every standard is where this bites hardest. Each entry is the reason a
+choice went one way. An entry that reads *as done in …* or *because N products
+do …* is a decision nobody made.
+
+`tools/check-doc-style` holds the countable half: a repository name or an
+inventory phrase in a standard is a finding. The one name a document is
+permitted to carry is `aurum-alpha/workflows`, because it is this repository's
+own address. The one citation of the past that is permitted is the CI
+standard's decisions log, which cites the change that settled each row. It
+cites a change in this repository's own history, never a repository.
 
 **A document is written in Simplified Technical English.** The writing rules
 of [ASD-STE100](https://www.asd-ste100.org/) are the standard for every

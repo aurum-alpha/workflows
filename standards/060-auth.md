@@ -17,24 +17,26 @@ boundary between the two is AU6.
 
 ## Why this exists
 
-Seven products in the portfolio authenticate users, and they do it four
-different ways. Five use `passport` with `express-session`. Two still have a
-prototyping platform's hosted OIDC wired into production. One uses Keycloak,
-and one uses bespoke JWT.
+Every product authenticates people, and without a standard each decides
+alone how. Many answers are on offer. One is a session library inside the
+application. Others are a hosted identity provider wired straight into the
+code, a self-hosted provider, or a bespoke token scheme. Each is a reasonable
+local answer, and each differs from the next in what it trusts and what it
+stores.
 
 That is the condition the CI standard was written to end, at a layer the CI
 standard does not reach. Authentication is the worst place in a system to
 re-litigate a decision. It is the one subsystem where a wrong answer is not a
-bug but a breach. The mistakes are subtle, and four implementations means four
-things to audit and four things to get right.
+bug but a breach. The mistakes are subtle, and every further implementation
+is one more thing to audit and one more thing to get right.
 
-Two of those four are also *leased*. They authenticate against the identity
-provider of a development platform the product was prototyped on. That is a
-live third-party dependency in the login path of software we operate.
+Some of those answers are also *leased*. A product prototyped on a
+development platform can keep authenticating against that platform's identity
+provider after it ships. That is a live third-party dependency in the login
+path of software we operate.
 
-The governing idea already existed, correctly argued, in one legacy
-application's rules directory: **the identity provider authenticates and the
-application authorizes**. This document lifts it out, generalises it, and
+The governing idea is one sentence: **the identity provider authenticates and
+the application authorizes**. This document states it, generalises it, and
 states what follows.
 
 ## The rules
@@ -222,7 +224,7 @@ Two consequences are stated here so nobody helpfully undoes them:
 **Pin the subject identifier type to `public`**. OIDC defines two. Under
 `pairwise` the provider issues *a different subject to each client for the same
 human*. Two applications then cannot tell they are looking at the same person.
-A portfolio of applications behind one provider that expects identity to line up
+A set of applications behind one provider that expects identity to line up
 requires `public`. It is also exactly the provider setting someone changes
 without knowing what it costs.
 
@@ -385,7 +387,7 @@ No standard covers this shape, and two were checked, per PC2. **OIDC's
 UserInfo** returns identity claims only, carries nothing about application
 authorization, and belongs to the provider, which the browser cannot reach.
 **SCIM's `/Me`** returns a directory resource, with the same gap. The envelope
-is therefore a portfolio contract. The identity fields inside it reuse OIDC's
+is therefore a shared contract of this standard's own. The identity fields inside it reuse OIDC's
 registered claim names rather than inventing parallel spellings.
 
 ### AU7. The topology is one of three, and each states its cookie and CORS posture
@@ -478,7 +480,8 @@ flowchart TB
 | An OIDC library as a runtime dependency | none | one, per language |
 | **Adding a second backend** | **covered by the same proxy** | **implemented again, in the other language** |
 
-The last row is what decides it for applications in four languages. Under B1
+The last row is what decides it where backends are written in more than one
+language. Under B1
 one proxy configuration covers a Go backend and a TypeScript backend against one
 identity. Under B2 it is the same authentication logic written twice, with two
 libraries on two upgrade schedules. The second copy is where behaviour quietly

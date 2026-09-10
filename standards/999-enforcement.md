@@ -88,10 +88,10 @@ repository keeps no register of which have, so read a repository's own
 the two emissions the job itself produces and nothing else. A `v<version>`
 image tag comes from an `enable=` expression in the caller's own
 `job-image-publish` stub, and a package version from whatever renders it. So
-both stay review questions. `gha-runner-controller` is the reason that
-distinction is drawn rather than assumed. Its `v<version>` tag was applied on
-`is_default_branch` alone, so every merge re-pointed it at new bytes, and no
-release job anywhere would have caught it.
+both stay review questions. The distinction is drawn rather than assumed
+for a reason. A `v<version>` tag applied on
+`is_default_branch` alone is re-pointed at new bytes by every merge, and no
+release job anywhere would catch it.
 
 ⁴ Two halves, and one of them is gated. What a stub must look like once it
 calls the catalog is checked: the pin, the stub keys, `secrets: inherit`, the
@@ -111,7 +111,7 @@ six ids disagreed with the job they called. Both were wrong. The prefix
 segments are optional and unordered, so the real grammar is
 `(?:[a-z0-9]+-)*<capability>(?:-[a-z0-9]+)?`. The mandatory form would have
 failed `osv-scan`, `coverage-upload` and `version-gate`, which are correct.
-And the count was nine, not six, across five repositories. It was measured by
+And the count was nine, not six. It was measured by
 running the rule against every pre-rename tree rather than by reading ids.
 
 ⁶ Two halves, and the TypeScript one is now gated. `check-package-scripts`
@@ -122,13 +122,13 @@ and PHP have no equivalent. Their commands live in `Makefile` targets,
 stays a review question there.
 
 **Row 9 claimed `check-ci-conformance` and was false.** That checker never read
-a `scripts` block. Nothing in the portfolio did. The row was written when the
+a `scripts` block. Nothing did. The row was written when the
 principle was, and it recorded an intention as a mechanism. That is the failure
 this whole ledger exists to make visible, appearing in the ledger itself.
 
-Reading ten `package.json` files on 2026-09-09 found it. Nothing had gone red.
-By then, six repositories' Dockerfiles were telling readers to run a `build`
-script none of them defined.
+Reading the `package.json` files on 2026-09-09 found it. Nothing had gone red.
+By then, Dockerfiles were telling readers to run a `build`
+script their package did not define.
 
 ⁵ Rule ID resolves a job through an `aurum-alpha/workflows/...@main`
 reference, so it is silent on `workflows` itself, which calls its own jobs by
@@ -227,7 +227,7 @@ parsing prose for command-shaped strings, and resolving each against a
 
 Rules from [`../AGENTS.md`](../AGENTS.md). `tools/check-agent-docs` runs from
 `job-ci-conformance.yml` alongside the other caller-side checkers. Adopting it
-was therefore a checker change rather than twelve workflow changes.
+was therefore a checker change rather than a workflow change per repository.
 
 | # | Rule | Enforced by | Status |
 |---|---|---|---|
@@ -336,7 +336,7 @@ entirely from here.
 | D1 | No document carries a status header; a merged document is binding | `check-standards-docs` (proposed): no `Status:` line in a standard | **review only** |
 | D2 | Documents reference documents by working relative link — never a tracker number, never a bare name; a standard not yet written is linked at its roster row | `check-standards-docs` (proposed): no issue or pull-request reference in a standard's prose, and every relative link resolves | **review only** |
 | D3 | A rule restating a twelve-factor factor cites it; a rule departing from one says so, in the rule, with the reason | — resists honestly: whether a citation is apt, or a departure argued, is judgment | **review only** |
-| D4 | A rule is argued from principle, never from precedent, and a standard is not an inventory: it names, counts and describes no repository; a failure mode is stated as the general property it is, so the text does not reveal which repository, if any, taught it | — resists honestly: a grep finds repository names and counting phrases, not the fallacy, and is still worth running. The review question on every rule and every Decisions entry: *would this reason hold if no current repository existed?* | **review only** |
+| D4 | A rule is argued from principle, never from precedent. A standard names no repository, ever: not as justification, motivation, colour, example or incident. It counts no repositories and describes no repository's state or distance from the rule. Compliance is tracked where the code is, never in a standard. A failure mode is stated as the general property it is | `tools/check-doc-style` holds the countable half: a repository name (any `aurum-alpha/<name>` other than this repository, or a portfolio repository slug) or an inventory phrase (a count of repositories, an *existing* or *prior* implementation, a phrase locating the rule inside the estate, a measurement across it) in a standard is a finding. It runs in this repository's CI beside D10, warn-only until the count is zero. The fallacy itself, a reason that rests on what one repository did, is the review question on every rule and every Decisions entry: *would this reason hold if no current repository existed?* | **audit only** |
 | D5 | An acceptable solutions register states no rule: delete it and every rule still stands, with every repository still able to comply | the citation half is **static and decidable**: `check-solutions` (proposed) checks that every rule id a register cites exists in the standard it shares a number with. That catches the drift that turns a claim into an orphan when a standard is renumbered. Whether a sentence is a claim or a rule in the wrong document resists honestly, and is the review question on every register diff | **review only** |
 | D6 | Absence from a register is not refusal; what is refused is refused by a rule in the standard, which the register cites | — resists honestly. The observable half: a register's refusals table cites a rule id for every row, checked with D5's citation pass | **review only** |
 | D7 | A register entry is a technical claim on a date — never an endorsement, a price, a contract term or a vendor ranking | `check-solutions` (proposed): a currency symbol, or the pricing vocabulary, in a register is a finding. Close to no false positives, because the vocabulary has no other use on a page this class admits | **review only** |
@@ -354,10 +354,12 @@ D3 resists a checker. A grep can find the word "twelve-factor" but not whether
 the citation is apt or the departure argued. So it stays a review question,
 stated in the charter's *The foundation: twelve-factor*.
 
-D4 resists one the same way. It is the convention most likely to be broken in
-good faith, because copying a good answer feels like diligence. Two merged
-standards carry passages written before it was stated. Bringing them to it is
-its own change.
+D4 has a checker for its countable half and a review question for the rest.
+The checker finds a repository name and an inventory phrase. It cannot find
+the fallacy: a reason that would fall if the repository it rests on were
+deleted. That stays the review question on every rule and every Decisions
+entry. D4 is the convention most often broken in good faith, because copying
+a good answer feels like diligence.
 
 One carve-out is unsettled and left visible rather than assumed. The CI
 standard's decisions log cites the change that settled each row, which is
@@ -453,7 +455,7 @@ and the conventions for the default answer.
 HA3 is the cheapest live gate in this ledger after the service standard's own.
 `job-image-starts` already talks to a running service. So one request to a
 path that cannot exist, and one schema validation of what comes back, catches
-the failure the portfolio actually has. That failure is a framework's default
+the failure that actually occurs. That failure is a framework's default
 HTML error page escaping to clients from the one route nobody wrote a handler
 for.
 
@@ -594,7 +596,7 @@ file's schema.
 | # | Rule | Enforced by | Status |
 |---|---|---|---|
 | AE1 | An audit event is application data in the product's own durable, queryable, tenant-scoped store — never a log line, and the log stream is never the system of record | resists a checker honestly: whether a store is the system of record or a convenience is intent, not shape. The review question is whether a history screen could be built from it | **review only** |
-| AE2 | One event shape, and **actor and target are separate required objects** — the failure the portfolio's one existing audit table demonstrates, plus `outcome`, an `impersonator` where one acted, and public ids never internal keys | **schema-decided**: `event.schema.json` under `job-contract-conformance`; sixteen validity cases already reach their stated verdict against it | **review only** |
+| AE2 | One event shape, and **actor and target are separate required objects**, plus `outcome`, an `impersonator` where one acted, and public ids never internal keys | **schema-decided**: `event.schema.json` under `job-contract-conformance`; sixteen validity cases already reach their stated verdict against it | **review only** |
 | AE3 | `action` is `resource.verb`, and where a permission authorized the act the action string **is** that permission; `auth.*` is this standard's reserved namespace for acts with no permission behind them | the format half is schema-decided. The identity half gets **a static check worth writing early**: read the product's declared permission set, assert every emitted action is one of them or a reserved `auth.*` action (proposed `check-audit-actions`) | **review only** |
 | AE4 | An event is self-contained, immutable and outlives its subject: display denormalized at write time, append-only, no cascade from the target's deletion, values not references, never a credential | the shape half is schema-decided. That the store is genuinely append-only and uncascaded is a schema fact once the [structured-data standard](025-structured-data.md) gives a checker a schema to read; that no credential reaches `changes` is SC2's judgment again | **review only** |
 | AE5 | The floor of what must emit: authentication and session lifecycle, authorization changes, identity lifecycle, destructive writes, security-posture configuration, bulk personal-data export — and reads otherwise **not** audited | **the generative gate, and the one worth the most here**: enumerate the routes guarded by a destructive permission, exercise each, assert an event carrying that permission as its action. Fourteen `floor` cases in the corpus describe the acts; two of them are negative | **review only** |
@@ -623,8 +625,8 @@ leaving the erased subject's in place. It was checked against exactly that
 broken implementation before landing.
 
 **AE5's generative gate is the one to build.** A list of routes that must
-audit rots the day someone adds a route. That is how the portfolio's existing
-audit table came to be a well-designed table nothing writes to. An enumeration
+audit rots the day someone adds a route. That is how an
+audit table comes to be a well-designed table nothing writes to. An enumeration
 over the permission set cannot rot that way. AE3's identity rule, the action
 string *is* the permission string, exists largely to make that enumeration
 possible.

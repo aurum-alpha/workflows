@@ -150,7 +150,7 @@ share an image; where one differs, the image splits. Applied to workers:
   the service's runtime credential and the service's dependency closure. They
   share one one-shot image, `<service>-jobs`, and an argument selects the
   job. This is not the multi-entrypoint image this platform refuses. That
-  image mixed a server, a consumer, and a migrator: three process shapes with
+  image mixes a server, a consumer, and a migrator: three process shapes with
   three closures and three scaling profiles. A one-shot image has one shape,
   one closure, one credential, and no replica count.
 - A one-shot job with a **dependency of its own** gets its own image, because
@@ -350,8 +350,8 @@ deployment output, and the two agree (WK6). The corpus runs against the
 one-shot image (WK4).
 
 Three are review questions, said so in the ledger row. No timer loop exists
-anywhere (WK1). Images are split for the three reasons (WK2). A partition was
-measured before it was made (WK3).
+anywhere (WK1). Images are split for the three reasons (WK2). A partition
+rests on a measurement recorded before it was made (WK3).
 
 ## Decisions
 
@@ -370,7 +370,7 @@ measured before it was made (WK3).
 - **Ordinary one-shot jobs share one image** (2026-09-02). Images split on
   closure, credential, and configuration surface. Jobs that share all three
   sharing an image is not the multi-entrypoint image the platform refuses,
-  which mixed process shapes. The migrate image is the case where the
+  which mixes process shapes. The migrate image is the case where the
   credential differs, and it stands alone.
 - **One pool per service by default** (2026-09-02). The scaling dimension is
   the workload and the lever is replicas. Partitioning is admitted as a

@@ -9,11 +9,11 @@ actually holds. Artifacts:
 
 ## Why this exists
 
-Nothing in the portfolio says what an identifier is. Internal integer primary
-keys leak into URLs and payloads, or do not, per product, and public id
-formats are whatever the first migration picked. The oldest cross-service
-bugs there are, enumerable ids, timezone drift and floating-point money, are
-each one missing page of doctrine. The other platform standards define
+Until a standard says what an identifier is, nothing does. Whether internal
+integer primary keys leak into URLs and payloads is then decided per product,
+and a public id format by the first migration. The oldest
+cross-service bugs there are, enumerable ids, timezone drift and
+floating-point money, are each one missing page of doctrine. The other platform standards define
 schemas: log lines, audit events, job envelopes, the RBAC model. Each of
 those has to say what a timestamp, an id, and a money value look like. This
 document answers once, so the others reference instead of re-deciding.
@@ -186,8 +186,8 @@ to read. Until then IP1 is the review question on every API-shaped diff:
 
 - **UUIDv7 over ULID** (2026-08-31). Identical property (time-ordered,
   128-bit), but UUIDv7 is an RFC with native column types and driver
-  support everywhere the portfolio runs. ULID is a spec with libraries. PC2
-  picks the standard.
+  support in every engine and language in use here. ULID is a spec with
+  libraries. PC2 picks the standard.
 - **`Z`, never `+00:00`; pinned fractional precision, default three,
   never fewer** (2026-08-31). One canonical string per instant within an
   emitter, so string equality and instant equality agree. Dedupe keys and

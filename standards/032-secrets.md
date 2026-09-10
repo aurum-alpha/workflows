@@ -47,8 +47,8 @@ secret nobody rotates** has a permanent exposure. Nothing fails on the day it
 was due for rotation, because absence is not an event.
 
 Two properties make this sharper than the general case. A repository built
-for a client leaves the portfolio. So anything in its history at handover is
-a leak into an estate nobody here can rotate afterwards. And a secret is the
+for a client is handed over. So anything in its history at handover is a
+leak into an estate nobody here can rotate afterwards. And a secret is the
 one class of defect where the remedy is not a fix. Removing a leaked value
 does not make it unleaked, so the response is a rotation by a named person.
 
@@ -329,8 +329,8 @@ including the ones nobody here can see. Rewriting the branch removes it from
 one copy and destroys the record of when it arrived and who could have taken
 it since. The value is dead once rotated; the commit is evidence.
 
-**A repository leaving the portfolio triggers rotation of every secret it
-ever referenced**. The declaration is that list. Every value ever delivered
+**A repository leaving this organisation triggers rotation of every secret
+it ever referenced**. The declaration is that list. Every value ever delivered
 against it, in any environment, is rotated at handover. From that day its
 history, pipelines and people are outside anyone here's reach. The same
 holds for a repository arriving.
@@ -407,8 +407,8 @@ refused, for five independent reasons, any one of which is sufficient:
 1. **A repository is not a place a secret value is permitted to live, in any
    form, because its history is permanent and it leaves**. Deleting the file
    removes it from no clone and no fork. A repository built for a client
-   leaves the portfolio at handover carrying every version of every value it
-   ever held. The day the key is compromised, the compromise is retroactive
+   leaves this organisation at handover carrying every version of every
+   value it ever held. The day the key is compromised, the compromise is retroactive
    across the whole history at once. A store has a current version and old
    versions that can actually be destroyed.
 2. **It moves the problem and then multiplies it**. The ciphertext is inert
@@ -609,7 +609,7 @@ mechanism's class is a review question.
   `.env.example` files with values in them. The admission is scoped to that
   file and nowhere else.
 - **Handover rotates everything** (2026-09-02). The repository's history,
-  pipelines and people leave the portfolio's reach on that day. Any value
+  pipelines and people leave this organisation's reach on that day. Any value
   ever delivered against its declaration can be in that history. The
   declaration makes the list complete rather than remembered.
 

@@ -12,6 +12,14 @@ holds the part that is not:
         utilize, leverage, "in order to"
   D10d  a dash does not join two clauses in prose
 
+It also holds the countable half of D4, the inventory rule: a standard names
+no repository and tracks no compliance.
+
+  D4a   no repository name: no aurum-alpha/<name> other than this repository,
+        and none of the portfolio's repository slugs
+  D4b   no inventory phrase: no count of repositories, no "existing" or
+        "prior" implementation, no "in the portfolio", no "measured across"
+
 What it reads: README.md, AGENTS.md, standards/*.md and solutions/*.md by
 default, or the paths given. What it skips: fenced code, tables, headings,
 HTML comments, and the target of every link. A list item is its own
@@ -40,6 +48,25 @@ BANNED = [
     (re.compile(r"\butili[sz]es?\b", re.I), "utilize"),
     (re.compile(r"\bleverages?\b", re.I), "leverage"),
     (re.compile(r"\bin order to\b", re.I), "in order to"),
+]
+
+# D4a. The slugs are the portfolio's repositories as this checker last knew them.
+# A name on this list appearing in a standard is the finding; the list is not
+# who is subject to the rule, it is what the rule forbids the text to say.
+REPO_SLUGS = [
+    "event-manager", "credit-watch", "wardley-mapper", "gofast", "expense-splitter",
+    "flight-watch", "hiring-tracker", "gha-runner-controller", "client-manager",
+    "jewelry-factory", "lid-firmware", "aurum-alpha/website",
+]
+REPO_NAME = re.compile(
+    r"aurum-alpha/(?!workflows\b)[A-Za-z0-9_.-]+|\b(?:" + "|".join(re.escape(s) for s in REPO_SLUGS) + r")\b"
+)
+COUNT = r"(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d+)"
+INVENTORY = [
+    (re.compile(r"\b" + COUNT + r"(?: of \w+)? (?:\w+ )?(?:repos|repositories)\b", re.I), "count of repositories"),
+    (re.compile(r"\b(?:existing|prior|current|legacy) (?:implementations?|products?|applications?)\b", re.I), "existing implementation"),
+    (re.compile(r"\b(?:in|across) the portfolio\b|\bthe portfolio's\b|\bwhere the portfolio stands\b|\bportfolio-wide\b", re.I), "portfolio inventory"),
+    (re.compile(r"\bmeasured (?:on|across|before|after|the day)\b", re.I), "measured"),
 ]
 
 SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[A-Z*`\"'(\[])")
@@ -107,9 +134,35 @@ def word_count(sentence: str) -> int:
     return len(WORD.findall(sentence))
 
 
+def check_inventory(path: pathlib.Path, text: str):
+    """D4 reads every line, tables and code included: a repository name in a
+    table cell or a code sample is still a repository name in a standard."""
+    findings = []
+    if path.name in ("README.md", "AGENTS.md") or path.parent.name == "solutions":
+        # The charter and the agent standard address this repository by name,
+        # and the registers name vendors, not repositories. D4 binds standards/.
+        return findings
+    in_fence = False
+    for n, line in enumerate(text.split("\n"), 1):
+        if FENCE.match(line):
+            in_fence = not in_fence
+        stripped = HTML_COMMENT.sub("", line)
+        m = REPO_NAME.search(stripped)
+        if m:
+            findings.append((n, "D4a", f"repository named: {m.group(0)}"))
+        if in_fence:
+            continue
+        for rx, name in INVENTORY:
+            m = rx.search(stripped)
+            if m:
+                findings.append((n, "D4b", f"{name}: {m.group(0)}"))
+    return findings
+
+
 def check_file(path: pathlib.Path, max_words: int, max_sentences: int):
     findings = []
     text = path.read_text(encoding="utf-8")
+    findings += check_inventory(path, text)
     n_sentences = 0
     for line_no, para in paragraphs(text):
         sents = sentences(para)
@@ -146,7 +199,7 @@ def main() -> int:
     args = ap.parse_args()
 
     paths = [pathlib.Path(p) for p in args.paths] or default_paths(args.root)
-    total = {"D10a": 0, "D10b": 0, "D10c": 0, "D10d": 0}
+    total = {"D10a": 0, "D10b": 0, "D10c": 0, "D10d": 0, "D4a": 0, "D4b": 0}
     total_sentences = 0
     rows = []
     for path in paths:
@@ -160,14 +213,15 @@ def main() -> int:
             for line_no, rule, msg in findings:
                 print(f"{path}:{line_no}: {rule} {msg}")
 
-    print(f"{'file':44} {'sents':>6} {'long':>6} {'para':>5} {'word':>5} {'dash':>5}")
+    print(f"{'file':44} {'sents':>6} {'long':>6} {'para':>5} {'word':>5} {'dash':>5} {'repo':>5} {'inv':>5}")
     for name, n, c in rows:
-        print(f"{name:44} {n:6} {c['D10a']:6} {c['D10b']:5} {c['D10c']:5} {c['D10d']:5}")
+        print(f"{name:44} {n:6} {c['D10a']:6} {c['D10b']:5} {c['D10c']:5} {c['D10d']:5} {c['D4a']:5} {c['D4b']:5}")
     n_findings = sum(total.values())
     pct = (100 * total["D10a"] // total_sentences) if total_sentences else 0
     print(
         f"TOTAL sentences {total_sentences}; long {total['D10a']} ({pct}%); "
-        f"long paragraphs {total['D10b']}; banned words {total['D10c']}; dashes {total['D10d']}"
+        f"long paragraphs {total['D10b']}; banned words {total['D10c']}; dashes {total['D10d']}; "
+        f"repositories named {total['D4a']}; inventory phrases {total['D4b']}"
     )
     if n_findings and not args.warn_only:
         print(f"FAIL: {n_findings} finding(s)")

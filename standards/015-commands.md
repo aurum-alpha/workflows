@@ -17,19 +17,19 @@ A gate is reachable two ways: through the pipeline, and through a person's
 terminal. The catalog settled the first years ago. Nothing had ever read the
 second.
 
-*Measured 2026-09-09, across ten `package.json` files in twelve repositories:*
+*Measured 2026-09-09, by reading every `package.json`:*
 
-- *Six repositories' Dockerfiles told the reader to run `build` before building
-  the image. **None of the six defined `build`.** The command existed only
+- *Dockerfiles told the reader to run `build` before building
+  the image. **The package did not define `build`.** The command existed only
   inside two catalog jobs. Producing the artifact locally meant reading
   workflow YAML and retyping it.*
-- *gofast's Dockerfile ran `pnpm run build` against a client with no `build`
+- *A Dockerfile ran `pnpm run build` against a client with no `build`
   script. So `docker compose build` could not succeed, and that is the local
-  development path its own AGENTS.md gives.*
-- *client-manager's `tools/checks/lint` ran a `lint` script its client does not
+  development path the repository's own AGENTS.md gives.*
+- *A `tools/checks/lint` ran a `lint` script its client does not
   define. It is a row in the gate manifest, so `./tools/check` could not go
   green. CI stayed green throughout, because CI calls the catalog job instead.*
-- *event-manager's `typecheck` ran `tsc --noEmit` while its gate ran `tsc -b
+- *A `typecheck` ran `tsc --noEmit` while its gate ran `tsc -b
   --noEmit`. Without `-b` the project references are never built. The two
   commands checked different things and agreed by coincidence.*
 - *"Run the tests" had six spellings. "Push the schema" had three.*
@@ -49,9 +49,9 @@ load-bearing.
 **Principle 2** was amended on 2026-08-17. It now says the shared job is the
 command's single definition, not a per-repo script it wraps. That amendment is
 right and it stands. A per-repo script as the source of truth makes the catalog
-a wrapper around eleven opinions.
+a wrapper around one opinion per repo.
 
-The portfolio has already paid for that once. A whole checker existed to police
+That has already been paid for once. A whole checker existed to police
 byte-identity between copies that kept diverging. A checker of that kind is the
 tell that there was only ever one copy to keep.
 
@@ -86,8 +86,8 @@ Docker Compose or a Makefile, it is not a `package.json` concern, and no `dev`
 is defined.
 
 This is the rule with no room in it. Every other rule here protects a
-capability. This one protects the reader, who moves between twelve repositories
-without learning twelve vocabularies.
+capability. This one protects the reader, who moves between repositories
+without learning a vocabulary per repository.
 
 ### DC2 — a script's body is the invocation its gate runs
 
@@ -122,7 +122,7 @@ has `start`, `dev:server` and an orchestrating `dev`. One with drizzle has
 canonical command present while its condition is false is as wrong as one
 missing.
 
-flight-watch is the case. Its drizzle stack was deleted: `drizzle-kit`, and the
+The case: a repository's drizzle stack was deleted: `drizzle-kit`, and the
 `db:push` that called it. A branch adding the standard commands was open at the
 time, against an older base. Merged, the two produced a `db:push` invoking a
 binary the repository no longer had.
@@ -130,11 +130,22 @@ binary the repository no longer had.
 `check-package-scripts` passed it. knip caught it, from a job that is not about
 developer commands at all: *"Unlisted binaries (1): drizzle-kit"*. A gate that
 only ever adds cannot see a command outliving its reason, which is the
-commonest way one goes stale. Both halves are checked now.
+commonest way one goes stale.
+
+**The fix for that case reached one kind of command.** The rule covers every
+kind. `db:push` has a fixed name, so the checker could hold a list of names.
+`lint:client`, `format:server` and `test:unit:shared` carry a target, so no list
+can name them. Those three families stayed exempt from the second half until the
+gate was extended to them.
+
+They are identified by body rather than by name. A script running the catalog's
+own invocation, with no catalog job calling for it, is a command that outlived
+its gate. A repository's own `format:write` runs `prettier --write`, which no
+gate runs, so DC6 additions stay untouched.
 
 Shape is read from the repository's own `ci.yml`: which catalog jobs it calls,
 with which `workdir` and which `dir`. It is not read from a map of repository
-names kept in the catalog. This portfolio has already had a name map go stale
+names kept in the catalog. A name map has already gone stale here
 through two renames, with nothing noticing.
 
 ### DC4 — no second name for a command that already has one
@@ -148,7 +159,7 @@ Where a name is wrong, rename it. Do not add the right one beside it.
 Examples: `pnpm vitest`, `npm run build` inside another script, `npx
 drizzle-kit`. The binary is already on `PATH`. The prefix costs a process. It is
 how `pnpm vitest --coverage` and `vitest` come to look like two different
-commands, in two repositories that meant the same thing.
+commands, in repositories that meant the same thing.
 
 Calling *another script* is the one legitimate case, because it is the only way
 to reach one. The orchestrating `dev` invoking `pnpm dev:client` and `pnpm
@@ -165,8 +176,8 @@ manager.
 ### DC7 — a document naming a command names one that exists
 
 An `AGENTS.md`, a `README`, a Dockerfile comment or an operations runbook prints
-commands. Each one is a claim a reader will act on. Two of the portfolio's
-`AGENTS.md` files named scripts that were not there. A third warned agents away
+commands. Each one is a claim a reader will act on. More than one
+`AGENTS.md` has named a script that was not there. Another warned agents away
 from one that had already been deleted.
 
 Where the command is canonical, quote the script name rather than the underlying
@@ -196,7 +207,7 @@ fixed.
 **`format` checks, and the fix-up command is deliberately not canonical.**
 `--check` is the verdict the gate reads. `--write` is a different command, and
 no job runs it. A repository that wants one types `prettier --write <dir>`, or
-adds its own script under DC6. Naming it in this table would give the portfolio
+adds its own script under DC6. Naming it in this table would create
 a canonical command with no gate behind it.
 
 **A name is suffixed only where there are several of the thing.** One lint

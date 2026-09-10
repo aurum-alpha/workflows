@@ -293,7 +293,7 @@ decide who sees.
 #### The denial
 
 A refused entitlement is `403` with a distinct problem type under
-[`050-http.md`](050-http.md) HA3, in the portfolio form
+[`050-http.md`](050-http.md) HA3, in the form HA3 pins:
 `https://errors.aurumalpha.dev/<service>/entitlement-required`. Beyond the
 envelope's required members it carries two extension members, shaped in
 `subscription.schema.json`. `entitlement` carries the kind, the id, and for a

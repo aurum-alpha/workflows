@@ -280,6 +280,39 @@ CANONICAL = {
 }
 
 
+def _shapes(render) -> tuple[re.Pattern, ...]:
+    """The canonical body for ANY target, as patterns.
+
+    Built by rendering the same function that produces the real thing, with a
+    sentinel standing in for the target. A change to the invocation moves this
+    with it, rather than leaving a second copy of the command here to drift --
+    which is the failure the whole file exists to stop.
+
+    Two renderings, because `.` is spelled differently by one of them:
+    test_unit(".") drops the --dir flag entirely.
+    """
+    sentinel = "\x00"
+    return tuple(
+        re.compile("^" + re.escape(body).replace(re.escape(sentinel), r"\S+") + "$")
+        for body in {render(sentinel), render(".")}
+    )
+
+
+# The three commands whose names carry a target, so CANONICAL cannot list them:
+# lint:client, format:server, test:unit:shared. Their names are per-repo, but
+# their BODIES are the catalog's, and that is what identifies one.
+#
+# Matching on the body rather than the name is what keeps DC6 intact. A repo is
+# free to add `format:write` running `prettier --write client` -- the fix-up
+# invocation no gate runs, which this file leaves uncanonical on purpose. That
+# is not the gate's command, so it does not match, and it is not reported.
+FAMILIES = (
+    ("lint", _shapes(lint), "an oxlint job pointed at that directory"),
+    ("format", _shapes(fmt), "a prettier job pointed at that directory"),
+    ("test:unit", _shapes(test_unit), "a vitest job for that unit"),
+)
+
+
 def check_package(label: str, pkg_dir: pathlib.Path, calls: list) -> list[str]:
     manifest = json.loads((pkg_dir / "package.json").read_text())
     scripts = manifest.get("scripts") or {}
@@ -323,6 +356,30 @@ def check_package(label: str, pkg_dir: pathlib.Path, calls: list) -> list[str]:
             f"for it ({CANONICAL[name]}). The shape decides which commands exist, "
             "so this one goes."
         )
+
+    # The same half again, for the three families CANONICAL cannot name because
+    # their names carry a target. Written after the db:push case rather than
+    # with it, which left lint, format and test:unit exempt from a rule DC3
+    # states for every command.
+    #
+    # The hole was not hypothetical. Retire a repo's prettier jobs and its
+    # format:client and format:server survive, running a tool the repo may no
+    # longer declare -- the flight-watch failure exactly, in a family the fix
+    # for flight-watch did not reach.
+    for name, body in sorted(scripts.items()):
+        if name in want:
+            continue
+        for prefix, shapes, reason in FAMILIES:
+            if name != prefix and not name.startswith(prefix + ":"):
+                continue
+            if not any(shape.match(body) for shape in shapes):
+                continue
+            findings.append(
+                f"S1 {label}: `{name}` runs the gate's own invocation, but "
+                f"nothing in this package calls for it (it needs {reason}). "
+                "The shape decides which commands exist, so this one goes."
+            )
+            break
 
     # S3. Two names for one command is the drift this whole file exists to
     # stop, and it does not announce itself: jewelry-factory carried `db:push`

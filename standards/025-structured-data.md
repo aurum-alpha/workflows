@@ -20,32 +20,33 @@ analogy; 027 DS3 states which transfer, by argument.
 
 ## Why this exists
 
-Eight repositories talk to a relational database and nothing says how. The
-result is not chaos. It is eight reasonable local answers that disagree at
-every seam a reviewer would want to check:
+Every product talks to a relational database, and without a standard each
+decides alone how. The result is not chaos. It is a set of reasonable local
+answers that disagree at every seam a reviewer would want to check:
 
-- **Five repositories ship a `db:push` script**. That is the schema tool's
+- **A `db:push` script ships in the repository**. That is the schema tool's
   *make the database look like the code* command. It diffs and applies with no
-  reviewable artifact, no ordering, and no down path. **Three of those five
-  also carry a committed `migrations/` directory**. So the question *how does
-  this repository change its schema* has two answers inside a single tree.
-- **One repository's script named `migrate` runs `drizzle-kit push`.** The
-  command called migrate does the thing a migration exists to prevent. That is
-  not a violation anyone committed; it is what a word means when nobody has
-  defined it.
-- **Six repositories query through an ORM.** The SQL that reaches the database
-  is generated at runtime from a builder chain. It appears nowhere in the
+  reviewable artifact, no ordering, and no down path. **A committed
+  `migrations/` directory sits beside it**. So the question *how does this
+  repository change its schema* has two answers inside a single tree.
+- **A script named `migrate` runs `drizzle-kit push`.** The command called
+  migrate does the thing a migration exists to prevent. That is not a
+  violation anyone commits; it is what a word means when nobody has defined
+  it.
+- **Queries go through an ORM.** The SQL that reaches the database is
+  generated at runtime from a builder chain. It appears nowhere in the
   repository. It cannot be read in review, pasted into a console, or profiled.
-- **Seven of eight run Postgres**, and the identifiers standard wrote a storage
-  profile for MySQL only, deferring every other engine to this document.
+- **More than one engine is admitted**, and the identifiers standard wrote a
+  storage profile for MySQL only, deferring every other engine to this
+  document.
 
 None of that is a failure of care. It is what happens when the questions
 themselves have not been stated. The questions are: what a migration *is*,
 what a query is allowed to be, and what a tenant boundary means at the row.
-Each product answered those structurally, in the first week, by whatever its
-tooling defaulted to, and each defaulted differently. This document states
-the questions and answers them once, from the properties the answers must
-have. Then the next product inherits the answers rather than the questions.
+A product answers those structurally, in its first week, by whatever its
+tooling defaults to, and tooling defaults differ. This document states the
+questions and answers them once, from the properties the answers must have.
+Then the next product inherits the answers rather than the questions.
 
 ### The standard evaluated first, per PC2
 
@@ -385,10 +386,9 @@ foreign-key migration rippling through the schema. This is the check
 gave a checker a schema to read. This is that standard.
 
 **The storage profile is per admitted engine.** This document does not
-mandate an engine. Seven of eight products run Postgres and one runs MySQL,
-and both are admitted. It does say, for each, what column type each primitive
-takes, because the wrong column type is how the identifiers rules fail
-silently:
+mandate an engine. Postgres and MySQL are both admitted. It does say, for
+each, what column type each primitive takes, because the wrong column type is
+how the identifiers rules fail silently:
 
 | Primitive | Postgres | MySQL | Why the obvious alternative is wrong |
 |---|---|---|---|
@@ -490,8 +490,8 @@ code is the second line, never the only one.**
   `CHECK`, not a comment.
 - **No native `ENUM` types.** A `CHECK` constraint or a lookup table instead.
   A native enum cannot have a value removed. It cannot have one added inside
-  a transaction on the majority engine, and it turns a rename into an
-  exercise nobody wants. The `CHECK` does the same job and migrates like any
+  a transaction on Postgres, and it turns a rename into an exercise nobody
+  wants. The `CHECK` does the same job and migrates like any
   other constraint.
 - **A JSON column holds what the application does not query by field**. A
   per-tenant configuration blob or an external payload kept verbatim is fine,
@@ -712,7 +712,7 @@ standard is unusual in how many of those gates are cheap:
   consequential rule here. Decided because the alternative hides the review,
   debugging and performance surface behind a notation that is worse than the
   thing it abstracts. It was also decided because the portability the
-  alternative buys is one no product here can use. Code generation *from*
+  alternative buys is one a product with a pinned engine cannot use. Code generation *from*
   authored SQL is the admitted shape, and the recommended one.
 - **A migration is a `.sql` file and never code; authoring is unconstrained**
   (2026-09-02): an earlier draft also excluded migrations generated by a
@@ -751,9 +751,8 @@ standard is unusual in how many of those gates are cheap:
   point.
 - **Isolation is a behaviour with three admitted mechanisms, and RLS is not
   required** (2026-09-02): row-level security is the strongest backstop
-  available on the majority engine. It is not available on the other. A
-  requirement would have made conformance a property of the engine rather
-  than of the design. The behaviour is what the gate proves. Each mechanism
+  available on Postgres. MySQL does not have it. A requirement would have
+  made conformance a property of the engine rather than of the design. The behaviour is what the gate proves. Each mechanism
   is admitted with its cost written down, so the choice is made with the
   price known.
 - **Per-engine storage profile, no mandated engine** (2026-09-02): the
@@ -775,8 +774,8 @@ standard is unusual in how many of those gates are cheap:
   the same change.
 - **No native enums; `CHECK` or a lookup table** (2026-09-02): the enum's
   only advantage is brevity. Its costs are no removal, no transactional add
-  on the majority engine, and a painful rename. All are paid at migration
-  time, which is when nobody wants a surprise.
+  on Postgres, and a painful rename. All are paid at migration time, which
+  is when nobody wants a surprise.
 - **Plural table names, `<singular>_id` foreign keys, `snake_case` throughout**
   (2026-09-02): none of the three is better than its alternative. That is the
   whole reason to decide them here once. The `snake_case` half has a

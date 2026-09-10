@@ -12,16 +12,17 @@ conventions** (HA2 onward)?
 
 ## Why this exists
 
-Every product exposes an interface, and each one decided independently what
-protocol to speak. Each then decided its own error shape, pagination scheme
-and versioning habit. Whoever writes the second client pays the cost. A
-frontend handles four error shapes. A retry that is safe against one
-service duplicates charges against another. A pagination loop silently
-skips rows when the collection changes underneath it.
+Every product exposes an interface, and without a standard each decides
+alone what protocol to speak. Each then decides its own error shape,
+pagination scheme and versioning habit. Whoever writes the second client
+pays the cost. A frontend handles one error shape per service. A retry that
+is safe against one service duplicates charges against another. A
+pagination loop silently skips rows when the collection changes underneath
+it.
 
-Before any of that, there is the WebSocket that sits where a plain HTTP
-request would have done. It carries its own auth scheme because it could
-not use the normal one.
+Before any of that, there is the WebSocket opened where a plain HTTP
+request would have done. It carries its own auth scheme because it cannot
+use the normal one.
 
 Almost none of this needs inventing. RFC 9457 defines the error envelope,
 OpenAPI describes the surface, and the HTTP specification already settled
@@ -36,14 +37,14 @@ four incompatible error shapes that all validate.
 **HTTP with JSON is the default, and every other choice needs a reason a
 reviewer can hear**. Not because it is fastest; it is not. HTTP is the only
 option every consumer, proxy, load balancer, debugger and support engineer
-already understands. And the rest of the portfolio's contracts are written
+already understands. And the rest of the shared contracts are written
 against it: the error envelope, the id vocabulary, trace propagation,
 readiness, the audit trail. Leaving HTTP means leaving those and rebuilding
 them.
 
 | Interaction | Protocol | Why, and what it costs |
 |---|---|---|
-| Request/response: any public, partner or browser-facing surface | **HTTP/REST + JSON** | The default. Universally consumable, `curl`-debuggable, no codegen for the consumer, and every portfolio contract already applies. |
+| Request/response: any public, partner or browser-facing surface | **HTTP/REST + JSON** | The default. Universally consumable, `curl`-debuggable, no codegen for the consumer, and every shared contract already applies. |
 | Request/response between internal services, high volume or strongly typed | **gRPC** | Binary protobuf, generated clients, real streaming. **Requires HTTP/2 end to end.** Costs: not browser-native (needs a proxy and grpc-web), opaque on the wire to anyone debugging, and a schema pipeline to own. Admitted **service-to-service only**. |
 | Server pushes to client, one direction | **SSE** | Plain HTTP: it inherits authentication, proxies, the error envelope, observability and automatic reconnection for free. **Requires HTTP/2 to survive contact with a real browser** (see below) **and OpenAPI 3.2 to be describable** (HA2). |
 | Both ends push, low latency, genuinely conversational | **WebSocket** | Full duplex. Costs are large and listed below. |
@@ -117,7 +118,7 @@ already does. A repository choosing one states the reason in its
 **Conventions**.
 
 **Leaving HTTP never leaves the standards.** Whatever the protocol, the
-portfolio's contracts still bind. Trace context propagates
+shared contracts still bind. Trace context propagates
 ([`040-observability.md`](040-observability.md) OC1): in gRPC metadata, in
 the WebSocket message envelope, in the SSE request that opened the stream.
 Identifiers keep their formats ([`020-identifiers.md`](020-identifiers.md)).
@@ -133,8 +134,8 @@ service that serves SSE uses 3.2.**
 
 3.1 rather than 3.0 for one concrete reason: 3.1's schema dialect *is*
 JSON Schema 2020-12, the dialect every contract under
-[`contracts/`](../contracts/) already speaks. That makes the portfolio's
-shared `$defs` (a timestamp, a public id, a money value) referenceable from
+[`contracts/`](../contracts/) already speaks. That makes the shared
+`$defs` (a timestamp, a public id, a money value) referenceable from
 an API description instead of transcribed into it. A transcribed schema is
 a copy that drifts.
 
@@ -184,8 +185,8 @@ and status; humans read `detail`. A service that changes `detail` wording
 is free to. One that changes what `type` means has broken its clients, and
 per PC6 that is a new `type`, not an edited one.
 
-**A slug can be pinned portfolio-wide** where clients across products
-branch on the same class and would otherwise each invent a spelling. The
+**A slug can be pinned by a standard** where clients of several products
+branch on one class. Each would otherwise invent a spelling. The
 standard that owns the condition pins it, and this table does not repeat
 it. The first is `entitlement-required`, a `403` whose `errors` name the
 capability or metric the tenant's plan lacks, under the
@@ -340,9 +341,9 @@ become cheap:
 - **The error envelope is real.** `job-image-starts` already talks to a
   running service. Requesting a route that cannot exist and asserting
   problem+json against the schema is one more poll. That single case
-  catches the most common failure in the portfolio today. A framework's
-  default HTML error page escapes to clients from the one path nobody
-  wrote a handler for.
+  catches the most common failure of this kind. A framework's default HTML
+  error page escapes to clients from the one path nobody wrote a handler
+  for.
 - **Idempotency and backpressure** need a live harness driving two requests
   and reading headers: the same `job-contract-conformance` the other
   capability standards wait on.
@@ -367,7 +368,7 @@ tests, and the review question is whether they exist.
   and `json:"createdAt"` are the same work. And snake_case additionally
   makes a service's two boundaries agree with each other, since its columns
   are already snake_case. A camelCase wire would introduce a
-  database-to-API mismatch that does not currently exist.
+  database-to-API mismatch for no gain.
 
   What the frontend pays is smaller than it looks, because HA2 requires a
   committed OpenAPI document. A TypeScript client **generates** its types

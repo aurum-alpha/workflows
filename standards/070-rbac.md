@@ -16,25 +16,24 @@ decides what a known subject is permitted to do.
 ## Why this exists
 
 This is the platform contract's worked example of *an interface specification,
-not a library*. Three languages implement it; one corpus judges all three.
+not a library*. Any language can implement it; one corpus judges them all.
 
-It is also not being invented from nothing. Two products in the portfolio have
-built substantial RBAC systems independently, and **they agree on more than they
-differ**. Both have permissions as a closed set of `resource`-plus-`action`
-strings declared in code. Both have roles as named bundles of those
-permissions, and grants scoped to an organisational unit. That agreement is the
-standard answer, and most of this document is it, written down.
+It is also not being invented from nothing. RBAC systems built independently
+**agree on more than they differ**. Each has permissions as a closed set of
+`resource`-plus-`action` strings declared in code. Each has roles as named
+bundles of those permissions, and grants scoped to an organisational unit.
+That agreement is the standard answer, and most of this document is it,
+written down.
 
-What they differ on is where the standard earns its keep. One keeps roles as a
-closed enum in source; the other stores them as rows so a tenant can define its
-own. One admits wildcards; the other does not. Those are real forks, and left
+Where they differ is where the standard earns its keep. One keeps roles as a
+closed enum in source; another stores them as rows so a tenant can define its
+own. One admits wildcards; another does not. Those are real forks, and left
 alone each new product picks one at random.
 
-**And one of the two check implementations demonstrates, in working production
-code, four failure shapes this document exists to prevent**. They are cited
-below where each rule addresses one. A rule with evidence behind it gets
-followed, and a rule asserted does not. Naming them is history, not a status
-report. The migration is each repository's own work, in its own tracker.
+**Four failure shapes recur in working production code, and this document
+exists to prevent them**. They are stated below where each rule addresses
+one. A rule with a failure mode behind it gets followed, and a rule asserted
+does not.
 
 ## The rules
 
@@ -46,8 +45,7 @@ that declaration is the complete list. **A permission that is not in the set
 does not exist**, and a check against an undeclared permission is an error
 rather than a denial.
 
-Both existing implementations already do this and neither regrets it. The
-property it buys is that *what can be granted* is answerable from the
+The property it buys is that *what can be granted* is answerable from the
 repository, reviewable in a diff, and impossible to typo into existence.
 
 The distinction that matters and is easy to lose: **the set of permissions is
@@ -75,9 +73,9 @@ Five consequences, each a failure that only appears when the set is data:
   permission the database has not got denies everyone. A database holding one
   the code does not check grants nothing. When the set is compiled in, the
   check and the declaration ship as one artifact and cannot disagree.
-- **A typo becomes a denial rather than a build failure**. Both prior
-  implementations made the set a language enum for exactly this.
-  `Permission.INVOICE_APPROVE` misspelled does not compile. `'invoice.aprove'`
+- **A typo becomes a denial rather than a build failure**. A language enum
+  is the form that catches it. `Permission.INVOICE_APPROVE` misspelled does
+  not compile. `'invoice.aprove'`
   in a row fails at check time and looks identical to a correct refusal. That
   property is the single most valuable one here, and it evaporates the moment
   the set is data.
@@ -263,10 +261,11 @@ Grant { subject, role, scope }
 contain one another. The standard fixes the shape and the containment
 *algorithm*, not the hierarchy.
 
-That split is deliberate. One existing implementation has a two-level scope
-(system, organisation). The other effectively has three (platform, agency,
-company), with agencies containing companies. A standard that named the levels
-would have fitted neither.
+That split is deliberate. A product serving one organisation at a time has a
+two-level scope (system, organisation). A platform serving agencies that each
+hold companies has three (platform, agency, company), with agencies containing
+companies. A standard that named the levels would fit one and force a fiction
+on the other.
 
 **Containment: a grant at a containing scope satisfies a check at a contained
 one**. A grant at `tenant:acme` satisfies a check at `job:V1StGX` when the
@@ -292,20 +291,20 @@ against.
 To remove access, remove the grant.
 
 **No wildcard is expanded at check time, and no permission grants any other**.
-This is the rule with the most evidence behind it. One existing
-implementation's check short-circuits on `system.admin`, on `system.*` and on
-`*`, tested in three places with slightly different conditions. That is three
-ways to say "everything", any one of which silently defeats every other rule in
-this document.
+This is the rule with the most evidence behind it. The failure has a
+recognisable shape: a check that short-circuits on `system.admin`, on
+`system.*` and on `*`, tested in three places with slightly different
+conditions. That is three ways to say "everything", any one of which silently
+defeats every other rule in this document.
 
 The cost of that is not only the bypass. It makes `permissionsFor` **lie**: a
 subject holding `*` has every permission and the list enumerates none of them.
 So the `/me` document of [`060-auth.md`](060-auth.md) AU6 tells the client
 something untrue, and the interface renders the wrong screen.
 
-A role that needs everything **enumerates everything**. One existing
-implementation's `SUPER_ADMIN` role does exactly this, in ninety-odd lines
-listing every permission it holds. That is verbose and it is honest. The
+A role that needs everything **enumerates everything**. A `SUPER_ADMIN` role
+written this way runs to many lines, listing every permission it holds. That
+is verbose and it is honest. The
 verbosity is a feature: adding a permission to the system does not silently add
 it to the superuser.
 
@@ -337,11 +336,11 @@ check(subject, permission, scope) → Decision
 **The scope is an argument, never ambient state**. The same subject, permission
 and scope produce the same decision every time, given the same grants.
 
-This is the rule that carries the most weight, and again there is evidence. One
-existing implementation's check reads an *active context* from session state
-rather than taking it as an argument. That context is the organisation the
-user last selected. Two consequences follow, and both are the kind that survive
-a long time:
+This is the rule that carries the most weight, and the failure it prevents
+occurs in production, not only in theory. Its shape is a check that reads an
+*active context* from session state rather than taking it as an argument.
+That context is the organisation the user last selected. Two consequences
+follow, and both are the kind that survive a long time:
 
 - **The answer depends on where the user last clicked**. The same call, for the
   same user and permission, returns differently depending on session state that
@@ -367,8 +366,7 @@ has no meaning if the answer also depends on state the case cannot state.
 | `rolesFor(subject, scope) → role[]` | For display, and for an admin screen. |
 | `grant(subject, role, scope)` / `revoke(subject, role, scope)` | Administrative. Both are audited events. |
 
-`checkAny` and `checkAll` exist because both prior implementations grew them
-independently. That is good evidence that a codebase without them writes the
+`checkAny` and `checkAll` exist because a codebase without them writes the
 loop by hand and gets it wrong somewhere.
 
 ### RB8. A decision carries its reason
@@ -392,17 +390,16 @@ Caching authorization is normal and often necessary. Two rules make it safe.
 
 **The cache key includes the subject, the permission and the scope**, which is
 every argument of RB7's function. A key missing one of them returns another
-subject's or another tenant's answer. This is the failure quoted in RB7, stated
+subject's or another tenant's answer. This is the failure RB7 describes, stated
 as a rule so it is caught in review rather than in production.
 
 **Every path that changes a grant invalidates**. Granting, revoking, editing a
-role's permissions, deactivating a subject. One existing implementation has
-learned this and carries the invalidation surface to prove it:
-`clearPermissionCache(userId)`, `clearCacheForUsersWithRole(roleId)` and
-`clearAllPermissionCaches(reason)`, with the reason recorded for audit. That
-shape is worth copying: per-subject, per-role and global. A role's permission
-list changing affects every subject holding it, and there is no cheaper correct
-answer.
+role's permissions, deactivating a subject. The invalidation surface has three
+entry points: `clearPermissionCache(userId)`,
+`clearCacheForUsersWithRole(roleId)` and `clearAllPermissionCaches(reason)`,
+with the reason recorded for audit. That is the shape: per-subject, per-role
+and global. A role's permission list changing affects every subject holding
+it, and there is no cheaper correct answer.
 
 A stated maximum TTL bounds what invalidation misses. It is a backstop, not the
 mechanism.
@@ -447,7 +444,7 @@ Per PC3, under [`contracts/rbac/`](../contracts/rbac/):
 - **`decisions.json`**: **the corpus that matters**. It is a set of grants,
   then a list of checks with their expected decisions. This is the file that
   makes a polyglot standard enforceable from one source, and it is why RB7
-  requires a pure function. Three implementations, one judge.
+  requires a pure function. Many implementations, one judge.
 
 ## Enforcement
 
@@ -469,23 +466,22 @@ an interface specification rather than as prose.
 - **RB9's cache key resists a static checker** and is caught by a corpus case
   instead. Check a permission in one scope, then the same permission in another
   where it is not granted, and require deny. A cache keyed without scope fails
-  it. This is the one gate that would have caught the production defect quoted
-  in RB7.
+  it. This is the one gate that catches the cross-tenant cache defect RB7
+  describes.
 - **RB1 and RB8 stay review questions**. That a declaration is genuinely the
   complete set, and that a reason is genuinely informative, are judgments about
   content rather than shape.
 
 ## Decisions
 
-- **The dot for permissions, the colon for scopes** (2026-09-01): the two prior
-  implementations split on this and neither had a reason. The reason chosen is
-  that scope references need a separator too. One separator with two meanings
-  is where ambiguity starts.
+- **The dot for permissions, the colon for scopes** (2026-09-01): either
+  character works, and taste settles nothing. The reason chosen is that scope
+  references need a separator too. One separator with two meanings is where
+  ambiguity starts.
 - **Roles can be code-declared or data-stored; permissions cannot**
-  (2026-09-01): the fork between the two implementations was real. Both
-  sides had a case: type safety on one side, tenant-defined roles on the other.
-  Admitting both while closing the permission set keeps what each was actually
-  protecting.
+  (2026-09-01): the fork is real. Each side has a case: type safety on one
+  side, tenant-defined roles on the other. Admitting both while closing the
+  permission set keeps what each is protecting.
 - **No wildcards anywhere, not merely at check time** (2026-09-01): the
   strongest rule here, and the one most argued with, because `*` is
   convenient. It is rejected because it defeats every other rule silently and
@@ -499,10 +495,11 @@ an interface specification rather than as prose.
   duplication between similar roles. Rejected because it converts *what can
   this person do* from a lookup into a traversal. The duplication it removes is
   also duplication a reviewer can see.
-- **`check` takes scope as an argument** (2026-09-01): the alternative is the
-  ambient-context design one implementation already has. It is convenient at
-  every call site and produced a cross-tenant cache defect. Purity is what the
-  corpus needs, and the corpus is what makes this standard enforceable.
+- **`check` takes scope as an argument** (2026-09-01): the alternative is an
+  ambient-context design. It is convenient at every call site and it produces
+  a cross-tenant cache defect, because the cache key has no scope to carry.
+  Purity is what the corpus needs, and the corpus is what makes this standard
+  enforceable.
 - **The scope argument comes from the session, never from the request**
   (2026-09-08): RB7 fixed that scope is passed and left open who supplies it.
   Tenant hostnames forced the question, because a hostname is the most

@@ -150,12 +150,17 @@ DEV_ALL = (
 START = "NODE_ENV=production node dist/index.js"
 DB_PUSH = "drizzle-kit push"
 
-# dev:server carries the repo's own port, which is the one value in this file
-# that is legitimately per-repo: two repos on one workstation cannot both bind
-# 3000. Everything around the port is fixed.
-DEV_SERVER = re.compile(
-    r"^NODE_ENV=development PORT=(\d{2,5}) tsx watch server/index\.ts$"
-)
+# dev:server carries no port. It used to carry the repo's own, as the one value
+# in this file that was legitimately per-repo, and it was the only entry here
+# that had to be a pattern rather than a string.
+#
+# standards/016-local-development.md LD1 settles it differently: the server
+# reads PORT and falls back to a constant, so nothing else names a number. The
+# script's inline PORT was worse than redundant. `pnpm dev` is what a dev
+# image's CMD runs, so the assignment overrode the container's environment for
+# one process of the two, and the port the compose file published was then
+# bound by nothing at all.
+DEV_SERVER = "NODE_ENV=development tsx watch server/index.ts"
 
 # S4. A script that says `pnpm vitest` or `npm run build` is reaching a binary
 # the package manager has already put on PATH, through the package manager. It

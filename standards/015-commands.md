@@ -189,7 +189,7 @@ tool. The document then keeps working when the tool's flags move.
 |---|---|---|
 | `dev` | `concurrently -k -n client,server -c cyan,magenta "pnpm dev:client" "pnpm dev:server"` | the package owns the whole local stack |
 | `dev:client` | `vite dev` | the package builds a client |
-| `dev:server` | `NODE_ENV=development PORT=<port> tsx watch server/index.ts` | the package has a Node server |
+| `dev:server` | `NODE_ENV=development tsx watch server/index.ts` | the package has a Node server |
 | `build` | `vite build` | `job-build-js-vite` |
 | `build:server` | `esbuild server/index.ts --platform=node --bundle --packages=external --format=esm --define:process.env.NODE_ENV='"production"' --outfile=dist/index.js` | `job-build-js-esbuild` |
 | `start` | `NODE_ENV=production node dist/index.js` | the package has a Node server |
@@ -200,9 +200,14 @@ tool. The document then keeps working when the tool's flags move.
 | `test:watch` | `vitest` | the package has tests |
 | `db:push` | `drizzle-kit push` | drizzle-kit is a dependency |
 
-**`<port>` is the one value that is legitimately per-repository.** Two of these
-cannot both bind the same port on one workstation. Everything around it is
-fixed.
+**`dev:server` carries no port, and that is a change.** It used to carry the
+repository's own, because two servers cannot both bind one number.
+[`016-local-development.md`](016-local-development.md) LD1 settles that
+differently: the server reads `PORT`, and falls back to a constant.
+
+A script naming a number overrode the container's environment for one process
+of two. The published port was then bound by nothing. A person who needs a
+specific port sets the variable, which is what the variable is for.
 
 **`format` checks, and the fix-up command is deliberately not canonical.**
 `--check` is the verdict the gate reads. `--write` is a different command, and

@@ -1,0 +1,53 @@
+{
+  "$comment": [
+    "The host-port allocation record. Every local development stack publishes",
+    "its host ports from a dedicated block of 20, so any combination of stacks",
+    "runs at once without colliding. standards/016-local-development.md carries",
+    "the rules; this file carries the allocation, because an allocation is the",
+    "one thing a rule cannot derive.",
+    "",
+    "IT IS NOT A ROSTER OF WHO IS SUBJECT TO THE STANDARD, and the distinction",
+    "matters. dependency-versions.json states the reason it keeps no such list:",
+    "a repository opts in by calling job-ci-conformance, the checker is handed",
+    "one clone at a time, and a handed-over client repository vendors the",
+    "standard and keeps using it after nothing in this tree can see it. All of",
+    "that still holds. A block allocation is a different kind of fact. It is a",
+    "shared namespace, like an IANA registry: absence here means unallocated,",
+    "never unbound by the rules.",
+    "",
+    "SO NO PER-REPOSITORY GATE READS THIS FILE. The gate a repository runs asks",
+    "only what one clone can answer: do this stack's host bindings all fall",
+    "inside a single 20-wide window aligned to a multiple of 20, and is none of",
+    "them privileged. A repository that never appears here still passes, which",
+    "is what keeps a handed-over repository working. This file is read by one",
+    "check in this repository alone, which asserts that no two blocks overlap,",
+    "and by a person choosing a base for a new project.",
+    "",
+    "CHOOSING A BASE. Dial the project's first two letters on a phone keypad and",
+    "append 00, then take the next free multiple of 20 if that base is taken.",
+    "2=ABC 3=DEF 4=GHI 5=JKL 6=MNO 7=PQRS 8=TUV 9=WXYZ. The derivation is a",
+    "starting point rather than a law, and the entries below are not all",
+    "reachable from it: some were dialled from a name's initials instead of its",
+    "first two letters. Both readings are recorded here rather than reconciled,",
+    "because a base that moves invalidates every URL anyone has typed.",
+    "",
+    "Check a candidate against /etc/services before settling on it."
+  ],
+  "block_size": 20,
+  "$blocks_comment": [
+    "Project to block base. The block runs base through base+19 inclusive.",
+    "Offsets within a block are fixed by the standard, not by this file."
+  ],
+  "blocks": {
+    "client-manager": 2600,
+    "credit-watch": 2900,
+    "expense-splitter": 3700,
+    "event-manager": 3800,
+    "flight-watch": 3900,
+    "gofast": 4600,
+    "gha-runner-controller": 4700,
+    "hiring-tracker": 4800,
+    "jewelry-factory": 5300,
+    "wardley-mapper": 9600
+  }
+}

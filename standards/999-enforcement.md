@@ -176,17 +176,16 @@ repository can reach them. The rows read **gated** until 2026-09-10, naming
 branch protection as the mechanism. That was the ledger claiming enforcement for
 a box somebody ticked once.
 
-The measurement that moved them: all twelve repositories permitted merge commits
-and rebase merges, against a rule saying squash is the method. Auto-delete on
-merge was on in all twelve and held there by nothing. Branch protection could
-not be read without a wider grant, so those two rows are unverified rather than
-known bad.
+A rule of this shape fails silently, and in both directions at once. Nothing
+goes red when a setting drifts, and nothing goes red when it was never applied.
+So the two states a reader most needs to tell apart look identical from here: a
+rule that holds, and a rule written down once.
 
-The gate they are getting is `aurum-alpha/gha-runner-controller#261`, a
-scheduled audit running against the org's GitHub App. It detects and reports.
-It never turns a required check red. A pull request author cannot fix a
-repository setting, and `GITHUB_TOKEN` has no `administration` permission with
-which to try.
+The gate they are getting is a scheduled audit, reading these settings through
+the organisation's GitHub App and reporting drift. It detects and reports. It
+never turns a required check red. A pull request author cannot fix a repository
+setting, and `GITHUB_TOKEN` has no `administration` permission with which to
+try. Where that audit is built is tracked with its code rather than here.
 
 When that audit lands, these rows want a tier this ledger does not have:
 checked continuously by a daemon, acted on by a human. That is stronger than

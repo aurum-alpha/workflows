@@ -199,6 +199,41 @@ third to warn agents away from one already deleted. Promoting this row means
 parsing prose for command-shaped strings, and resolving each against a
 `scripts` block. That is worth doing. It is not claimed until it is done.
 
+## Local development standard
+
+Rules from [`016-local-development.md`](016-local-development.md): what a
+process binds, what a host publishes, and how the development image is built and
+mounted. Every row lands review-only, and each names the gate it is getting. The
+proposed `check-dev-stack` runs from `job-ci-conformance.yml` like the checkers
+beside it, against one clone.
+
+| # | Rule | Enforced by | Status |
+|---|---|---|---|
+| LD1 | A process reads its listen port from `PORT`, with a default written as a constant in code; a required-with-no-default port is a defect | a source check per language for the read and the fallback (proposed `check-dev-stack`): the shape is small and fixed, and the absence of a default is the half worth catching | **review only** |
+| LD2 | A development compose file sets no port, so every process binds its own default | a key check over the development compose file (proposed `check-dev-stack`): `PORT` under any service's `environment:` is the finding | **review only** |
+| LD3 | Every host binding falls inside one block of twenty aligned to a multiple of twenty, and none is privileged | **the one to build first**, and it needs no allocation record: alignment is a property of a single clone, so the check reads the development compose file and nothing else (proposed `check-dev-stack`) | **review only** |
+| LD4 | Offset zero is what a person opens in a browser, and the offset table fixes the rest | — **resists a checker**: which service a person opens is not written down anywhere a machine reads. Review question: *does the base port serve pages, or does it answer nothing* | **review only** |
+| LD5 | The development image is `Dockerfile.dev`, it is named explicitly by the development compose file, and it never ships | a file-name check plus the compose `build.dockerfile` key (proposed `check-dev-stack`) | **review only** |
+| LD6 | The development image installs from the lockfile, with the package manager version read from the repository's own pin | a Dockerfile check for a hand-written package-manager version and for an install that names no lockfile (proposed `check-dev-stack`) | **review only** |
+| LD7 | The dependency tree is a named volume the container populates, not the host's | a volumes check over the development compose file (proposed `check-dev-stack`): an anonymous volume over the dependency directory is the finding | **review only** |
+| LD8 | A clean clone reaches a working stack in one command, and a source edit needs no restart | — **resists a checker**: proving it means running the stack, which no conformance job does. Review question: *did you run `docker compose down -v && docker compose up` on a clean tree, and did an edit show up* | **review only** |
+| — | No two recorded blocks overlap | `check-dev-stack --registry`, reading [`../ports.json`](../ports.json). **This one runs in this repository alone**, because it is the only question a single clone cannot answer | **review only** |
+| — | No client build config hardcodes a port | a source check over the client build config (proposed `check-dev-stack`) | **review only** |
+
+**LD3 is the row to build first**, and the reason is what it does not need. The
+allocation lives in a file this repository owns. A per-repository gate that
+read it would need a roster of who is subject to the standard. There is no such
+roster, deliberately, and
+[`../ports.json`](../ports.json) says why at length. Alignment sidesteps it: a
+stack publishing 2900, 2901 and 2902 is inside one aligned block, and one clone
+proves that on its own. Overlap between blocks is the residue, and it is checked
+once, here.
+
+**LD4 and LD8 are the two that stay review questions.** Both turn on what a
+person experiences rather than on what a file says. A checker can confirm that
+the base port is published. It cannot confirm that something answers there, and
+the failure this standard exists to stop was a published port answering nothing.
+
 ## Agent standard
 
 Rules from [`../AGENTS.md`](../AGENTS.md). `tools/check-agent-docs` runs from

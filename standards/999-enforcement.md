@@ -58,8 +58,10 @@ can disagree eventually will.
 | — | Per-stack DAG in multi-codebase repos | — | **review only** |
 | — | Third-party actions SHA-pinned with a version comment | `check-ci-conformance` PIN | gated |
 | — | First-party catalog referenced at `@main`, never pinned | `check-ci-conformance` PIN | gated |
-| — | `ci-ok` is the only required check | branch protection | gated |
-| — | Branches up to date before merging | branch protection | gated |
+| — | `ci-ok` is the only required check | — | **review only**⁸ |
+| — | Branches up to date before merging | — | **review only**⁸ |
+| — | Squash is the merge method, and merge commits are disabled | — | **review only**⁸ |
+| — | A merged pull request's head branch is deleted | — | **review only**⁸ |
 | — | The `ci-ok` body is the one the pull request ships | — | **review only** |
 | — | Standard pnpm version | `check-dependency-versions` | gated¹ |
 | — | Shared lint and format configs unedited (`.oxlintrc.json`, `.prettierrc.yaml`) | `check-lint-configs` | gated¹ |
@@ -168,6 +170,28 @@ number is the right one. One day is correct for a hand-off between jobs and
 ninety is correct for firmware that has no other durable home. No checker can
 tell those apart. Whether a long retention is earned stays a review question,
 and so does whether the deliverable needs a release instead.
+
+⁸ These four are repository settings rather than files, so no checker in this
+repository can reach them. The rows read **gated** until 2026-09-10, naming
+branch protection as the mechanism. That was the ledger claiming enforcement for
+a box somebody ticked once.
+
+The measurement that moved them: all twelve repositories permitted merge commits
+and rebase merges, against a rule saying squash is the method. Auto-delete on
+merge was on in all twelve and held there by nothing. Branch protection could
+not be read without a wider grant, so those two rows are unverified rather than
+known bad.
+
+The gate they are getting is `aurum-alpha/gha-runner-controller#261`, a
+scheduled audit running against the org's GitHub App. It detects and reports.
+It never turns a required check red. A pull request author cannot fix a
+repository setting, and `GITHUB_TOKEN` has no `administration` permission with
+which to try.
+
+When that audit lands, these rows want a tier this ledger does not have:
+checked continuously by a daemon, acted on by a human. That is stronger than
+audit only and weaker than gated. Naming it belongs to that change rather than
+to this one.
 
 Where a CI rule reads **review only** above, `010-ci.md` explains why. BUILD
 ONCE needs to know what an artifact is, and the per-stack DAG needs to know

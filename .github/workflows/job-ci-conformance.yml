@@ -251,3 +251,23 @@ jobs:
           AURUM_CATALOG_ROOT: .aurum-catalog
         run: .aurum-catalog/tools/check-agent-docs --root .ci-root --repo "$REPO"
         continue-on-error: ${{ inputs.warn_only }}
+
+      # The development stack, which until this step nothing read at all. The
+      # measured result was four repos whose `docker compose up` published a
+      # host port that no process inside the container was bound to. Each was
+      # internally consistent: the compose file, the dev image and the dev
+      # script each named a port, and nothing compared the three.
+      #
+      # This reads one clone and asks only what one clone can answer. Host
+      # bindings falling inside a single aligned block is such a question;
+      # whether two projects' blocks collide is not, so that half runs against
+      # ports.json in the catalog repository and not here. There is therefore
+      # no allocation record this step consults and no repo it knows by name.
+      # See standards/016-local-development.md.
+      - name: The development stack matches the standard
+        if: ${{ !cancelled() }}
+        env:
+          REPO: ${{ steps.repo.outputs.name }}
+          AURUM_CATALOG_ROOT: .aurum-catalog
+        run: .aurum-catalog/tools/check-dev-stack --root .ci-root --repo "$REPO"
+        continue-on-error: ${{ inputs.warn_only }}

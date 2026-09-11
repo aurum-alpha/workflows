@@ -176,7 +176,7 @@ There is no separate native allocation now. Native and containerised runs bind
 the same defaults. A person running two projects natively sets `PORT` for one of
 them.
 
-### LD5. The development image is `Dockerfile.dev`, and it never ships
+### LD5. The development image says so in its name, and it never ships
 
 One name, so a reader knows which file builds the thing they are running. The
 shipped image stays in `Dockerfile`. It is thin, and
@@ -191,9 +191,24 @@ The two images have opposite jobs and share nothing:
 | Dependencies | runtime only | the full tree, build tools included |
 | A code change | rebuilds through CI | is visible without a restart |
 
-**A development compose file names `Dockerfile.dev` explicitly.** A compose file
-that builds the shipped image is running a deployment, whatever it is called.
-Its contents make that claim, rather than its file name.
+**What `docker compose up` leaves running builds a development image.** The file
+name says which of the two you have. A compose file whose long-running service
+builds the shipped image is running a deployment, whatever it is called. Its
+contents make that claim, rather than its file name.
+
+**Two shapes are not that, and both are correct.** A one-shot declares
+`restart: "no"`, runs a command and exits. A migration or a seed has nothing for
+a watcher to watch, and building it the runtime way keeps `up` exercising the
+shipped artifact. A profiled service is opt-in, so a plain `up` never starts it.
+That is how a repository offers its shipped image locally without making it the
+thing you get by default.
+
+*This rule was stronger when it was written, and measurement refuted it. It said
+every `build` in a development compose file names `Dockerfile.dev`. Two real
+shapes failed it while being right. A third failed on its name alone: a
+repository with two runtimes cannot give two images one name. So the name test
+admits any Dockerfile under a `dev/` directory. The rule asks what stays up,
+rather than what is built.*
 
 ### LD6. The development image installs from the lockfile, with the pinned package manager
 

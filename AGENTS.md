@@ -1,37 +1,17 @@
 # AGENTS.md — the Aurum Alpha agent standard
 
-One of the Aurum Alpha engineering standards. Read
-[`README.md`](README.md) for the charter it is written under and
-[`standards/999-enforcement.md`](standards/999-enforcement.md) for what enforces it.
-
-This document is two things at once, deliberately:
-
-1. **The standard** every Aurum Alpha repository's own `AGENTS.md` is written
-   to, and
-2. **The rules themselves**. A repository's `AGENTS.md` can therefore
-   reference this file for everything it does not need to restate, and carry
-   only what is genuinely local.
-
-An agent working in any Aurum Alpha repository is working under this document,
-whether or not that repository restates it.
+This is the standard every Aurum Alpha repository's own `AGENTS.md` is
+written to, and the rules themselves. A repository's `AGENTS.md` references
+this file for everything it does not need to restate and carries only what is
+local. An agent working in any Aurum Alpha repository works under this
+document, whether or not that repository restates it.
 
 ## Why this exists
 
-Coding agents write a large and growing share of this organisation's code. What
-they are told is therefore not documentation *about* the codebase. It is an
-input to the codebase, with the same standing as a lockfile or a lint config.
-It gets the same treatment: one source of truth, versioned, reviewed, and the
-same across repositories except where a repository genuinely differs.
-
-Left alone, agent guidance fails in one specific way, and it fails quietly.
-Each tool that arrives brings its own convention: a rules directory, a dotfile,
-a steering folder. The obvious move is to copy the existing guidance into the
-new shape. Nothing announces that a second copy now exists. Nothing fails when
-the copies disagree. By the time anyone notices, several of them contradict
-each other and nobody knows which one any given agent actually read.
-
-That is Principle 1 of the CI standard, one source of truth per pin, applied
-to the one input nobody thought to apply it to.
+What a coding agent is told is an input to the codebase, with the same
+standing as a lockfile. It gets one source of truth, versioned and reviewed.
+Each tool that arrives brings its own rules directory, and a second copy of
+the guidance drifts from the first without anything failing.
 
 ## Adoption, and what happens at handover
 
@@ -47,9 +27,8 @@ Nothing below restates it: a paragraph that could be pasted unchanged into
 another repository belongs in the standard, not here.
 ```
 
-**The last two lines are part of the block**, and they are the only sentence
-every repository is asked to carry about restatement. Putting the rule anywhere
-else means writing it out eleven times, which is the thing it forbids.
+The last two lines are part of the block. They are the one sentence every
+repository carries about restatement, so the rule is written once, here.
 
 **A repository built for a client vendors this file instead of linking it.** At
 handover the client repository can no longer reach `aurum-alpha/workflows`. A
@@ -104,10 +83,8 @@ target into context at session start. A markdown link, `See [AGENTS.md](AGENTS.m
 is *not* an import. It loads a file whose entire content tells the agent to go
 read something it will not go and read.
 
-That was this document's own instruction until it was checked against the
-tool. It would have left every adopting repo with guidance Claude Code never
-saw. Claude-specific lines can follow the import. A restatement of anything
-above it is not permitted to follow.
+Claude-specific lines can follow the import. A restatement of anything above
+it is not permitted to follow.
 
 Parallel rule trees are not created: no `.clinerules/`, `.kiro/steering/`,
 `.rulesync/`, `.roo/`, `.windsurfrules`, `.github/copilot-instructions.md`,
@@ -158,6 +135,14 @@ A new or altered procedure a human has to run lands in the repository's
 operations documentation. It lands in the *same* change as the code that
 introduced it, or it does not exist.
 
+**A document carries no history of its own drafting.** It states the rule and
+the reason. Where an alternative was considered and not taken, it says so and
+why, under Decisions. It does not say what the text said before, when a
+sentence changed, or which incident taught the rule. The pull request and
+the commit message hold that. A correction replaces the wrong sentence; it
+does not annotate it. `tools/check-doc-style` flags the phrases history
+arrives in.
+
 ### 4. Gates pass before commit, and hooks are never skipped
 
 Every gate in the repository's **Quality gates** section passes before a commit,
@@ -173,29 +158,19 @@ and runnable. An agent never has to reconstruct a command from a CI workflow
 file. Per the CI standard's Principle 2, a gate a developer cannot reproduce
 locally with one command is a defect in the gate.
 
-**A green that has gone stale is not a green.** Branch protection requires the
-branch to be up to date before it can merge. That setting is on,
-org-wide, and it measures against the default branch. A pull request that
-passed and then fell behind cannot land until it is updated and CI has run
-again. Then the tree which was proved and the tree which lands are the same
-tree. [`standards/010-ci.md`](standards/010-ci.md) carries the reasoning and
-the throughput cost. What follows is only the part an agent gets wrong.
+**A green that has gone stale is not a green**. Branch protection requires the
+branch to be up to date with the default branch before it can merge, org-wide.
+A pull request that passed and then fell behind is updated, and CI runs again.
+Then the tree that was proved is the tree that lands.
+[`standards/010-ci.md`](standards/010-ci.md) carries the throughput cost.
 
 **Bring the branch up to date by rebasing onto the default branch. Merging it
-in is also acceptable.** Both satisfy the check, and neither reaches the default
-branch. **Squash is the merge method**, so the branch's history, merge commits
-and all, is discarded. The default branch gets exactly one commit either way.
-
-What differs is the branch while it is still open, which is the thing a reviewer
-reads. A rebase leaves a series of commits that are the change and nothing else.
-Merging leaves a *"Merge branch 'main' into …"* commit in among them, once per
-update. That commit says nothing about the work, and the count grows with every
-day the branch stays open.
-
-The cost of rebasing is that it rewrites pushed history and needs a force-push,
-which invalidates any existing checkout of that branch. On a branch one person
-or one agent is working, that is nobody. Where a branch is genuinely shared,
-merge instead. Never rewrite history on a branch belonging to someone else.
+in is also acceptable.** Squash is the merge method, so the branch's history is
+discarded either way. A rebase leaves a reviewer a series of commits that are
+the change and nothing else; merging leaves a merge commit per update. A rebase
+rewrites pushed history and needs a force-push, which costs nobody on a branch
+one person or one agent works. Where a branch is shared, merge instead. Never
+rewrite history on a branch belonging to someone else.
 
 **Do not report a pull request as landed while it is green but behind.** It is
 not mergeable yet. Sitting through the update and the re-run is part of landing
@@ -259,17 +234,12 @@ a smaller scale.
 ### 7. Agent guidance carries no mutable state
 
 `AGENTS.md` says how to work in a repository. It never says what that
-repository is currently failing.
-
-**No count of lint findings, test failures, open violations or coverage owed
-appears in agent guidance.**
-
-Not as a total, and not as a breakdown by directory. Not qualified with "at the
-time of writing", not dated, and not footnoted with the pull request that last
-measured it. The same holds for `CLAUDE.md` and for anything under
+repository is currently failing. **No count of lint findings, test failures,
+open violations or coverage owed appears in agent guidance**, as a total or by
+directory, dated or not. The same holds for `CLAUDE.md` and for anything under
 `.claude/rules/`.
 
-Three reasons, and the third is the one that costs something:
+Three reasons:
 
 - **The number is stale the moment it is written.** A gate re-measures on every
   run. A document does not.
@@ -278,18 +248,12 @@ Three reasons, and the third is the one that costs something:
 - **An agent reads a measurement as a fact.** Told a tree carries hundreds of
   findings, it plans for hundreds of findings.
 
-*Checked before this rule was written: four documents stating a lint backlog
-were each overstating it by roughly an order of magnitude. One had fallen to
-single digits with the document unchanged. Every count on record was wrong, and
-not one of them was wrong loudly.*
-
 State the standing rule instead, which does not expire. Introduce no new
 findings. Fix pre-existing ones in files you are already editing. Never silence
-one. **Run the gate to learn the number.**
+one. **Run the gate to learn the number**.
 
-Stating that a job carries `warn_only: true` is fine. That is a line in a file
-in the repository, and it changes only when someone changes it. The backlog
-behind it is not a line in any file.
+Stating that a job carries `warn_only: true` is fine. That is a line in a
+file, and it changes only when someone changes it.
 
 ### 8. These standards apply to agent-written code
 
@@ -303,31 +267,22 @@ the vendored copy.
 ## Enforcement
 
 `tools/check-agent-docs` is the gate, running from `job-ci-conformance.yml`
-alongside the existing checkers. Adopting it is therefore a checker change, not
-twelve workflow changes.
+alongside the other checkers. It proves six facts:
 
-It proves the following mechanically. `AGENTS.md` exists. The six sections are
-present. The Aurum Alpha standard is referenced or vendored. No unsupported
-rule tree exists. `CLAUDE.md` opens by importing `AGENTS.md`.
+- `AGENTS.md` exists.
+- The six sections are present.
+- The Aurum Alpha standard is referenced or vendored.
+- No unsupported rule tree exists.
+- `CLAUDE.md` opens by importing `AGENTS.md`.
+- No file in the guidance surface states a count of findings, errors,
+  warnings or failures. The check reads a number standing immediately before
+  a countable defect noun; a backlog described without a figure passes.
 
-It also proves that no file in the guidance surface states a count of findings,
-errors, warnings or failures. That check is narrow on purpose. It reads a number
-standing immediately before a countable defect noun, which is the shape every
-instance took. A backlog described without a figure passes, which is correct:
-the rule bans the number, not the subject.
+The import check is written against the act, *does this file import the
+source*, not against length.
 
-That last check is written against the act, *does this file import the
-source*, rather than against length. A pointer rule phrased as "keep it short"
-would have passed the broken markdown-link version of itself. That version was
-one line and wrong.
-
-What the checker cannot prove: that the work queue is honoured, that the
-approval gate is respected, that a correction reached the docs. Those stay
-review questions.
-[`standards/999-enforcement.md`](standards/999-enforcement.md) says so in the
-row rather than implying coverage it lacks.
-
-No repository is held to it by name. The gate runs inside each repository's own
-CI, against that repository and nothing else, so calling the job is the
+What the checker cannot prove stays a review question. That is whether the
+work queue is honoured, the approval gate respected, and a correction landed
+in the docs. The gate runs inside each repository's own CI, so calling the job is the
 adoption. A repository with standing debt says so through the job's `warn_only`
-input, in its own `ci.yml`, where the debt is.
+input, in its own `ci.yml`.

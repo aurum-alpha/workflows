@@ -20,6 +20,13 @@ no repository and tracks no compliance.
   D4b   no inventory phrase: no count of repositories, no "existing" or
         "prior" implementation, no "in the portfolio", no "measured across"
 
+And the countable half of D11, the no-history rule: a document states the
+rule and its reason, never the story of its own drafting.
+
+  D11   no drafting-history phrase: no "earlier draft", "first draft",
+        "previously said", "used to read", "amended", "at the time this was
+        written", "learned the hard way", "caught in production"
+
 What it reads: README.md, AGENTS.md, standards/*.md and solutions/*.md by
 default, or the paths given. What it skips: fenced code, tables, headings,
 HTML comments, and the target of every link. A list item is its own
@@ -68,6 +75,22 @@ INVENTORY = [
     (re.compile(r"\b(?:in|across) the portfolio\b|\bthe portfolio's\b|\bwhere the portfolio stands\b|\bportfolio-wide\b", re.I), "portfolio inventory"),
     (re.compile(r"\bmeasured (?:on|across|before|after|the day)\b", re.I), "measured"),
 ]
+
+# D11. A document carries no history of its own drafting. The pull request
+# holds that. These are the phrases that history arrives in.
+HISTORY = re.compile(
+    r"\b(?:an? )?(?:earlier|first|previous|original) (?:draft|version|entry|wording)s? of\b"
+    r"|\b(?:earlier|first|previous) draft\b"
+    r"|\bpreviously (?:said|read|stated|claimed)\b"
+    r"|\bused to (?:read|say|state|be|carry|sit|run|describe|continue)\b"
+    r"|\b(?:this|that) (?:originally|first) read\b"
+    r"|\bamended (?:on |20)\b|\*amended\b"
+    r"|\bat the time (?:this|it) was written\b"
+    r"|\blearned the hard way\b|\bcaught in production\b"
+    r"|\breversing the entry of\b|\bthe claim is withdrawn\b"
+    r"|\bwhen (?:this|it) was (?:written|drafted)\b",
+    re.I,
+)
 
 SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[A-Z*`\"'(\[])")
 WORD = re.compile(r"[A-Za-z0-9][A-Za-z0-9_'/.:-]*")
@@ -178,6 +201,9 @@ def check_file(path: pathlib.Path, max_words: int, max_sentences: int):
                     findings.append((line_no, "D10c", f"'{name}': {s[:90]}"))
         if "—" in para or " -- " in para:
             findings.append((line_no, "D10d", f"dash joins clauses: {para[:90]}"))
+        m = HISTORY.search(para)
+        if m:
+            findings.append((line_no, "D11", f"drafting history: {m.group(0)}"))
     return findings, n_sentences
 
 
@@ -199,7 +225,7 @@ def main() -> int:
     args = ap.parse_args()
 
     paths = [pathlib.Path(p) for p in args.paths] or default_paths(args.root)
-    total = {"D10a": 0, "D10b": 0, "D10c": 0, "D10d": 0, "D4a": 0, "D4b": 0}
+    total = {"D10a": 0, "D10b": 0, "D10c": 0, "D10d": 0, "D4a": 0, "D4b": 0, "D11": 0}
     total_sentences = 0
     rows = []
     for path in paths:
@@ -213,15 +239,16 @@ def main() -> int:
             for line_no, rule, msg in findings:
                 print(f"{path}:{line_no}: {rule} {msg}")
 
-    print(f"{'file':44} {'sents':>6} {'long':>6} {'para':>5} {'word':>5} {'dash':>5} {'repo':>5} {'inv':>5}")
+    print(f"{'file':44} {'sents':>6} {'long':>6} {'para':>5} {'word':>5} {'dash':>5} {'repo':>5} {'inv':>5} {'hist':>5}")
     for name, n, c in rows:
-        print(f"{name:44} {n:6} {c['D10a']:6} {c['D10b']:5} {c['D10c']:5} {c['D10d']:5} {c['D4a']:5} {c['D4b']:5}")
+        print(f"{name:44} {n:6} {c['D10a']:6} {c['D10b']:5} {c['D10c']:5} {c['D10d']:5} {c['D4a']:5} {c['D4b']:5} {c['D11']:5}")
     n_findings = sum(total.values())
     pct = (100 * total["D10a"] // total_sentences) if total_sentences else 0
     print(
         f"TOTAL sentences {total_sentences}; long {total['D10a']} ({pct}%); "
         f"long paragraphs {total['D10b']}; banned words {total['D10c']}; dashes {total['D10d']}; "
-        f"repositories named {total['D4a']}; inventory phrases {total['D4b']}"
+        f"repositories named {total['D4a']}; inventory phrases {total['D4b']}; "
+        f"drafting history {total['D11']}"
     )
     if n_findings and not args.warn_only:
         print(f"FAIL: {n_findings} finding(s)")

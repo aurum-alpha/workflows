@@ -28,6 +28,7 @@ Rules, each naming what it can actually prove:
       reach aurum-alpha/workflows after handover, so a link is not always right)
   A4  no unsupported rule tree exists
   A5  CLAUDE.md opens by importing AGENTS.md
+  A6  no file in the guidance surface states a count of findings or failures
 
 A5 checks the ACT — does this file import the source — not the length. The rule
 phrased as "keep the pointer short" would have passed the broken version of
@@ -97,6 +98,36 @@ FORBIDDEN = [
     "WARP.md",
     ".claude/memories",
 ]
+
+# A6. A count of findings, errors, warnings or failures is mutable state, and
+# guidance is not where mutable state lives. The gate re-measures every run; the
+# document does not, and nothing makes the two disagree loudly.
+#
+# Measured 2026-09-11, before this rule existed: six repositories carried twelve
+# such counts between them. Four were checked against the tool that produces
+# them, and all four were overstated by roughly an order of magnitude. One had
+# fallen from three figures to single digits with the document unchanged.
+#
+# Deliberately narrow: a number standing immediately before a countable defect
+# noun, optionally through "N of them errors". That is the shape every instance
+# took. It does not read coverage thresholds ("80%+ coverage"), which are policy
+# rather than measurement, and it does not try to judge prose describing a
+# backlog without a figure. The rule forbids the number.
+#
+# \s+ rather than a space: every one of these sentences wrapped, and two of the
+# twelve had the number and its noun on different lines.
+DEFECT_COUNT = re.compile(
+    r"\b\d[\d,]*\s+(?:of\s+(?:them|which|those)\s+)?"
+    r"(?:findings?|errors?|warnings?|failures?|violations?)\b",
+    re.I,
+)
+
+# The files an agent is handed. AGENTS.md is the source, CLAUDE.md the pointer,
+# and .claude/rules/ the one supplemented tree rule 1 admits.
+def guidance_files(repo_dir: pathlib.Path) -> list[pathlib.Path]:
+    files = [repo_dir / SOURCE, repo_dir / POINTER]
+    files += sorted((repo_dir / ".claude" / "rules").glob("*.md"))
+    return [p for p in files if p.is_file()]
 
 
 # The tree whose AGENTS.md IS the standard rather than a repo's answer to it.
@@ -196,6 +227,18 @@ def check(repo_dir: pathlib.Path) -> list[str]:
                 "loads a file that tells the agent to read something it will not"
             )
 
+    for path in guidance_files(repo_dir):
+        body = path.read_text(encoding="utf-8", errors="replace")
+        for m in DEFECT_COUNT.finditer(body):
+            line = body.count("\n", 0, m.start()) + 1
+            quoted = " ".join(m.group(0).split())
+            findings.append(
+                f"[A6] {path.relative_to(repo_dir)}:{line} states '{quoted}' — a "
+                "count is mutable state, stale the moment it is written, and "
+                "nothing makes it disagree loudly. State the standing rule and "
+                "run the gate for the number"
+            )
+
     return findings
 
 
@@ -243,7 +286,7 @@ def main() -> int:
     if failures:
         print(
             f"FAIL: {failures} finding(s). One source of agent guidance, and "
-            "only one — see AGENTS.md rule 1."
+            "only one, carrying no mutable state — see AGENTS.md rules 1 and 7."
         )
         return 1
 

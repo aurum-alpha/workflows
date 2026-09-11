@@ -43,7 +43,13 @@ else it points here:
 This repository follows the Aurum Alpha agent standard:
 https://github.com/aurum-alpha/workflows/blob/main/AGENTS.md
 Rules below are additional to it, or state where this repository differs.
+Nothing below restates it: a paragraph that could be pasted unchanged into
+another repository belongs in the standard, not here.
 ```
+
+**The last two lines are part of the block**, and they are the only sentence
+every repository is asked to carry about restatement. Putting the rule anywhere
+else means writing it out eleven times, which is the thing it forbids.
 
 **A repository built for a client vendors this file instead of linking it.** At
 handover the client repository can no longer reach `aurum-alpha/workflows`. A
@@ -250,7 +256,42 @@ that nearly duplicates the first gives a codebase two answers to one question.
 That is the same failure this whole standards repository exists to prevent, at
 a smaller scale.
 
-### 7. These standards apply to agent-written code
+### 7. Agent guidance carries no mutable state
+
+`AGENTS.md` says how to work in a repository. It never says what that
+repository is currently failing.
+
+**No count of lint findings, test failures, open violations or coverage owed
+appears in agent guidance.**
+
+Not as a total, and not as a breakdown by directory. Not qualified with "at the
+time of writing", not dated, and not footnoted with the pull request that last
+measured it. The same holds for `CLAUDE.md` and for anything under
+`.claude/rules/`.
+
+Three reasons, and the third is the one that costs something:
+
+- **The number is stale the moment it is written.** A gate re-measures on every
+  run. A document does not.
+- **Nothing makes it disagree loudly.** A wrong command fails the first person
+  who runs it. A wrong count is read, believed, and never tested.
+- **An agent reads a measurement as a fact.** Told a tree carries hundreds of
+  findings, it plans for hundreds of findings.
+
+*Checked before this rule was written: four documents stating a lint backlog
+were each overstating it by roughly an order of magnitude. One had fallen to
+single digits with the document unchanged. Every count on record was wrong, and
+not one of them was wrong loudly.*
+
+State the standing rule instead, which does not expire. Introduce no new
+findings. Fix pre-existing ones in files you are already editing. Never silence
+one. **Run the gate to learn the number.**
+
+Stating that a job carries `warn_only: true` is fine. That is a line in a file
+in the repository, and it changes only when someone changes it. The backlog
+behind it is not a line in any file.
+
+### 8. These standards apply to agent-written code
 
 An agent working in an Aurum Alpha repository is bound by the same standards a
 person is. The CI standard in particular is not advisory background. It governs
@@ -268,6 +309,12 @@ twelve workflow changes.
 It proves the following mechanically. `AGENTS.md` exists. The six sections are
 present. The Aurum Alpha standard is referenced or vendored. No unsupported
 rule tree exists. `CLAUDE.md` opens by importing `AGENTS.md`.
+
+It also proves that no file in the guidance surface states a count of findings,
+errors, warnings or failures. That check is narrow on purpose. It reads a number
+standing immediately before a countable defect noun, which is the shape every
+instance took. A backlog described without a figure passes, which is correct:
+the rule bans the number, not the subject.
 
 That last check is written against the act, *does this file import the
 source*, rather than against length. A pointer rule phrased as "keep it short"

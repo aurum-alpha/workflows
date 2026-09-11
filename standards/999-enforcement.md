@@ -287,6 +287,7 @@ was therefore a checker change rather than a workflow change per repository.
 | A7 | Gates pass before commit; hooks are never skipped | — | **review only** |
 | A8 | The human approval gate is honoured | — | **review only** |
 | A9 | Docs win over code, and a correction lands in the docs | — | **review only** |
+| A10 | Agent guidance states no count of findings, errors, warnings or failures | `check-agent-docs` A6 | gated¹ |
 
 ¹ Gated wherever the checker runs, which is wherever a repository calls
 `job-ci-conformance.yml`. A repository with standing debt declares it through
@@ -303,6 +304,19 @@ read.
 
 A6 to A9 resist a checker honestly. Whether a correction reached the docs, or an
 agent stopped at the approval gate, is not a fact on disk.
+
+A10 is numbered after them because the ledger's sequence is its own, and the
+checker's is its own. The row's rule is the eighth in the agent standard, and
+the code that proves it is that tool's sixth. The middle column is where the two
+meet, and it names the check rather than implying the numbers agree.
+
+A10 earns a gate for the reason A4 does. It fails by accumulation: someone
+measures a backlog, writes the figure down, the backlog moves, and the document
+does not. Every lint count on record when the rule landed was re-measured
+against the tool that produced it. Each was overstated by roughly an order of
+magnitude. The check is deliberately narrow, reading a number that stands
+immediately before a countable defect noun. Prose describing a backlog without a
+figure passes, because the rule forbids the figure rather than the subject.
 
 ## Platform standard
 

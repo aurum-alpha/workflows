@@ -261,12 +261,15 @@ def check_client_config(label: str, path: pathlib.Path, base: int | None) -> lis
             "config from the environment and is absent when nothing sets it",
         ),
     ):
-        m = pattern.search(inside)
-        if m and base <= int(m.group(1)) < base + BLOCK:
-            findings.append(
-                f"DS6 {label}: {path.name} names {key} {m.group(1)}, which is inside this "
-                f"stack's host block {base}-{base + BLOCK - 1}. {why} (LD2)."
-            )
+        # Every match, not the first. A config naming a container-side port and
+        # then a block number lower down hid the second behind the first, and
+        # the second is the one that matters.
+        for m in pattern.finditer(inside):
+            if base <= int(m.group(1)) < base + BLOCK:
+                findings.append(
+                    f"DS6 {label}: {path.name} names {key} {m.group(1)}, which is inside "
+                    f"this stack's host block {base}-{base + BLOCK - 1}. {why} (LD2)."
+                )
     return findings
 
 

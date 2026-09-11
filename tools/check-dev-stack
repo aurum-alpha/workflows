@@ -120,7 +120,7 @@ def host_ports(service: dict) -> list[int]:
     return out
 
 
-def check_compose(label: str, path: pathlib.Path) -> list[str]:
+def check_compose(label: str, path: pathlib.Path) -> tuple[list[str], int | None]:
     findings = []
     doc = yaml.safe_load(path.read_text()) or {}
     named_volumes = set((doc.get("volumes") or {}) or {})
@@ -190,6 +190,7 @@ def check_compose(label: str, path: pathlib.Path) -> list[str]:
             f"{PRIVILEGED}, for any service, ever (LD3)."
         )
     ordinary = sorted({p for p in every_port if p >= PRIVILEGED})
+    base = None
     if ordinary:
         base = (min(ordinary) // BLOCK) * BLOCK
         outside = [p for p in ordinary if not base <= p < base + BLOCK]
@@ -199,7 +200,7 @@ def check_compose(label: str, path: pathlib.Path) -> list[str]:
                 f"block of {BLOCK} aligned to a multiple of {BLOCK}. {outside} falls "
                 f"outside {base}-{base + BLOCK - 1} (LD3)."
             )
-    return findings
+    return findings, base
 
 
 def check_dev_image(label: str, path: pathlib.Path) -> list[str]:
@@ -229,51 +230,70 @@ def check_dev_image(label: str, path: pathlib.Path) -> list[str]:
     return findings
 
 
-def check_client_config(label: str, path: pathlib.Path) -> list[str]:
-    """DS6. A hardcoded client port is the number 016 exists to remove: the
-    block belongs to the host binding, and the dev server binds its own
-    default."""
+def check_client_config(label: str, path: pathlib.Path, base: int | None) -> list[str]:
+    """DS6. The host block does not appear in application code. That is the
+    number 016 exists to remove: the block belongs to the host binding, and the
+    process inside the container binds its own default.
+
+    A container-side port outside the block is a different thing and is left
+    alone. LD3 already says container-side ports are not in the block, and a
+    reverse proxy fronting the dev server names one in its own configuration.
+    Getting that pair wrong fails loudly, on the first request. Getting a block
+    number wrong fails silently, which is the failure this standard exists for.
+
+    Without a compose file there is no block to compare against, so there is no
+    question to ask and no finding to report."""
+    if base is None:
+        return []
     text = path.read_text()
     inside = text.split("server:", 1)[1].split("\n  },", 1)[0] if "server:" in text else ""
     findings = []
-    m = CLIENT_PORT.search(inside)
-    if m:
-        findings.append(
-            f"DS6 {label}: {path.name} hardcodes port {m.group(1)} for the dev server. It "
-            "binds its ecosystem's default, and compose publishes the block onto it (LD2)."
-        )
-    m = HMR_PORT.search(inside)
-    if m:
-        findings.append(
-            f"DS6 {label}: {path.name} hardcodes clientPort {m.group(1)}. The browser's "
-            "port is a property of the host binding, so it reaches the config from the "
-            "environment and is absent when nothing sets it (LD2)."
-        )
+    for pattern, key, why in (
+        (
+            CLIENT_PORT,
+            "port",
+            "It binds its ecosystem's default, and compose publishes the block onto it",
+        ),
+        (
+            HMR_PORT,
+            "clientPort",
+            "The browser's port is a property of the host binding, so it reaches the "
+            "config from the environment and is absent when nothing sets it",
+        ),
+    ):
+        m = pattern.search(inside)
+        if m and base <= int(m.group(1)) < base + BLOCK:
+            findings.append(
+                f"DS6 {label}: {path.name} names {key} {m.group(1)}, which is inside this "
+                f"stack's host block {base}-{base + BLOCK - 1}. {why} (LD2)."
+            )
     return findings
 
 
 def check_repo(root: pathlib.Path, repo: str) -> tuple[list[str], bool]:
-    base = root / repo
+    root_dir = root / repo
     findings: list[str] = []
     looked = False
+    block = None
 
     for name in DEV_COMPOSE:
-        path = base / name
+        path = root_dir / name
         if path.is_file():
             looked = True
-            findings += check_compose(repo, path)
+            compose_findings, block = check_compose(repo, path)
+            findings += compose_findings
             break
 
-    dev_image = base / "Dockerfile.dev"
+    dev_image = root_dir / "Dockerfile.dev"
     if dev_image.is_file():
         looked = True
         findings += check_dev_image(repo, dev_image)
 
     for candidate in ("vite.config.ts", "client/vite.config.ts"):
-        path = base / candidate
+        path = root_dir / candidate
         if path.is_file():
             looked = True
-            findings += check_client_config(repo, path)
+            findings += check_client_config(repo, path, block)
 
     return findings, looked
 

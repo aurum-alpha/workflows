@@ -119,6 +119,17 @@ ports:
 networking has no port mapping to hide behind. It sets `PORT`, and the process
 obeys. That is one mechanism working in both directions, rather than a carve-out.
 
+**The block does not appear in application code.** A client build config naming
+a port from the block is the defect. A container-side port outside the block is
+not: LD3 already says those are whatever the image binds. A reverse proxy in
+front of a development server names one in its own configuration, and getting
+that pair wrong fails on the first request.
+
+*That distinction arrived from the gate rather than from this text. The check
+first read any port in a client build config as a finding, which flagged a
+container-side port a proxy owns. The block is the thing nobody can move, so the
+block is what the rule names.*
+
 **Nothing in the stack detects where it is running.** SC3 already forbids that,
 and a development stack is where the temptation is strongest. No variable
 announces that a process is inside a container. No code branches on one.
@@ -290,7 +301,7 @@ What it can settle mechanically:
 - Every host binding falls inside one aligned block of twenty, and none is
   privileged. **This needs no allocation record**, because alignment is a
   property of a single clone.
-- No client build config hardcodes a port.
+- No client build config names a port from the block.
 
 One check reads [`../ports.json`](../ports.json), and it runs in this repository
 alone: no two recorded blocks overlap. That is the one question a single clone

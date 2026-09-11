@@ -241,7 +241,7 @@ it. The two that are not say why in the row.
 | LD7 | The dependency tree is a named volume the container populates, not the host's | `check-dev-stack` DS4: an anonymous volume over the dependency directory is the finding | **gated** |
 | LD8 | A clean clone reaches a working stack in one command, and a source edit needs no restart | — **resists a checker**: proving it means running the stack, which no conformance job does. Review question: *did you run `docker compose down -v && docker compose up` on a clean tree, and did an edit show up* | **gated nowhere, and the row says so** |
 | — | No two recorded blocks overlap | `check-dev-stack --registry`, reading [`../ports.json`](../ports.json). **This one runs in this repository alone**, because it is the only question a single clone cannot answer | **gated** |
-| — | No client build config hardcodes a port | `check-dev-stack` DS6, over the client build config. It covers the port the server binds and the port the browser is told to reach | **gated** |
+| — | No client build config names a port from the block | `check-dev-stack` DS6, over the client build config, comparing against the block DS2 derives from the same clone. It covers the port the server binds and the port the browser is told to reach | **gated** |
 
 **LD3 was the row to build first**, and the reason is what it does not need. The
 allocation lives in a file this repository owns. A per-repository gate that
@@ -262,7 +262,13 @@ is the argument for running one before a row is promoted. It reported fourteen
 findings. Eight were a substring match reading the comment
 that says a file does not do the thing as evidence that it does. Two more were
 LD5 written stronger than the shapes it governs, and LD5 now carries that
-correction. Four survived, and those four were real.
+correction.
+
+Of the four that survived, one more was the same species. DS6 read every port in
+a client build config as a finding. That included a container-side port which a
+reverse proxy owns and names in its own configuration. The block is the number
+nobody can move, so the block is what DS6 compares against, and LD2 now says so.
+Three findings remain, and those three were real.
 
 ## Agent standard
 

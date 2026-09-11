@@ -3,26 +3,14 @@
 ## Why this exists
 
 Every product authenticates people, and without a standard each decides
-alone how. Many answers are on offer. One is a session library inside the
-application. Others are a hosted identity provider wired straight into the
-code, a self-hosted provider, or a bespoke token scheme. Each is a reasonable
-local answer, and each differs from the next in what it trusts and what it
-stores.
-
-That is the condition the CI standard was written to end, at a layer the CI
-standard does not reach. Authentication is the worst place in a system to
-re-litigate a decision. It is the one subsystem where a wrong answer is not a
-bug but a breach. The mistakes are subtle, and every further implementation
-is one more thing to audit and one more thing to get right.
-
-Some of those answers are also *leased*. A product prototyped on a
-development platform can keep authenticating against that platform's identity
-provider after it ships. That is a live third-party dependency in the login
-path of software we operate.
-
-The governing idea is one sentence: **the identity provider authenticates and
-the application authorizes**. This document states it, generalises it, and
-states what follows.
+alone how. The answers on offer are a session library inside the
+application, a hosted provider wired into the code, or a bespoke token
+scheme. Authentication is the one subsystem where a wrong answer is a
+breach, and every further implementation is one more thing to audit. The
+governing idea is one
+sentence: **the identity provider authenticates and the application
+authorizes**. This document states it, generalises it, and states what
+follows.
 
 ## The rules
 
@@ -49,40 +37,20 @@ backend stays smaller, and authentication is a tier the application never links
 against. The whole capability arrives as configuration rather than as a runtime
 we must maintain, which is what PC1 asks of every opinion here. Established
 OIDC modules for the common reverse proxies satisfy it with no first-party code
-at all. [`solutions/060-auth.md`](../solutions/060-auth.md) names which, and
-when that was last checked.
+at all. [`solutions/060-auth.md`](../solutions/060-auth.md) names which.
 
 An application-code BFF is admitted where a repository states the reason in its
 **Conventions**. AU7 sets out what that choice costs.
 
 #### The application does talk to the provider, on one plane only
 
-This looks like a contradiction and is not. *Never in the authentication chain*
-is a statement about the data plane.
+*Never in the authentication chain* is a statement about the data plane.
 
 - **Control plane**: the application calls the provider directly, to provision
-  identities (AU4). This is deliberate and admin-triggered, and it is where the
+  identities (AU4). This is admin-triggered, and it is where the
   application's own credential for the provider lives.
 - **Data plane**: the application never calls the provider. It validates what
   the proxy hands it and nothing else.
-
-These are two conversations with the same system. The provisioning adapter is
-the first and is not a violation of the second.
-
-```mermaid
-flowchart LR
-    subgraph CP["Control plane · rare, admin-initiated"]
-      direction LR
-      A1["Application"] -->|"ensureIdentity()"| P1["Identity provider"]
-      P1 -.->|"(issuer, subject)"| A1
-    end
-    subgraph DP["Data plane · every request"]
-      direction LR
-      B["Browser"] -->|session cookie| RP["RP proxy"]
-      RP -->|identity token| A2["Application"]
-      A2 --> Z["authorizes, on its own authority"]
-    end
-```
 
 ### AU2. One signed identity token crosses the proxy to the backend
 
@@ -181,9 +149,6 @@ migration disasters.
 | Email | The matching key at provisioning, the invitation channel, a cached display attribute. | **Never a foreign key.** Unique and verified within the identity domain. |
 | Username | The provider's login handle, where a domain uses one. | Never crosses to the application as an identifier. |
 
-So *email or username* resolves to: both are used, for different jobs, and
-neither is the identity.
-
 **The application keeps its own user primary key**. Per IP1, an externally
 minted identifier is not the application's own. Beside it, the application
 keeps an identity-link record holding `(issuer, subject)`. The external key is
@@ -196,12 +161,11 @@ two identities during the overlap. **An application that keyed its user table on
 the subject cannot do any of that**. It has silently given up the swappability
 AU2 was arranged to preserve.
 
-Two consequences are stated here so nobody helpfully undoes them:
+Two consequences:
 
 - **Email uniqueness is enforced at the provider, and verified**. Otherwise a
   second unverified account on the same address exists, and the matching key
-  stops matching one person. Every provider has a setting for this. The
-  register names where it lives per provider.
+  stops matching one person.
 - **A person changing their email costs nothing**. The subject does not change,
   the link holds, and no foreign key moves. That is the payoff for not keying
   on it.
@@ -212,9 +176,6 @@ human*. Two applications then cannot tell they are looking at the same person.
 A set of applications behind one provider that expects identity to line up
 requires `public`. It is also exactly the provider setting someone changes
 without knowing what it costs.
-
-Machine identity, such as service accounts and workload credentials, is a
-separate thing. None of the above governs it.
 
 ### AU4. Users are created in the application, and the application creates the identity
 
@@ -243,13 +204,10 @@ reconcile and no matching bug waiting to happen.
 
 #### The four operations
 
-They are stated language-neutrally. An adapter implements them over SCIM, the
-provider's admin API, or anything else that satisfies the semantics. **Both are
-admitted, because the Aurum Alpha standard is the interface and not the
-transport**. A gate that checked which was used would be testing the
-implementation rather than the boundary, which PC4 forbids. SCIM alone would
-not suffice regardless. Its user schema covers the account and none of the
-first-login actions, the invitation, or the access grant.
+An adapter implements them over SCIM, the provider's admin API, or anything
+else with the same semantics; the interface binds and not the transport (PC4).
+SCIM alone would not suffice: its user schema covers the account and none of
+the first-login actions, the invitation, or the access grant.
 
 | Operation | Semantics |
 |---|---|
@@ -266,22 +224,14 @@ Deferring is cheaper and stays admitted, stated in the repository's
 
 #### One provider account, many applications
 
-- **Creation is idempotent and never claims ownership**.
-- **An application is permitted to revoke its own access and is never
-  permitted to disable the identity**. Disabling is an organisational
-  offboarding action with its own trigger, and no application admin performs
-  it.
-- **Profile attributes belong to the provider**. They are written at creation
-  and not fought over afterwards.
+**Profile attributes belong to the provider**. They are written at creation
+and not fought over afterwards. Disabling an identity is an organisational
+offboarding action with its own trigger, and no application admin performs it.
 
-From the application's side the user is deleted, and that is the whole truth
-available to it. Whether that person still holds permissions in other
-applications is **not knowable to it and not its concern**. This is
-definitional: knowing would require reading another application's authorization
-state, which is the coupling this separation exists to prevent.
-
-*User deleted in application A* and *identity still active at the provider* are
-simultaneously correct, and are not drift.
+From the application's side the user is deleted, and whether that person still
+holds permissions in other applications is not knowable to it. Knowing would
+require reading another application's authorization state, which is the
+coupling this separation exists to prevent.
 
 #### Where the provider is the source instead
 
@@ -320,8 +270,6 @@ An identity created at the provider grants nothing. A user exists in an
 application only because an admin added them there (AU4), so an authenticated
 subject with no local user is refused.
 
-**How it is refused matters, and the obvious answer is wrong**.
-
 ```mermaid
 flowchart LR
     T["identity token<br/>(issuer, subject)"] --> L{"known<br/>subject?"}
@@ -335,10 +283,7 @@ correct answer is **`403` plus session termination**.
 
 #### The boundary with authorization
 
-Everything past *known subject* belongs to the
-[RBAC standard](070-rbac.md): the permission model, the
-grant semantics, the check operation and its corpus. This document stops at
-producing a trustworthy subject and refusing an unknown one.
+Everything past *known subject* belongs to the [RBAC standard](070-rbac.md).
 
 What this standard does fix is **what the client is told**, because it is the
 authentication session that makes the answer possible. A client fetches its own
@@ -352,7 +297,8 @@ identity and permissions at load, shaped by
 - `entitlements`: what the session's tenant has bought, derived under the
   [billing standard](075-billing.md) BL4. That is the plan, the capabilities,
   and the quotas, allowances and settings by metric. Present wherever a product
-  sells plans; as advisory as `permissions`, and for the same reason.
+  sells plans; as advisory as `permissions`, and for the same reason. The
+  alternative was a second bootstrap document.
 - `session`: when it expires, so the client can warn before it lapses, and
   the tenant it is bound to (AU8).
 
@@ -361,12 +307,7 @@ to decide what is allowed**. Every one is enforced again on the server, on
 every request. The permission is enforced by `check` under 070, and the
 entitlement by the billing standard's check beside it. A client that hides a
 button has improved the experience. A server that trusts the client having
-hidden it has a vulnerability. This is stated in exactly those words because
-the endpoint makes the wrong reading available for the first time.
-
-A `403` is also the signal that a cached copy is stale. The client refetches
-once before showing an error, because someone most likely changed the person's
-roles while the page was open.
+hidden it has a vulnerability.
 
 No standard covers this shape, and two were checked, per PC2. **OIDC's
 UserInfo** returns identity claims only, carries nothing about application
@@ -437,24 +378,6 @@ arrangement is not admitted.
 
 Two variants, and only one box differs between them.
 
-```mermaid
-flowchart TB
-    subgraph B1["B1 · proxy in front of the API — preferred"]
-      direction TB
-      Br1["Browser"] --> St1["example.com<br/>static"]
-      Br1 --> Id1["auth.example.com<br/>identity provider"]
-      Br1 --> Rp1["api.example.com<br/>edge proxy · OAuth client<br/>session + tokens"]
-      Rp1 -->|identity token| Api1["API server<br/>not internet-facing"]
-    end
-    subgraph B2["B2 · the API server is its own BFF — admitted"]
-      direction TB
-      Br2["Browser"] --> St2["example.com<br/>static"]
-      Br2 --> Id2["auth.example.com<br/>identity provider"]
-      Br2 --> Api2["api.example.com<br/>API server + OAuth client<br/>session + tokens · internet-facing"]
-      Api2 -->|"newly required"| Sess["shared session store"]
-    end
-```
-
 | | B1 · proxy | B2 · application code |
 |---|---|---|
 | The OAuth client is | the proxy at the edge | the API server |
@@ -481,10 +404,9 @@ once.
 
 Where a product has tenants, **a tenant is an authentication boundary, and a
 role is an authorization boundary inside one**. The two sentences decide
-everything below, and they decide which standard owns what. This document
-binds a session to a tenant. The [RBAC standard](070-rbac.md) decides what a
-subject is permitted to do inside it, and reads the tenant from the session
-(RB10).
+everything below. This document binds a session to a tenant. How a provider
+models tenants, a realm per customer or one realm with groups, is the
+provider's and the commercial architecture's, not this document's.
 
 - **A session is bound to one tenant at login and never changes it**. The
   binding is made when the session is created, from the tenant the entry
@@ -533,47 +455,7 @@ Per PC3, under [`contracts/auth/`](../contracts/auth/):
 
 ## Decisions
 
-- **BFF as the default, not one option of three** (2026-09-01): the alternative
-  was to describe all three RFC 10017 patterns neutrally. Each product would
-  then choose, which is what "we use OIDC" unpinned looks like. The RFC's own
-  recommendation language settles which is the default for software that
-  handles personal data.
-- **A proxy preferred, application code admitted** (2026-09-01): an earlier
-  draft mandated the proxy. That over-reached. RFC 10017 permits an
-  application-code BFF, and it is genuinely the simpler choice for a
-  single-backend product. The preference is stated with its cost table instead
-  of as a prohibition.
-- **(b) preferred over (a) for the backend hop** (2026-09-01): a proxy-minted
-  identity token is an intermediary data standard. It gives every backend one
-  shape regardless of provider. (a) keeps the backend a real OAuth resource
-  server and is admitted. (c) is discouraged because it converts a network
-  assumption into the sole authentication control.
-- **A shared user directory in the proxy was considered and rejected**
-  (2026-09-01): the proxy would resolve to a shared user id before minting.
-  That hides the provider from applications entirely, and it requires the proxy
-  to own a user directory. That is a great deal more than a proxy, and the beginning of the
-  framework PC1 forbids.
-- **Eight hours idle, seven days absolute** (2026-09-01): chosen for a working
-  day rather than derived from a threat model. A repository with a sharper
-  threat model sets its own and says why. The value of a standard default is
-  that products without one stop inventing.
-- **Multi-tenancy at the provider is out of scope** (2026-09-01): three
-  different shapes solve the same problem. They are Auth0 Organizations, a
-  Keycloak realm per customer, and a single realm with groups. Which is right depends on
-  the provider and on the commercial architecture rather than on this contract.
-- **The session's tenant binding is in scope, and it is one tenant per
-  session** (2026-09-08): the entry above left multi-tenancy wholly to the
-  provider. That was too much: how a provider models tenants is still not
-  this document's business, but whether a session can span or switch tenants
-  is. It decides the scope argument 070 RB7 needs and the cookie attributes
-  AU7 pins. Tenant hostnames made the question concrete: a
-  person on one tenant's host presenting a session made on another's. The
-  answer that keeps the check pure is a binding made once at login. The
-  alternative, an active-tenant selector in the session, is the ambient-scope
-  design RB7 already rejects.
-- **`/me` carries entitlements beside permissions** (2026-09-08): a client
-  that sells plans needs to know what the tenant bought to decide what to
-  draw. The only alternative to carrying it here was a second bootstrap
-  document. It is added under the same advisory rule as `permissions`, and
-  the vocabulary is the [billing standard](075-billing.md)'s, not this
-  document's.
+- **A shared user directory in the proxy**. The proxy would resolve to a
+  shared user id before minting, hiding the provider from applications
+  entirely. That requires the proxy to own a user directory: a great deal
+  more than a proxy, and the beginning of the framework PC1 forbids.

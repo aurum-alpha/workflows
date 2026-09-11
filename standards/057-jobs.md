@@ -2,80 +2,13 @@
 
 ## Why this exists
 
-Every product accumulates work that is not a request. Send this, purge
-that, poll the partner, recompute the totals, apply the schema change, fill
-the new column. Each arrives with a cheapest answer, and the cheapest
-answers share one omission.
-
-The cheapest answers are a timer inside the server, a script on a host, and
-a loop that runs "every night". Or a command someone runs when they
-remember, or a handler bolted to a queue. None of them says what a unit of
-that work *is*. So none of them can say what happens when it runs twice.
-None can say how anyone would know it failed, or how anyone would know it
-did not run at all.
-
-The failures that follow are general properties, not accidents. A run is
-repeated because a delivery was repeated, or a tick fired twice, or a
-person pressed enter twice. It repeats its effect, and whether that is
-harmless or a double payment depends on a decision nobody recorded.
-
-A run that dies between doing the thing and writing it down leaves a state
-nobody can name. A scheduled run that silently stops produces no error,
-because absence is not an event. Two instances of the same run overlap
-because the only thing preventing it was a scheduler setting somebody
-changed. And when any of this is investigated, there is no record of runs
-to investigate, only logs to grep.
-
-This standard removes those decisions from every repository by making them
-once. It answers what a job is, how it is keyed, and which of three
-duplicate policies it declares. It answers what a job leaves behind and how
-its absence is noticed. What remains for a repository is the body of the
+Every product accumulates work that is not a request. The cheap answers
+to it share one omission: none says what a unit of that work *is*. So none
+can say what happens when it runs twice, how anyone knows it failed, or how
+anyone knows it did not run at all. This standard answers what a job is, how
+it is keyed, which duplicate policy it declares, what it leaves behind, and
+how absence is noticed. What remains for a repository is the body of the
 job, which is the only part that is its domain.
-
-### The standards evaluated first, per PC2
-
-A job's boundary is its input and its outcome, and PC2 asks whether an
-existing standard covers each before anything is invented.
-
-**The input of a per-event job is a CloudEvent**. Under 055 the message a
-consumer receives is already a CloudEvents 1.0 event under the platform
-profile. Its identity is in `(source, id)`, its payload's schema in
-`dataschema`, and its trace in `traceparent`. A job triggered by a message
-takes that event as its input, unchanged. Nothing is invented for the
-majority case.
-
-**The input of an invoked job is not a CloudEvent**. A CloudEvent is a fact
-about an entity: past tense, with a subject that is a public id. A tick, a
-deployment step, and an operator's command are none of those things.
-Forcing them into the envelope produces a type that is not past tense and a
-subject that is not an id. That is the profile broken to look conformant.
-
-So the invoked input is a platform schema,
-[`invocation.schema.json`](../contracts/jobs/invocation.schema.json), shaped
-as closely to the CloudEvents attribute set as honesty allows. It carries an
-`id`, a `source`, a `time`, a `traceparent`, the job's name, the trigger
-kind, and the arguments the job's own schema admits. A job sees one
-interface either way (JB1).
-
-**The trace attributes of a run are OpenTelemetry's.** The
-[FaaS semantic conventions](https://opentelemetry.io/docs/specs/semconv/faas/faas-spans/)
-already name what a run needs. `faas.trigger` takes the values `pubsub`,
-`timer` and `other` for the message, tick, and deployment-or-operator
-triggers. `faas.invocation_id` is the run id, and `faas.cron` and
-`faas.time` describe a timer trigger. The
-[messaging conventions](https://opentelemetry.io/docs/specs/semconv/messaging/messaging-spans/)
-name the span in which a per-event job processes its message. The attribute
-names are adopted rather than reinvented. So a trace of a run reads the
-same as a trace of a function invocation anywhere else.
-
-**A schedule is a POSIX cron expression.** Five fields, in UTC. Every
-scheduler a worker could run under accepts it, and it is the one form an
-operator reads without a manual.
-
-**What no standard covers** is the part this document invents. That is the
-job key as distinct from the delivery id, and the duplicate policy and its
-claim mechanism. It is also the run record, and the rule that a periodic
-job's absence is its failure. Those are JB2, JB4, JB5 and JB8.
 
 ## The rules
 
@@ -103,6 +36,19 @@ ctx     run_id (UUIDv7), the checkpoint store, the run record writer,
 
 outcome one of: succeeded | failed | skipped | unknown | expired (JB4)
 ```
+
+The input of a per-event job is the 055 AM1 event, unchanged. **The input of
+an invoked job is not a CloudEvent**. A CloudEvent is a fact about an
+entity: past tense, with a subject that is a public id. A tick, a deployment
+step, and an operator's command are none of those things. Forcing them into
+the envelope produces a type that is not past tense and a subject that is
+not an id.
+
+So the invoked input is a platform schema,
+[`invocation.schema.json`](../contracts/jobs/invocation.schema.json), shaped
+as closely to the CloudEvents attribute set as honesty allows. It carries an
+`id`, a `source`, a `time`, a `traceparent`, the job's name, the trigger
+kind, and the arguments the job's own schema admits.
 
 A job **ends**. It has no loop, no sleep waiting for its next turn, and no
 knowledge of what started it. The same job body runs unchanged when a pool
@@ -191,11 +137,6 @@ of this rule.
 | `stale_after` | ISO 8601 duration, periodic only, default twice the cadence | JB8. Lives beside `schedule` so neither changes without the other in view. |
 | `reconcile` | the job or role that resolves `unknown`, `at_most_once` only | JB4. An `at_most_once` job with nobody named to resolve its unknowns is misdeclared. |
 
-The declaration is the whole of what a repository decides about a job's
-operation. Everything else follows from it mechanically. The decisions that
-are not the domain's are made by filling in a form whose every field has a
-defined consequence.
-
 ### JB4. A run ends in one of five outcomes, and each has an owner
 
 | Outcome | Meaning | Who acts |
@@ -237,14 +178,20 @@ job_runs
 
 The row is the mechanism for three other rules, not a report beside them.
 JB2's claim is the row with `claimed_at` set and `finished_at` null. JB6's
-lock is taken against it. JB8's freshness check is a query over it.
-Whatever runs the worker can keep its own history of runs, and that history
-is a convenience.
+lock is taken against it. JB8's freshness check is a query over it. Logs
+answer *what happened* and do not answer *when did this last succeed*
+without a query engine over them. Whatever runs the worker can keep its own
+history of runs, and that history is a convenience.
 
 Every log line a run writes carries `job.name` and `job.run_id` in the 040
-OC4 context block. The run's span carries the OpenTelemetry attributes
-named above. So a run is a query, a log filter, and a trace, and all three
-agree.
+OC4 context block. The run's span carries the OpenTelemetry
+[FaaS semantic conventions](https://opentelemetry.io/docs/specs/semconv/faas/faas-spans/).
+`faas.trigger` takes `pubsub`, `timer` and `other` for the message, tick, and
+deployment-or-operator triggers. `faas.invocation_id` is the run id, and
+`faas.cron` and `faas.time` describe a timer trigger. The
+[messaging conventions](https://opentelemetry.io/docs/specs/semconv/messaging/messaging-spans/)
+name the span in which a per-event job processes its message. So a run is a
+query, a log filter, and a trace, and all three agree.
 
 ### JB6. Single-flight is enforced by the job, whatever runs it
 
@@ -301,7 +248,9 @@ AM4, written to the outbox in the same transaction as the effect. So a
 job's fan-out is exactly as reliable as its work. Anything another service
 owns is reached through that service's interface or its messages, never its
 state (025 SD13). A job that reconciles two services is two jobs and a
-queue.
+queue. A job that needs another job to have finished produces a message and
+lets the next job consume it. That message is the only orchestration this
+standard admits; a workflow engine is not.
 
 ### JB10. A backfill is a long, single-flight, on-demand, idempotent job, and never a migration
 
@@ -314,15 +263,10 @@ runs. It is run again until it reports nothing left, and each run
 converges.
 
 Where a backfill is too large for one process to be trusted with, it is
-written as a self-continuing per-event job. That job processes a batch,
-checkpoints, produces the message for the next batch, and lets the pool
-carry it. The choice between the two shapes is 035 WK4's.
+written as a self-continuing per-event job. The choice between the two
+shapes is 035 WK4's.
 
 ## Classifying a job
-
-The declaration is easier to fill in from examples than from definitions,
-so the standard carries them. Read the class, and the trigger, the worker,
-and the failure semantics follow.
 
 | Job | Class | Duplicate policy | Trigger → worker | Why |
 |---|---|---|---|---|
@@ -363,62 +307,4 @@ Per PC3, under [`contracts/jobs/`](../contracts/jobs/):
   must accept and reject, each rejection naming the rule. `keys`: for each
   trigger kind, the input and the key JB2 derives from it. `policies`: run
   sequences with crash points, and the effects and outcomes each duplicate
-  policy must produce. They include the case that separates a claim-first
-  implementation from an act-first one by crashing between the two. They
-  include the case that separates a validity-window implementation from a
-  dedup-only one by arriving late.
-
-## Decisions
-
-- **Invocations are not CloudEvents** (2026-09-02). A CloudEvent is a
-  past-tense fact about an entity with a public id; a tick, a deployment
-  step, and a command are none of those. The invocation schema borrows the
-  attribute names and stops there, so the per-event majority pays nothing
-  and the minority is not misdescribed.
-- **Idempotency is a dimension with three values, not a requirement**
-  (2026-09-02). An effect inside the service's database can always be made
-  idempotent. An effect across a boundary can be made idempotent only when
-  the far side offers a dedup handle. Where it does not, exactly-once is
-  impossible and the job declares which failure it prefers. The earlier
-  position, that every job must be idempotent, assumed a queue behind every
-  trigger. It was wrong for physical actuation, plain SMTP, rails with no
-  idempotency key, single-use resources, and any legacy interface that
-  mints its own ids.
-- **The job key is distinct from the delivery id** (2026-09-02). The inbox
-  row of 055 AM3 names a delivery and coincides with the work only for
-  per-event jobs. A tick, a deployment, and an operator have no delivery,
-  and a key derived from them is what lets a duplicate firing produce one
-  effect.
-- **The lock is in the job, not the runner** (2026-09-02). Every runner can
-  forbid overlap and every queue can be given one consumer, and both are
-  configuration. The guarantee this standard counts is the one that ships
-  in the tested code.
-- **A held lock is `skipped` and exits zero** (2026-09-02). The
-  alternative, a non-zero exit, makes every long night read as a failure.
-  The fault is the overrun, and JB8 alerts on the overrun.
-- **The run record lives in the service's database** (2026-09-02). Logs
-  answer "what happened". They do not answer "when did this last succeed"
-  without a query engine over the logs, which JB8 would need on a schedule.
-  The table is the mechanism for the claim, the lock, and the freshness
-  rule, not a report beside them.
-- **The runner never retries; the next tick is the retry** (2026-09-02). A
-  retry policy on top of a schedule produces two runs competing for one
-  lock, and JB8 already catches the case where every tick fails.
-- **Staleness is declared per job with a default of twice the cadence**
-  (2026-09-02). A fixed multiple is wrong at both ends of the cadence
-  range, and putting the number beside the schedule is what keeps the two
-  honest.
-
-## Out of scope, deliberately
-
-- **Packaging, deployment, and invocation.**
-  [`035-workers.md`](035-workers.md), in full. This document is written so
-  that a job can be moved between worker models without reading it.
-- **Orchestration of many jobs.** A job is one step. A graph of steps with
-  dependencies is a workflow, and a workflow engine is a decision this
-  platform has not taken. A job that needs another job to have finished
-  produces a message and lets the next job consume it. That is the only
-  orchestration this standard admits.
-- **Notifications to people.** The
-  [`058-notifications.md`](058-notifications.md)'s, riding 055's envelope;
-  a job that sends one produces the message and stops.
+  policy must produce.

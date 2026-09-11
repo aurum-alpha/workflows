@@ -1,30 +1,5 @@
 # Data subject rights: export and erasure as endpoint contracts, and the inventory that makes them answerable
 
-One of the Aurum Alpha engineering standards, written under the platform
-contract ([`000-platform.md`](000-platform.md)). It is a per-capability
-standard from that roster. Read [`999-enforcement.md`](999-enforcement.md) for
-the tier each rule below holds. Artifacts:
-[`contracts/data-subject-rights/`](../contracts/data-subject-rights/).
-
-It leans on [`050-http.md`](050-http.md) for the request resources,
-[`057-jobs.md`](057-jobs.md) and [`035-workers.md`](035-workers.md) for the
-work, and [`025-structured-data.md`](025-structured-data.md),
-[`026-blob-storage.md`](026-blob-storage.md) and
-[`027-json-document-storage.md`](027-json-document-storage.md) for the stores.
-It leans on [`080-audit.md`](080-audit.md) for the record,
-[`060-auth.md`](060-auth.md) for the identity, [`070-rbac.md`](070-rbac.md)
-for who can act for whom, and [`020-identifiers.md`](020-identifiers.md) for
-ids and instants.
-
-This document governs **what a service owes a person about whom it holds
-data**. That is the inventory that says where the data is. It is the request
-through which the person, or a tenant administrator acting for them, asks for
-a copy or for removal. It is the package the copy takes, the job that removes
-the data and what survives, and the hold that suspends removal. **It does not
-define the storage the data sits in, the audit record, the identity, or the
-notification**. Those belong to 025, 026, 027, 080, 060 and
-[`058-notifications.md`](058-notifications.md).
-
 ## Why this exists
 
 Every service holding data about people will be asked two questions by one of
@@ -433,22 +408,6 @@ Per PC3, under
   counts and column sets compared. `hold` is the lifecycle with a hold placed
   and released. `transitions` is state and action mapped to status or problem
   type.
-
-## Enforcement
-
-Every DR rule lands **review only** and is registered in
-[`999-enforcement.md`](999-enforcement.md) with its gate named. Some parts are
-mechanically checkable, and move first. The inventory's schema validity and
-its coverage against the engine's catalog (DR1) is the generative check, and
-the one worth the most. It fails when a table is added without a declaration.
-The request and manifest shapes (DR2, DR3) follow, and the erasure, export,
-hold and transition parts under `job-contract-conformance`.
-
-What stays a review question is said so in the ledger row. That is whether a
-treatment fits its data and a legal basis is real (DR5), and whether `export:
-false` has one of the three reasons (DR3). It is whether suppression,
-revocation and the two records happen in the order stated (DR4, DR7), and
-whether a hold is reviewed (DR6).
 
 ## Decisions
 

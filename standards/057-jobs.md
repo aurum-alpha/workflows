@@ -1,31 +1,5 @@
 # Jobs: the unit of work, its key, and what it declares
 
-One of the Aurum Alpha engineering standards, written under the platform
-contract ([`000-platform.md`](000-platform.md)). It is a per-capability
-standard from that contract's roster. Read
-[`999-enforcement.md`](999-enforcement.md) for the tier each rule below
-actually holds. Artifacts:
-[`contracts/jobs/`](../contracts/jobs/). The words *service*, *server*,
-*worker*, *job*, *run*, *trigger*, *release* and *deployment* are used in the
-senses [`000-platform.md`](000-platform.md#terms) defines. The envelope a
-message arrives in is [`055-messaging.md`](055-messaging.md)'s; ids and
-timestamps are [`020-identifiers.md`](020-identifiers.md)'s; trace context and
-the id vocabulary are [`040-observability.md`](040-observability.md)'s.
-
-This document governs **the job**: the definition of a bounded task, with an
-input, a key, and an outcome. It defines what a job is as an interface, how
-it is keyed, and what a second run of the same key does. It defines what a
-job declares about itself and what a run leaves behind. It defines how a
-job that runs on a schedule is known to have stopped.
-
-**What it does not define is how a job is packaged, deployed, or invoked**.
-The process that runs jobs is a worker, and workers are
-[`035-workers.md`](035-workers.md)'s. Those are the pool that consumes a
-queue, the one-shot that runs one job and exits, and the runner. The runner
-starts one-shots on a tick, at a deployment step, or by an operator's hand.
-A job knows nothing of any of that, and this document is written so that it
-never has to.
-
 ## Why this exists
 
 Every product accumulates work that is not a request. Send this, purge
@@ -393,20 +367,6 @@ Per PC3, under [`contracts/jobs/`](../contracts/jobs/):
   implementation from an act-first one by crashing between the two. They
   include the case that separates a validity-window implementation from a
   dedup-only one by arriving late.
-
-## Enforcement
-
-Every JB rule lands **review only** and is registered in
-[`999-enforcement.md`](999-enforcement.md) with its gate named. The
-mechanically checkable parts are the first to move to a gate. They are the
-presence and schema validity of a declaration for every job (JB3), and the
-run-record table shape against the storage profile (JB5). They are also the
-corpus against a repository's job runtime where one exists (JB2).
-
-The parts that stay review questions are said so in the ledger row. Does a
-declared `idempotent` job's effect actually cross a boundary with no dedup
-handle (JB2)? Are a long job's batches really one transaction each (JB7)?
-Are `unknown` rows being resolved rather than aged out (JB4)?
 
 ## Decisions
 

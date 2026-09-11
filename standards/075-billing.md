@@ -1,25 +1,5 @@
 # Billing: the catalog, the subscription ledger, and the entitlement check
 
-One of the Aurum Alpha engineering standards, written under the platform
-contract ([`000-platform.md`](000-platform.md)). It is a per-capability standard
-from that contract's roster. Read [`999-enforcement.md`](999-enforcement.md) for
-the tier each rule below actually holds. Artifacts:
-[`contracts/billing/`](../contracts/billing/).
-
-This document defines **what a tenant bought, and how the product knows**, as
-an interface specification. The specification has seven parts. A catalog; a
-subscription that is a projection of an append-only ledger; four kinds of
-entitlement; a pure function that derives them at any instant. A fixed place in
-the request for the check to run, and one adapter to the provider that takes
-the money. And a corpus of decision cases any implementation in any language
-must reproduce.
-
-It sits between [`060-auth.md`](060-auth.md), which produces the tenant, and
-[`070-rbac.md`](070-rbac.md), which decides what a person is permitted to do
-inside it. It feeds [`080-audit.md`](080-audit.md) and
-[`082-data-subject-rights.md`](082-data-subject-rights.md), which record and
-export what it did.
-
 ## Why this exists
 
 Three questions in a product each produce a yes or a no, which is the whole
@@ -510,43 +490,6 @@ Per PC3, under [`contracts/billing/`](../contracts/billing/):
   stimuli that must be refused. An implementation in any language loads the
   fixture, evaluates every case, and either reproduces each decision or names
   the one it failed. No running service, no provider, no network.
-
-## Enforcement
-
-Every rule is review-only today, with gates named per rule in
-[`999-enforcement.md`](999-enforcement.md). The shape is 070's, and so is the
-reason. An entitlement written as an interface specification is decided by
-data, and prose about entitlements is not.
-
-- **BL4's derivation, BL2's effective times and BL3's kinds are decided by the
-  corpus**. The cases worth having are the ones nobody tests by hand, and
-  several are detectors for a specific shortcut:
-  - a past-due tenant one day inside its grace period and one day outside it;
-  - an override that expired yesterday;
-  - a cancelled tenant on the last day of its period and the first day after;
-  - a pending downgrade not yet applied;
-  - a quota the tenant already exceeds after a downgrade;
-  - a capability present in the catalog and absent from every plan;
-  - the same tenant asked about a date before its last upgrade;
-  - a superseded cancellation.
-- **BL1 and BL3's shapes are schema-decided**. A schema refuses a dotted
-  capability id, a float price, an unknown ledger kind and a second pending
-  change. It refuses a per-user entitlement the same way, before any code
-  runs.
-- **BL4's cache rule is caught by a corpus case, not a static checker**. The
-  case is the same capability asked inside and then outside a grace period
-  with no ledger row between. A cache keyed without `valid_until` returns the
-  first answer twice.
-- **BL5 and BL6 have observable halves**. The startup line names the adapter,
-  and `/readyz` stays `200` with the provider unreachable, because the provider
-  is off the request path. The webhook endpoint's four-step order is 055's
-  corpus. That domain code imports no vendor SDK is a fact about source, and a
-  gate reading source for it is the PC4 violation.
-- **BL7 through BL10 are largely review questions with mechanical corners**.
-  The job declarations are JB3's schema and their staleness JB8's alert. The
-  audit event per row is AE8's transaction test. That a policy was honoured,
-  that sign-up is genuinely one transaction, and that a finding reached a
-  person are judgments.
 
 ## Decisions
 

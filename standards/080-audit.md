@@ -1,21 +1,5 @@
 # Audit events: who did what, when, to what
 
-One of the Aurum Alpha engineering standards, written under the platform
-contract ([`000-platform.md`](000-platform.md)). It is a per-capability standard
-from that contract's roster. Read [`999-enforcement.md`](999-enforcement.md) for
-the tier each rule below actually holds. Artifacts:
-[`contracts/audit/`](../contracts/audit/). Id, timestamp and money formats are
-[`020-identifiers.md`](020-identifiers.md)'s; the context fields are
-[`040-observability.md`](040-observability.md)'s.
-
-This document defines the record a product keeps of consequential acts. That
-is its shape, what must produce one, how long it is kept, and what makes it
-worth trusting. It does not define who is allowed to perform those acts, which
-is the [RBAC standard](070-rbac.md)'s. It does not define diagnostic logging,
-which is [`030-service.md`](030-service.md) SC2's. AE1 is the boundary between
-the last two, because conflating them is the failure this standard mostly
-exists to stop.
-
 ## Why this exists
 
 When a client asks *who changed this, and when*, an answer exists only where
@@ -421,41 +405,6 @@ Per PC3, under [`contracts/audit/`](../contracts/audit/):
   implementation must produce for a described act. And `redaction` cases
   carrying an event before and after AE7's erasure, so an implementation's
   erasure is checked against the same file as its emission.
-
-## Enforcement
-
-Registered in [`999-enforcement.md`](999-enforcement.md) under "Audit
-standard". Every rule lands review-only, as the charter requires, and the gates
-named below are commitments.
-
-- **AE2, AE3 and AE4's shape rules are corpus-decided** under
-  `job-contract-conformance`. An implementation emits events for the corpus's
-  described acts and every one validates, or the case that failed is named. The
-  actor/target separation is checked by the schema itself, since both are
-  required and typed.
-- **AE3's second half gets a static check**. The action vocabulary and the
-  permission vocabulary are one vocabulary (that is the rule's whole point). So
-  a checker can read a product's declared permission set. It asserts every
-  action string emitted is either a declared permission or a reserved `auth.*`
-  action. It is cheap, and it catches the paraphrase drift that otherwise
-  arrives one action at a time.
-- **AE5 gets the generative gate, and it is the one worth the most here**. It
-  is the enumerate-don't-list pattern: enumerate the routes guarded by a
-  destructive permission, exercise each, assert an event carrying that
-  permission as its action. A list of routes to audit rots the day someone adds
-  a route; an enumeration cannot.
-- **AE6's discipline is partly a schema fact**. That the audit table's grant
-  excludes `UPDATE` and `DELETE` is readable against the
-  [structured-data standard](025-structured-data.md)'s schema rules. That the
-  code path has no update is a review question.
-- **AE8 resists a checker and stays a review question**, honestly. Whether a
-  write shares the change's transaction is a fact about a call graph, not about
-  a boundary. PC4 forbids a gate that reads the implementation. The corpus
-  reaches the observable half: an act that fails produces no event, and an act
-  that succeeds produces exactly one.
-- **AE1 and AE7 stay review questions**. That a store is the system of record
-  rather than a convenience is a judgment about intent. So is that a retention
-  period was chosen rather than defaulted.
 
 ## Decisions
 

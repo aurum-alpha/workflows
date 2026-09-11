@@ -1,33 +1,5 @@
 # Async messaging: the envelope, delivery, and webhooks
 
-One of the Aurum Alpha engineering standards, written under the platform
-contract ([`000-platform.md`](000-platform.md)). It is a per-capability
-standard from that contract's roster. Read
-[`999-enforcement.md`](999-enforcement.md) for the tier each rule below
-actually holds. Artifacts:
-[`contracts/messaging/`](../contracts/messaging/). Ids and timestamps are
-[`020-identifiers.md`](020-identifiers.md)'s; trace context and the id
-vocabulary are [`040-observability.md`](040-observability.md)'s.
-
-This document governs **work that happens outside a request**. It covers a
-message one service emits and another consumes. It covers a job a service
-hands to itself to do later. And it covers a webhook that leaves for a
-third party or arrives from one. It defines what a message is and what a
-consumer owes it. It defines how a producer emits it without losing it,
-and how it is signed at the edge.
-
-**What it does not define is the schedule, or the job**. Work that runs
-*because it is Tuesday* is a job under [`057-jobs.md`](057-jobs.md),
-invoked as a one-shot worker under [`035-workers.md`](035-workers.md). A
-nightly report, a retention sweep and a backfill are that kind of work.
-Where such work fans out, the messages it produces are consumed under the
-rules here. A consumer under this document is a pool worker running a
-per-event job. What that job promises about a repeated delivery is its
-duplicate policy under 057 JB2.
-
-Notifications to people ride this envelope and are
-[`058-notifications.md`](058-notifications.md)'s.
-
 ## Why this exists
 
 Every product eventually has work that does not belong inside a request. A
@@ -431,36 +403,6 @@ Per PC3, under [`contracts/messaging/`](../contracts/messaging/):
     secret and a stale timestamp that must each be rejected. The values
     are computed, so an implementation in any language proves its HMAC
     against them.
-
-## Enforcement
-
-Registered in [`999-enforcement.md`](999-enforcement.md) under "Messaging
-standard". Every rule lands review-only with its gate named:
-
-- **AM1 is schema-decided** by `envelope.schema.json` under
-  `job-contract-conformance`: emit an event, validate it, black-box in any
-  language.
-- **AM3 is decided by the `delivery` corpus**: deliver the sequence, count
-  the effects. It is the gate worth the most here. A consumer that is not
-  idempotent passes every single-delivery test ever written and fails only
-  this one.
-- **AM7 and AM8's signing are decided by the `signing` corpus**: computed
-  signatures an implementation reproduces byte for byte, and rejections it
-  must make.
-- **AM6's timer rule is a static check with no false positives**: no
-  `setInterval`, `setTimeout` loop, ticker or cron expression in the
-  request-serving entrypoint. Its worker-image half is a fact of the
-  build. The worker image is built, started and published like any other
-  image, one call to each image job per image.
-- **AM4's outbox resists a boundary gate**, honestly. Whether the event
-  row and the state change share a transaction is a fact about a call
-  graph. PC4 says a gate is not permitted to read one. The observable
-  half is reachable: a change with no message, a message with no change,
-  each provoked by failing the other side. That is a live test rather than
-  a corpus case.
-- **AM2 and AM5 are review questions**. Does a queue table have one owner?
-  Was a retry schedule chosen rather than defaulted? Does someone watch the
-  dead letter?
 
 ## Decisions
 

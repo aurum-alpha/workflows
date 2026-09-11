@@ -1,11 +1,5 @@
 # Observability transport and context propagation
 
-One of the Aurum Alpha engineering standards, written under the platform
-contract ([`000-platform.md`](000-platform.md)). Read
-[`999-enforcement.md`](999-enforcement.md) for the tier each rule holds. Artifacts:
-[`contracts/observability/`](../contracts/observability/). Id and timestamp
-formats referenced here are [`020-identifiers.md`](020-identifiers.md)'s.
-
 ## Why this exists
 
 The [service baseline standard](030-service.md) gives every service
@@ -140,21 +134,6 @@ Per PC3, under [`contracts/observability/`](../contracts/observability/):
   fields an emitted log line must carry. It carries the continuation rules:
   same `trace_id`, new `request_id`, and a fresh trace when the inbound
   header is absent or invalid.
-
-## Enforcement
-
-Registered in [`999-enforcement.md`](999-enforcement.md) under "Observability
-standard", every rule review-only today. OC1's and OC4's gate is the corpus
-under `job-contract-conformance`: inject a `traceparent`, read the emitted
-lines, black-box in any language. A live variant is available sooner.
-`job-image-starts` already reads startup log lines and can assert the
-vocabulary on them. The same corpus gates OC2, because field names and
-formats are facts on emitted lines.
-
-OC3 has two halves. The config half is checkable: the OTEL variables are
-present. Whether app code carries no vendor exporter config is a review
-question. The wire half is proven wherever the corpus runs against a live
-process.
 
 ## Decisions
 

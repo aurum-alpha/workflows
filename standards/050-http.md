@@ -1,15 +1,5 @@
 # Service interfaces: protocol selection and HTTP conventions
 
-One of the Aurum Alpha engineering standards, written under the platform
-contract ([`000-platform.md`](000-platform.md)). It is a per-capability
-standard from that contract's roster. Read
-[`999-enforcement.md`](999-enforcement.md) for the tier each rule below
-actually holds. Artifacts: [`contracts/http/`](../contracts/http/).
-
-This document answers two questions in order. **Which protocol** does a
-given interaction use (HA1)? For the default answer, HTTP, **what are the
-conventions** (HA2 onward)?
-
 ## Why this exists
 
 Every product exposes an interface, and without a standard each decides
@@ -329,29 +319,6 @@ Per PC3, under [`contracts/http/`](../contracts/http/):
   service must satisfy. The same idempotency key replays rather than
   repeats. A `429` carries `Retry-After`. An unknown route answers
   problem+json rather than a framework's HTML error page.
-
-## Enforcement
-
-Registered in [`999-enforcement.md`](999-enforcement.md) under "HTTP API
-standard", every rule review-only today. The mechanisms, in the order they
-become cheap:
-
-- **The OpenAPI document exists and lints**: a static check, the cheapest
-  in this standard.
-- **The error envelope is real.** `job-image-starts` already talks to a
-  running service. Requesting a route that cannot exist and asserting
-  problem+json against the schema is one more poll. That single case
-  catches the most common failure of this kind. A framework's default HTML
-  error page escapes to clients from the one path nobody wrote a handler
-  for.
-- **Idempotency and backpressure** need a live harness driving two requests
-  and reading headers: the same `job-contract-conformance` the other
-  capability standards wait on.
-
-What no checker will prove: that the OpenAPI document still describes the
-service. That is why HA2 states it as a rule with a reason rather than
-implying the gate covers it. The honest gate is a repository's own contract
-tests, and the review question is whether they exist.
 
 ## Decisions
 

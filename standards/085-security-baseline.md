@@ -1,29 +1,5 @@
 # Security baseline: pinned images, scanned dependencies, the response header set, and disclosure
 
-One of the Aurum Alpha engineering standards, written under the platform
-contract ([`000-platform.md`](000-platform.md)). It is a per-capability
-standard from that roster. Read [`999-enforcement.md`](999-enforcement.md) for
-the tier each rule below holds. Artifacts:
-[`contracts/security-baseline/`](../contracts/security-baseline/). The words
-*image*, *release*, *deployment*, *credential* and *backing service* are used
-in the senses [`000-platform.md`](000-platform.md#terms) defines.
-
-The pinning and vulnerability-acceptance disciplines and the image jobs this
-document extends are [`010-ci.md`](010-ci.md)'s. The error envelope and the
-backpressure response are [`050-http.md`](050-http.md)'s. The cookie posture
-is [`060-auth.md`](060-auth.md) AU7's, and what a browser can hold is
-[`090-web-client.md`](090-web-client.md) WC1's.
-
-This document governs **the security posture every deployed service has before
-its domain is considered**. That is what an image is built from, what is
-scanned, and how an exception is recorded. It is which headers every response
-carries, where TLS is required, how abuse of an open route is refused, and how
-input is bounded. It is how a finder reports a vulnerability, and what a
-release says about its contents. **It does not define the secret**. Delivery,
-what never enters a repository, and leak response are
-[`032-secrets.md`](032-secrets.md)'s, and this document points there wherever
-a secret appears.
-
 ## Why this exists
 
 Every service ships with a security posture whether or not anyone chose one.
@@ -404,24 +380,6 @@ Per PC3, under
   `scan-acceptance` is entries the schema must accept and reject, and entries
   judged against a date. `security-md` is policies the schema must accept and
   reject.
-
-## Enforcement
-
-Every SB rule lands **review only** and is registered in
-[`999-enforcement.md`](999-enforcement.md) with its gate named. The
-mechanically checkable parts are the first to move to a gate. The `FROM` and
-`USER` lines of every Dockerfile (SB1, SB9) are an extension of the checker
-that already reads `uses:` lines. It has no false positives once the grammar's
-exemptions are honoured. The acceptance entries in every scanner's native file
-(SB2) follow. The header set on the `/readyz` and `/` responses of the started
-image (SB3) is one more assertion in a job every repository calls.
-
-The sections of `SECURITY.md` and an SBOM asset on every release (SB7, SB8)
-complete the list. What stays a review question is said so in the ledger row.
-That is whether an acceptance's reason is true (SB2), whether an
-edge-delegated header is set (SB3), and whether a hop declared private is
-private (SB4). It is whether the limits were chosen (SB5), and whether the
-enforced schemas are the published ones (SB6).
 
 ## Decisions
 

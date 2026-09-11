@@ -1,30 +1,5 @@
 # Local development: what a stack binds, and where the numbers live
 
-One of the Aurum Alpha engineering standards. Read
-[`../README.md`](../README.md) for the charter it is written under and
-[`999-enforcement.md`](999-enforcement.md) for what enforces it.
-
-Rules carry the prefix **LD**.
-
-This standard governs the local development stack. It decides how a process
-chooses its listen port (LD1) and what a container binds (LD2). It decides
-where host numbers come from (LD3 and LD4). It decides how the development
-image is built, mounted and started (LD5 to LD8).
-
-It is the second local half of [`010-ci.md`](010-ci.md) Principle 2. The first
-is [`015-commands.md`](015-commands.md), which governs the commands a person
-types. This one governs the stack those commands bring up.
-
-**It does not decide how anything is deployed.** Where a service runs and what
-fronts it are deployment choices. Which host port a deploy publishes is another
-one. Every rule below leaves all three alone. It does not decide what a service
-does at start, which belongs to [`030-service.md`](030-service.md). It does not
-decide what a shipped image contains, which belongs to
-[`010-ci.md`](010-ci.md) Principle 8 and
-[`085-security-baseline.md`](085-security-baseline.md) SB1 and SB9.
-
-Artifacts: [`../ports.json`](../ports.json), the host block allocation.
-
 ## Why this exists
 
 A listen port is a number that four different files each believe they own.
@@ -284,33 +259,6 @@ never turned on by code that guesses.
 **The whole repository is mounted, not a chosen list of directories.** A list
 goes stale the first time somebody adds a directory. The symptom is a file the
 container cannot see, which reads as a caching problem.
-
-## Enforcement
-
-Every rule here lands review-only.
-[`999-enforcement.md`](999-enforcement.md) records which gate each one is
-getting. The charter fixes that sequence, and the gates arrive in their own
-change.
-
-The proposed gate is `tools/check-dev-stack`, running from
-`job-ci-conformance.yml` in each repository's own CI, against that repository.
-What it can settle mechanically:
-
-- A development image exists and carries the name LD5 fixes.
-- No development compose file sets `PORT`.
-- Every host binding falls inside one aligned block of twenty, and none is
-  privileged. **This needs no allocation record**, because alignment is a
-  property of a single clone.
-- No client build config names a port from the block.
-
-One check reads [`../ports.json`](../ports.json), and it runs in this repository
-alone: no two recorded blocks overlap. That is the one question a single clone
-cannot answer.
-
-Three things resist a checker. Whether offset zero is what a person actually
-opens. Whether a clean clone truly reaches a working stack. Whether an edit is
-visible without a restart. The ledger records each as a review question, rather
-than implying coverage.
 
 ## Decisions
 

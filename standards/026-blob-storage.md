@@ -1,44 +1,5 @@
 # Blob storage: the S3 profile, what a stored object is, and how it is served through the service
 
-One of the Aurum Alpha engineering standards, written under the platform
-contract ([`000-platform.md`](000-platform.md)). It is a per-capability
-standard from that contract's roster. Read
-[`999-enforcement.md`](999-enforcement.md) for the tier each rule below
-holds. Artifacts: [`contracts/blob-storage/`](../contracts/blob-storage/).
-*Service*, *server*, *worker*, *job*, *backing service*, *credential* and
-*environment* are used in the senses [`000-platform.md`](000-platform.md#terms)
-defines.
-
-Ids and timestamps are [`020-identifiers.md`](020-identifiers.md)'s. The row
-that owns an object, its isolation and its deletion are
-[`025-structured-data.md`](025-structured-data.md)'s. The check before every
-read is [`070-rbac.md`](070-rbac.md)'s, and the jobs are
-[`057-jobs.md`](057-jobs.md)'s.
-
-This document governs **the stored object**: a file a service keeps in an
-object store. Examples are an upload, an export, a generated PDF, a firmware
-image. It defines the protocol the store speaks, what a bucket is to a
-service, and how an object is keyed. It defines what the application records
-about it, how it is read, how it arrives, how it is scanned, and how it
-leaves.
-
-**What it does not define is structured data, JSON documents, or backup**.
-Rows are [`025-structured-data.md`](025-structured-data.md)'s.
-Schema-per-document JSON data is
-[`027-json-document-storage.md`](027-json-document-storage.md)'s, and a
-bucket's copies and their restoration are
-[`028-backup-and-recovery.md`](028-backup-and-recovery.md)'s.
-
-**The one rule everything else here serves: the store is never exposed**. No
-client ever holds a URL to the store, signed or plain, for any length of
-time. That holds for a browser, a native app, and another service. A client
-holds an object id.
-
-Every read and every write is a request to the owning service's API. The API
-resolves the id to a row in its own database, runs the authorization check,
-and moves the bytes itself. A presigned URL is not a shorter-lived version of
-this; it is the opposite of it, and no rule below admits one.
-
 ## Why this exists
 
 Every product stores a file eventually: an attachment on a record, a logo, an
@@ -492,27 +453,6 @@ Per PC3, under [`contracts/blob-storage/`](../contracts/blob-storage/):
     tenant context. Every served case expects the bytes in the
     response; an implementation that answers a redirect or a location fails
     all of them.
-
-## Enforcement
-
-Every BS rule lands **review only** and is registered in
-[`999-enforcement.md`](999-enforcement.md) with its gate named. The
-mechanically checkable parts are the first to move to a gate. The first is
-the key grammar and the reference shape against their schemas (BS3, BS4).
-The second is the upload policy against its schema, which decides the scan
-posture and the disposition rule (BS5, BS6, BS7). The third is the `uploads`
-and `reads` corpus parts against a running service under
-`job-contract-conformance`, where the two detectors bite (BS6, BS7, BS10).
-The public-access block, the network posture and default encryption are
-configuration facts read from the platform (BS2, BS9).
-
-That no operation of the boundary module returns a URL, and that no response
-body or header carries one, is a grep on the module. It is also a review
-question on every diff that touches it (BS1, BS5). The remaining review
-questions are said so in the ledger row. One is that no vendor type crosses
-the boundary module (BS1, a PC4 matter). Another is that the row and the
-outbox message share a transaction (BS8, as AM4). The last is that a
-`retention` reason is true.
 
 ## Decisions
 

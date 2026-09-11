@@ -1,18 +1,5 @@
 # The platform contract
 
-One of the Aurum Alpha engineering standards. Read
-[`../README.md`](../README.md) for the charter this is written under,
-and [`999-enforcement.md`](999-enforcement.md) for the tier each rule below
-actually holds.
-
-This document states the doctrine every application-layer standard is written
-under: what form an opinion about a platform capability is allowed to take.
-The capabilities themselves each get their own standard: authentication,
-logging, jobs, audit, and the rest. Each is tracked in this repository's
-issues and indexed in the roster below. The charter says what a standard is.
-This document says what form one about a platform capability can take, and
-nothing more than that.
-
 ## Why this exists
 
 Full-stack meta-frameworks have the right diagnosis. Authentication, RBAC,
@@ -447,16 +434,6 @@ CloudEvents suffices. So the envelope is a profile, and the invention is
 confined to what no wire standard covers. That is delivery: at-least-once, the
 inbox and the outbox, the worker. The discipline PC2 demands is visible in
 what did *not* get invented.
-
-## Enforcement
-
-Registered in [`999-enforcement.md`](999-enforcement.md) under "Platform
-standard", every rule review-only today with its gate named there. The rows
-are the record, and they are not repeated here.
-
-What no checker will prove: that an opinion was delivered as a contract
-rather than smuggled in as a dependency. That stays a review question on
-every capability standard, and this document is what the reviewer points at.
 
 ## Open work
 

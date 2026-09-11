@@ -1,37 +1,5 @@
 # Backup and recovery: restore is exercised, objectives are declared, and erasure survives a restore
 
-One of the Aurum Alpha engineering standards, written under the platform
-contract ([`000-platform.md`](000-platform.md)). It is a per-capability
-standard from that contract's roster. Read
-[`999-enforcement.md`](999-enforcement.md) for the tier each rule below
-holds. Artifacts:
-[`contracts/backup-and-recovery/`](../contracts/backup-and-recovery/). The
-words *service*, *stateful server*, *backing service*, *credential*,
-*environment*, *release* and *deployment* are used in the senses
-[`000-platform.md`](000-platform.md#terms) defines.
-
-The migrate step and the one-database-per-service rule are
-[`025-structured-data.md`](025-structured-data.md) SD3 and SD13's. The drill
-and the restore are jobs under [`057-jobs.md`](057-jobs.md) run as one-shots
-under [`035-workers.md`](035-workers.md). What erasure leaves of an audit
-event is [`080-audit.md`](080-audit.md) AE7's. The erasure request is
-[`082-data-subject-rights.md`](082-data-subject-rights.md)'s.
-
-This document governs **the copy of a service's state that exists so the
-state can be recovered**. It covers which stores have one, and what a
-service declares about losing and regaining its state. It covers who is
-permitted to take and who is permitted to restore the copy, and how a
-restore proceeds. It covers how anyone knows the copy is restorable, and
-what stops a restore from bringing back data a person asked to have erased.
-
-**What it does not define is the store itself**. That is how structured,
-blob and document data are written, isolated and deleted while the service
-runs. Those are [`025-structured-data.md`](025-structured-data.md)'s,
-[`026-blob-storage.md`](026-blob-storage.md)'s and
-[`027-json-document-storage.md`](027-json-document-storage.md)'s. Nor does it
-define the erasure request that produces a ledger entry, which is the data
-subject rights standard's.
-
 ## Why this exists
 
 Every service holds state in stateful servers it attaches, and every one of
@@ -410,27 +378,6 @@ Per PC3, under [`contracts/backup-and-recovery/`](../contracts/backup-and-recove
   that replays before readmitting from one that readmits first. It is also
   the case separating one reading the ledger's copy from one reading the
   restored table.
-
-## Enforcement
-
-Every BR rule lands **review only** and is registered in
-[`999-enforcement.md`](999-enforcement.md) with its gate named. The
-mechanically checkable parts are the first to move.
-
-The first is the validity of a declaration for every store a service's
-configuration names (BR1, BR2, BR5). That is the schema plus the four
-arithmetic rules. The second is the freshness query BR4 already runs as a
-deployment step, a gate the moment `recovery.assert_drilled` is in a
-service's deployment order. The third is the `drills` corpus against a
-repository's recovery image, which decides BR6's ordering at the boundary.
-`/readyz` is observed and erased rows are queried for.
-
-The review questions are said so in the ledger row. One is whether a store
-the configuration attaches is missing from the declaration (BR1). Another is
-whether a store declared `derived` is genuinely rebuildable (BR2). Another is
-where a credential actually lives; BR3 is a fact about the platform's
-configuration, not the repository. The last is whether the runbook's steps
-and the drill's steps are the same steps (BR8).
 
 ## Decisions
 

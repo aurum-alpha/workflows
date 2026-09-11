@@ -1,23 +1,5 @@
 # Structured data: the query language, migrations, and isolation
 
-One of the Aurum Alpha engineering standards, written under the platform
-contract ([`000-platform.md`](000-platform.md)). It is a per-capability
-standard from that contract's roster. Read
-[`999-enforcement.md`](999-enforcement.md) for the tier each rule below
-holds. Artifacts: [`contracts/structured-data/`](../contracts/structured-data/).
-Id, timestamp and money formats are [`020-identifiers.md`](020-identifiers.md)'s.
-This document says how they are stored.
-
-This document governs **structured data in a relational store**. It covers
-how queries are written, how the schema changes, and how tenants are kept
-apart. It also covers what the running service is allowed to hold in its hand
-when it talks to the database.
-
-Blob and file storage is [`026-blob-storage.md`](026-blob-storage.md)'s. JSON
-document stores are [`027-json-document-storage.md`](027-json-document-storage.md)'s.
-Neither is covered here, and the rules below do not transfer to them by
-analogy; 027 DS3 states which transfer, by argument.
-
 ## Why this exists
 
 Every product talks to a relational database, and without a standard each
@@ -649,62 +631,6 @@ Per PC3, under [`contracts/structured-data/`](../contracts/structured-data/):
   - `schema`: given a declared schema, the SD10 findings a checker must
     report. The declared schema is tables, columns with types and
     nullability, indexes, foreign keys, and declared types.
-
-## Enforcement
-
-Registered in [`999-enforcement.md`](999-enforcement.md) under "Structured
-data standard". Every rule lands review-only with its gate named. This
-standard is unusual in how many of those gates are cheap:
-
-- **SD2's shape is two greps with no false positives**: nothing but `*.sql` in
-  the migrations directory, and no merged migration's bytes changed. The
-  second is reachable from history. The `db:push` reachability check is a
-  third. Convergence gets a fourth, static and partial: the unguarded common
-  forms with the guard absent. The forms are `CREATE TABLE`, `CREATE INDEX`,
-  `ADD COLUMN`, `DROP …`, and a seed `INSERT`. It catches the ordinary
-  mistake and not the exotic one; the live replay below is the proof.
-- **SD4's gate is a regular expression** over each file's up section for the
-  three statement kinds and the marker. It is small enough that the corpus is
-  most of the design. The corpus already covers the violation, the marker,
-  and the marker with no release named.
-- **SD3's live gate is the from-empty and from-previous-release run**. Apply
-  the image's migrations to an empty database. Then apply the current image's
-  to a database the previous release's image migrated. Then **replay every
-  file against the migrated database, bypassing the version record**, and
-  require exit zero and an unchanged schema. That replay is the convergence
-  check, and it is the only test that proves SD2's guarantee rather than
-  assuming it. `job-image-starts` already runs the image; this is a sibling
-  job with a database beside it.
-- **SD6's gate is the generative isolation suite**, and it is the one worth
-  the most, in the same way AE5's enumeration is. It discovers scoped tables
-  from the catalog, so a table added tomorrow is covered the day it lands.
-- **SD7's column-type check** reads the catalog against `storage-profiles.json`
-  and is the check IP1 has been waiting for.
-- **SD1 resists a clean gate**, honestly. Checking which library is imported
-  would be checking the implementation, which PC4 forbids. The boundary gate
-  is a driver-level capture in the conformance job asserting every executed
-  statement matches committed text. It does not exist yet. Until it does, SD1
-  is the review question on every data-access diff: *can I paste this into a
-  console?*
-- **SD5, SD8 and SD9 are review questions**. The questions are whether the
-  declared hierarchy is the one authorization uses, whether a fixture could
-  reach production, and whether a role is genuinely least-privilege. Those
-  are judgments about intent, stated as questions rather than left as
-  assumptions.
-- **SD10 is mostly catalog facts**, and the `schema` corpus decides them. The
-  facts are a foreign-key column with no index leading on it, a table without
-  its two timestamps, and a native enum type. They also include an identifier
-  that is not `snake_case`, and a scoped table with no index led by its
-  outermost isolation column. `NOT NULL` by default and the JSON rule are
-  intent, and stay review questions.
-- **SD11's timeout and lock are configuration facts**. That a transaction
-  spans no network call is a review question on every handler, and one worth
-  asking in those words.
-- **SD12's default is a review question** on every delete path. That a
-  soft-deleted table is declared in Conventions with a reason is a grep.
-- **SD13's privacy is a credential fact**: no second service holds a role on
-  this database. Its real-engine rule is a CI fact: the test job starts the
-  engine the product runs, or the data-access tests do not run.
 
 ## Decisions
 

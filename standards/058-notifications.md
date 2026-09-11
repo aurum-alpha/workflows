@@ -1,26 +1,5 @@
 # Notifications: the record, the pipeline, consent, and the provider at the boundary
 
-One of the Aurum Alpha engineering standards, written under the platform
-contract ([`000-platform.md`](000-platform.md)). It is a per-capability
-standard from that contract's roster. Read
-[`999-enforcement.md`](999-enforcement.md) for the tier each rule below
-actually holds. Artifacts:
-[`contracts/notifications/`](../contracts/notifications/). It leans on
-[`055-messaging.md`](055-messaging.md), [`057-jobs.md`](057-jobs.md) and
-[`035-workers.md`](035-workers.md) for the pipeline. It also leans on
-[`060-auth.md`](060-auth.md), [`070-rbac.md`](070-rbac.md),
-[`080-audit.md`](080-audit.md), [`090-web-client.md`](090-web-client.md) WC4
-and [`020-identifiers.md`](020-identifiers.md).
-
-This document governs **the notification**: a message to a person, through a
-channel, about an event. It covers what is recorded, how a send is
-requested, and what consent is and when it is not consulted. It covers how
-a provider is attached, and how the in-app channel is served. **What it
-does not define is the identity that holds the address, or the permission
-that decides what can be shown**. Nor does it define the audit trail or the
-alerting of operators. Those are 060's, 070's, 080's and
-[`040-observability.md`](040-observability.md)'s.
-
 ## Why this exists
 
 Every product tells people things: a receipt, a reset link, a mention, a
@@ -435,23 +414,6 @@ Per PC3, under [`contracts/notifications/`](../contracts/notifications/):
   floor detector. `unsubscribe`: header sets against the RFC 8058 and
   RFC 3834 profile and one-click requests, with the `GET` detector.
   `render_authorization`: the payload the send job is permitted to render.
-
-## Enforcement
-
-Every NF rule lands **review only** and is registered in
-[`999-enforcement.md`](999-enforcement.md) with its gate named.
-Mechanically checkable, and first to move: the three schemas under
-`job-contract-conformance` (NF3, NF4, NF5). Next, the `decide` corpus
-against a repository's `notify.decide` (NF5, NF6, NF7, NF10). There the
-floor detector is worth the most, because muting the floor passes every
-test that exercises one preference at a time. Then the `unsubscribe`
-profile and its `GET` detector (NF5), and the `render_authorization` corpus
-(NF9).
-
-Review questions, said so in the ledger: an address resolved rather than
-cached (NF4), a class chosen honestly (NF5), a pure render (NF8). Also a
-link's route requiring authentication (NF9), and no vendor SDK in the
-domain (NF11).
 
 ## Decisions
 

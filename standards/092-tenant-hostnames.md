@@ -1,29 +1,5 @@
 # Tenant hostnames: what a hostname decides, and what it never decides
 
-One of the Aurum Alpha engineering standards, written under the platform
-contract ([`000-platform.md`](000-platform.md)). It is a per-capability
-standard from that roster. Read [`999-enforcement.md`](999-enforcement.md) for
-the tier each rule below holds. Artifacts: none. The state machine of TH6 is
-drawn in this document. Every other observable here is a response the edge
-gives, which needs no contract file to be checked against.
-
-This document governs a product that answers on more than one host for more
-than one customer. That is a subdomain per tenant, a customer's own domain
-pointed at the product, or both. It states what a hostname is allowed to
-decide (TH1, TH2), and how the invalid combinations of host and identity are
-answered (TH3). It states how a session is scoped to a host (TH4) and reaches
-it (TH5). It states how the certificate for a host comes to exist (TH6, TH7),
-and what a tenant host tells a crawler (TH8). Every one of these hosts is a
-product host in the [web estate standard](091-web-estate.md)'s terms; nothing
-here is a front door.
-
-**It does not decide what a session is or what a scope is**. A session is an
-authentication into one tenant, made on one host, which is the [authentication
-standard](060-auth.md)'s rule. The tenant of a request comes from the
-authenticated session and never from a header or the hostname, which is
-[`070-rbac.md`](070-rbac.md) RB10. This document states what the hostname
-contributes around those two, and it is less than a first reading expects.
-
 ## Why this exists
 
 A product that gives each customer a hostname has made the hostname visible to
@@ -347,37 +323,6 @@ Four things this document leaves open on purpose, each stated in the product's
 A product with one host and tenants chosen at login is still bound by TH1 and
 TH4, which hold for a single host. It has nothing for the rest to apply to.
 Its Conventions say so in a line.
-
-## Enforcement
-
-Every rule here is review-only today, with the gate each is getting named in
-[`999-enforcement.md`](999-enforcement.md). This standard is more gateable
-than its subject suggests. Most of what it rules is a response the edge gives,
-and a response can be requested.
-
-- **TH3 and TH4 are the ones to build first, and they are one live check**.
-  Request an unknown host and require `404` with no `Set-Cookie`. Sign in on
-  a tenant host and require a `__Host-` cookie with no `Domain=`. Present it
-  to a second tenant host and require it absent. Every one is observable
-  from outside the deployment, in the shape the authentication standard's
-  own cookie checks already take.
-- **TH8 is a header check on every response**, in the shape
-  [`085-security-baseline.md`](085-security-baseline.md) SB3 already asserts
-  its header set. It is one more header, on hosts of one class.
-- **TH7 is checkable after the fact from certificate transparency**. Every
-  certificate issued under the product's zones or by its ACME account either
-  names a hostname the tenant table holds or it does not. The comparison is
-  a periodic job. Review-only until that job exists.
-- **TH6 is partly a declaration check** (the job exists, `periodic`, with
-  `stale_after`) and partly a behaviour no gate reaches without a customer's
-  DNS to drift. The transitions are stated precisely enough to be a fixture
-  against a fake zone, and that is the gate it names.
-- **TH1, TH2 and TH5 govern where a decision is made**, and a gate that read
-  source to find out would be the PC4 violation. TH2's review question is
-  stated in the words a reviewer asks: *where does this handler get its
-  tenant, and could a request have supplied it*. TH5's observable half is no
-  token in any URL the browser is redirected to. That is a corpus case for
-  the web client standard's WC1, not a new gate.
 
 ## Decisions
 

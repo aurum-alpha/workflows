@@ -1,20 +1,5 @@
 # Authentication: the identity tier, the token, and the session
 
-One of the Aurum Alpha engineering standards, written under the platform
-contract ([`000-platform.md`](000-platform.md)). It is a per-capability standard
-from that contract's roster. Read [`999-enforcement.md`](999-enforcement.md) for
-the tier each rule below actually holds. Artifacts:
-[`contracts/auth/`](../contracts/auth/).
-[`solutions/060-auth.md`](../solutions/060-auth.md) names which proxy modules and
-providers are known to satisfy these rules, and when that was last checked. It
-states no rule of its own.
-
-This document governs how a person is authenticated, and what identity reaches
-an application as a result. It also governs how that identity is first created,
-and how a session ends. **It does not define the authorization model**. Who is
-permitted to do what belongs to the [RBAC standard](070-rbac.md), and the
-boundary between the two is AU6.
-
 ## Why this exists
 
 Every product authenticates people, and without a standard each decides
@@ -545,29 +530,6 @@ Per PC3, under [`contracts/auth/`](../contracts/auth/):
 - **`me.schema.json`**: the AU6 client identity document.
 - **`corpus.json`**: validity cases for both, plus behavioural cases a live
   deployment must satisfy.
-
-## Enforcement
-
-Every rule is review-only today, with gates named per rule in
-[`999-enforcement.md`](999-enforcement.md). The honest summary: **the parts
-with a wire are gateable and the parts that are architecture are not**.
-
-- **AU2 is the strongest available gate**. The identity token is a wire shape,
-  so a corpus validates it. *Signature verified rather than merely decoded* is
-  testable by presenting a token signed with the wrong key and requiring a
-  refusal.
-- **AU6's refusal is a live behaviour case**: authenticate as a subject with no
-  local user and require `403` with the session ended, never `401`.
-- **AU7's cookie attributes and CORS headers are observable from outside**. A
-  login response's `Set-Cookie` and a preflight's answer either carry what the
-  tables above require or they do not.
-- **AU1 resists a checker entirely**. Whether authentication sits in a tier or
-  in the application is an architecture question. A gate that read the source
-  to answer it would be the PC4 violation. The review question is stated
-  instead: *which process is the OAuth client, and what holds the tokens*.
-- **AU3, AU4 and AU5 are review questions** for the same reason. They govern
-  where state lives and who is permitted to change it, neither of which appears
-  at a boundary a gate can watch.
 
 ## Decisions
 

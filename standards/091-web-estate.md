@@ -1,33 +1,5 @@
 # The web estate: three surface classes, the front door, and the seams between them
 
-One of the Aurum Alpha engineering standards, written under the platform
-contract ([`000-platform.md`](000-platform.md)). It is a per-capability
-standard from that roster. Read [`999-enforcement.md`](999-enforcement.md) for
-the tier each rule below holds. Artifacts: none of its own.
-
-The one document this standard requires a front door to serve is the web
-client standard's
-[`contracts/web-client/runtime-config.schema.json`](../contracts/web-client/runtime-config.schema.json).
-Which static hosts, generators, content sources and form processors are known
-to satisfy the rules below, and when that was last checked, is
-[`solutions/091-web-estate.md`](../solutions/091-web-estate.md). That register
-states no rule of its own.
-
-This document governs the web surfaces a product business runs, taken
-together. It decides which classes exist and what each can hold (WE1), and how
-a host's name says which class it is in (WE2). It decides what the public
-front door is and is not (WE3, WE4). It decides what every surface owes its
-own repository (WE5), and where surfaces touch and by what contract (WE6). It
-decides what an automated actor is (WE7), and where a campaign page lives
-(WE8). Tenant hostnames are the [tenant hostnames
-standard](092-tenant-hostnames.md)'s; this document places them in the estate
-without restating a rule of theirs.
-
-**It does not decide how a browser behaves**. The bootstrap document, what a
-page can hold as a credential and how a client calls an API are the [web
-client standard](090-web-client.md)'s. This document cites them where a
-surface has to honour them.
-
 ## Why this exists
 
 Every standard before this one governs a process, or a browser talking to one.
@@ -377,32 +349,6 @@ contracts other standards already hold. What this standard pins that no
 contract holds is the classes, the host convention, and the test of WE5. Each
 is a property of an estate rather than a shape on a wire, and the ledger says
 so.
-
-## Enforcement
-
-Every rule here is review-only today, with the gate each is getting named in
-[`999-enforcement.md`](999-enforcement.md). The gateable half of this standard
-is the front door's build output and the responses of its origin, both
-observable without a browser. The other half is an arrangement of repositories
-and hosts, which no boundary shows.
-
-- **WE3 is the one to build first**, and most of it is a gate the web client
-  standard already names. The front door's directory is a build output. So
-  the static check WC2 proposes, nothing environment-specific in the
-  artifact, applies to it unchanged, and the origin's document validates
-  against the schema. What this standard adds is one assertion on the same
-  origin: no `Set-Cookie` on any response. That is the whole of *no session* as a wire fact.
-- **WE2 is decidable from a declaration** of hosts and their classes, which
-  a checker could hold the edge configuration and the certificate list
-  against. The declaration does not exist yet.
-- **WE4 and WE5 share a mechanical half**. A build from a clean checkout
-  with the network closed proves the build reads only the repository. That
-  is WE5's test in its cheapest form. That a content change is a *readable*
-  diff is a review question, asked in those words.
-- **WE1, WE6, WE7 and WE8 govern where things sit**, and a gate that read
-  source to find out would be the PC4 violation. Each row in the ledger
-  states the review question instead, so that unenforced is visibly
-  unenforced.
 
 ## Decisions
 

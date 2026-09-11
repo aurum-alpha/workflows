@@ -1,46 +1,5 @@
 # JSON document storage: the relational JSON column first, when a document database is admitted beside it, and which structured-data rules transfer
 
-One of the Aurum Alpha engineering standards, written under the platform
-contract ([`000-platform.md`](000-platform.md)). It is a per-capability
-standard from that contract's roster. Read
-[`999-enforcement.md`](999-enforcement.md) for the tier each rule below
-holds. Artifacts:
-[`contracts/json-document-storage/`](../contracts/json-document-storage/).
-Nearly every rule here is a rule of
-[`025-structured-data.md`](025-structured-data.md) carried across or
-deliberately left behind.
-
-Ids and timestamps are [`020-identifiers.md`](020-identifiers.md)'s. The jobs
-that rebuild and backfill a store are [`057-jobs.md`](057-jobs.md)'s. What is
-backed up is [`028-backup-and-recovery.md`](028-backup-and-recovery.md)'s.
-*Service*, *stateful server*, *backing service* and *credential* are used in
-the senses [`000-platform.md`](000-platform.md#terms) defines.
-
-**A document here is a JSON document** ([RFC 8259](https://www.rfc-editor.org/rfc/rfc8259)):
-a record whose shape is decided per document rather than per table. Examples
-are a form a user designed, a payload a provider sent, a search-index entry,
-a read model projected from many rows. It is **never a file a person would
-call a document**: a PDF, a spreadsheet, a word-processor file, a scanned
-contract. Those are bytes, and bytes are objects under
-[`026-blob-storage.md`](026-blob-storage.md), whatever the product calls them.
-Where this document and the industry say *document store* or *document
-database*, read *JSON document store*.
-
-This document governs **JSON documents and where they live**. It makes the
-relational engine's JSON column the first answer. It defines the hybrid
-model, in which a document database is attached beside the relational store
-when the column is insufficient. It says which engine for which need, in
-which of two roles, and what every document carries. It says how a
-document's shape changes without a schema to migrate, and how a store that
-is a copy is kept a faithful one. **What it does not define is the
-relational store, blobs, or backup**.
-
-The first is [`025-structured-data.md`](025-structured-data.md)'s, and files
-and objects are [`026-blob-storage.md`](026-blob-storage.md)'s.
-[`028-backup-and-recovery.md`](028-backup-and-recovery.md) says how a store
-is backed up; this document only says which stores it is permitted to
-exclude.
-
 ## Why this exists
 
 A JSON document store is the second persistence engine a product reaches
@@ -502,25 +461,6 @@ Per PC3, under [`contracts/json-document-storage/`](../contracts/json-document-s
     passing every other case.
   - `rollouts`: release sequences judged safe or unsafe by whether any live
     reader meets a version it refuses.
-
-## Enforcement
-
-Every DS rule lands **review only** and is registered in
-[`999-enforcement.md`](999-enforcement.md) with its gate named. The
-mechanically checkable parts are the first to move to a gate. They are an
-admission present and valid for every document store a service attaches
-(DS1, DS2), and the envelope on every sampled document (DS5). They are the
-reader's window and its tolerance of unknown fields under the `evolution`
-corpus (DS6). They are the isolation enumeration over the declared
-collections (DS4), and the admission's engine against the profile file
-(DS9).
-
-The review questions are said so in the ledger row. They are whether a store
-declared `derived` is genuinely rebuildable (DS2), and whether a query was
-authored as text or assembled by a mapper (DS3). For DS3 a gate reading the
-source would be the PC4 violation. They are also whether the projection is
-the only writer (DS8), and whether a document over the ceiling was refused
-rather than truncated (DS10).
 
 ## Decisions
 

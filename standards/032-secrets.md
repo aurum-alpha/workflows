@@ -1,30 +1,5 @@
 # Secrets: how a secret reaches a process, what never enters a repository, and what happens when one leaks
 
-One of the Aurum Alpha engineering standards, written under the platform
-contract ([`000-platform.md`](000-platform.md)), a per-capability standard
-from its roster. Read [`999-enforcement.md`](999-enforcement.md) for the tier
-each rule below actually holds. Artifacts:
-[`contracts/secrets/`](../contracts/secrets/). What is known to satisfy SE10,
-and when that was last checked, is
-[`solutions/032-secrets.md`](../solutions/032-secrets.md), which states no rule
-of its own. The words *process*, *image*, *backing service*, *credential*,
-*configuration* and *environment* are used in the senses
-[`000-platform.md`](000-platform.md#terms) defines. This leans on
-[`030-service.md`](030-service.md) SC2 and SC3, [`010-ci.md`](010-ci.md),
-[`025-structured-data.md`](025-structured-data.md) SD3,
-[`035-workers.md`](035-workers.md) WK8,
-[`040-observability.md`](040-observability.md) and
-[`080-audit.md`](080-audit.md).
-
-This document governs **the secret**: a configuration value whose disclosure
-grants access. That is a credential to a backing service, a signing or
-encryption key, or the shared secret behind a webhook. It defines how one
-reaches a process, how it is declared and named, and where it is never
-permitted to be. It defines how it is rotated, and what happens when one
-leaks. **What it does not define is the configuration surface, the identity
-chain, or the image**. Those are SC3's, [`060-auth.md`](060-auth.md)'s and
-[`010-ci.md`](010-ci.md)'s.
-
 ## Why this exists
 
 Every process holds at least one secret. The secret is the one input a
@@ -523,30 +498,6 @@ Per PC3, under [`contracts/secrets/`](../contracts/secrets/):
   placeholder-grammar scanner from an entropy one. `rotation`: age policy
   against a last rotation. `leak_response`: audit events the audit schema
   and SE8's checks accept and refuse.
-
-## Enforcement
-
-Every SE rule lands **review only** and is registered in
-[`999-enforcement.md`](999-enforcement.md) with its gate named. Eight checks
-are mechanically checkable, and first to move to a gate. The declaration's
-validity and its two cross-entry counts (SE2, SE6). The name grammar over
-every variable a process reads (SE3). The scanner on every push and the
-`.env` ignore rule (SE4). A Dockerfile `ENV`/`ARG` line naming a secret
-variable (SE5, a grep with no false positives once SE3 holds).
-
-The redaction corpus against a service's emitter, black-box, by feeding it a
-declared value and reading stdout (SE5). The image set against `images`
-(SE6). The freshness comparison (SE7). The audit event's shape (SE8).
-
-Five are review questions, said so in the ledger row. That a process fetches
-nothing in code (SE1, a call-graph fact PC4 keeps a gate out of). That a
-subject names a real backing service (SE3). That rotate came before
-investigate (SE8).
-
-That a development credential grants nothing outside the developer's machine
-(SE9). That the mapping names a store path and a mechanism from the table
-and no value (SE10). For SE10, the presence of a value is SE4's scanner; the
-mechanism's class is a review question.
 
 ## Decisions
 

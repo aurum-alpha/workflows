@@ -1,35 +1,5 @@
 # Feature flags: the evaluation contract, what a flag is not, and why every flag expires
 
-One of the Aurum Alpha engineering standards, written under the platform
-contract ([`000-platform.md`](000-platform.md)), a per-capability standard
-from its roster. Read [`999-enforcement.md`](999-enforcement.md) for the tier
-each rule below actually holds. Artifacts:
-[`contracts/feature-flags/`](../contracts/feature-flags/). What is known to
-satisfy these rules, and when that was last checked, is
-[`solutions/038-feature-flags.md`](../solutions/038-feature-flags.md), which
-states no rule of its own.
-
-Configuration is [`030-service.md`](030-service.md) SC3's. The authorization
-check a flag never replaces is [`070-rbac.md`](070-rbac.md)'s. What a browser
-is told is [`090-web-client.md`](090-web-client.md) WC2's. The ids in an
-evaluation context are [`020-identifiers.md`](020-identifiers.md)'s, and the
-attributes on the span are [`040-observability.md`](040-observability.md)'s.
-The sweep that finds an overdue flag is a job under
-[`057-jobs.md`](057-jobs.md).
-
-This document governs **the feature flag**: a named, typed value a running
-process asks for at a decision point. Its answer can differ by environment,
-tenant or user without a new release. It defines how a flag is evaluated,
-declared, defaulted, bounded, observed and removed. **What it does not define
-is configuration, authorization, or entitlement data**. A value that is the
-same for every request in an environment is configuration under SC3. Whether
-a subject is allowed to do something is a permission under 070.
-
-What a tenant has bought is an entitlement under the [billing
-standard](075-billing.md), derived from the tenant's subscription and checked
-beside the permission. A flag gates whether code is wired. It decides none of
-the three, and the rules say how far it can stand near them.
-
 ## Why this exists
 
 A flag is the cheapest way to separate deploying code from releasing it, and
@@ -470,25 +440,6 @@ Per PC3, under [`contracts/feature-flags/`](../contracts/feature-flags/):
   including the case that separates a flag from an authorization check.
   `experiments` and `expiry`: assignment and exposure; a date and the
   sweep's findings.
-
-## Enforcement
-
-Every FF rule lands **review only** and is registered in
-[`999-enforcement.md`](999-enforcement.md) with its gate named. Some parts
-are mechanically checkable, and therefore the first to move to a gate. The
-declaration file validates and every flag in it is in date (FF2, FF3, FF11).
-That is a static check over one committed file, with no false positives.
-
-The boolean default is schema-decided (FF4). The disjointness of flag names
-and permission strings is an intersection of two committed sets (FF2, FF5).
-The context shape (FF6) and the evaluation corpus against a repository's
-evaluation boundary (FF4, FF5) are the others.
-
-Some parts stay review questions, said so in the ledger row. Whether domain
-code imports a provider (FF1) is one; a gate reading source would be the PC4
-violation. The others are whether a non-boolean default is the shipped
-variant (FF4), and whether an attribute would identify a person (FF6). The
-last is whether a declaration still has a call site (FF11).
 
 ## Decisions
 

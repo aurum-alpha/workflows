@@ -1,31 +1,5 @@
 # Workers: the shape, packaging, and deployment of what runs jobs
 
-One of the Aurum Alpha engineering standards, written under the platform
-contract ([`000-platform.md`](000-platform.md)), a per-capability standard
-from its roster. Read [`999-enforcement.md`](999-enforcement.md) for the tier
-each rule below actually holds. Artifacts:
-[`contracts/workers/`](../contracts/workers/). Which components satisfy WK5's
-seven verbs, and when that was last checked, is
-[`solutions/035-workers.md`](../solutions/035-workers.md), which states no rule
-of its own. The words *service*, *server*, *worker*, *process*, *job*, *run*,
-*trigger*, *release* and *deployment* are used in the senses
-[`000-platform.md`](000-platform.md#terms) defines. What a worker runs is a
-job, and jobs are [`057-jobs.md`](057-jobs.md)'s.
-
-The queue a pool consumes is [`055-messaging.md`](055-messaging.md)'s. The
-server the worker sits beside is [`030-service.md`](030-service.md)'s. The
-worker obeys that document's rules for logging, configuration, and shutdown in
-its own terms.
-
-This document governs **the worker**: the process that runs jobs. It defines
-the two shapes a worker takes, and how a worker is packaged and versioned. It
-defines how the platform's runner starts a worker on a tick, at a deployment
-step, or by an operator's hand. It defines how a job's declaration reaches
-that runner, and what a worker exposes about itself. **What it does not
-define is the job**: its key, its duplicate policy, its outcomes, its run
-record. A worker is the thing that knows about triggers, images, exit codes,
-and schedulers, so that a job never has to.
-
 ## Why this exists
 
 Work that is not a request has to run somewhere, and the somewhere is where
@@ -337,21 +311,6 @@ Per PC3, under [`contracts/workers/`](../contracts/workers/):
   during a long job leaves a checkpoint and exits within grace. The same
   `--at` twice produces one run with an effect and one `skipped`. A failed
   blocking job exits `1`.
-
-## Enforcement
-
-Every WK rule lands **review only** and is registered in
-[`999-enforcement.md`](999-enforcement.md) with its gate named. Three checks
-are mechanically checkable, and first to move. A repository's image set
-contains a migrate image and a jobs image where it has one-shot jobs. It
-contains a pool image where it has per-event jobs (WK2, read from the CI
-catalog calls). Every periodic declaration has a rendered counterpart in the
-deployment output, and the two agree (WK6). The corpus runs against the
-one-shot image (WK4).
-
-Three are review questions, said so in the ledger row. No timer loop exists
-anywhere (WK1). Images are split for the three reasons (WK2). A partition
-rests on a measurement recorded before it was made (WK3).
 
 ## Decisions
 

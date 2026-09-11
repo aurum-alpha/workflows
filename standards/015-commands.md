@@ -1,16 +1,5 @@
 # Developer commands
 
-One of the Aurum Alpha engineering standards. Read
-[`../README.md`](../README.md) for the charter it is written under and
-[`999-enforcement.md`](999-enforcement.md) for what enforces it.
-
-Rules carry the prefix **DC**.
-
-This standard governs the commands a person types. It covers what they are
-called, what they run, and which of them each repository carries. It is the
-local half of [`010-ci.md`](010-ci.md) Principle 2, *Local = CI*. It exists
-because that principle was true as an intention and false as a fact.
-
 ## Why this exists
 
 A gate is reachable two ways: through the pipeline, and through a person's
@@ -224,19 +213,3 @@ database.** Schema changes reach a deployed database through a generated
 migration. That rule belongs to
 [`025-structured-data.md`](025-structured-data.md). It is restated here only
 because this is the document that says the command exists.
-
-## What the gate proves, and what it does not
-
-`tools/check-package-scripts` runs from `job-ci-conformance.yml`, in each
-repository's own CI, against that repository.
-
-It proves DC1 through DC6 mechanically. Every required command is present.
-Every body equals the catalog's invocation, with that repository's own inputs.
-There are no duplicate names, and no package-manager indirection. `dev` exists
-only where there is a stack to bring up.
-
-It does not prove DC7. A checker sees that a script exists. It cannot tell
-whether a sentence in a runbook is about that script, or about a command
-someone imagined. That stays a review question.
-[`999-enforcement.md`](999-enforcement.md) records it as one, rather than
-implying coverage it lacks.

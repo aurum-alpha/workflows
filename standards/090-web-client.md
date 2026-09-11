@@ -1,23 +1,5 @@
 # The web client: what a browser holds, fetches, sends and reports
 
-One of the Aurum Alpha engineering standards, written under the platform
-contract ([`000-platform.md`](000-platform.md)). It is a per-capability
-standard from that roster. Read [`999-enforcement.md`](999-enforcement.md) for
-the tier each rule below holds. Artifacts:
-[`contracts/web-client/`](../contracts/web-client/).
-
-This document governs code that runs in a browser. It decides what the code
-can hold as a credential (WC1), and where its configuration comes from (WC2).
-It decides how the code talks to an Aurum Alpha service (WC3), and what it
-does with the values that service sends (WC4). It decides what the code
-reports when something breaks (WC5).
-
-**It does not decide how authentication works**. That belongs to the
-[authentication and authorization standard](060-auth.md), and the boundary is
-drawn deliberately. A rule that is equally true of a server-rendered
-application with no JavaScript is not a browser rule. WC1 carries only what is
-true *because* the client is a browser.
-
 ## Why this exists
 
 Every other standard in this repository governs a server process. That was
@@ -324,36 +306,6 @@ Per PC3, under [`contracts/web-client/`](../contracts/web-client/):
   browser and the server.
 - **`corpus.json`**: validity cases for both shapes, plus behavioural cases
   a live client and its server must satisfy.
-
-## Enforcement
-
-Every rule here is review-only today, with gates named per rule in
-[`999-enforcement.md`](999-enforcement.md). Two are cheaply and honestly
-gateable, and the rest are not. That is worth being direct about: **this is
-the least gateable standard in the repository so far**, because its subject
-runs on someone else's machine.
-
-- **WC2 is statically decidable and is the one to build first**. A checker
-  greps the built bundle for the values that must not be in it. Those are
-  the API origin, the provider hostname, and anything from the runtime
-  config document's own property list. A bundle is a file in the build output, so this needs
-  no browser and no running service.
-- **The config document validates**, as an ordinary schema check against a
-  running server, in the shape `job-image-starts` already supplies.
-- **WC1's storage half is observable**: the corpus reads `localStorage`,
-  `sessionStorage` and IndexedDB after a login and asserts nothing
-  credential-shaped is there. The cookie's own attributes are a live gate
-  too. But they belong to the [authentication and authorization
-  standard](060-auth.md), which sets them.
-- **WC1's central claim resists a checker entirely**. Proving no token
-  reaches JavaScript means proving a negative about a program's runtime. A
-  gate that tried would be reading the implementation, which PC4 forbids.
-  The review question is stated instead: *what credential does this page
-  hold, and what could read it*.
-- **WC3 and WC4 stay review questions**. A checker cannot tell a generated
-  client from a hand-written one that happens to be correct, and per PC4 it
-  does not try. A checker that failed a build for calling `fetch` directly
-  would be enforcing an implementation choice rather than a boundary.
 
 ## Decisions
 

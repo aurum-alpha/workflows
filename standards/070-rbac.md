@@ -1,18 +1,5 @@
 # Authorization: the RBAC model, its operations, and its decision corpus
 
-One of the Aurum Alpha engineering standards, written under the platform
-contract ([`000-platform.md`](000-platform.md)). It is a per-capability standard
-from that contract's roster. Read [`999-enforcement.md`](999-enforcement.md) for
-the tier each rule below actually holds. Artifacts:
-[`contracts/rbac/`](../contracts/rbac/).
-
-This document defines **who is permitted to do what**, as an interface
-specification. That is a data model, a set of operations with defined
-semantics, and a corpus of decision cases any implementation in any language
-must reproduce. It picks up where [`060-auth.md`](060-auth.md) AU6 stops. That
-document produces a trustworthy subject and refuses an unknown one; this one
-decides what a known subject is permitted to do.
-
 ## Why this exists
 
 This is the platform contract's worked example of *an interface specification,
@@ -445,32 +432,6 @@ Per PC3, under [`contracts/rbac/`](../contracts/rbac/):
   then a list of checks with their expected decisions. This is the file that
   makes a polyglot standard enforceable from one source, and it is why RB7
   requires a pure function. Many implementations, one judge.
-
-## Enforcement
-
-Every rule is review-only today, with gates named per rule in
-[`999-enforcement.md`](999-enforcement.md). **This standard is the most
-gateable one in the repository**. That is the point of writing authorization as
-an interface specification rather than as prose.
-
-- **RB6, RB7 and RB5's containment are decided entirely by the decision
-  corpus**. An implementation loads the grants, runs the checks, and either
-  reproduces every expected decision or names the case it failed. No running
-  service, no browser, no network: the corpus is data and the check is a
-  function.
-- **RB2's format is a static check** over the declared permission set. Every
-  entry matches `^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$`, which also catches the
-  three-segment permissions RB2 forbids.
-- **RB3's validation is testable** by attempting to store a role containing an
-  undeclared permission and requiring a refusal.
-- **RB9's cache key resists a static checker** and is caught by a corpus case
-  instead. Check a permission in one scope, then the same permission in another
-  where it is not granted, and require deny. A cache keyed without scope fails
-  it. This is the one gate that catches the cross-tenant cache defect RB7
-  describes.
-- **RB1 and RB8 stay review questions**. That a declaration is genuinely the
-  complete set, and that a reason is genuinely informative, are judgments about
-  content rather than shape.
 
 ## Decisions
 

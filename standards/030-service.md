@@ -1,10 +1,5 @@
 # The service contract
 
-One of the Aurum Alpha engineering standards, written under the platform
-contract ([`000-platform.md`](000-platform.md)), a per-capability standard from its
-roster. Read [`999-enforcement.md`](999-enforcement.md) for the tier each rule below
-actually holds. Artifacts: [`contracts/service/`](../contracts/service/).
-
 ## Why this exists
 
 These standards cover how a service is built, tested, packaged and shipped.
@@ -357,25 +352,3 @@ Per PC3, under [`contracts/service/`](../contracts/service/):
   a live implementation must satisfy. Readiness `503`s when a dependency
   fails; startup fails naming every missing variable; `SIGTERM` flips
   readiness before draining.
-
-## Enforcement
-
-Registered in [`999-enforcement.md`](999-enforcement.md) under "Service standard",
-every rule review-only today. The split that matters, and the reason this
-standard is the strongest promotion candidate in the ledger:
-
-- **Static**: a proposed `check-service-contract` asserts the endpoints are
-  registered and required variables are declared. Cheap, runs beside the
-  existing checkers, catches the common regression of someone deleting a
-  route.
-- **Live**: `job-image-starts` **already accepts an `http` probe** and
-  already reads startup output. Pointing it at `/readyz` is an
-  extension of a job every repository already calls. So is asserting the
-  response validates against the schema, and asserting the provenance line
-  appears. It is
-  gated per-repository as each adopts the endpoint. No flag day.
-
-That live check is the one that matters, because it exercises the running
-artifact rather than the source that claims to produce it. It upgrades
-the existing "the process did not exit" claim into "the service came
-up, reached its dependencies, and said what it was".

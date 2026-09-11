@@ -1,12 +1,5 @@
 # Identifiers and primitive representations
 
-One of the Aurum Alpha engineering standards, written under the platform
-contract ([`000-platform.md`](000-platform.md)). It is a per-capability
-standard from that contract's roster. Read
-[`999-enforcement.md`](999-enforcement.md) for the tier each rule below
-actually holds. Artifacts:
-[`contracts/identifiers/`](../contracts/identifiers/).
-
 ## Why this exists
 
 Until a standard says what an identifier is, nothing does. Whether internal
@@ -165,22 +158,6 @@ Per PC3, the contract lives under
   `$def`. `canonical`: parse-then-emit cases, where an implementation reads
   `input` and must emit exactly `emit`. An implementation in any language
   passes the whole file or names the case it fails.
-
-## Enforcement
-
-Registered in [`999-enforcement.md`](999-enforcement.md) under "Identifiers
-standard". Honestly: everything lands review-only, and the gates it is
-getting are the platform contract's own mechanisms.
-`check-contract-artifacts` proves the tree above stays present and parsing.
-`job-contract-conformance` runs `corpus.json` against an implementation
-once that shared job exists.
-
-IP1 is the one rule with a capability-specific gate to name. That gate is a
-schema-level check that externally addressable tables carry a public id
-column in an admitted format. It is buildable once the
-[structured-data standard](025-structured-data.md) gives a checker a schema
-to read. Until then IP1 is the review question on every API-shaped diff:
-*does anything in this payload count rows?*
 
 ## Decisions
 

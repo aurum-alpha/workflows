@@ -4,73 +4,12 @@
 
 Every service ships with a security posture whether or not anyone chose one.
 The base image is whatever tag the first Dockerfile named, and the headers are
-whatever the framework's middleware emits. Scanning runs where somebody wired
-it, and the disclosure channel is whichever inbox a finder guesses. None of
-these is a domain decision: an invoicing system is not better at invoicing for
-a stricter `Content-Security-Policy`. So each is decided by default, per
-repository, differently. The differences are invisible until one of them is
-the incident.
-
-The cheapest answers fail as general properties. **A tag is a mutable
-pointer**: `FROM node:22` names whatever the registry says it names at build
-time. So an upstream rebuild or a registry compromise changes the bytes under
-a name nobody changed. **A scan that can be skipped is skipped exactly when it
-hurts**, because the day it finds something is the day it is inconvenient. An
-exemption with no expiry is a permanent decision made in a hurry.
-
-**Framework defaults differ**, so each framework ships its own header posture
-and a reviewer cannot tell a deliberate omission from an unconsidered one. **An
-unstated disclosure channel is a public one**: a finder who cannot find an
-address posts the finding where they can.
-
-The remedy is the shape the rest of these standards take. Each property is
-stated once as a contract at a boundary a checker can watch. Such a boundary
-is a line in a Dockerfile, a response header, a file at a fixed path, or an
-artifact attached to a release. The value is pinned and the reason sits beside
-it. What remains for a repository is the domain. Every rule holds equally
-after handover, because each is a property of the code rather than of a job it
-calls.
-
-### The standards evaluated first, per PC2
-
-Most of this document is a profile over things already specified.
-
-**Image references are the OCI distribution specification's**. A digest
-reference (`<name>@sha256:<64 hex>`) is content-addressed and immutable by the
-specification; a tag is not. SB1 adds only that the human-readable version
-travel beside it, as [`010-ci.md`](010-ci.md) requires of action pins.
-
-**Vulnerability identifiers and the scanner's own exemption file are adopted,
-not replaced**. Advisories are named by their [OSV](https://osv.dev/)
-identifiers. An exemption lives in the scanner's native configuration beside
-the lockfile, as 010 already requires. SB2 adds the shape an entry must have,
-an expiry above all, because the native files admit entries without one.
-
-**The header values are the current browser-security consensus**, checked
-against the [OWASP Secure Headers
-Project](https://owasp.org/www-project-secure-headers/) and the MDN reference
-for each header. The strict `Content-Security-Policy` is the
-nonce-plus-`'strict-dynamic'` form CSP Level 3 was designed around. SB3 adds
-the split into response classes and the exact values. **TLS configuration is
-Mozilla's intermediate profile**, from the [Mozilla SSL Configuration
-Generator](https://ssl-config.mozilla.org/). That generator maintains a
-protocol and cipher list against real client populations. SB4 pins the profile
-rather than a list that would be stale within a year.
-
-**Backpressure is RFC 9110's `Retry-After`**, already profiled by 050 HA7. The
-IETF `RateLimit` header fields draft is admitted and not required: it is a
-draft, and `Retry-After` alone tells a client what to do. **Disclosure is RFC
-9116**: `security.txt` is the machine-readable form, and `SECURITY.md` is the
-human document its `Policy` field points at.
-
-**The SBOM is CycloneDX**, an ECMA standard (ECMA-424) with a JSON form. It
-has generators for every ecosystem in use here, and a VEX profile that
-carries an SB2 acceptance downstream. SPDX is an ISO standard too. Its centre
-of gravity is licence provenance, and its security profile is less tooled.
-
-**What no standard covers**, this document invents: the response-class split
-asserted by the start check (SB3), and the acceptance entry's expiry and
-maximum window (SB2).
+whatever the framework's middleware emits. None of these is a domain decision,
+so each is decided by default, per repository, differently. The differences
+are invisible until one of them is the incident. Each property here is stated
+once as a contract at a boundary a checker can watch. That is a line in a
+Dockerfile, a response header, a file at a fixed path, or an artifact attached
+to a release.
 
 ## The rules
 
@@ -146,13 +85,14 @@ rule binds the id list's entries, validated against
 | `retire_when` | recommended | The condition that removes the entry early: an upstream release, a dependency dropped. |
 
 **The window is at most ninety days**. A longer one is a decision to stop
-looking. That decision is made by moving the repository into a stage 010
-describes, rather than by a date far enough away to forget. An entry past its
+looking. That decision is made in a stage 010 describes, not by a date far
+enough away to forget. An unbounded list re-reviewed on a schedule is refused
+because nothing fails when the review is skipped; a date fails on its own. An
+entry past its
 `expires` is a finding whether or not the advisory still reports. The entry
 lives in the scanner's native file: 010's `osv-scanner.toml`, or the image
-scanner's equivalent. A checker validates each file's entries against the
-schema: the native field names are the rendered form, the schema is the
-contract.
+scanner's equivalent, and a checker validates each file's entries against the
+schema.
 
 **New findings block from day one; existing findings have a stage with a
 deadline**, 010's `fail_on_new`/`fail_on_existing` split on every scan.
@@ -166,6 +106,9 @@ a program consumes: JSON, problem+json, an event stream. An **asset** is a
 static file the document loads: a hashed bundle chunk, a font. The set is data
 in
 [`response-headers.json`](../contracts/security-baseline/response-headers.json).
+The values are the browser-security consensus of the [OWASP Secure Headers
+Project](https://owasp.org/www-project-secure-headers/) and the MDN reference
+for each header.
 
 | Header | Document | API | Asset | Why |
 |---|---|---|---|---|
@@ -195,6 +138,11 @@ client's shell is rendered per response for this reason. The bundle's files
 are static and load through the nonced shell under `'strict-dynamic'`. A
 `Content-Security-Policy-Report-Only` header does not satisfy this rule.
 
+**No fallback is sent for browsers without `'strict-dynamic'`**. The
+compatibility form carries `'unsafe-inline'` and a scheme source that modern
+browsers ignore and old ones honour. So the fallback would be a permission
+granted only to the clients least able to defend themselves.
+
 **The start check asserts the set**. `job-image-starts` already requests
 `/readyz` from the running image, and the same request asserts the API-class
 set. A service that serves documents gets one request to `/` asserting the
@@ -218,7 +166,10 @@ the database.
 
 **TLS 1.2 is the floor and TLS 1.3 is preferred**. The protocol and cipher
 list are Mozilla's intermediate profile, at the version current when the
-service is configured. TLS 1.0 and 1.1 are offered nowhere. The profile is
+service is configured. The [Mozilla SSL Configuration
+Generator](https://ssl-config.mozilla.org/) maintains that list against real
+client populations, so the rule pins the profile, not a list stale within a
+year. TLS 1.0 and 1.1 are offered nowhere. The profile is
 intermediate rather than modern because a public edge's clients include
 devices the modern profile refuses. Refusing a user over a cipher suite is a
 decision a product makes in its **Conventions**, not by default.
@@ -324,28 +275,24 @@ describes.
 It is attached as a release asset under a fixed name per image
 (`<image>.cdx.json`). Where the registry supports OCI referrers, it is also
 pushed as a referrer of the image digest. An SB2 acceptance travels downstream
-as a CycloneDX VEX statement on the same advisory id. An SBOM answers *which
-of our releases contains this* in minutes, from a file.
+as a CycloneDX VEX statement on the same advisory id. SPDX is an ISO standard
+too, but its centre of gravity is licence provenance and its security profile
+is less tooled. An SBOM answers *which of our releases contains this* in
+minutes, from a file.
 
 ### SB9. Least privilege is already stated, and the process in the image runs unprivileged
 
-Least privilege is the property several standards already hold, and this rule
-points at each so a reader has one list. There is one credential per backing
-service, with the migration credential separate (000 Terms,
-[`032-secrets.md`](032-secrets.md)). An image carries only what its jobs
-declare ([`035-workers.md`](035-workers.md) WK8). The runtime database role
-can neither alter the schema nor reach another service's database
-([`025-structured-data.md`](025-structured-data.md) SD3, SD9, SD13). The audit
-table's writer cannot update it ([`080-audit.md`](080-audit.md) AE6). A client
-holds no credential to any service's state (000 Terms).
+Least privilege is already held by [`032-secrets.md`](032-secrets.md) and the
+000 Terms, [`035-workers.md`](035-workers.md) WK8,
+[`025-structured-data.md`](025-structured-data.md) SD3, SD9 and SD13, and
+[`080-audit.md`](080-audit.md) AE6.
 
 **The one property none of them states: the process in the image does not run
 as root**. Every Dockerfile that produces a runnable image sets `USER` to an
 unprivileged user before its entrypoint. The filesystem is writable only where
 the process declares it needs to write. A container escape from an
 unprivileged process is a bounded event; from root it is the host. The checker
-that reads `FROM` reads `USER` in the same pass. The rule is stated here
-because it belongs to no other standard's boundary.
+that reads `FROM` reads `USER` in the same pass.
 
 ### SB10. Security events are audited and notified under the standards that own them
 
@@ -353,9 +300,8 @@ What must be recorded when a security-relevant act happens is
 [`080-audit.md`](080-audit.md) AE5's floor. What must be told to the person it
 happened to is the [notifications standard](058-notifications.md)'s security
 floor. A leaked secret's response, the audit event it emits included, is
-[`032-secrets.md`](032-secrets.md)'s. This rule adds nothing to them. It
-exists so that a reader asking *where is the security logging rule* is sent to
-the right document. A change to a floor is then made in the one that owns it.
+[`032-secrets.md`](032-secrets.md)'s. A change to a floor is made in the one
+that owns it.
 
 ## The artifacts
 
@@ -364,65 +310,11 @@ Per PC3, under
 
 - **`base-image.schema.json`**: SB1's grammar as `$defs`, with a digest, a
   pinned reference, and a pinned `FROM` line in both admitted forms.
-- **`acceptance.schema.json`**: SB2's acceptance entry and the file holding
-  a list of them. It carries the OSV id grammar, the required reason and
-  expiry, and the recommended `accepted_on` and `retire_when`.
-- **`response-headers.json`**: SB3's set as data. Per class, it lists each
-  required header with its value or directive requirements, the forbidden
-  headers, and the superseded one.
+- **`acceptance.schema.json`**: SB2's acceptance entry and the file holding a
+  list of them.
+- **`response-headers.json`**: SB3's set as data, per class, with the
+  forbidden headers and the superseded one.
 - **`security-md.schema.json`**: SB7's required content in structured form,
-  extracted from the markdown by section, plus the `security.txt` fields.
-- **`corpus.json`**: four parts. `headers` is header sets per class, each
-  rejection naming its findings, with two detectors: `X-Frame-Options`
-  without `frame-ancestors`, and HSTS without `includeSubDomains`.
-  `from-lines` is Dockerfiles as line arrays with the findings SB1's checker
-  must report, with a detector whose second stage is the unpinned one.
-  `scan-acceptance` is entries the schema must accept and reject, and entries
-  judged against a date. `security-md` is policies the schema must accept and
-  reject.
-
-## Decisions
-
-- **The in-band tag is the canonical pin form, and every `FROM` line is
-  bound** (2026-09-02). `image:tag@digest` and `image@digest # tag` pin the
-  same bytes. The in-band form is one token an update tool maintains as one
-  edit. The comment form is admitted so a Dockerfile written the way action
-  pins are written is not a finding. Build stages are included because a
-  checker reading only the last `FROM` would pass exactly the multi-stage
-  file most likely to be wrong.
-- **Acceptances expire, and the window is ninety days** (2026-09-02). An
-  entry with no expiry is a permanent decision made under time pressure. An
-  unbounded list re-reviewed on a schedule was rejected because nothing fails
-  when the review is skipped. A date fails on its own.
-- **Three response classes, asserted by the start check** (2026-09-02). A
-  document needs a script policy and a JSON response needs to be inert. One
-  set would burden the API with a nonce it cannot use, or leave the document
-  with a policy that allows nothing. An uncacheable policy on an immutable
-  asset defeats the reason the file has a hash in its name. The start check
-  asserts them because it already talks to the running image. A new job
-  would be a second place that knows how to start it.
-- **No CSP fallbacks for pre-`'strict-dynamic'` browsers** (2026-09-02). The
-  compatibility form carries `'unsafe-inline'` and a scheme source that
-  modern browsers ignore and old ones honour. So the fallback would be a
-  permission granted only to the clients least able to defend themselves.
-- **CycloneDX, from the image, in the build run** (2026-09-02). Both SBOM
-  standards are international standards. CycloneDX was designed around the
-  vulnerability and VEX use case SB2 and SB8 need. Its JSON form is generated
-  natively by the toolchains in use. From the image, because a source SBOM
-  omits the base image. In the build run, because an SBOM made at release
-  time describes bytes the release did not build.
-
-## Out of scope, deliberately
-
-- **Secrets**. [`032-secrets.md`](032-secrets.md), in full: delivery, naming,
-  rotation, leak response, what never enters a repository.
-- **Authentication, the session cookie, authorization, and what a browser
-  can hold**. [`060-auth.md`](060-auth.md) AU5 and AU7;
-  [`070-rbac.md`](070-rbac.md); [`090-web-client.md`](090-web-client.md) WC1
-  and WC2. A rate limit is not a permission check, and a header is not a scope.
-  SB3's nonce is where this document and the web client's touch.
-- **The audit and notification floors**. [`080-audit.md`](080-audit.md) AE5
-  and the [notifications standard](058-notifications.md); SB10 only points.
-- **Upload limits and content validation for stored objects**.
-  [`026-blob-storage.md`](026-blob-storage.md); SB6 stops at the API body.
-- **Penetration testing and vendor assessment**. Per-engagement commitments.
+  plus the `security.txt` fields.
+- **`corpus.json`**: four parts: `headers`, `from-lines`, `scan-acceptance`
+  and `security-md`.

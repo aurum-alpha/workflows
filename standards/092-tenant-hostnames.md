@@ -3,29 +3,12 @@
 ## Why this exists
 
 A product that gives each customer a hostname has made the hostname visible to
-three things at once. The browser scopes cookies by it; the certificate
-authority issues by it; and the application is tempted to authorize by it. The
+three things at once. The browser scopes cookies by it, the certificate
+authority issues by it, and the application is tempted to authorize by it. The
 first two are properties of the network. The third is a defect that arrives
-looking like a convenience.
-
-**The `Host` header is written by the client**. An application that reads the
-tenant from it has let a caller choose a tenant by typing. Every mitigation,
-an allowlist at the edge or a canonical host per tenant, narrows the hole
-without closing it. The hole is structural: an authorization input that the
-party being authorized supplies.
-
-The [RBAC standard](070-rbac.md) RB10 refuses it. What was missing was a
-statement of what the hostname *is* for. With it, the real jobs are done well
-and the wrong job is not done at all. Those jobs are choosing an entry before
-there is a session, scoping a cookie, and naming a certificate.
-
-Two further failures are specific to hostnames and quiet until they are not. A
-session cookie set with `Domain=` reaches every host under the registrable
-domain. So one tenant's cookie arrives at another's host, and the application
-is one missing check from honouring it. And an edge that issues a certificate
-for whatever server name arrives will issue one for any hostname anyone points
-at it. Neither fails a test that exercises one tenant at a time. That is the
-profile of a rule that stays a preference until a document states it.
+looking like a convenience, because the `Host` header is written by the
+client. This standard states what the hostname *is* for, so the real jobs are
+done well and the wrong job is not done at all.
 
 ## The rules
 
@@ -44,13 +27,6 @@ RB5: a subject, a role, a scope within that tenant. The check operation
 evaluates it on every request. The scope of that check comes from the
 authenticated session (070 RB10). It does not come from a header, and **it
 does not come from the hostname**.
-
-This sentence decides which standard owns each rule in this area, and every
-rule below is a consequence of it. Authentication draws the outer line;
-authorization draws lines inside it; the hostname draws neither. What the
-hostname does is help a person reach the right outer line before there is a
-session. Afterwards it confirms that they are still inside it. That is TH2,
-and is all of it.
 
 The boundary is authentication and not authorization because of containment. A
 tenant is not a scope a grant at some higher scope could satisfy; it is the
@@ -104,12 +80,6 @@ answer**. So no product invents a second and no reviewer has to ask.
 the default entry for an unknown host means any name pointed at the edge shows
 the product's login page under that name. That is a phishing kit the product
 built itself.
-
-Serving a `403` or a branded error means the edge accepted a host it does not
-know. It read a cookie for it, and ran code to refuse it. All of it is attack
-surface on a request that names nothing. The edge answers from the tenant
-table, which is the same list TH7 issues certificates from. So a host the edge
-does not know never had a certificate either.
 
 ### TH4. The session cookie is host-only, and `Domain=` is never set
 
@@ -219,12 +189,14 @@ stateDiagram-v2
 The pieces, each with its reason:
 
 - **One hostname belongs to one tenant, ever**. From the moment it is
-  verified a hostname is that tenant's. A released hostname is `retired`,
+  verified a hostname is that tenant's, and a released hostname is `retired`,
   never claimed again by another. A certificate or a cookie issued for that
   name in one tenant's era must never be honourable in another's. A bookmark
   or a cached redirect from the first tenant must never land a person in the
-  second. A claim never verified is `released`, not retired, because
-  ownership was never proven and nothing was bound to the name.
+  second. Belonging begins at verification, not at the claim: a mistyped or
+  abandoned claim would otherwise block a name for its real owner for ever.
+  So a claim never verified is `released`, not retired; ownership was never
+  proven and nothing was bound to the name.
 - **Two DNS records are shown at onboarding**. The first is a `CNAME` from
   the hostname to the product's edge, and it routes traffic. The second is a
   `CNAME` from `_acme-challenge.<hostname>` to a label unique to that
@@ -251,10 +223,6 @@ The pieces, each with its reason:
   so. The hostname stays in the table, and restoring the records restores it
   on the next tick.
 
-Whether a customer's *apex* is supported is the product's declaration, not
-this document's rule. An apex cannot carry a `CNAME`, and needs the edge to
-offer a stable address or an `ALIAS`-class record.
-
 ### TH7. No certificate is ever requested for a host the tenant table does not hold
 
 **The ACME client's allowlist is the tenant table**. A certificate is
@@ -277,12 +245,8 @@ exists. And **the table is where the answer already is**. A second list for
 the certificate client is a second answer to *which hosts are ours*. The two
 disagree the day one is edited by hand.
 
-The rule binds whichever class of edge does the issuing. That is the product's
-own edge running an ACME client, the platform's certificate manager on its
-load balancer, or a delivery network's custom hostname facility. Each can be
-driven from the tenant table, and each can be configured to issue on sight.
-The product's declaration of which it uses (below) is where a reviewer checks
-that it is driven and not merely permitted.
+The rule binds whichever edge class issues: each one a product can declare is
+driven from the table or issues on sight.
 
 ### TH8. A tenant host is `noindex`, on the header and in the document
 
@@ -323,51 +287,3 @@ Four things this document leaves open on purpose, each stated in the product's
 A product with one host and tenants chosen at login is still bound by TH1 and
 TH4, which hold for a single host. It has nothing for the rest to apply to.
 Its Conventions say so in a line.
-
-## Decisions
-
-- **A tenant is an authentication boundary** (2026-09-05). Modelling tenants
-  as the top of the RBAC scope hierarchy, so that one session with a
-  `global` grant reaches every tenant, was refused. It makes one compromised
-  session every customer's data. Placing the tenant at the authentication
-  layer makes crossing it cost a second authentication, which is the cost
-  wanted. One session, one tenant is the authentication standard's rule;
-  this document states what the hostname contributes.
-- **The hostname never decides the tenant of a request** (2026-09-05). The
-  `Host` header is written by the client, so a tenant read from it is an
-  authorization input the party being authorized supplied. RB10 states the
-  refusal. This document states the hostname's two legitimate jobs, so that
-  the refusal does not read as *the hostname is meaningless*.
-- **Unknown host is `404` at the edge, never `403`** (2026-09-06). A `403`
-  implies a resource exists, invites enumeration, and is only reachable
-  after the edge has accepted the host and run code for it. Serving the
-  default entry under an unknown name was refused separately, as a login
-  page lent to any name pointed at it.
-- **Host-only cookies, and therefore the default topology per host**
-  (2026-09-06). The split topology's `Domain=` cookie is the mechanism by
-  which one tenant's session reaches another's host. Forbidding it costs a
-  product with tenant hostnames the split topology. That cost is accepted
-  because the alternative makes isolation depend on an application check
-  firing on every route.
-- **One callback host, and an opaque handle for the last hop** (2026-09-07).
-  A redirect URI per tenant puts the tenant table in the provider's
-  configuration and onboarding on the provider's change process. A wildcard
-  is an open redirect. A single-use, seconds-lived handle redeemed
-  server-side keeps the browser holding a cookie and nothing else. That is
-  the only arrangement consistent with WC1 as written.
-- **Belonging begins at verification, and is then permanent** (2026-09-07).
-  *One hostname, one tenant, ever* was first drafted from the claim. That
-  would let a mistyped or abandoned claim block a name for its real owner
-  for ever. From verification the argument holds in full, and a released
-  name is retired rather than reused.
-- **The certificate allowlist is the tenant table** (2026-09-08). Issuing on
-  sight is refused even where an edge makes it the default, for three
-  reasons. Issuance is a shared rate-limited resource. A certificate for an
-  unclaimed name is a false statement with a signature. A second host list
-  is a second answer to one question. Which edge class issues stays a
-  declaration, because each can be driven from the table.
-- **`noindex` by header and element, not by `robots.txt`** (2026-09-08). A
-  disallow prevents fetching and not indexing, and hides the very directive
-  that would have prevented it. The header reaches every response; the
-  element survives a copy; and the failure they prevent is the customer's to
-  notice first.

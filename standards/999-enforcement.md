@@ -72,6 +72,7 @@ can disagree eventually will.
 | — | The version file is never deleted | `job-version-gate` | gated² |
 | — | Only a version change mints the tag and the GitHub release | `job-version-release` | gated³ |
 | — | Only a version change mints a `v<version>` image tag or package version | — | **review only** |
+| — | A version or artifact name built for a package manager obeys that manager's semantics | — | **review only** |
 | — | Caller permissions cover shared jobs | `check-caller-permissions` | gated¹ |
 | — | Overrides use pnpm's key alone, not npm's or yarn's | `check-overrides` | gated¹ |
 | — | Every override carries a reason, and no reason outlives its override | `check-overrides` | gated¹ |

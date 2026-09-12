@@ -1,119 +1,21 @@
 # Backup and recovery: restore is exercised, objectives are declared, and erasure survives a restore
 
-One of the Aurum Alpha engineering standards, written under the platform
-contract ([`000-platform.md`](000-platform.md)). It is a per-capability
-standard from that contract's roster. Read
-[`999-enforcement.md`](999-enforcement.md) for the tier each rule below
-holds. Artifacts:
-[`contracts/backup-and-recovery/`](../contracts/backup-and-recovery/). The
-words *service*, *stateful server*, *backing service*, *credential*,
-*environment*, *release* and *deployment* are used in the senses
-[`000-platform.md`](000-platform.md#terms) defines.
-
-The migrate step and the one-database-per-service rule are
-[`025-structured-data.md`](025-structured-data.md) SD3 and SD13's. The drill
-and the restore are jobs under [`057-jobs.md`](057-jobs.md) run as one-shots
-under [`035-workers.md`](035-workers.md). What erasure leaves of an audit
-event is [`080-audit.md`](080-audit.md) AE7's. The erasure request is
-[`082-data-subject-rights.md`](082-data-subject-rights.md)'s.
-
-This document governs **the copy of a service's state that exists so the
-state can be recovered**. It covers which stores have one, and what a
-service declares about losing and regaining its state. It covers who is
-permitted to take and who is permitted to restore the copy, and how a
-restore proceeds. It covers how anyone knows the copy is restorable, and
-what stops a restore from bringing back data a person asked to have erased.
-
-**What it does not define is the store itself**. That is how structured,
-blob and document data are written, isolated and deleted while the service
-runs. Those are [`025-structured-data.md`](025-structured-data.md)'s,
-[`026-blob-storage.md`](026-blob-storage.md)'s and
-[`027-json-document-storage.md`](027-json-document-storage.md)'s. Nor does it
-define the erasure request that produces a ledger entry, which is the data
-subject rights standard's.
-
 ## Why this exists
 
 Every service holds state in stateful servers it attaches, and every one of
-those servers will at some point lose it. The causes are a disk, a region,
-an operator's mistaken statement, and a migration that dropped what a marker
-said was safe. Another is a leaked credential used to delete rather than to
-read. The cheapest answer is the hosting platform's checkbox, *automated
-backups: on*. It is wrong as a general property, because a backup nobody has
-restored is a hypothesis. A backup mechanism fails silently in every way
-that matters.
+those servers will at some point lose it. The causes are a disk, a region, an
+operator's mistaken statement, and a leaked credential used to delete. The
+cheapest answer is the hosting platform's checkbox, *automated backups: on*.
+It is wrong as a general property, because a backup nobody has restored is a
+hypothesis.
 
-The snapshot runs against a replica that stopped replicating. The archive
-fills a bucket whose lifecycle rule deletes it. The restore needs a
-credential nobody kept. The restored schema is three releases behind the
-image started against it.
-
-The second cheapest answer is replication, and it is not a backup. A replica
-applies every write, the `DELETE` and the `DROP` included, within seconds. It
-protects against the loss of a machine and against nothing a person or a
-program does. A snapshot in the same account under the same credential as
-the source protects against hardware. It does not protect against the
-compromise of that credential, which is the failure that deletes everything
-at once.
-
-Without a stated RPO every backup cadence is acceptable, and without a
-stated RTO every restore procedure is fast enough. Neither number is found to
-be wrong until a restore is under way.
-
-A third failure belongs to organisations that honour erasure. A service that
-deletes a person's rows on request, correctly and completely, still holds
-them in every backup taken before the request. A restore from one of those
-brings the rows back into a live system that has already told the person
-they are gone. The erasure was performed and then silently undone, and
-nothing in the restore procedure knows it happened.
-
-This standard removes those decisions from every repository. They are which
-stores are backed up and by what mechanism, what every service declares, and
-whose credential takes the copy and whose restores it. They are where the
-copy lives and for how long, and how a restore proceeds. They are how
-restorability is proven on a schedule, and how an erasure outlives a
-restore. What remains for a repository is its numbers (RPO, RTO, retention)
-and the verification query that says its data came back whole. Those are the
-only parts its domain has an opinion about.
-
-### The standards evaluated first, per PC2
-
-There is no wire protocol here. The boundary is a declaration a repository
-writes and a procedure a job runs, and PC2's question is what existing
-standard supplies each.
-
-**The vocabulary is contingency-planning practice's**. *Recovery point
-objective* is the longest span of committed state a service is permitted to
-lose, measured backwards from the failure. *Recovery time objective* is the
-longest a service is permitted to be without its state. Both are the terms
-of [NIST SP 800-34](https://csrc.nist.gov/pubs/sp/800/34/r1/upd1/final) and
-ISO 22301, used in those senses. Neither gives a machine-readable artifact.
-So the words are adopted and the declaration carrying them is invented
-(BR1).
-
-**The mechanisms are the engines' own**. Point-in-time recovery from a
-continuously shipped write-ahead log is one. Object versioning with
-replication and the snapshot facility of a document store or filesystem are
-others. Each is a property of the engine, offered by every managed instance
-and reproducible on a self-hosted one.
-
-This standard names the class of mechanism per kind of store and no product.
-A copy taken by a tool this platform would select, such as a dump job or a
-backup agent, is refused (BR2). That is for the reason PC1 refuses a runtime
-library.
-
-**The separate-failure-domain rule is the durable half of the 3-2-1 folk
-rule**, the property and not the counting. At least one copy exists that no
-failure of the source, its account or its credential can reach (BR5). **The
-drill and the restore are jobs under [`057-jobs.md`](057-jobs.md)** and
-one-shots under [`035-workers.md`](035-workers.md). That is
-[factor XII](https://12factor.net/admin-processes) applied to recovery;
-nothing about running them is invented.
-
-**What no standard covers** is what this document invents. That is the
-recovery declaration as a checkable artifact (BR1), and the drill as a
-freshness signal that gates deployment (BR4). It is also the one genuinely
-new mechanism, the erasure ledger with its replay (BR6).
+The second cheapest answer is replication, and it is not a backup: a replica
+applies the `DROP` within seconds. Without a stated RPO every backup cadence
+is acceptable, and without a stated RTO every restore procedure is fast
+enough. Neither number is found to be wrong until a restore is under way. A
+service that honours erasure still holds the erased rows in every backup
+taken before the request. A restore from one of those undoes the erasure,
+and nothing in the restore procedure knows it happened.
 
 ## The rules
 
@@ -128,6 +30,12 @@ service, validated against
 A store with no declaration is a store with no backup, and review treats it
 as one. The question is not *is this backed up*, which a checkbox answers,
 but *where is the declaration*, which an artifact does.
+
+*Recovery point objective* is the longest span of committed state a service
+is permitted to lose. *Recovery time objective* is the longest a service is
+permitted to be without its state. Both are the terms of
+[NIST SP 800-34](https://csrc.nist.gov/pubs/sp/800/34/r1/upd1/final) and
+ISO 22301, in those senses.
 
 | Field | Values | What it decides |
 |---|---|---|
@@ -146,10 +54,7 @@ but *where is the declaration*, which an artifact does.
 
 Three things read it. The platform reads it to configure the mechanism and
 the retention lifecycle. The drill reads it to know what to restore and
-assert. The deployment reads it to know whether the drill is fresh. A
-repository holding several services holds one declaration per service. Each
-service's stores sit behind a different credential and are restored on a
-different day.
+assert. The deployment reads it to know whether the drill is fresh.
 
 ### BR2. The role decides whether there is a backup, and the engine's mechanism is the backup
 
@@ -358,6 +263,9 @@ whose cause is gone. Reconciling those is the domain's, and the runbook names
 who does it. A restore over a live store is the one place an RPO is paid
 rather than declared.
 
+Recovery of the platform itself, the runner, the backup mechanism and the
+registry, is the platform's operations documentation's.
+
 ### BR8. The runbook is in the repository, and the drill runs it
 
 **Recovery of a whole environment is a documented procedure in the
@@ -388,104 +296,10 @@ runbook step the drill does not execute is a step nobody has tested.
 
 Per PC3, under [`contracts/backup-and-recovery/`](../contracts/backup-and-recovery/):
 
-- **`recovery-declaration.schema.json`** is BR1's declaration, with the
-  conditional rules that make it more than a field list. A primary store
-  carries objectives, a mechanism admitted for its kind, encryption, a
-  failure domain, retention, a drill and a verification list including
-  readiness. A derived store carries `rebuild` and none of those; a cache is
-  derived; a relational store's mechanism is `pitr`. Four arithmetic
-  relations the schema cannot express are checked by the runner:
-  `floor ≤ ceiling`, `ceiling ≤ erasure_horizon`, `cadence ≤ floor`,
-  `cadence ≤ stale_after`.
-- **`erasure-ledger.schema.json`** is BR6's entry, with `$ref`s into the
-  identifiers and observability contracts for ids, instants and the tenant.
-  It has a closed treatment set. It has a closed property set, so no
-  personal field can be added to a record kept for the whole retention
-  window.
-- **`corpus.json`** has three parts. `declarations`: declarations the schema
-  and the arithmetic rules accept and reject, each rejection naming its rule.
-  `ledger`: entries accepted and rejected. `drills`: freshness, objectives,
-  and a restore followed by replay whose expected state is stated both at
-  readiness and after. That last is the case separating an implementation
-  that replays before readmitting from one that readmits first. It is also
-  the case separating one reading the ledger's copy from one reading the
-  restored table.
-
-## Enforcement
-
-Every BR rule lands **review only** and is registered in
-[`999-enforcement.md`](999-enforcement.md) with its gate named. The
-mechanically checkable parts are the first to move.
-
-The first is the validity of a declaration for every store a service's
-configuration names (BR1, BR2, BR5). That is the schema plus the four
-arithmetic rules. The second is the freshness query BR4 already runs as a
-deployment step, a gate the moment `recovery.assert_drilled` is in a
-service's deployment order. The third is the `drills` corpus against a
-repository's recovery image, which decides BR6's ordering at the boundary.
-`/readyz` is observed and erased rows are queried for.
-
-The review questions are said so in the ledger row. One is whether a store
-the configuration attaches is missing from the declaration (BR1). Another is
-whether a store declared `derived` is genuinely rebuildable (BR2). Another is
-where a credential actually lives; BR3 is a fact about the platform's
-configuration, not the repository. The last is whether the runbook's steps
-and the drill's steps are the same steps (BR8).
-
-## Decisions
-
-- **A store with no declaration is a store with no backup** (2026-09-02). A
-  platform default that backs up everything it can see makes the question
-  unanswerable from the repository and makes every store look covered.
-- **Derived stores are rebuilt, never backed up** (2026-09-02). A backup of a
-  projection is a second source of truth that can disagree with the first;
-  declaring the rebuild job costs one field.
-- **The engine's mechanism, never a job of the service** (2026-09-02). A dump
-  job gives an RPO of its cadence and holds the runtime credential against
-  every table. It puts the copy where that credential can reach it.
-- **Three credentials, and the recovery image stands alone** (2026-09-02).
-  A leaked runtime credential cannot destroy the backups only if nothing the
-  service runs can write to the destination.
-- **The drill measures the objectives rather than reading them**
-  (2026-09-02). A declared RTO nobody has timed is a wish. A slow restore is
-  a failed drill, so the declaration is tested on the drill's schedule.
-- **A stale drill blocks deployment, as a job** (2026-09-02). An alert is read
-  by whoever is on call; a blocked deployment by whoever is shipping. A
-  deployment-step job under 057 has a run record and the same command by
-  hand; a pipeline condition has neither.
-- **The cadence is bounded by the floor and the ceiling by the horizon**
-  (2026-09-02). Both are inequalities rather than numbers. A drill rarer than
-  the floor can find a broken mechanism after the last good copy aged out. A
-  copy older than the horizon is erased data still held. Thirty and ninety
-  days are defaults a repository can move with a reason.
-- **The ledger is kept in the database and copied out, and replay reads the
-  copy** (2026-09-02). It is written in the erasure's transaction so the two
-  cannot separate. It is copied out because the table is exactly what a
-  restore rolls back. A ledger only outside loses the tie; one only inside is
-  useless.
-- **Replay precedes readiness** (2026-09-02). A window in which a restored
-  service serves erased rows is an erasure undone for whoever asked in it.
-  The window's length is no defence. Readiness is the existing gate on
-  traffic, so the rule costs no new mechanism.
-- **A restore is a deployment** (2026-09-02). It names a release and an
-  environment. Every step after the first (migrate, replay, rebuild, roll
-  out) is one a deployment already has. Calling it a database operation
-  hides the migrate step, the one most often forgotten.
-
-## Out of scope, deliberately
-
-- **The erasure request, the data inventory and the treatments.**
-  [`082-data-subject-rights.md`](082-data-subject-rights.md)'s. This document
-  consumes the entry that standard's erasure job writes.
-- **The object reference and the orphan purge, and when a document store is
-  admitted and in which role**. [`026-blob-storage.md`](026-blob-storage.md)'s
-  and [`027-json-document-storage.md`](027-json-document-storage.md)'s; BR7
-  relies on the row being the source of truth, and BR2 takes the role 027
-  declares.
-- **High availability.** Replicas, failover and multi-zone placement keep a
-  service serving through the loss of a machine. They replicate every
-  mistake and are not recovery.
-- **Recovery of the platform itself.** The runner, the backup mechanism and
-  the registry are backing services in
-  [factor IV](https://12factor.net/backing-services)'s sense. Their recovery
-  is the platform's operations documentation's.
+- **`recovery-declaration.schema.json`** is BR1's declaration with its
+  conditional rules per role and kind, plus the four arithmetic relations the
+  runner checks: `floor ≤ ceiling`, `ceiling ≤ erasure_horizon`,
+  `cadence ≤ floor`, `cadence ≤ stale_after`.
+- **`erasure-ledger.schema.json`** is BR6's entry, with a closed treatment set
+  and a closed property set.
+- **`corpus.json`** has three parts: `declarations`, `ledger` and `drills`.

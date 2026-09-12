@@ -1,58 +1,15 @@
 # The web client: what a browser holds, fetches, sends and reports
 
-One of the Aurum Alpha engineering standards, written under the platform
-contract ([`000-platform.md`](000-platform.md)). It is a per-capability
-standard from that roster. Read [`999-enforcement.md`](999-enforcement.md) for
-the tier each rule below holds. Artifacts:
-[`contracts/web-client/`](../contracts/web-client/).
-
-This document governs code that runs in a browser. It decides what the code
-can hold as a credential (WC1), and where its configuration comes from (WC2).
-It decides how the code talks to an Aurum Alpha service (WC3), and what it
-does with the values that service sends (WC4). It decides what the code
-reports when something breaks (WC5).
-
-**It does not decide how authentication works**. That belongs to the
-[authentication and authorization standard](060-auth.md), and the boundary is
-drawn deliberately. A rule that is equally true of a server-rendered
-application with no JavaScript is not a browser rule. WC1 carries only what is
-true *because* the client is a browser.
-
 ## Why this exists
 
-Every other standard in this repository governs a server process. That was
-defensible while these standards were about services. It stopped being
-defensible the moment a browser client had to claim compliance with them. A
-frontend that "follows the standards" was following nothing written about it.
-
-The roster's own rule makes this sharper than an omission. *A capability's
-absence from that table is a claim that we have considered it and declined*.
-Five browser-side decisions were sitting in that gap. Each one was real, and
-each one was otherwise made independently by whoever started a frontend first.
-They are what the page can hold as a credential, how a bundle learns which API
-to call, and who parses the error envelope. They are also whose time zone a
-timestamp renders in, and what a client-side crash report contains.
-
-Two of those are not merely unowned but actively hazardous to get wrong.
-**What the page holds is a security decision**, and the industry answer
-changed. The guidance that produced a generation of single-page apps keeping
-tokens in `localStorage` has been superseded.
-
-**Client configuration collides with [factor
-III](https://12factor.net/config)** in a way no server does. A browser bundle
-is built once and served to many, so there is no process environment to read
-at start. A product that discovers that on its own usually resolves it by
-baking the API URL into the bundle at build time. That quietly breaks
-build-once, and nothing fails when it does.
-
-One document rather than five, deliberately. These decisions are entangled:
-what the page can hold determines how the API client presents itself. That
-determines what the runtime configuration document has to carry, which
-determines what a browser can be told at all. Split across five standards,
-each would be mostly cross-reference. This follows the shape of the [service
-contract](030-service.md), which bundles health, logging, config, shutdown and
-provenance for the same reason. They are one process's obligations, and these
-are one client's.
+Every other standard here governs a server process, and a browser client
+cannot claim compliance with rules written about a process. Five browser-side
+decisions are entangled. What the page can hold decides how the API client
+presents itself, and that decides what the runtime configuration document
+carries. What the page holds is a security decision. The naive translation of
+factor III bakes the API URL into the bundle, which breaks build-once and
+nothing fails when it does. This is one document for one client's
+obligations, as [`030-service.md`](030-service.md) is for one process's.
 
 ## The rules
 
@@ -87,14 +44,12 @@ Three consequences, and they are the whole of this rule:
   itself needing to do any of those has been given a token, which is the
   thing this rule prevents.
 
-**Everything else about authentication belongs to the [authentication and
-authorization standard](060-auth.md), not here**. That is which component is
-the identity provider's client, and the session cookie's attributes and
-lifetime. It is refresh and revocation, and what identity crosses from that
-component to the backend. Those decisions are not browser decisions: they
-apply identically to a server-rendered application with no JavaScript at all.
-A rule that is true of a non-browser case does not belong in this document.
-What survives here is only what is true *because* the client is a browser.
+**Everything else about authentication belongs to
+[`060-auth.md`](060-auth.md)**: which component is the identity provider's
+client, the cookie's attributes, refresh and revocation. A backend-for-frontend
+owning the session and rotating refresh tokens is not chosen here, because
+each of those holds for a server-rendered application with no JavaScript. Only what is true *because* the client is a browser belongs in
+this document.
 
 ### WC2. Configuration is fetched at load, never baked into the bundle
 
@@ -134,13 +89,10 @@ The document carries, and carries only:
 | `global_flags` | the anonymous, global subset of the evaluated flag set ([`038-feature-flags.md`](038-feature-flags.md) FF7) | optional |
 | `surface_settings` | per-surface, per-environment scalars (a booking link, a form endpoint) under keys **the repository declares** in a schema its CI validates the served document against | optional |
 
-Every field is named for what it is, and there is no wrapper object and no
-free-form bag. A name that says less than the value (`url` for an origin) or
-nothing at all (`auth` around two paths) costs every reader a lookup. A map
-with undeclared keys is where a secret arrives without anyone deciding that it
-does. `surface_settings` is the one open map, and it is open only to keys the
-repository has declared. That is what makes an undeclared key a finding rather
-than a feature.
+Every field is named for what it is, with no wrapper object and no free-form
+bag. `surface_settings` is the one open map, open only to keys the repository
+declares, because a map with undeclared keys is where a secret arrives
+unnoticed.
 
 **Three things are involved and only the middle one is this document**.
 Conflating them produces a config that cannot be correct in every topology:
@@ -163,19 +115,14 @@ Where one origin serves both (the default topology) the two can be answered by
 one endpoint. Keeping them distinct is what makes the split-origin topology
 work without a special case.
 
-**This is not a departure from [factor III](https://12factor.net/config)**. It
-reads like one, and stating it as an exception would be wrong. Factor III
-requires configuration to live in the environment rather than in the code, and
-here it does. It lives in the serving process's environment, exactly where the
-rest of this portfolio keeps it. What changes is only that the browser reads
-it one hop away, over HTTP, because a browser has no environment of its own to
-read.
-
-The naive translation of the factor, *put it in the bundle at build time*, is
-what actually violates it, twice over. Config becomes code. And one artifact
-per environment breaks the build-once separation [factor
-V](https://12factor.net/build-release-run) and the [CI standard](010-ci.md)
-both require.
+**This is not a departure from [factor III](https://12factor.net/config)**.
+Factor III requires configuration to live in the environment rather than in
+the code, and here it does. It lives in the serving process's environment,
+where every other standard keeps it. What changes is only that the browser
+reads it one hop away, over HTTP, because a browser has no environment of its
+own to read. The naive translation, *put it in the bundle at build time*, is
+the violation. Config becomes code, and one artifact per environment breaks
+the build-once separation of [factor V](https://12factor.net/build-release-run).
 
 **Build provenance is compiled in, and is not fetched at all**. The
 application version and the commit describe the *build* rather than the
@@ -238,10 +185,8 @@ every other request. The client never holds a URL to a store.
 ### WC4. Presentation is the client's job, and it is done with `Intl`
 
 The [identifiers standard](020-identifiers.md) rules that the server speaks
-base representations, and that presentation is the UI's job. The base
-representations are RFC 3339 UTC instants, integer minor units with an ISO
-4217 code, and opaque public ids. This rule is the other half of that
-sentence. Without it the first half is an instruction with no addressee.
+base representations and that presentation is the UI's job; this rule is the
+UI's half.
 
 **The viewer's locale and time zone come from the viewer**. An explicit user
 preference wins where the product has one. Otherwise the browser's own
@@ -253,7 +198,8 @@ country.
 
 **Formatting uses the platform's `Intl` API**, not a bundled formatting
 library carrying its own copy of the locale data. The browser's data is
-maintained, complete, and already downloaded.
+maintained, complete, and already downloaded. A bundled copy of CLDR is a
+large download that ages, for a consistency the platform's data already gives.
 
 Two specifics, because both are got wrong in the same way: by assuming the
 developer's own locale is the general case.
@@ -313,111 +259,11 @@ caller who can put anything in it.
 
 Per PC3, under [`contracts/web-client/`](../contracts/web-client/):
 
-- **`runtime-config.schema.json`**: the document WC2 requires the origin to
-  serve at `/config.json` and the client to fetch, at schema version 3. It
-  carries the surface class and the environment. It carries the API origin
-  and session paths a product or internal surface needs and a front door
-  must not carry.
-- **`error-report.schema.json`**: the client error report of WC5. It
-  uses `$ref` to the identifiers contract for its timestamp, and to the
-  observability contract for the request id. So one spelling covers the
-  browser and the server.
+- **`runtime-config.schema.json`**: WC2's bootstrap document at schema
+  version 3, with the surface class, the environment, and the fields only a
+  product or internal surface carries.
+- **`error-report.schema.json`**: WC5's client error report, with `$ref`s to
+  the identifiers contract for its timestamp and the observability contract
+  for the request id.
 - **`corpus.json`**: validity cases for both shapes, plus behavioural cases
   a live client and its server must satisfy.
-
-## Enforcement
-
-Every rule here is review-only today, with gates named per rule in
-[`999-enforcement.md`](999-enforcement.md). Two are cheaply and honestly
-gateable, and the rest are not. That is worth being direct about: **this is
-the least gateable standard in the repository so far**, because its subject
-runs on someone else's machine.
-
-- **WC2 is statically decidable and is the one to build first**. A checker
-  greps the built bundle for the values that must not be in it. Those are
-  the API origin, the provider hostname, and anything from the runtime
-  config document's own property list. A bundle is a file in the build output, so this needs
-  no browser and no running service.
-- **The config document validates**, as an ordinary schema check against a
-  running server, in the shape `job-image-starts` already supplies.
-- **WC1's storage half is observable**: the corpus reads `localStorage`,
-  `sessionStorage` and IndexedDB after a login and asserts nothing
-  credential-shaped is there. The cookie's own attributes are a live gate
-  too. But they belong to the [authentication and authorization
-  standard](060-auth.md), which sets them.
-- **WC1's central claim resists a checker entirely**. Proving no token
-  reaches JavaScript means proving a negative about a program's runtime. A
-  gate that tried would be reading the implementation, which PC4 forbids.
-  The review question is stated instead: *what credential does this page
-  hold, and what could read it*.
-- **WC3 and WC4 stay review questions**. A checker cannot tell a generated
-  client from a hand-written one that happens to be correct, and per PC4 it
-  does not try. A checker that failed a build for calling `fetch` directly
-  would be enforcing an implementation choice rather than a boundary.
-
-## Decisions
-
-- **Schema version 3: every field named for what it is, one contract for
-  three surfaces, and the path pinned** (2026-09-08). The second version
-  worked for a product behind a proxy and for nothing else. A front door has
-  no API and no session. So a required `api_base_url` and `auth` object made
-  the contract unusable for the one surface that most needs an
-  environment-specific document. The names themselves under-described their
-  values: `url` for what was always an origin, `auth` around two paths that
-  say what they are on their own.
-
-  Version 3 renames (`api_origin`, `login_path`, `logout_path`,
-  `global_flags`). It adds `surface_class` so the conditional requirement
-  can follow the [web estate standard](091-web-estate.md)'s classes. It adds
-  `surface_settings` for the scalars a front door's pages need, under keys
-  the repository declares. It pins `/config.json` with `no-store`, so a
-  static host's deploy step and a serving process satisfy the same rule.
-  Renames are breaking under PC6. The deprecation window is nil because no
-  implementation consumed version 2.
-- **WC1 carries the browser's half only; the architecture is the
-  authentication standard's** (2026-09-01). The first draft of this rule
-  chose the Backend-For-Frontend pattern, pinned the session cookie's
-  attributes, and required refresh-token rotation. Every one of those is a
-  decision the [authentication and authorization standard](060-auth.md)
-  states as its own. Each is equally true of a server-rendered application
-  with no JavaScript, which is the test that shows they are not browser
-  rules.
-
-  Deciding them here would have been this repository's own two-answers
-  failure, committed in the standard written to close a gap. What is left is
-  the part that survives that test. Web storage holds nothing, no provider
-  credential is in the bundle, and a `401` is answered by navigating, not by
-  exchanging.
-- **One document, five rules, five roster rows** (2026-08-31). The
-  capabilities are entangled through what the page can hold, so five
-  standards would each be mostly a link to the others. The roster still
-  gains a row per capability, so the table keeps its property that absence
-  means declined.
-- **Build provenance is compiled in, not served** (2026-09-01). The first
-  version of this rule put the frontend's version and commit inside the
-  served document and required them. That is wrong wherever the bundle and
-  the API come from different origins, and the split-origin topology is
-  admitted. The serving backend there has no idea which frontend build a
-  given browser is running.
-
-  Three things were being conflated: build provenance (compiled in), the
-  bootstrap (from the bundle's origin), and application config (from the
-  backend). Removing a required field is breaking under PC6, so the contract
-  moves to schemaVersion 2. The deprecation window is stated as nil, because
-  no implementation consumed version 1.
-- **Client config is factor III honoured, not departed from** (2026-08-31).
-  This is stated deliberately, because the charter requires a departure to
-  be declared and this one would have been declared wrongly. The browser
-  reads a configuration that lives in an environment; it is simply the
-  server's environment. What breaks the factor is the build-time bake, which
-  also breaks build-once.
-- **The browser does not start the server's trace** (2026-08-31). A unified
-  browser-to-backend trace is genuinely useful, and it is admitted for
-  repositories running real RUM. It is not the default, for two reasons. The
-  default must work for a client that ships no telemetry SDK at all. And
-  OC1's existing edge-starts-the-trace rule already covers the case
-  correctly. Correlation by request id needs nothing installed.
-- **`Intl` over a formatting library** (2026-08-31). The usual argument for
-  a library is consistency across environments, which mattered when browser
-  locale data was patchy. It is not patchy now, and a bundled copy of CLDR
-  is a large download that ages.

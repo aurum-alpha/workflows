@@ -1,119 +1,31 @@
 # Blob storage: the S3 profile, what a stored object is, and how it is served through the service
 
-One of the Aurum Alpha engineering standards, written under the platform
-contract ([`000-platform.md`](000-platform.md)). It is a per-capability
-standard from that contract's roster. Read
-[`999-enforcement.md`](999-enforcement.md) for the tier each rule below
-holds. Artifacts: [`contracts/blob-storage/`](../contracts/blob-storage/).
-*Service*, *server*, *worker*, *job*, *backing service*, *credential* and
-*environment* are used in the senses [`000-platform.md`](000-platform.md#terms)
-defines.
-
-Ids and timestamps are [`020-identifiers.md`](020-identifiers.md)'s. The row
-that owns an object, its isolation and its deletion are
-[`025-structured-data.md`](025-structured-data.md)'s. The check before every
-read is [`070-rbac.md`](070-rbac.md)'s, and the jobs are
-[`057-jobs.md`](057-jobs.md)'s.
-
-This document governs **the stored object**: a file a service keeps in an
-object store. Examples are an upload, an export, a generated PDF, a firmware
-image. It defines the protocol the store speaks, what a bucket is to a
-service, and how an object is keyed. It defines what the application records
-about it, how it is read, how it arrives, how it is scanned, and how it
-leaves.
-
-**What it does not define is structured data, JSON documents, or backup**.
-Rows are [`025-structured-data.md`](025-structured-data.md)'s.
-Schema-per-document JSON data is
-[`027-json-document-storage.md`](027-json-document-storage.md)'s, and a
-bucket's copies and their restoration are
-[`028-backup-and-recovery.md`](028-backup-and-recovery.md)'s.
-
-**The one rule everything else here serves: the store is never exposed**. No
-client ever holds a URL to the store, signed or plain, for any length of
-time. That holds for a browser, a native app, and another service. A client
-holds an object id.
-
-Every read and every write is a request to the owning service's API. The API
-resolves the id to a row in its own database, runs the authorization check,
-and moves the bytes itself. A presigned URL is not a shorter-lived version of
-this; it is the opposite of it, and no rule below admits one.
-
 ## Why this exists
 
-Every product stores a file eventually: an attachment on a record, a logo, an
-export someone asked for. The need arrives one feature at a time, each time
-with a cheapest answer. Each cheapest answer fails as a general property.
-
-**A column of bytes in the relational database** puts every large object
-through the connection pool, the transaction log, the backup and the replica.
-So a table of receipts decides the restore time of the ledger beside it. **A
-directory on the server's disk** makes the server stateful. The second
-replica cannot see the first one's files, and a redeploy loses data.
-
-**A bucket with a public URL stored in the row** makes the URL the
-credential. Anyone who has seen it reads the object for as long as it exists.
-It also persists the bucket name and hostname in every row of every
-environment.
-
-**A presigned URL handed to the browser** is the same failure with a timer on
-it. For its lifetime the URL is a bearer credential nothing can revoke. It
-puts the store's hostname on the internet. It appears in every browser
-history, proxy log and screenshot between the click and the expiry.
-**Trusting the browser's `Content-Type`** stores whatever a client says it
-sent. So a file declared as an image is whatever the uploader wanted the next
-reader's browser to execute.
-
-None of these is a failure of care. Each is what happens when the questions
-have not been asked. The questions are: what protocol the store speaks,
-whose the bucket is, what a key is made of, what the application records.
-Also: who decides a read and executes it, how the server knows what arrived,
-and what deletes the bytes.
-
-### The standards evaluated first, per PC2
-
-**The S3 API is the storage protocol, adopted as a profile.** It is a de facto
-standard with many independent server implementations. They are the
-originating vendor's, every other major cloud's compatibility layer, and
-several self-hosted open-source servers. There is one client per language
-that speaks to all of them. It already defines what this document would
-otherwise invent. The API defines an object as a key, bytes and a content
-type; a streamed, ranged read; and multipart upload. It also defines a
-checksum the store verifies on write and reports on read, default
-encryption, and lifecycle rules.
-
-BS1 pins the options it leaves open, and BS1 also names the one primitive of
-the API this profile never uses. The alternatives were a filesystem
-abstraction, with no verified checksum and no lifecycle, and a vendor SDK's
-object model. The second is the framework problem of
-[`000-platform.md`](000-platform.md) PC1.
-
-**Content-Disposition is [RFC 6266](https://www.rfc-editor.org/rfc/rfc6266)**
-with `filename*` per [RFC 8187](https://www.rfc-editor.org/rfc/rfc8187). A
-non-ASCII filename is the ordinary case, and the two together are the only
-form every browser reads. **Range requests are
-[RFC 9110 §14](https://www.rfc-editor.org/rfc/rfc9110#section-14)**, passed
-through to the store's ranged `GetObject`. A video seek and a resumed
-download are ordinary reads. **Sniffing follows the
-[MIME Sniffing standard](https://mimesniff.spec.whatwg.org/)**, because that
-is what the browser at the other end does with the bytes. **Errors are
-[`050-http.md`](050-http.md) HA3's**, and tenancy, deletion and privacy
-transfer from [`025-structured-data.md`](025-structured-data.md) SD6, SD12
-and SD13 rather than being restated.
-
-**What no standard covers** is the relationship between the bytes and the
-application's data, and that is what this document invents. It invents the
-object reference and the rule that the row is the truth (BS4). It invents
-the read the server executes after its own check (BS5), and the upload the
-server verifies as it streams (BS6). It invents the scan posture (BS7), and
-deletion and purge through the outbox and a periodic job (BS8).
+Every product stores a file eventually, and the need arrives one feature at a
+time with a cheapest answer each time. Each cheapest answer fails as a general
+property: bytes in a table, files on a disk, a URL in the row, a client's
+declared type. It fixes what the store speaks, whose the bucket is, what a
+key and a reference are, and who executes every read, write and delete. No
+standard covers the relationship between the bytes and the
+application's data, and that relationship is what this document invents.
 
 ## The rules
 
 ### BS1. The S3 API is the storage protocol, behind a boundary module
 
 **Every object a service stores is stored through the S3 API**, under this
-profile. Otherwise "we use S3" unpinned becomes one profile per repository:
+profile. The S3 API is a de facto standard with many independent server
+implementations and one client per language. It already defines what this
+document would otherwise invent. That is an object as key, bytes and content
+type; a streamed, ranged read; multipart upload; a checksum verified on
+write; default encryption; lifecycle rules. The alternatives were a
+filesystem abstraction, with no verified checksum and no lifecycle, and a
+vendor SDK's object model. The second is the framework problem of
+[`000-platform.md`](000-platform.md) PC1.
+
+"We use S3" unpinned is one profile per repository, so this profile pins what
+the API leaves open:
 
 | Choice the API leaves open | This profile pins |
 |---|---|
@@ -131,22 +43,18 @@ to put a stream, head, get a stream with an optional range, or delete; the
 module speaks S3. The module has no operation that returns a URL, so a
 presigned one cannot be issued by accident from a domain that never asked.
 This is PC1's *contract, never a tool* at the storage boundary: a vendor swap
-is configuration plus one module. A gate cannot check it without reading
-source (PC4), so it is the review question on every diff that imports the
-client.
+is configuration plus one module.
 
 ### BS2. One bucket per service per environment, private, reachable from the service alone
 
 **A bucket is a backing service** in the sense of
 [factor IV](https://12factor.net/backing-services) and
 [`000-platform.md`](000-platform.md#terms). It is attached by configuration
-and owned by exactly one service. It is reached with a credential that is
-that service's and present in no other service's deployables.
-[`025-structured-data.md`](025-structured-data.md) SD13 states this for the
-database and the reasoning transfers whole: a bucket two services write is a
-shared table with a different name. Two services that need the same bytes
-exchange a message carrying an object id. The consumer asks the owning
-service's API for the object, which serves it (BS5).
+and owned by exactly one service, and reached with a credential present in no
+other service's deployables. A bucket two services write is a shared table
+with a different name ([`025-structured-data.md`](025-structured-data.md)
+SD13). Two services that need the same bytes exchange a message carrying an
+object id. The consumer asks the owning service's API for the object (BS5).
 
 **One bucket per environment.** Environments differ only in configuration
 ([factor X](https://12factor.net/dev-prod-parity)). A bucket shared between
@@ -156,18 +64,13 @@ them is where a staging purge deletes a production object. The name is
 **Which images carry the credential** follows
 [`035-workers.md`](035-workers.md) WK8. The server carries it, because it
 serves reads and receives uploads. The pool carries it, because it runs the
-scan, delete and purge jobs. The migrate image never carries it. Per
-[`010-ci.md`](010-ci.md) Principle 15 the credential is a surface an image is
-cut on; no image contains one.
+scan, delete and purge jobs. The migrate image never carries it.
 
 **The store is reachable from the service's processes and from nothing
-else**. The public-access block is on; no ACL and no policy grants anonymous
-read; website hosting is off. The endpoint sits on the service's private
-network or behind an endpoint policy that admits the service's credential
-alone. A client never connects to it, because a client is never given
-anything to connect with. Every read is a request the server answers with the
-bytes after an authorization check (BS5). Every write is a request the server
-receives and forwards (BS6).
+else**. The public-access block is on, no ACL or policy grants anonymous
+read, website hosting is off, and the endpoint admits the service's credential
+alone. A client is never given anything to connect with; every read and write
+is a request the server answers (BS5, BS6).
 
 What a product serves without a check is a release artifact under
 [`010-ci.md`](010-ci.md), not an object under this one. Its bundle and its
@@ -215,12 +118,9 @@ carries these fields:
 - `scan`, one of `not_required`, `pending`, `clean`, `infected` (BS7).
 - `created_at` and `stored_at`, the second present exactly when `stored`.
 
-**Never a URL.** There is no URL for an object, anywhere: not in the row,
-not in a response, not in a log line. A plain bucket URL is a hostname and a
-bucket name, BS2's configuration, persisted per row in every environment and
-every backup. A presigned one is a bearer credential, and BS5 issues none.
-The only handle that exists outside the server is the object id, and it
-means nothing without the row. The indirection is the security property.
+**Never a URL.** There is no URL for an object in the row, a response or a
+log line. The only handle outside the server is the object id, which means
+nothing without the row, and that indirection is the security property.
 
 **The row is the truth.** An object with no row is an orphan and BS8 removes
 it. A row whose object is absent is an upload still in flight, or a defect
@@ -253,7 +153,10 @@ the bytes**. In order, on every request:
 
 **The response is the bytes, `200`, or `206` for a satisfied `Range`**. It is
 never `302`, never a JSON body carrying a location, never anything a client
-could use to reach the store without the server.
+could use to reach the store without the server. A presigned URL, however
+short-lived, is a bearer credential whose only revocation is a timer and
+whose leakage is undetectable. It also puts the store's hostname on the
+internet.
 
 **The server streams; it does not buffer.** The object body is piped from
 the store to the response as it arrives. So a gigabyte read costs the server
@@ -271,22 +174,21 @@ without executing. `filename` is an ASCII fallback with non-ASCII, quotes and
 backslashes replaced, and `filename*` is in RFC 8187 form. The object id is
 used where there is no filename. `Cache-Control` is `private, no-store`,
 because the response was authorized for this subject at this moment and a
-shared cache would serve it to the next one.
+shared cache would serve it to the next one. A cache in front of the product's
+own API is the product's, honours `no-store`, and never sits in front of the
+bucket.
 
 **Every read is a request the server saw**. The check runs at the moment of
 the read, so a revoked grant is refused on the next request and not after a
-timer. There is nothing to leak, because nothing was issued. The request log
-carries the object id and the subject, which is an audit trail a URL in a
-browser history is not. An ordinary read is not audited
+timer. Nothing was issued, so there is nothing to leak, and the request log
+carries the object id and the subject. An ordinary read is not audited
 ([`080-audit.md`](080-audit.md) AE5); a bulk export delivered as an object is
 on AE5's floor. The key never appears in a log line, an audit event or a
 response.
 
 **Another service reads the same way**. A consumer holding an object id from
-a message (BS2) requests it from the owning service's API. It does so under
-that API's own authentication, and receives the bytes. It never receives the
-owning service's credential, a key, or a URL into the owning service's
-bucket.
+a message (BS2) requests it from the owning service's API under that API's
+own authentication. It never receives a credential, a key or a URL.
 
 ### BS6. Uploads pass through the server, which verifies what the client declared
 
@@ -353,10 +255,9 @@ no uploads. Wildcards are not admitted in the type set, for the reason
 upload's duration and moves each byte twice, in and out. That is the price
 of every byte the product stores having passed through a process the product
 controls. The policy is enforced on the bytes rather than on a client's
-promise, and no client can reach the store. A product whose upload volume
-makes the server the bottleneck scales the server. The server is stateless
-and scales by replica ([`030-service.md`](030-service.md)); the product does
-not open the store.
+promise. A product whose upload volume makes the server the bottleneck scales
+the server, which is stateless and scales by replica
+([`030-service.md`](030-service.md)).
 
 ### BS7. What one person uploads for another is scanned before it is served
 
@@ -448,142 +349,21 @@ consented, time-boxed impersonation recorded per
 
 The prefix is not that boundary. It lets lifecycle and the purge sweep work
 per tenant and makes an offboarding a prefix. A credential condition on it is
-admitted as a backstop in the way SD6 admits row-level security, never as the
-contract. It is configuration outside the repository that nothing here
-checks. A bucket per tenant is admitted where a product isolates by one
-database per tenant, with the same costs. The gate enumerates: every tenant's
-objects, each requested in every other tenant's context, all refused.
+a backstop in the way SD6 admits row-level security, never the contract. A
+bucket per tenant is admitted where a product isolates by one database per
+tenant, with the same costs. The gate enumerates: every tenant's objects,
+each requested in every other tenant's context, all refused.
 
 ## The artifacts
 
 Per PC3, under [`contracts/blob-storage/`](../contracts/blob-storage/):
 
-- **`key.schema.json`** is BS3's grammar as `$defs`. It holds the entity
-  segment, the object id (a `$ref` into the identifiers contract's UUIDv7),
-  the tenant-scoped and unscoped forms, and their union.
-- **`object-reference.schema.json`** is BS4's reference, closed, with `$ref`s
-  into the identifiers and observability contracts for ids, instants and the
-  tenant id. It carries the conditional rules that `stored` carries
-  `stored_at` and a `pending` row carries no verdict, and the media type and
-  checksum grammars.
-- **`upload-policy.schema.json`** is BS6's declaration. Per entity it holds
-  the size ceiling, the closed type set, the audience, the scan flag, the
-  disposition and an optional retention. Per service it holds the tenant
-  scoping, the upload lifetime and the multipart threshold. The schema
-  decides BS7's *others requires scan* and BS5's *inline only over
-  inline-safe types*.
-- **`corpus.json`** has five parts.
-  - `keys` and `policies` are schema-decided.
-  - `references` is schema-decided plus two equalities the schema cannot
-    state: the key's final segment is the id, its first segment the tenant.
-  - `uploads` is a set of sequences with steps at stated seconds, with every
-    step's result and the end state. The sequences are a complete upload
-    served, and a size, a checksum and a type that disagree with the
-    declaration. They include a type and a size refused before any byte, and
-    a body past the declared size aborted. They include an upload the client
-    abandoned and one the server died in, both purged. They include a scan
-    refused until clean, an infected object deleted, an owner deleted
-    through the outbox, an orphan, and a multipart upload.
-  - `reads` is a set of decisions the server makes for a request by object
-    id. The decisions are the status, `Content-Type` and
-    `Content-Disposition` it answers with, and a range satisfied as `206`.
-    They are also the refusals: a pending object, a pending scan, an
-    infected object, a missing permission, another tenant's row, a missing
-    tenant context. Every served case expects the bytes in the
-    response; an implementation that answers a redirect or a location fails
-    all of them.
-
-## Enforcement
-
-Every BS rule lands **review only** and is registered in
-[`999-enforcement.md`](999-enforcement.md) with its gate named. The
-mechanically checkable parts are the first to move to a gate. The first is
-the key grammar and the reference shape against their schemas (BS3, BS4).
-The second is the upload policy against its schema, which decides the scan
-posture and the disposition rule (BS5, BS6, BS7). The third is the `uploads`
-and `reads` corpus parts against a running service under
-`job-contract-conformance`, where the two detectors bite (BS6, BS7, BS10).
-The public-access block, the network posture and default encryption are
-configuration facts read from the platform (BS2, BS9).
-
-That no operation of the boundary module returns a URL, and that no response
-body or header carries one, is a grep on the module. It is also a review
-question on every diff that touches it (BS1, BS5). The remaining review
-questions are said so in the ledger row. One is that no vendor type crosses
-the boundary module (BS1, a PC4 matter). Another is that the row and the
-outbox message share a transaction (BS8, as AM4). The last is that a
-`retention` reason is true.
-
-## Decisions
-
-- **The S3 API is the protocol, adopted as a profile** (2026-09-02). It is
-  the one object-storage interface with many independent implementations and
-  a client per language. It already carries the streamed ranged read,
-  multipart, the verified checksum and the lifecycle rule. The alternatives
-  lack the primitive or are the framework problem.
-- **One bucket per service per environment** (2026-09-02). Prefixes per
-  service in a shared bucket make the credential boundary a policy condition
-  outside the repository. A bucket shared across environments is where a
-  staging job deletes production.
-- **Tenant, entity and UUIDv7 in the key, and no filename** (2026-09-02). The
-  filename is personal data, renameable and not unique. The extension is an
-  unverified type claim, and a date path duplicates what the UUIDv7 orders.
-- **A reference and never a URL** (2026-09-02). A presigned URL is a
-  credential and a plain one is configuration; both leak through the row.
-- **No presigned URL, ever; every read and write passes through the server**
-  (2026-09-03). This supersedes the short-lived presigned read the first draft
-  admitted. A presigned URL is a bearer credential whose only revocation is a
-  timer and whose leakage is undetectable. No lifetime short enough changes
-  either. It also puts the store's hostname on the internet, which makes the
-  store an attack surface of every product that uses it.
-
-  Served through the server, a read is authorized at the moment it happens
-  and refused the moment a grant is revoked. The store is reachable from the
-  service's network alone, and the only handle a client holds is an id that
-  resolves through the row. The cost is that the server moves every byte and
-  holds the connection for an upload. It is paid with replicas, not with the
-  store's exposure. There is no exception for large files, for other
-  services, for exports, or for a consumer that cannot follow a redirect.
-  None of them was ever given a redirect to follow.
-- **Upload through the server with the server's own sniff; disagreement is a
-  refusal** (2026-09-03). The pending row first keeps the row the truth from
-  the first byte. Hashing, counting and sniffing the stream as it passes
-  means the verification costs no second read. The server sniffs because the
-  declared type is what every later browser acts on. It refuses rather than
-  corrects because a corrected object is one the client did not mean to send.
-  An implementation that trusts the declaration passes every other case.
-- **Scan posture follows the audience; the verdict gates the read**
-  (2026-09-02). Scanning everything taxes the photo only its owner sees;
-  scanning nothing serves malware between users. The gate is a status on the
-  row, not a promise about latency, so an absent scanner fails closed.
-- **Hard delete through the outbox, never inline and never storage-first**
-  (2026-09-02). SD11 forbids the network call in the transaction, and each
-  inline ordering loses something on a failure between its two steps.
-- **Encryption on at the bucket; versioning is backup's** (2026-09-02). A
-  bucket default is a rule nobody can forget. Versioning retains what BS8
-  deleted, a backup property with an erasure cost, owned by the standard that
-  owns retention windows.
-- **The prefix is a convenience; the row and the check are the boundary**
-  (2026-09-02). A credential condition on a prefix is configuration nothing in
-  the repository checks. SD6's reasoning that isolation is a behaviour proven
-  by enumeration transfers unchanged.
-
-## Out of scope, deliberately
-
-- **Backup, restore and versioning retention.**
-  [`028-backup-and-recovery.md`](028-backup-and-recovery.md)'s; this document
-  supplies the bucket-agnostic key a restored database resolves with.
-- **Export and erasure endpoints.** The
-  [`082-data-subject-rights.md`](082-data-subject-rights.md)'s; this document
-  supplies the delete those jobs call and the served read an export is
-  delivered through.
-- **JSON documents.** [`027-json-document-storage.md`](027-json-document-storage.md)'s;
-  a document over the size that standard sets is an object with a reference.
-- **Public asset delivery.** Release artifacts under [`010-ci.md`](010-ci.md),
-  served without a check; not user data, not this bucket. A derived object,
-  such as a thumbnail, is an object with its own reference, produced by a
-  per-event job under [`057-jobs.md`](057-jobs.md).
-- **A CDN in front of the server**. Where a product puts a cache in front of
-  its own API, the cache is the product's. It authenticates to nothing but
-  the server, and honours `no-store`. It is never a cache in front of the
-  bucket.
+- **`key.schema.json`** is BS3's grammar as `$defs`: the entity segment, the
+  object id, the tenant-scoped and unscoped forms, and their union.
+- **`object-reference.schema.json`** is BS4's reference, closed, with its
+  conditional rules and the media type and checksum grammars.
+- **`upload-policy.schema.json`** is BS6's per-entity declaration, plus the
+  per-service tenant scoping, upload lifetime and multipart threshold.
+- **`corpus.json`** has five parts: `keys`, `policies`, `references`,
+  `uploads` and `reads`. Every served read expects the bytes in the response,
+  so an implementation that answers a redirect fails all of them.

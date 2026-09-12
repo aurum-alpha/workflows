@@ -1,81 +1,20 @@
 # Notifications: the record, the pipeline, consent, and the provider at the boundary
 
-One of the Aurum Alpha engineering standards, written under the platform
-contract ([`000-platform.md`](000-platform.md)). It is a per-capability
-standard from that contract's roster. Read
-[`999-enforcement.md`](999-enforcement.md) for the tier each rule below
-actually holds. Artifacts:
-[`contracts/notifications/`](../contracts/notifications/). It leans on
-[`055-messaging.md`](055-messaging.md), [`057-jobs.md`](057-jobs.md) and
-[`035-workers.md`](035-workers.md) for the pipeline. It also leans on
-[`060-auth.md`](060-auth.md), [`070-rbac.md`](070-rbac.md),
-[`080-audit.md`](080-audit.md), [`090-web-client.md`](090-web-client.md) WC4
-and [`020-identifiers.md`](020-identifiers.md).
-
-This document governs **the notification**: a message to a person, through a
-channel, about an event. It covers what is recorded, how a send is
-requested, and what consent is and when it is not consulted. It covers how
-a provider is attached, and how the in-app channel is served. **What it
-does not define is the identity that holds the address, or the permission
-that decides what can be shown**. Nor does it define the audit trail or the
-alerting of operators. Those are 060's, 070's, 080's and
-[`040-observability.md`](040-observability.md)'s.
-
 ## Why this exists
 
 Every product tells people things: a receipt, a reset link, a mention, a
-warning that someone signed in from a new device. Each has a cheapest
-answer: a mail library called inside the request handler, the address taken
-from the form, the copy in a string. And the vendor's key in the server's
-environment. That answer fails as a set of general properties. Sending
-inside the request makes every send a wait on a vendor and every timeout a
-doubled send. A copied address goes stale and spreads personal data.
+warning that someone signed in from a new device. The cheapest answer is a
+mail library in the request handler, the address copied from the form, and
+the vendor's key in the server's environment. That makes every send a wait
+on a vendor and every timeout a doubled send. *Did we tell them* becomes a
+question for the vendor's dashboard. This standard
+fixes the record, the pipeline, the consent model and the provider boundary.
+What remains for a repository is the set of categories it sends and the
+templates it renders.
 
-With no record, *did we tell them* is a question for the vendor's
-dashboard. That dashboard is searched by address rather than by person,
-retained as long as the vendor chooses, and empty the day the vendor is
-swapped. One unsubscribe flag stops the password reset with the
-newsletter, because one switch serves two classes of message. Copy in a
-vendor's editor changes without a commit. A vendor SDK in the domain makes
-a provider change a rewrite. It also puts a provider credential in the
-process that answers the internet.
-
-Two properties are external. A mailbox provider that sees complaints cross
-a threshold or bounces ignored throttles the sender for every recipient at
-once. And large mailbox providers filter bulk senders that offer no
-one-click unsubscribe. This standard removes those decisions from every
-repository. What remains for a repository is the set of categories it sends
-and the templates it renders.
-
-### The standards evaluated first, per PC2
-
-**The messages are CloudEvents under 055**: the causing event, the request
-to send and the provider's status reports are AM1 envelopes. The outbox
-(AM4) carries the request, and AM8 admits the webhook. **The jobs are
-057's**, in 035's pool. **Unsubscribe is
-[RFC 8058](https://www.rfc-editor.org/rfc/rfc8058)**, one-click over
-[RFC 2369](https://www.rfc-editor.org/rfc/rfc2369)'s `List-Unsubscribe`,
-adopted whole for every optional email. Every notification email carries
-**[RFC 3834](https://www.rfc-editor.org/rfc/rfc3834)**'s `Auto-Submitted`.
-**Locale and zone are [BCP 47](https://www.rfc-editor.org/info/bcp47) and
-the [IANA time zone database](https://www.iana.org/time-zones)**, as 090
-WC4 requires of the browser.
-
-**Unicode MessageFormat 2** (LDML, part 9) is recommended as the template
-syntax, not required, because NF8 binds the artifact. **Browser push is
-[RFC 8030](https://www.rfc-editor.org/rfc/rfc8030),
-[RFC 8291](https://www.rfc-editor.org/rfc/rfc8291) and
-[RFC 8292](https://www.rfc-editor.org/rfc/rfc8292)**. Native push is a
-vendor protocol behind the NF11 adapter, and **Standard Webhooks** verifies
-a status webhook where the provider signs that way (AM8). Set aside:
-OpenTelemetry has no notification semantic convention, so NF3's metrics
-take 040's shape. RFC 8417's Security Event Token is peer signalling,
-placed by 080.
-
-**Invented here**: the record (NF3), the class, category and preference
-model (NF5), the floor (NF6), and suppression as address state (NF7). Also
-invented: authorization at render time (NF9), and the adapter interface
-(NF11).
+The messages are CloudEvents under 055: the causing event, the request to
+send and the provider's status reports are AM1 envelopes. The jobs are
+057's, in 035's pool.
 
 ## The rules
 
@@ -218,7 +157,8 @@ where a preference permits it for that category on that channel**.
 credential resets, address verification, security notices (NF6), legal
 notices. The test is whether the person could hold the product to account
 for not sending it. *Optional* is everything else; *marketing* is optional
-by definition and opt-in.
+by definition and opt-in. A flat list of topics, with no class, lets a
+preference mute the reset email.
 
 **Categories are declared** in
 [`category-declaration.schema.json`](../contracts/notifications/category-declaration.schema.json)
@@ -239,18 +179,23 @@ floor none is read (NF6). *Pause everything* is a preference on every
 optional category, never a separate flag, because that flag is how a floor
 gets muted.
 
-**Every optional email carries RFC 8058 one-click unsubscribe**:
+**Every optional email carries [RFC 8058](https://www.rfc-editor.org/rfc/rfc8058)
+one-click unsubscribe** over [RFC 2369](https://www.rfc-editor.org/rfc/rfc2369)'s
 `List-Unsubscribe` with an HTTPS URI (a `mailto:` can accompany it) and
-`List-Unsubscribe-Post: List-Unsubscribe=One-Click`. The endpoint withdraws
-consent for that category on that channel on a `POST` whose body is
-`List-Unsubscribe=One-Click`, with no login and no confirmation. A `GET`
-renders a page a person finishes with a button and changes nothing, because
-mail gateways fetch every link before the recipient sees it. The token
-binds one recipient, category and channel, and grants nothing else. It
-lives as long as the email can sit in an inbox, and its only power is to
-reduce what the product sends. Transactional email carries neither header;
-every notification email carries `Auto-Submitted: auto-generated`
-(RFC 3834).
+`List-Unsubscribe-Post: List-Unsubscribe=One-Click`. Large mailbox
+providers filter bulk senders that offer no one-click unsubscribe. One that
+sees complaints cross a threshold throttles the sender for every recipient
+at once. The endpoint withdraws consent for that category on that
+channel on a `POST` whose body is `List-Unsubscribe=One-Click`, with no
+login and no confirmation. A `GET` renders a page a person finishes with a
+button and changes nothing, because mail gateways fetch every link before
+the recipient sees it.
+
+The token binds one recipient, category and channel, and grants nothing
+else. It lives as long as the email can sit in an inbox, and its only power
+is to reduce what the product sends. Transactional email carries neither
+header; every notification email carries `Auto-Submitted: auto-generated`
+([RFC 3834](https://www.rfc-editor.org/rfc/rfc3834)).
 
 ### NF6. The security floor notifies regardless of preference
 
@@ -258,7 +203,10 @@ every notification email carries `Auto-Submitted: auto-generated`
 person told is the only detector for an act performed by an authorized
 actor who was not the person**. They are category `security`,
 transactional, sent on every channel the declaration lists. Preferences,
-quiet hours and rate limits are not consulted; 080 AE5 records the act.
+quiet hours and rate limits are not consulted; 080 AE5 records the act. The
+channel the person muted could be the one that reaches the owner rather
+than the intruder. A limit that could suppress a security notice is a limit
+an attacker can fill.
 
 | Act | Told to | Also audited under 080 AE5 |
 |---|---|---|
@@ -303,16 +251,20 @@ from the record's template id, version, locale, zone and payload, and the
 rendering is deterministic**. What was sent is reproducible without storing
 it. A change to copy is a reviewed commit, and the template that ships is
 the one that was tested. `version` is bumped when a template's meaning
-changes. The format is the repository's choice; the rule binds the
-artifact: no network call, no data fetch, no branch on anything but the
-payload.
+changes.
 
-Locale is a BCP 47 tag from the recipient's stored preference, falling back
-through the tag (`de-AT`, `de`, the product default). Zone is an IANA name
-from the same place. Both are the recipient's, never the server's and never
-inferred from an address, per 090 WC4. The renderer is the presentation
-layer for these channels, formatting for one viewer. So it applies WC4's
-two specifics: money by the currency's exponent, and an instant in the
+The format is the repository's choice, and Unicode MessageFormat 2
+(LDML, part 9) is recommended, not required. The rule binds the artifact: no
+network call, no data fetch, no branch on anything but the payload.
+
+Locale is a [BCP 47](https://www.rfc-editor.org/info/bcp47) tag from the
+recipient's stored preference, falling back through the tag (`de-AT`, `de`,
+the product default). Zone is an
+[IANA time zone database](https://www.iana.org/time-zones) name from the
+same place. Both are the recipient's, never the server's and never inferred
+from an address, per 090 WC4. The renderer is the presentation layer for
+these channels, formatting for one viewer. So it applies WC4's two
+specifics: money by the currency's exponent, and an instant in the
 recipient's zone with the zone named. The record keeps base
 representations, so 020's rule is met.
 
@@ -396,7 +348,10 @@ The adapter is selected by an environment variable per channel under 030
 SC3. Failover is a second adapter and a routing rule. The credential is
 configuration of the pool and jobs images only (035 WK8). The email adapter
 sets NF5's headers; DKIM, SPF and DMARC are the platform's; `in_app` has
-none.
+none. Browser push is [RFC 8030](https://www.rfc-editor.org/rfc/rfc8030),
+[RFC 8291](https://www.rfc-editor.org/rfc/rfc8291) and
+[RFC 8292](https://www.rfc-editor.org/rfc/rfc8292); native push is a vendor
+protocol behind the adapter.
 
 ### NF12. The in-app channel is the service's API, with cursor paging and SSE
 
@@ -431,72 +386,7 @@ Per PC3, under [`contracts/notifications/`](../contracts/notifications/):
   rate limits.
 - **`status-events.json`**: NF2's five message types and the transitions.
 - **`corpus.json`**: `records`, shapes each schema accepts and rejects.
-  `decide`: the rows and message count `notify.decide` produces, with the
-  floor detector. `unsubscribe`: header sets against the RFC 8058 and
-  RFC 3834 profile and one-click requests, with the `GET` detector.
-  `render_authorization`: the payload the send job is permitted to render.
-
-## Enforcement
-
-Every NF rule lands **review only** and is registered in
-[`999-enforcement.md`](999-enforcement.md) with its gate named.
-Mechanically checkable, and first to move: the three schemas under
-`job-contract-conformance` (NF3, NF4, NF5). Next, the `decide` corpus
-against a repository's `notify.decide` (NF5, NF6, NF7, NF10). There the
-floor detector is worth the most, because muting the floor passes every
-test that exercises one preference at a time. Then the `unsubscribe`
-profile and its `GET` detector (NF5), and the `render_authorization` corpus
-(NF9).
-
-Review questions, said so in the ledger: an address resolved rather than
-cached (NF4), a class chosen honestly (NF5), a pure render (NF8). Also a
-link's route requiring authentication (NF9), and no vendor SDK in the
-domain (NF11).
-
-## Decisions
-
-- **The record is the source of truth, not the provider** (2026-09-02). A
-  dashboard is searched by address, retained by the vendor, and silent
-  about what was not sent. Relying on it answers *did we tell them* per
-  vendor.
-- **Two classes plus declared categories, not a flat list of topics**
-  (2026-09-02). A flat list lets a preference mute the reset email. The
-  class decides whether consent applies; the category is what it is held
-  against. A transactional preference switches channel only while one
-  remains. Ignoring it loses a wish for SMS over email; honouring it freely
-  makes *cannot be unsubscribed* false.
-- **The floor goes on every declared channel and reads no preference, quiet
-  hours or rate limit** (2026-09-02). The channel the person muted could be
-  the one that reaches the owner rather than the intruder. A limit that
-  could suppress a security notice is a limit an attacker can fill.
-- **Suppressed rows are written; erased subjects leave none** (2026-09-02).
-  A row with a reason is a query. A row for an erased person is new data
-  about them, and opt-in marketing makes a post-erasure suppression list
-  unnecessary.
-- **The send policy follows JB2 rather than being fixed** (2026-09-02). A
-  provider with an idempotency key makes the send `idempotent`, one without
-  makes it `at_most_once`; one fixed policy would misdeclare half the
-  adapters.
-- **Templates are files, versioned with the code; the format is open; `in_app`
-  renders at read** (2026-09-02). Copy in a vendor's editor changes without
-  review and cannot be re-rendered; deterministic rendering from stored
-  inputs belongs to the artifact. The inbox is a screen the web client
-  shows, so WC4's viewer-locale rule applies to it and the row stays in
-  base representations.
-- **Authorization at send time, not decide time** (2026-09-02). Grants
-  change between the two and a deferral widens the gap; 070 RB7 makes the
-  check pure.
-- **`GET` never unsubscribes** (2026-09-02). Link scanners fetch every URI
-  before delivery, so acting on `GET` unsubscribes everyone behind one.
-
-## Out of scope, deliberately
-
-- **The identity record and verification's mechanics.**
-  [`060-auth.md`](060-auth.md) AU3 and AU4; this document reads the address
-  state and does not own it.
-- **The permission model and the audit trail.** [`070-rbac.md`](070-rbac.md),
-  which NF9 calls; [`080-audit.md`](080-audit.md), whose AE5 records the act
-  NF6 tells the person about.
-- **Operator alerting.** [`040-observability.md`](040-observability.md).
-- **Campaign audiences without an identity record, and sending-domain
-  reputation.** A marketing platform's, and the platform's.
+  `decide`: the rows and message count `notify.decide` produces.
+  `unsubscribe`: header sets against the RFC 8058 and RFC 3834 profile and
+  one-click requests. `render_authorization`: the payload the send job is
+  permitted to render.

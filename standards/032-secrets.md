@@ -1,103 +1,32 @@
 # Secrets: how a secret reaches a process, what never enters a repository, and what happens when one leaks
 
-One of the Aurum Alpha engineering standards, written under the platform
-contract ([`000-platform.md`](000-platform.md)), a per-capability standard
-from its roster. Read [`999-enforcement.md`](999-enforcement.md) for the tier
-each rule below actually holds. Artifacts:
-[`contracts/secrets/`](../contracts/secrets/). What is known to satisfy SE10,
-and when that was last checked, is
-[`solutions/032-secrets.md`](../solutions/032-secrets.md), which states no rule
-of its own. The words *process*, *image*, *backing service*, *credential*,
-*configuration* and *environment* are used in the senses
-[`000-platform.md`](000-platform.md#terms) defines. This leans on
-[`030-service.md`](030-service.md) SC2 and SC3, [`010-ci.md`](010-ci.md),
-[`025-structured-data.md`](025-structured-data.md) SD3,
-[`035-workers.md`](035-workers.md) WK8,
-[`040-observability.md`](040-observability.md) and
-[`080-audit.md`](080-audit.md).
-
-This document governs **the secret**: a configuration value whose disclosure
-grants access. That is a credential to a backing service, a signing or
-encryption key, or the shared secret behind a webhook. It defines how one
-reaches a process, how it is declared and named, and where it is never
-permitted to be. It defines how it is rotated, and what happens when one
-leaks. **What it does not define is the configuration surface, the identity
-chain, or the image**. Those are SC3's, [`060-auth.md`](060-auth.md)'s and
-[`010-ci.md`](010-ci.md)'s.
-
 ## Why this exists
 
-Every process holds at least one secret. The secret is the one input a
-process cannot be given the way it is given everything else. Code is built
-once and copied, while a secret must reach exactly the processes that need it
-and no artifact that outlives them. Every cheap answer fails on that
-asymmetry, and fails quietly. A secret in the wrong place does nothing
-visibly wrong until someone else reads it.
+Every process holds at least one secret. A secret is the one input a process
+cannot be given the way it is given everything else. Code is built once and
+copied; a secret must reach exactly the processes that need it and no
+artifact that outlives them. Every cheap answer fails on that asymmetry, and
+fails quietly. A secret in the wrong place does nothing visibly wrong until
+someone else reads it. A repository built for a client is handed
+over, so anything in its history at handover is a leak nobody here can
+rotate afterwards (SE8).
 
-**A value in the repository** is in every clone and fork ever taken.
-Deleting it in a later commit removes it from none of them. **A value baked
-into an image** is in a layer, in every registry and on every host that
-pulled it.
-
-**A fetch from a vault through the vendor's SDK** makes the vault a runtime
-dependency of every process (PC1). It needs an undelivered credential to the
-vault, and adds a startup gate SC6 forbids. **A secret in a log line** is in
-a system built to copy, index, retain and search everything it receives. **A
-secret nobody rotates** has a permanent exposure. Nothing fails on the day it
-was due for rotation, because absence is not an event.
-
-Two properties make this sharper than the general case. A repository built
-for a client is handed over. So anything in its history at handover is a
-leak into an estate nobody here can rotate afterwards. And a secret is the
-one class of defect where the remedy is not a fix. Removing a leaked value
-does not make it unleaked, so the response is a rotation by a named person.
-
-This standard answers once how a secret arrives, what it is called, where it
-is declared, and where it is forbidden. It answers how it is recognised at
+This standard answers once how a secret arrives, what it is called, and
+where it is declared and forbidden. It answers how a secret is recognised at
 the log boundary, how old it can get, and what a leak response consists of.
 What remains for a repository is the list of secrets its service needs,
 which is its domain.
-
-### The standards evaluated first, per PC2
-
-**Delivery is [factor III](https://12factor.net/config), unchanged**. A
-secret is configuration and reaches a process in the environment. The OCI
-runtime offers exactly two channels into a container that exist before the
-process does: environment variables and mounted files. Every runtime the
-platform could sit on populates both from its own secret store. SE1 adopts
-both.
-
-**The step between the store and the environment has no standard**, only an
-established mechanism per runtime. SE10 pins the class per runtime and what
-qualifies one.
-
-**Redaction borrows HTTP's own list**. The field names SE5 redacts by name
-are the ones [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110) and
-[RFC 6265](https://www.rfc-editor.org/rfc/rfc6265) define for carrying
-credentials. It adds the token fields of
-[RFC 6749](https://www.rfc-editor.org/rfc/rfc6749). Recognition by declared
-value is invented, because no standard states how an emitter knows which of
-its own strings are secrets.
-
-**Short-lived credentials are OIDC and the platform's identity mechanisms**,
-adopted by SE6 as the preferred form. **The leak response reuses the audit
-event** of [`080-audit.md`](080-audit.md) AE2 and AE3. **Secret scanning has
-an established class of tool and no standard**; SE4 names the class and the
-posture, never a vendor.
-
-**What no standard covers** is what this document invents. That is the
-declaration (SE2), the name grammar (SE3), and recognition by declaration and
-never by shape (SE5). It is also the age and rotation modes (SE7) and the
-order of a leak response (SE8). And it is the properties a store and a
-delivery mechanism must have (SE10).
 
 ## The rules
 
 ### SE1. A secret reaches a process as configuration does, and never through a vendor SDK
 
 **A secret reaches a process in its environment, delivered by the platform
-before the process starts; application code never fetches one**. There are
-two forms, and the declaration (SE2) says which each secret takes:
+before the process starts; application code never fetches one**. Delivery is
+[factor III](https://12factor.net/config), unchanged. The OCI runtime offers
+exactly two channels into a container that exist before the process does,
+environment variables and mounted files. The declaration (SE2) says which
+each secret takes:
 
 | Delivery | The variable holds | Used for |
 |---|---|---|
@@ -221,10 +150,13 @@ descending authority:
    learning the secret. A connection string registers its password component
    as well as its whole value, because a driver quotes the password without
    the URL around it.
-2. **By field name**. The closed list in `redaction.json`, the HTTP
-   credential headers and the OAuth token fields, is replaced whole with
-   `[redacted]`. An inbound `Authorization` header or a caller's password is
-   a secret the service could not have declared.
+2. **By field name**. The closed list in `redaction.json` is replaced whole
+   with `[redacted]`. It holds the credential headers of
+   [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110) and
+   [RFC 6265](https://www.rfc-editor.org/rfc/rfc6265) and the token fields
+   of [RFC 6749](https://www.rfc-editor.org/rfc/rfc6749). An inbound
+   `Authorization` header or a caller's password is a secret the service
+   could not have declared.
 3. **By shape**, as a best-effort third layer only: a regex for a known key
    prefix, an entropy threshold. A backstop, never the mechanism.
 
@@ -370,19 +302,10 @@ publishes, which is the split 010 draws.
 
 ### SE10. The store renders into the environment through the runtime's own mechanism, and there is one store per platform
 
-SE1 says a process sees a variable and never fetches. This rule says how the
-variable gets there, because that is where "the platform delivers it" has
-been left to each repository to discover. There is no industry standard for
-the step between a secret store and a process's environment. There is an
-established set of mechanism *classes*, one per runtime. This rule pins the
-class and the properties any implementation of it must have, so that a
-repository does not invent a fourth.
-
-**Which implementations meet those properties today is
-[`solutions/032-secrets.md`](../solutions/032-secrets.md)'s**. The products
-in this space are renamed, acquired and superseded on a timescale this
-document is not written to track. The rule is the class and the test below;
-the register is the survey, dated.
+SE1 says a process sees a variable and never fetches. This rule pins how the
+variable gets there: the class of mechanism per runtime, and the properties
+any implementation of it must have. A repository then does not invent a
+fourth.
 
 **One secret store per platform, chosen by the platform and not by the
 repository**. A store is a running service with three properties the
@@ -396,54 +319,33 @@ production workload and by the named owner, and by nothing else.
 The platform's own manager meets this, whether it is the hosting provider's,
 a hosted manager or a self-hosted one. A repository does not pick a different
 one because its author prefers it, for the reason
-[`000-platform.md`](000-platform.md) PC1 gives.
+[`000-platform.md`](000-platform.md) PC1 gives. Which implementations meet
+the properties is [`solutions/032-secrets.md`](../solutions/032-secrets.md)'s.
 
 **A file of encrypted values committed to the repository is not a store, and
-there is no exception**. This covers every shape of it. One is values
-encrypted in place inside a committed configuration file. Another is the
-sealed form whose private key lives in a cluster controller. Both are
-refused, for five independent reasons, any one of which is sufficient:
+there is no exception**. That covers values encrypted in place inside a
+committed configuration file, and the sealed form whose private key lives in
+a cluster controller. Three reasons, any one sufficient:
 
-1. **A repository is not a place a secret value is permitted to live, in any
-   form, because its history is permanent and it leaves**. Deleting the file
+1. **A repository's history is permanent, and it leaves**. Deleting the file
    removes it from no clone and no fork. A repository built for a client
-   leaves this organisation at handover carrying every version of every
-   value it ever held. The day the key is compromised, the compromise is retroactive
-   across the whole history at once. A store has a current version and old
-   versions that can actually be destroyed.
-2. **It moves the problem and then multiplies it**. The ciphertext is inert
-   without a decryption key. That key has to reach the live system somehow,
-   by the very mechanism this rule already specifies. So the repository does
-   not remove a delivery step; it keeps that step and adds a second path
-   beside it. What it has bought is one delivery instead of many. The price
-   is turning that one into a master key that unlocks everything, whose own
-   compromise is total.
-3. **It is a second way to do the thing there is already one way to do**,
-   which [`010-ci.md`](010-ci.md) Principle 12 and PC1 both refuse. After it,
-   a platform has two secret-delivery mechanisms. Every process, every
-   rotation and every incident has to ask which one it is looking at. The
-   answer to *how does a secret reach a process* is one answer or it is no
-   answer.
-4. **It is a GitOps pattern, and the platform does not do GitOps**. The
-   argument for it is that the whole desired state of a system, secrets
-   included, must be reconstructable from the repository by one apply. That
-   premise is a deployment model this platform has not adopted. So the
-   benefit it trades against the four other costs here is one the platform
-   does not collect.
-5. **Required runtime configuration is never in the repository**. SC3 admits
-   a safe default in the repository for an *optional* variable, and states
-   that a required variable has no default. A secret is required by
-   definition, because a process without it does not serve. So no form of
-   its value belongs in code, encrypted or otherwise. The repository ships
-   the mapping (below) and nothing else.
+   leaves at handover carrying every version of every value it ever held.
+   The day the key is compromised, the compromise is retroactive across the
+   whole history. A store has old versions that can be destroyed.
+2. **It keeps the delivery step and adds a second path beside it**. The
+   ciphertext is inert without a key, and that key reaches the live system by
+   the mechanism this rule already specifies. What it buys is one delivery
+   instead of many, at the price of a master key whose compromise is total.
+   A second delivery mechanism is the second answer
+   [`010-ci.md`](010-ci.md) Principle 12 and PC1 refuse.
+3. **A required value is never in the repository** (SC3). A secret is
+   required by definition, because a process without it does not serve. So
+   no form of its value belongs in code, encrypted or otherwise. The
+   repository ships the mapping below and nothing else.
 
-The sealed shape is refused on the same five, and the argument usually made
-for it does not rescue it. That the decrypting key never leaves the platform
-is true, and it still fails 1, 3, 4 and 5 unchanged. It also fails SE7:
-rotation becomes a commit, indistinguishable from an edit, with nothing
-noticing one that never happened. And the controller key has to be backed
-up or recovery is impossible, which relocates the whole exposure into the
-backup.
+The sealed form fails the same three and also SE7: rotation becomes a commit
+indistinguishable from an edit, with nothing noticing one that never
+happened.
 
 **The store renders into the environment by the runtime's mechanism, on the
 platform's side of the variable, and a repository ships only the mapping**.
@@ -473,20 +375,16 @@ A mechanism in which the application holds a store credential, fetches at
 start, or caches values on disk it manages is not in it. That is SE1's
 vendor-SDK case with an operator's name on it.
 
-**Rotation runs through the store**. SE7's modes describe the backing
-service's side. On the delivery side, a rotation is three steps. Write the
-new version to the store, let the mechanism render it, then restart or not
-as the mode says. The render is the operator's refresh interval, the driver's rotation
-poll, or the agent's next run, each declared beside the mapping.
-
-The procedure a human runs is in the repository's operations documentation.
-The agent standard's rule puts it there: a procedure not in the docs does not
-exist. It names the store path and the mechanism, never the value.
+**Rotation runs through the store**: write the new version, let the mechanism
+render it, then restart or not as SE7's mode says. The procedure a human runs
+is in the repository's operations documentation, and names the store path
+and the mechanism, never the value.
 
 ## What is a secret
 
-The test is one question: *does disclosing this value grant access, or let
-someone forge something this service trusts?*
+The test is the Terms' ([`000-platform.md`](000-platform.md#terms),
+*Secret*): does disclosing this value grant access, or let someone forge
+something this service trusts?
 
 | Value | Secret? | Kind and delivery | Why |
 |---|---|---|---|
@@ -503,124 +401,8 @@ Per PC3, under [`contracts/secrets/`](../contracts/secrets/):
 
 - **`secret-declaration.schema.json`**: SE2's declaration, with SE3's name
   grammar as a `$defs` pattern and the conditional rules prose states.
-  Suffix agrees with kind, a private key is a file, and a file names its
-  path. A static secret carries an age and a static rotation mode, a
-  platform-issued one is `reissue`, and the migrate image shares no secret.
-  The id `$ref`s the identifiers contract.
-- **`redaction.json`**: SE5's mechanism as data. That is the two marker
-  forms, the substring rule and connection-string components for declared
-  values, and the closed list of field names redacted by name.
-- **`corpus.json`**: six parts. `names`: variables the grammar accepts and
-  refuses. `declarations`: declarations the schema and the runner's two
-  cross-entry checks accept and reject, each rejection naming its rule.
-  `redaction`: declared secrets and an object about to be emitted, with the
-  object that must leave the process. It includes the passphrase that
-  separates a declaration-honouring redactor from a shape-filtering one.
-
-  `forbidden_locations`: Dockerfile lines, tracked paths, `.env.example`
-  lines, source, compose files and history, each with its finding and
-  response. It includes the low-entropy value that separates a
-  placeholder-grammar scanner from an entropy one. `rotation`: age policy
-  against a last rotation. `leak_response`: audit events the audit schema
-  and SE8's checks accept and refuse.
-
-## Enforcement
-
-Every SE rule lands **review only** and is registered in
-[`999-enforcement.md`](999-enforcement.md) with its gate named. Eight checks
-are mechanically checkable, and first to move to a gate. The declaration's
-validity and its two cross-entry counts (SE2, SE6). The name grammar over
-every variable a process reads (SE3). The scanner on every push and the
-`.env` ignore rule (SE4). A Dockerfile `ENV`/`ARG` line naming a secret
-variable (SE5, a grep with no false positives once SE3 holds).
-
-The redaction corpus against a service's emitter, black-box, by feeding it a
-declared value and reading stdout (SE5). The image set against `images`
-(SE6). The freshness comparison (SE7). The audit event's shape (SE8).
-
-Five are review questions, said so in the ledger row. That a process fetches
-nothing in code (SE1, a call-graph fact PC4 keeps a gate out of). That a
-subject names a real backing service (SE3). That rotate came before
-investigate (SE8).
-
-That a development credential grants nothing outside the developer's machine
-(SE9). That the mapping names a store path and a mechanism from the table
-and no value (SE10). For SE10, the presence of a value is SE4's scanner; the
-mechanism's class is a review question.
-
-## Decisions
-
-- **The variable is the contract; the store is the platform's** (2026-09-02).
-  A vault client in application code makes the store a runtime dependency of
-  every process. It needs an undelivered credential to the store, and adds a
-  startup gate. Factor III answers delivery; the store renders into it.
-- **One store per platform; the runtime's own mechanism renders it; the
-  repository ships the mapping and never the value** (2026-09-03). The step
-  from store to environment had been left as "the platform delivers it",
-  which each repository resolved differently. There is no standard for it,
-  so the rule pins the class per runtime and the four properties any
-  mechanism must have. The class is what binds. Which implementations have
-  those properties is a survey with a date on it, and lives in
-  [`solutions/032-secrets.md`](../solutions/032-secrets.md).
-- **No encrypted secret value in the repository, and no exception for the
-  sealed form** (2026-09-03). The case for committing ciphertext is that the
-  system becomes reconstructable from the repository alone. It does not
-  become that. The decryption key still has to reach the live system by the
-  mechanism this standard already specifies. So the delivery step is kept
-  and a second path is added beside it. The added one carries a single key
-  that unlocks everything.
-
-  That is a second answer to a question with one answer, which Principle 12
-  refuses on its own. The reconstructable-repository benefit belongs to a
-  deployment model this platform has not adopted. A required value in the
-  repository is refused by SC3 whatever its encoding. Underneath all of it, a
-  repository's history is permanent and it leaves, which no encryption
-  changes.
-
-  An earlier draft of this rule also claimed such a file has no access log.
-  That was wrong where the key sits in a managed key service, which logs
-  every decrypt with its principal. The claim is withdrawn rather than kept
-  as a convenient one; the four reasons above do not need it.
-- **A secret is declared, with an id and a `<SUBJECT>_<KIND>` name**
-  (2026-09-02). Without a declaration there is no list to redact by, rotate
-  from, check an image against, or hand over. The id gives a rotation's audit
-  event a public id for its target, as 080 AE2 requires, that survives a
-  rename. The closed suffix set is the only grammar a scanner, an
-  `.env.example` check and a reviewer can all apply without the declaration
-  in hand. Environment prefixes are refused as environment detection.
-- **Recognition by declaration, not by shape** (2026-09-02). A shape-based
-  redactor is a list of the secrets someone has already seen leak. The
-  declaration is the list of the secrets this service has, the only list that
-  includes the passphrase-shaped one. Shape stays as a third layer because it
-  costs nothing and catches a caller's key the service never declared.
-- **Ninety days default, one year ceiling, static only** (2026-09-02). A
-  number is required because "rotate regularly" is a preference. Ninety days
-  keeps the procedure exercised while its authors are present. A year is the
-  point past which nobody can say where a credential is used. The platform
-  renews its own credentials on a shorter schedule than either.
-- **Rotate first, investigate second; history is never rewritten**
-  (2026-09-02). Exposure ends when the value stops working and not before;
-  investigation informs the fix, not the response. A rewrite removes the
-  value from the least dangerous copy and destroys the record of the window
-  in which it was exposed.
-- **A development credential minted by the compose file is admitted there**
-  (2026-09-02). It grants access to a container that exists only while that
-  file runs it. Forbidding it makes every developer invent one and produces
-  `.env.example` files with values in them. The admission is scoped to that
-  file and nowhere else.
-- **Handover rotates everything** (2026-09-02). The repository's history,
-  pipelines and people leave this organisation's reach on that day. Any value
-  ever delivered against its declaration can be in that history. The
-  declaration makes the list complete rather than remembered.
-
-## Out of scope, deliberately
-
-- **Response headers, TLS posture, image digest pinning, dependency
-  scanning**. The [`085-security-baseline.md`](085-security-baseline.md)'s, which points here.
-- **The identity tier's key material and how verifiers learn of a rotation**.
-  [`060-auth.md`](060-auth.md)'s; here it is a file-delivered private key.
-- **Backup encryption keys and the backup credential**. The [`028-backup-and-recovery.md`](028-backup-and-recovery.md)'s; secrets under
-  every rule here, held by the backup system and never by a service image.
-- **What a browser is permitted to hold, and which algorithms are used**.
-  [`090-web-client.md`](090-web-client.md) WC1 and WC2 for the first; the
-  backing service or the protocol for the second.
+- **`redaction.json`**: SE5's mechanism as data: the marker forms, the
+  substring and connection-string rules for declared values, and the closed
+  field-name list.
+- **`corpus.json`**: six parts, `names`, `declarations`, `redaction`,
+  `forbidden_locations`, `rotation` and `leak_response`.

@@ -1,29 +1,12 @@
 # Acceptable solutions: secrets
 
-The acceptable solutions register for
-[`032-secrets.md`](../standards/032-secrets.md). It is not a standard and
-states no rule. Read
-[the charter](../README.md#acceptable-solutions-the-register-of-what-satisfies-a-standard)
-for what this class of document is and is not permitted to do. Everything
-below is a claim that some implementation meets a rule 032 states, and the
-date that claim was last checked.
+Register for [`standards/032-secrets.md`](../standards/032-secrets.md).
 
-SE10 pins two things this page does not repeat: the **mechanism class** per
-runtime, and the **four properties** any implementation of one must have. The
-properties: the environment complete before the process starts, and the store
-credential held by a platform component and never the application. Also
-rotation by re-render with no code change, and the store's access log naming
-that platform component. Read them there. A candidate is admitted by having
-those properties, not by appearing here. Every entry below is on this page
-because it was checked against them.
+A candidate is admitted by SE10's four properties.
 
 ## The store
 
-SE10 requires one store per platform, chosen by the platform. The register
-names no default, and that is deliberate rather than an omission: the rule
-already decides it. **The store is the one the hosting platform supplies.** A
-second store attached for preference is the PC1 failure SE10 cites. And the
-delivery mechanisms below are built for the platform's own.
+The store is the platform's own (SE10).
 
 | Class | Implementations checked | Notes against 032 |
 |---|---|---|
@@ -45,16 +28,7 @@ delivery mechanisms below are built for the platform's own.
 
 | Route | Refused by |
 |---|---|
-| Encrypted secret values committed to the repository, in any shape, sealed forms included | **SE10**, on five independent grounds — permanent history that leaves at handover, a bootstrap key that keeps the delivery step and adds a master key beside it, a second mechanism where one way is the rule, a GitOps premise the platform has not adopted, and required configuration in the repository against SC3. No exception; the register admits none and never will. |
-| The application calling a store's SDK at start | **SE1**. This is the rule the whole standard opens with, and an operator's name on it does not change it. |
+| Encrypted secret values committed to the repository, in any shape, sealed forms included | **SE10**. |
+| The application calling a store's SDK at start | **SE1**. |
 | A native secret object written by hand or by a pipeline | **SE10**. A copy nobody rotates. The operator owns the object. |
 | A second store attached because a repository's author prefers it | **SE10**, and PC1 behind it. |
-
-## Checked
-
-**2026-09-03**, against each project's own documentation. Next re-check due
-**2027-03-02**, per the charter's 180-day horizon. A re-check confirms that
-each implementation still exists under that name and still meets SE10's four
-properties. It also confirms that no runtime class has acquired a mechanism
-that the class description no longer covers. That last finding would go back
-to the standard rather than to this page.

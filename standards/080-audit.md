@@ -1,118 +1,30 @@
 # Audit events: who did what, when, to what
 
-One of the Aurum Alpha engineering standards, written under the platform
-contract ([`000-platform.md`](000-platform.md)). It is a per-capability standard
-from that contract's roster. Read [`999-enforcement.md`](999-enforcement.md) for
-the tier each rule below actually holds. Artifacts:
-[`contracts/audit/`](../contracts/audit/). Id, timestamp and money formats are
-[`020-identifiers.md`](020-identifiers.md)'s; the context fields are
-[`040-observability.md`](040-observability.md)'s.
-
-This document defines the record a product keeps of consequential acts. That
-is its shape, what must produce one, how long it is kept, and what makes it
-worth trusting. It does not define who is allowed to perform those acts, which
-is the [RBAC standard](070-rbac.md)'s. It does not define diagnostic logging,
-which is [`030-service.md`](030-service.md) SC2's. AE1 is the boundary between
-the last two, because conflating them is the failure this standard mostly
-exists to stop.
-
 ## Why this exists
 
 When a client asks *who changed this, and when*, an answer exists only where
-the product chose to keep one. Without a standard, most products keep no
-audit trail at all. The one a product builds on its own is worth looking at
-closely. Every way it goes wrong is a way the next one will go wrong by
-default.
+the product chose to keep one. Without a statement of what an audit event
+*is*, each product answers structurally and each answers differently. The
+cost lands on a client rather than on us, on the one record whose entire
+value is being right about what happened. This standard says
+what the event is: its shape, its floor, its storage discipline and its
+retention.
 
-Take a table of the usual shape, `tenant_access_audit_log`, with `user_id`,
-`action`, `organization_id`, `role_id`, `access_type`, `reason`, `ip_address`,
-`user_agent`, `created_at`. It has a closed seven-value action enum with a
-well-kept enum class behind it, and two considered indexes.
-
-**The first way it goes wrong is that nothing writes to it**. The only files
-that name the table are the migrations that create it, and a database
-diagram. The action enum is referenced by nothing. It is a well-designed
-empty table, which is the most expensive kind: it looks like the question was
-answered.
-
-Four things are wrong with it beyond being empty, and each is instructive:
-
-- **One `user_id` for two different people**. On a `grant` row, the column holds
-  the person who received access. Nowhere does the table record the admin who
-  granted it. The one question an access audit log exists to answer, *who gave
-  them that*, is unanswerable by construction. Actor and target are two fields,
-  and every implementation that fuses them discovers this on the day it matters.
-- **Internal integer keys in a permanent record**. `user_id`, `organization_id`
-  and `role_id` are storage keys, which
-  [`020-identifiers.md`](020-identifiers.md) IP1 says do not leave the service.
-  An audit row is the extreme case of leaving. It outlives the row it points
-  at, so a key-based reference degrades to a number that once meant something.
-- **`TIMESTAMP DEFAULT CURRENT_TIMESTAMP`**, the exact column type IP4 names as
-  a trap. It ends in 2038 and converts through the session time zone, on the
-  one table whose entire value is being right about when.
-- **No trace or request context**, so an audit row cannot be joined to the logs
-  of the request that produced it.
-
-None of this is carelessness; it is what happens when each product invents the
-table. The gap is not that we lack an audit library. It is that nobody has said
-what an audit event *is*, so each product answers structurally and each answers
-differently. That is the failure this whole repository exists to prevent, on a
-capability where the cost lands on a client rather than on us.
-
-### The standard evaluated first, per PC2
-
-No wire standard covers application-level audit, and two candidates are close
-enough that skipping them would be dishonest.
-
-**OCSF** (the [Open Cybersecurity Schema
-Framework](https://github.com/ocsf/ocsf-schema)) is the serious one. It is an
-active, vendor-backed schema with an Application Activity category (Web
-Resources Activity, Application Lifecycle, API Activity) and an Identity &
-Access Management category. It is what a SIEM wants to be fed. It is **not
-adopted as the record**, for one reason that is about shape rather than
-quality. OCSF is a *normalization target for security telemetry*, and its own
-project says the focus is cybersecurity events. Its class taxonomy is closed
-and security-shaped.
-
-There is no class for `invoice.void`. Forcing one into API Activity throws away
-the domain meaning that makes the record useful on a product's own history
-screen. Its required `class_uid` / `category_uid` / `activity_id` machinery is
-meaningful to a SIEM and meaningless to the admin reading a support ticket.
-
-So OCSF is the **export target, not the record**. AE2's field names are chosen
-to map onto OCSF's dictionary where OCSF has an equivalent (`actor`, `time`,
-`status`, `metadata`). A product feeding a SIEM maps at that boundary rather
-than deforming its own store. The mapping is an integration, which is where a
-normalization schema belongs.
-
-**Security Event Token** ([RFC 8417](https://www.rfc-editor.org/info/rfc8417/))
-with the OpenID Shared Signals Framework and CAEP is the second, and it is
-solving a genuinely different problem. It carries statements of fact from one
-issuer to another *cooperating peer* about a security subject, such as a
-session revoked or a credential changed. The receiver can then react. It is a
-signalling protocol between domains, not a record kept within one. These
-standards already meet it in the right place: [`060-auth.md`](060-auth.md) AU5
-adopts OIDC Back-Channel Logout, which is that family. It is not an audit trail
-and does not claim to be.
-
-**CloudEvents** is an envelope, not a content schema, and is already the
-candidate the async messaging capability evaluates. Where a product ships audit
-events onto a bus, it is the envelope and AE2 is the payload. That is
-composition, not competition.
-
-The invention is therefore scoped the way PC2 requires. This standard defines
-the **event's content**, and everything around it stays standard. Trace context
-is W3C, ids and timestamps are the identifiers contract's, transport is the
-async envelope's, export is OCSF's.
+**OCSF is the export target, not the record**. The [Open Cybersecurity Schema
+Framework](https://github.com/ocsf/ocsf-schema) is a normalisation target for
+security telemetry, and its class taxonomy is closed and security-shaped.
+There is no class for `invoice.void`, and forcing one into API Activity throws
+away the domain meaning a product's own history screen needs. So AE2's field
+names map onto OCSF's dictionary where it has an equivalent (`actor`, `time`,
+`status`, `metadata`). A product feeding a SIEM maps at that boundary.
+Where audit events go on a bus, CloudEvents is the envelope and AE2 is the
+payload.
 
 ## The rules
 
 ### AE1. An audit event is data, not a log line
 
-This is the rule everything else rests on, and the one most often lost by
-accident. An audit event and a log line look identical in a terminal.
-
-They are different things with different readers:
+An audit event and a log line are different things with different readers:
 
 | | Log line (SC2) | Audit event |
 |---|---|---|
@@ -138,17 +50,13 @@ honour. Nothing samples; retention is set correctly and stays set; a
 ten-month-old line is still queryable by tenant on a support call. Two of those
 are outside the application's control entirely.
 
-*On [factor XI](https://12factor.net/logs), because the objection is the obvious
-one*. Factor XI says an application must not concern itself with the routing or
-storage of **its log stream**. [`030-service.md`](030-service.md) SC2 adopts
-that whole. This rule is not a departure from it, because an audit event is not
-a log line. It is application data, and its store is an attached resource in
-the sense of [factor IV](https://12factor.net/backing-services). It is named by
-config and swappable per deploy, exactly like every other table the product
+*On [factor XI](https://12factor.net/logs)*: it says an application must not
+concern itself with routing or storing **its log stream**, and
+[`030-service.md`](030-service.md) SC2 adopts that whole. An audit event is
+not a log line. It is application data, and its store is an attached resource
+in the sense of [factor IV](https://12factor.net/backing-services). It is
+named by config and swappable per deploy, like every other table the product
 owns.
-
-Reading factor XI as covering audit records would make it say that an
-application must not store its own data. That is the opposite of what it says.
 
 ### AE2. One event shape, and actor is not target
 
@@ -168,10 +76,11 @@ Every audit event is the same object, whatever produced it:
 | `changes` | Optional. What the act altered, as before/after per field. |
 | `reason` | Optional free text: the justification an administrator typed, or the decision reason from RBAC's RB8 on a refusal. |
 
-**`actor` and `target` are separate objects and neither is optional**, which is
-the lesson of the table in the Why section, stated as a rule. Each carries a
-`type`, the application's own **public id** (never an internal key, IP1), and a
-`display` string captured at write time (AE4).
+**`actor` and `target` are separate objects and neither is optional**. An
+audit table that fuses them into one `user_id` cannot say who granted the
+access it records. Each carries a `type`, the application's own **public id**
+(never an internal key, IP1), and a `display` string captured at write time
+(AE4).
 
 ```
 actor:  { type: "user",     id: "01923e8a-…", display: "Dana Okoye <dana@…>",
@@ -180,7 +89,7 @@ target: { type: "user",     id: "01923f10-…", display: "Sam Reyes <sam@…>" }
 action: "user.grant_role"
 ```
 
-That row answers *who gave Sam that role*. The table in the Why section cannot.
+That row answers *who gave Sam that role*.
 
 `actor.type` is one of `user`, `service`, `system` (a scheduled or maintenance
 job with no human behind it) or `anonymous`. **`anonymous` means the application
@@ -300,9 +209,8 @@ The review question this puts on a diff, in the words a reviewer asks it:
 
 ### AE6. Append-only discipline is required; hash chaining is not
 
-The integrity question deserves a decision rather than whatever a framework
-ships. So: **this standard requires append-only storage discipline, and does
-not require tamper-evidence**.
+**This standard requires append-only storage discipline, and does not require
+tamper-evidence**.
 
 Append-only discipline means the writes are the only writes. The application's
 database grant on the audit table carries `INSERT` and `SELECT` and not
@@ -312,14 +220,14 @@ separate, narrower credential and by policy, never as a capability the request
 path holds.
 
 Hash chaining, where each row carries a hash of its predecessor, is **not
-required, and the reasoning matters because it is the intuitive answer**. A
-chain is only tamper-*evident* against someone who cannot recompute it. Suppose
-the chain lives in the same database as the rows, and the application holds
-credentials to both. An attacker with those credentials rewrites the row and
-the chain together, and the verification passes. What the chain does buy in
-that configuration is detection of accidental modification, at the cost of a
-single-tailed serialization point every writer contends on. That is a real
-throughput cost for a property that has not been obtained.
+required**, though it is the intuitive answer. A chain is only tamper-*evident*
+against someone who cannot recompute it. Suppose the chain lives in the same
+database as the rows, and the application holds credentials to both. An
+attacker with those credentials rewrites the row and the chain together, and
+the verification passes. What the chain does buy in that configuration is
+detection of accidental modification, at the cost of a single-tailed
+serialization point every writer contends on. That is a real throughput cost
+for a property that has not been obtained.
 
 Tamper-evidence that means something requires the verifier to be somewhere the
 writer cannot reach. So where a product has a **stated** obligation for it, the
@@ -327,7 +235,7 @@ answer is one of:
 
 - **export to an append-only external store**: object storage with an object
   lock, or a SIEM the application cannot write backwards into. That boundary
-  is where OCSF applies, per the evaluation above; or
+  is where OCSF applies; or
 - **signing with a key the application cannot use to re-sign history**.
 
 Either of those can be *combined* with a hash chain, and then the chain is
@@ -339,33 +247,31 @@ effort on AE8.
 ### AE7. Retention has a floor, a ceiling, and survives erasure
 
 **Audit events are tenant-scoped data**, held under the same isolation rules as
-any other tenant data: the [structured-data standard](025-structured-data.md)'s,
-when it lands. A query that can read another tenant's audit rows is the same
-defect as one that can read their invoices. It is worse in disclosure terms,
-because audit rows are a map of who does what inside that organisation.
+any other tenant data: the [structured-data standard](025-structured-data.md)'s.
+A query that can read another tenant's audit rows is the same defect as one
+that can read their invoices. It is worse in disclosure terms, because audit
+rows are a map of who does what inside that organisation.
 
-**The retention floor is one year**, and the number has a reason rather than
-being a round one. It is the shortest window that covers an annual audit cycle
-and the ordinary contractual clause asking for records covering the prior year.
-Below that, the first time a client asks, the honest answer is that it is gone.
-Products under a specific regime (financial, health, a client contract naming a
-period) set longer in their **Conventions**. They say which obligation set it.
+**The retention floor is one year**. It is the shortest window that covers an
+annual audit cycle and the ordinary contractual clause asking for records
+covering the prior year. Below that, the first time a client asks, the honest
+answer is that it is gone. Products under a specific regime (financial, health,
+a client contract naming a period) set longer in their **Conventions**. They
+say which obligation set it.
 
-**There is a ceiling too, and it is deliberate**. Audit rows are a detailed
-record of identified people's behaviour, so keeping them forever is an
-accumulating liability rather than diligence. A product states its retention
-period and deletes on it, by policy. "We never delete" is a decision to hold
-personal data indefinitely, and it must be made on purpose if it is made at
-all.
+**There is a ceiling too**. Audit rows are a detailed record of identified
+people's behaviour, so keeping them forever is an accumulating liability rather
+than diligence. A product states its retention period and deletes on it, by
+policy. "We never delete" is a decision to hold personal data indefinitely, and
+it must be made on purpose if it is made at all.
 
-**Erasure and audit do not actually conflict**, though they are usually
-presented as if they do. When a data subject's erasure request is honoured, the
-**event survives and the identifying content is removed**. `actor.id` and
-`target.id` remain; `display`, `ip`, `user_agent` and any personal values inside
-`changes` are replaced with a tombstone marker. What is kept is *"subject
-01923e8a-… voided invoice `inv_9Kd…` on 2026-03-04"*: the shape of the trail,
-the sequence, the accountability. What is lost is the identification, which is
-what was asked for.
+**Erasure and audit do not conflict**. When a data subject's erasure request is
+honoured, the **event survives and the identifying content is removed**.
+`actor.id` and `target.id` remain; `display`, `ip`, `user_agent` and any
+personal values inside `changes` are replaced with a tombstone marker. What is
+kept is *"subject 01923e8a-… voided invoice `inv_9Kd…` on 2026-03-04"*: the
+shape of the trail, the sequence, the accountability. What is lost is the
+identification, which is what was asked for.
 
 This is the one modification permitted against AE4's append-only rule. It is a
 defined operation with its own audit event, not an `UPDATE` available to
@@ -387,8 +293,7 @@ every admitted engine. It converts the audit trail from a best-effort
 side-channel into a property of the write.
 
 Sometimes they genuinely cannot: the change is in an external system, or the
-audit store is separate infrastructure. Then the fallback is stated rather than
-left to each implementation:
+audit store is separate infrastructure. Then the fallback is fixed:
 
 - The event is written **after** the change succeeds, never before, so the record
   cannot claim something that did not happen.
@@ -409,85 +314,7 @@ because it is trusted.
 
 Per PC3, under [`contracts/audit/`](../contracts/audit/):
 
-- **`event.schema.json`**: the AE2 event as JSON Schema 2020-12. It `$ref`s
-  the identifiers primitives for ids and timestamps and the observability
-  context defs for the id vocabulary, rather than restating either. It carries
-  the AE3 action pattern, the reserved `auth.*` set, and the conditional rules
-  that make AE2 more than a field list. Those rules are `actor.type: anonymous`
-  only on the actions where no actor can exist, `impersonator` well-formed
-  where present, and `changes` entries shaped as before/after.
-- **`corpus.json`**: `validity` cases for whole events, accepted and rejected
-  with a stated reason. `floor` cases mapping each AE5 category to the event an
-  implementation must produce for a described act. And `redaction` cases
-  carrying an event before and after AE7's erasure, so an implementation's
-  erasure is checked against the same file as its emission.
-
-## Enforcement
-
-Registered in [`999-enforcement.md`](999-enforcement.md) under "Audit
-standard". Every rule lands review-only, as the charter requires, and the gates
-named below are commitments.
-
-- **AE2, AE3 and AE4's shape rules are corpus-decided** under
-  `job-contract-conformance`. An implementation emits events for the corpus's
-  described acts and every one validates, or the case that failed is named. The
-  actor/target separation is checked by the schema itself, since both are
-  required and typed.
-- **AE3's second half gets a static check**. The action vocabulary and the
-  permission vocabulary are one vocabulary (that is the rule's whole point). So
-  a checker can read a product's declared permission set. It asserts every
-  action string emitted is either a declared permission or a reserved `auth.*`
-  action. It is cheap, and it catches the paraphrase drift that otherwise
-  arrives one action at a time.
-- **AE5 gets the generative gate, and it is the one worth the most here**. It
-  is the enumerate-don't-list pattern: enumerate the routes guarded by a
-  destructive permission, exercise each, assert an event carrying that
-  permission as its action. A list of routes to audit rots the day someone adds
-  a route; an enumeration cannot.
-- **AE6's discipline is partly a schema fact**. That the audit table's grant
-  excludes `UPDATE` and `DELETE` is readable against the
-  [structured-data standard](025-structured-data.md)'s schema rules. That the
-  code path has no update is a review question.
-- **AE8 resists a checker and stays a review question**, honestly. Whether a
-  write shares the change's transaction is a fact about a call graph, not about
-  a boundary. PC4 forbids a gate that reads the implementation. The corpus
-  reaches the observable half: an act that fails produces no event, and an act
-  that succeeds produces exactly one.
-- **AE1 and AE7 stay review questions**. That a store is the system of record
-  rather than a convenience is a judgment about intent. So is that a retention
-  period was chosen rather than defaulted.
-
-## Decisions
-
-- **OCSF is the export target, not the record** (2026-09-01): the strongest
-  candidate and the one worth the most words. Rejecting it outright would be
-  wrong, and adopting it whole would deform every product's own history screen
-  into SIEM shape. Its taxonomy is closed and security-shaped; an event carries
-  domain meaning OCSF has no class for. Mapping at the SIEM boundary keeps
-  both, which is what PC2 means by scoping an invention.
-- **Actor and target are two required fields** (2026-09-01): an audit table
-  that fuses them cannot answer who granted access. This is the single most
-  consequential field-level decision in the document. It is made by reading
-  the table in the Why section rather than by reasoning from first principles.
-- **The action string is the permission string** (2026-09-01): the alternative
-  is a past-tense audit vocabulary alongside the imperative permission
-  vocabulary. That is two names for one concept, a mapping table between them,
-  and no mechanical way to ask whether a permission's use is audited. The
-  grammatical cost of `invoice.void` in a record of the past is worth what it
-  buys.
-- **Append-only discipline required, hash chaining not** (2026-09-01): a chain
-  whose anchor sits in the same database the writer can rewrite detects
-  accidents and nothing adversarial. It also serializes every write on one
-  tail. Where tamper-evidence is genuinely required, the property comes from an
-  anchor outside the writer's reach, and the chain is then worth adding on top.
-- **Reads are not audited by default** (2026-09-01): the opposite default turns
-  the audit store into a log store and buries the six categories that matter.
-  Read auditing is admitted per-dataset with a stated obligation.
-- **Erasure redacts the event rather than deleting it** (2026-09-01): the
-  supposed conflict between erasure right and audit obligation dissolves once
-  the row is split. The split is into the parts that identify a person and the
-  parts that record an act. The second survives; the first does not.
-- **The event is written in the change's transaction** (2026-09-01): the
-  inference an audit trail exists to support is *no event, therefore it did not
-  happen*. It is unsound under any weaker rule, and a trail that cannot support
-  that inference is decoration.
+- **`event.schema.json`**: the AE2 event as JSON Schema 2020-12, carrying the
+  AE3 action pattern, the reserved `auth.*` set, and AE2's conditional rules.
+- **`corpus.json`**: `validity` cases for whole events, `floor` cases per AE5
+  category, and `redaction` cases for AE7's erasure.

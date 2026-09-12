@@ -1,25 +1,5 @@
 # Billing: the catalog, the subscription ledger, and the entitlement check
 
-One of the Aurum Alpha engineering standards, written under the platform
-contract ([`000-platform.md`](000-platform.md)). It is a per-capability standard
-from that contract's roster. Read [`999-enforcement.md`](999-enforcement.md) for
-the tier each rule below actually holds. Artifacts:
-[`contracts/billing/`](../contracts/billing/).
-
-This document defines **what a tenant bought, and how the product knows**, as
-an interface specification. The specification has seven parts. A catalog; a
-subscription that is a projection of an append-only ledger; four kinds of
-entitlement; a pure function that derives them at any instant. A fixed place in
-the request for the check to run, and one adapter to the provider that takes
-the money. And a corpus of decision cases any implementation in any language
-must reproduce.
-
-It sits between [`060-auth.md`](060-auth.md), which produces the tenant, and
-[`070-rbac.md`](070-rbac.md), which decides what a person is permitted to do
-inside it. It feeds [`080-audit.md`](080-audit.md) and
-[`082-data-subject-rights.md`](082-data-subject-rights.md), which record and
-export what it did.
-
 ## Why this exists
 
 Three questions in a product each produce a yes or a no, which is the whole
@@ -43,25 +23,6 @@ granting a role.
 | Name | `area.flag`, one dot | `snake_case`, no dot | `resource.action`, one dot |
 | Read through | the evaluation API | the entitlement check | the authorization check |
 | Denied | `404`: the function does not exist | `403` with the `entitlement-required` problem type | `403` with the standard envelope |
-
-One function can be under all three at once. The handler asks them in a fixed
-order, each answering a different question, so that a denial always names
-which one said no (BL4).
-
-The second thing this document settles is **where the truth is**. Billing is
-the one capability where *the record in our database is the truth* is half
-right. The product's subscription record and ledger are the truth for
-**entitlements**: what this tenant can do now, and could do on any past
-date. The billing provider is the truth for **money**: what was charged,
-refunded and disputed. Each is consulted for its own question and never for
-the other's. A periodic job compares them, and the provider is never asked
-anything on the request path.
-
-The third is the boundary of commerce itself. **A public surface displays and
-links; the product transacts; internal tools override and observe; one catalog
-is the shared truth**. Anything that creates an account, takes money or
-changes what a tenant is entitled to happens in the product, behind its own
-identity tier. Prices are read from one catalog and never typed three times.
 
 ## The rules
 
@@ -201,15 +162,14 @@ which kind it was.
 Three shapes are refused by this rule, and each is the same mistake in a
 different table:
 
-- **A role named after a plan**. An upgrade would mean reassigning roles to
-  every user in the tenant. Roles say who a person is inside the tenant; the
-  plan says what the tenant bought.
-- **A permission that encodes a plan**. The permission set is what the product
+- **A role named after a plan**: an upgrade would mean reassigning roles to
+  every user in the tenant.
+- **A permission that encodes a plan**: the permission set is what the product
   *can* do, and the catalog is what a tenant *bought*.
 - **A flag kept on because a customer pays for it**. A flag has a bounded life
   and an engineer flips it. This one would never expire, and money flips it.
-  So it is an entitlement wearing a flag's name, and 038 no longer has a kind
-  for it to be.
+  So it is an entitlement wearing a flag's name, and 038 has no kind for it
+  to be.
 
 ### BL4. The check is a pure function, run in a fixed order, and its decision carries a reason
 
@@ -284,7 +244,7 @@ each answers only its own question:
 5. **The domain operation**, where a quota or allowance is compared against
    the domain's own count and refused with the same problem type.
 
-Permission before capability, deliberately. The permission answer concerns the
+Permission runs before capability. The permission answer concerns the
 subject and reveals nothing about the tenant's plan. An upgrade prompt shown
 to a person who could not use the function after upgrading is a wrong answer
 dressed as a helpful one. The plan is information the tenant's administrators
@@ -341,7 +301,9 @@ imports no vendor SDK. No server image holds a provider credential that the
 pool and jobs images do not need more**. This is the shape
 [`058-notifications.md`](058-notifications.md) NF11 gives a notification
 provider, for the same reasons. A vendor swap becomes configuration, and the
-domain stays testable against an interface rather than a network.
+domain stays testable against an interface rather than a network. Which
+providers are known to satisfy this rule is
+[`solutions/075-billing.md`](../solutions/075-billing.md)'s to say.
 
 ```
 provisionCatalog(catalog)                       -> { plan, interval, currency -> provider price id }
@@ -360,7 +322,8 @@ verify(raw_body, headers)                       -> ProviderEvent { id, kind, occ
 hosted checkout or by its tokenised fields rendered in the browser. The product
 receives a token or a redirect, never a number. That is the difference between
 a product that is in scope for card-handling compliance and one that is not.
-It is not a choice a repository makes.
+It is not a choice a repository makes. Tax, invoicing, revenue recognition and
+dunning cadence are the provider's, behind the adapter.
 
 The provider's browser-side key, where tokenised fields need one, is public by
 the provider's design. It reaches the page through the runtime configuration
@@ -444,9 +407,8 @@ CRM or anything else through the outbox (055 AM4) like every other ledger row.
 **Free tier against trial is a declared per-product policy**. A free tier is
 a plan in the catalog with a zero price and no trial; a trial is `trial_days`
 on a paid plan. A product can have either or both, and states which in its
-**Conventions**. This document has no opinion on the choice. It insists only
-that the answer is written down once, in the catalog, where the pricing page
-and the sign-up flow both read it.
+**Conventions**. The answer is written once, in the catalog, where the pricing
+page and the sign-up flow both read it.
 
 ### BL9. Sign-up creates the tenant, its first administrator and its subscription in one transaction
 
@@ -499,120 +461,18 @@ It is stated to the tenant up front.
 Per PC3, under [`contracts/billing/`](../contracts/billing/):
 
 - **`catalog.schema.json`**: BL1's file: the closed sets, the plan shape,
-  the grace period and the suspended set. Money and dates are `$ref`s into
-  the identifiers contract, never restated.
+  the grace period and the suspended set.
 - **`subscription.schema.json`**: BL2's projection, ledger row and override;
   BL4's decision, entitlement set and the `entitlement-required` extension
   members.
-- **`entitlements.json`**: **the corpus that matters**. It holds a catalog,
-  subscriptions in every status, a ledger, overrides including an expired
-  one, and a fixed `now`. Then it holds checks with expected decisions and
-  stimuli that must be refused. An implementation in any language loads the
-  fixture, evaluates every case, and either reproduces each decision or names
-  the one it failed. No running service, no provider, no network.
-
-## Enforcement
-
-Every rule is review-only today, with gates named per rule in
-[`999-enforcement.md`](999-enforcement.md). The shape is 070's, and so is the
-reason. An entitlement written as an interface specification is decided by
-data, and prose about entitlements is not.
-
-- **BL4's derivation, BL2's effective times and BL3's kinds are decided by the
-  corpus**. The cases worth having are the ones nobody tests by hand, and
-  several are detectors for a specific shortcut:
-  - a past-due tenant one day inside its grace period and one day outside it;
-  - an override that expired yesterday;
-  - a cancelled tenant on the last day of its period and the first day after;
-  - a pending downgrade not yet applied;
-  - a quota the tenant already exceeds after a downgrade;
-  - a capability present in the catalog and absent from every plan;
-  - the same tenant asked about a date before its last upgrade;
-  - a superseded cancellation.
-- **BL1 and BL3's shapes are schema-decided**. A schema refuses a dotted
-  capability id, a float price, an unknown ledger kind and a second pending
-  change. It refuses a per-user entitlement the same way, before any code
-  runs.
-- **BL4's cache rule is caught by a corpus case, not a static checker**. The
-  case is the same capability asked inside and then outside a grace period
-  with no ledger row between. A cache keyed without `valid_until` returns the
-  first answer twice.
-- **BL5 and BL6 have observable halves**. The startup line names the adapter,
-  and `/readyz` stays `200` with the provider unreachable, because the provider
-  is off the request path. The webhook endpoint's four-step order is 055's
-  corpus. That domain code imports no vendor SDK is a fact about source, and a
-  gate reading source for it is the PC4 violation.
-- **BL7 through BL10 are largely review questions with mechanical corners**.
-  The job declarations are JB3's schema and their staleness JB8's alert. The
-  audit event per row is AE8's transaction test. That a policy was honoured,
-  that sign-up is genuinely one transaction, and that a finding reached a
-  person are judgments.
+- **`entitlements.json`**: the corpus: a catalog, subscriptions, a ledger,
+  overrides, a fixed `now`, and checks with the decisions an implementation
+  must reproduce.
 
 ## Decisions
 
-- **This document owns the entitlement check, and 038 gives up its
-  `entitlement` flag kind** (2026-09-08): a flag returns a value and a closed
-  reason enumeration. It cannot say which plan refused, cannot carry a numeric
-  limit with a period, and cannot be asked about a past date. The question
-  *did this tenant buy this* therefore needs its own function. Once it has
-  one, a flag answering the same question is a second read path for one fact.
-  That is one source of truth violated at the read side, with the two paths
-  free to disagree. Money flips an entitlement and an engineer flips a flag,
-  and that difference is the boundary.
-- **Four kinds, closed** (2026-09-08): capability, quota, allowance and
-  setting are distinguished by what the code does with the value. That is the
-  only distinction an implementation can be held to. A fifth kind would be
-  one of these with a different name, or a term nobody checks.
-- **Nothing per user** (2026-09-08): a per-user entitlement is an
-  authorization input that is not a permission, and 070 has already argued
-  why that fails. A per-seat price is a quota on the seat count.
-- **The catalog is a file and the provider is provisioned from it**
-  (2026-09-08): a price exists in the repository or it does not exist. The
-  alternative, the provider's console as the source, puts one artifact behind
-  a login and outside review. That artifact is the one the pricing page, the
-  product and the entitlement function all read.
-- **A projection over an append-only ledger with effective times**
-  (2026-09-08): a mutable subscription row cannot answer what a tenant was
-  entitled to last month. A scheduled change also needs a place to live.
-  Effective times give both with one mechanism. A row recorded while another
-  is pending supersedes it, and that is what bounds the projection to one
-  pending change without a second table.
-- **Prices grandfathered, entitlements current** (2026-09-08): the provider
-  holds the price a tenant was sold; the product holds one catalog. Holding
-  every catalog ever shipped would make the function's inputs unbounded. Its
-  behaviour would then depend on which version a tenant happened to sign
-  under.
-- **Suspension is a policy the catalog states, and an override survives it**
-  (2026-09-08): the grace period and the suspended set are commercial choices.
-  They belong in a reviewed file, not in a handler. An override is a named
-  administrator's deliberate act with an expiry. A function that discarded it
-  on a status change would make the administrator's screen untrue, and
-  revocation is one call away.
-- **`403` with a distinct problem type, not `402`, and permission before
-  capability** (2026-09-08): RFC 9110 reserves `402` and gives it no
-  semantics. Intermediaries mishandle it, and 050 already makes `type` the
-  thing a client branches on. The permission runs first because its answer
-  reveals nothing about the plan. An upgrade prompt shown to someone who
-  could not use the function after upgrading is misinformation.
-- **The provider is never on the request path** (2026-09-08): the ledger is
-  the entitlement truth, so asking the provider answers the wrong question.
-  It also couples the product's availability to a vendor's. Reconciliation is
-  a job, and a disagreement is a finding rather than a write, because which
-  side is wrong is a judgment.
-- **`valid_until` in the entitlement set** (2026-09-08): a permission cache is
-  invalidated by writes alone; this function also changes with time. A cache
-  keyed only on the ledger's last row would keep serving a plan through the
-  end of its grace period. Stating the next boundary makes the cache correct
-  rather than merely short-lived.
-
-## Out of scope, deliberately
-
-- **The pricing page, the sign-up hand-off and lead capture**. These are the
-  [web estate standard](091-web-estate.md)'s. This document binds what the
-  page renders from and where the hand-off lands.
-- **Tax, invoicing accounting, revenue recognition, dunning cadence**. These
-  are the provider's, behind the adapter. This document fixes what the product
-  does when told a payment failed and when it recovered.
-- **The permission model and the audit record**. [`070-rbac.md`](070-rbac.md)
-  and [`080-audit.md`](080-audit.md), in full; this document says when each
-  is invoked.
+- **An `entitlement` flag kind in 038, instead of a check of this document's
+  own**. A flag returns a value and a closed reason enumeration. It cannot say
+  which plan refused, carry a limit with a period, or answer for a past date.
+  Money flips an entitlement and an engineer flips a flag, and a flag
+  answering the same question is a second read path for one fact.

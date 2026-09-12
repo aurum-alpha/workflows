@@ -1,99 +1,16 @@
 # Data subject rights: export and erasure as endpoint contracts, and the inventory that makes them answerable
 
-One of the Aurum Alpha engineering standards, written under the platform
-contract ([`000-platform.md`](000-platform.md)). It is a per-capability
-standard from that roster. Read [`999-enforcement.md`](999-enforcement.md) for
-the tier each rule below holds. Artifacts:
-[`contracts/data-subject-rights/`](../contracts/data-subject-rights/).
-
-It leans on [`050-http.md`](050-http.md) for the request resources,
-[`057-jobs.md`](057-jobs.md) and [`035-workers.md`](035-workers.md) for the
-work, and [`025-structured-data.md`](025-structured-data.md),
-[`026-blob-storage.md`](026-blob-storage.md) and
-[`027-json-document-storage.md`](027-json-document-storage.md) for the stores.
-It leans on [`080-audit.md`](080-audit.md) for the record,
-[`060-auth.md`](060-auth.md) for the identity, [`070-rbac.md`](070-rbac.md)
-for who can act for whom, and [`020-identifiers.md`](020-identifiers.md) for
-ids and instants.
-
-This document governs **what a service owes a person about whom it holds
-data**. That is the inventory that says where the data is. It is the request
-through which the person, or a tenant administrator acting for them, asks for
-a copy or for removal. It is the package the copy takes, the job that removes
-the data and what survives, and the hold that suspends removal. **It does not
-define the storage the data sits in, the audit record, the identity, or the
-notification**. Those belong to 025, 026, 027, 080, 060 and
-[`058-notifications.md`](058-notifications.md).
-
 ## Why this exists
 
-Every service holding data about people will be asked two questions by one of
-them: *give me everything you hold about me*, and *remove it*. The regimes
-that grant those rights differ in deadline and vocabulary, and agree on the
-two acts. No product's domain has an opinion about how the request is
-received, how its progress is reported, or what shape the copy takes. Nor does
-it have an opinion about what "removed" means at the row. The charter says
-these decisions are made once, here.
-
-Left to each repository, the cheapest answers arrive first, and each fails as
-a general property. **A script written when the request comes** exports what
-its author remembers of the schema and deletes what its author knew about. The
-table added last quarter is in neither. **A delete with the foreign keys left
-to cascade** removes what the keys reach. That includes the invoices a tax
-authority requires kept, and the audit trail 080 AE4 says outlives its
-subject. It leaves what they do not reach: the object in the bucket, the
-document in the index, the provider's copy, the row in yesterday's backup.
-
-**A `deleted_at` column called erasure** holds the data after its owner asked
-otherwise (025 SD12). **A database dump filtered by user id** hands the person
-internal keys, a password hash, and every other person who shares a row with
-them.
-
-The four share one omission: none can say *where the personal data is*. Both
-questions are functions of that one input. The input is the stores holding
-data about a person, the column tying each row to them, and the row's fate
-when they leave. Without it every answer is a guess that ages with the schema.
-With it, export and erasure are mechanical: a job walking a declaration in
-dependency order. The declaration is the hard part, and this standard makes it
-a schema.
-
-As a result, a store holding personal data with no entry fails a check instead
-of surfacing in a complaint. Everything else is decided here: routes,
-statuses, errors, verification, package, treatments, grace, deadlines, holds,
-proof. The inventory's contents remain the repository's domain judgment, made
-once, reviewed as a diff.
-
-### The standards evaluated first, per PC2
-
-The rights are defined by law and not by a technical standard: the regimes
-state outcomes and deadlines, never formats or endpoints. PC2's evaluation is
-therefore of the pieces a technical answer is assembled from.
-
-**050's HTTP conventions cover the boundary and are adopted whole**. The
-request is a resource with a status, and errors are RFC 9457 problem+json
-(HA3). Creation accepts an `Idempotency-Key` (HA6), and the wire is snake_case
-(HA8). **057 and 035 cover the work**. An export is a per-event job started by
-the request's outbox message. An erasure is a per-event job dispatched when
-its grace ends, and retention is a periodic job.
-
-**ZIP and JSON Lines are adopted for the package**. ZIP is a container every
-operating system opens. JSON Lines is a row format a job streams in keyset
-batches (057 JB7). That is what "structured, commonly used and
-machine-readable" means in practice. **060 AU4's `revokeAppAccess`** ends the
-subject's access to the identity tier.
-
-**The Data Transfer Project** was evaluated for the package and not adopted.
-It moves data between providers through vertical-specific models. The
-recipient here is the person, whose data has the shape of the service's own
-inventory. **The W3C Data Privacy Vocabulary** describes processing activities
-rather than tables, and is not the inventory's form. Its legal-basis concepts
-are borrowed for the `legal_basis.kind` values, so a retention declaration
-maps onto a record of processing without translation.
-
-**What no standard covers, this document invents**. That is the inventory and
-its coverage check (DR1), the request's status machine (DR2), and grace and
-dispatch (DR4). It is also the treatment vocabulary and allowlist
-anonymisation (DR5), the hold (DR6), and the proof pair (DR7).
+Every service holding data about people will be asked two questions, whatever
+regime grants them: *give me everything you hold about me*, and *remove it*.
+Every answer a repository improvises, a script written when the request comes
+or a delete left to cascade, shares one omission. None can say *where the
+personal data is*. That is the stores holding data about a person, the column
+tying each row to them, and each row's fate at departure. With that
+declaration, export and erasure are a job walking it in dependency order. So
+this standard makes the declaration a schema, and fixes the routes, statuses,
+treatments, grace and proof around it.
 
 ## The rules
 
@@ -109,6 +26,10 @@ a row to the subject. Where the subject is reached indirectly, the entry names
 the entry through which that column resolves (`via`). The entry also states
 whether the store is tenant-scoped, its treatment on erasure (DR5), and
 whether it is in the export (DR3).
+
+Consent and purposes are not declared here. A record of processing says why
+data is held; the inventory says where it is and what happens when the
+subject asks.
 
 **One entry per subject column, not per table**. A row that names two people
 is two entries with two treatments. Examples are a message with a sender and a
@@ -196,13 +117,15 @@ refuses.
 
 **The package is a zip containing `manifest.json`, one `rows/<entry>.jsonl`
 file per exported entry, and one `blobs/<entry>/<object public id>` file per
-object the subject's rows own**. **Where a store carries two entries, the rows
-file is suffixed `.<subject_column>`**. Each `.jsonl` line is one row as JSON:
-snake_case keys (050 HA8), and primitives in 020's wire forms. The line
-carries every exported column except the internal key (020 IP1, excluded
-without being named) and the entry's `export_excludes`. An exported entry with
-no rows for this subject still yields an empty file, so a recipient can tell
-*nothing held* from *not exported*.
+object the subject's rows own**. ZIP is a container every operating system
+opens, and JSON Lines is a row format a job streams in keyset batches (057
+JB7). **Where a store carries two entries, the rows file is suffixed
+`.<subject_column>`**. Each `.jsonl` line is one row as JSON: snake_case keys
+(050 HA8), and primitives in 020's wire forms. The line carries every exported
+column except the internal key (020 IP1, excluded without being named) and
+the entry's `export_excludes`. An exported entry with no rows for this subject
+still yields an empty file, so a recipient can tell *nothing held* from *not
+exported*.
 
 The manifest,
 [`manifest.schema.json`](../contracts/data-subject-rights/manifest.schema.json),
@@ -303,26 +226,28 @@ where `NOT NULL` text.
 It is an allowlist and never a denylist, for two reasons. A list of columns to
 scrub is complete only until the next migration. And the column that leaks is
 the free-text one: a notes field carrying a phone number is personal data
-whatever its name says. The corpus's first detector is exactly that field.
+whatever its name says.
 
 **What `anonymise` leaves is 080 AE7's shape, generalised**. The subject's
 public id remains on the rows that referenced it, and resolves to a shell row
 that identifies nobody. That is how an audit event keeps `actor.id` and loses
 `display`. The residue is anonymous on one condition: every entry naming the
-subject has been treated. That is why DR1's coverage check exists: one
-undeclared table re-identifies the whole graph.
+subject has been treated.
 
 The audit store is declared `anonymise` with the AE7 stamp (`erased_at`,
-`erased_subjects`) and **never `delete`**. The corpus's second detector is an
-implementation that removes the trail 080 AE4 says outlives its subject.
+`erased_subjects`) and **never `delete`**. Deleting it removes the trail 080
+AE4 says outlives its subject.
 
 **`retain` is the only treatment that keeps personal data against the
 subject's request. It is admitted only with the obligation named and an expiry
 declared**. The `kind` is closed (`legal_obligation`, `legal_claims`,
-`contract`), so a declaration cannot invent a basis. The `reference` names the
-statute, clause or claim. A retained row is reduced at erasure time, not at
-expiry. The invoice keeps its amount, currency, issue date and tax id for
-seven years, and loses the billing email now.
+`contract`), so a declaration cannot invent a basis. The kinds are the W3C
+Data Privacy Vocabulary's legal-basis concepts, so a retention declaration
+maps onto a record of processing without translation.
+
+The `reference` names the statute, clause or claim. A retained row is reduced
+at erasure time, not at expiry. The invoice keeps its amount, currency, issue
+date and tax id for seven years, and loses the billing email now.
 
 On expiry `retention.purge`, 057's own periodic example, deletes it. The
 schema refuses a basis without `retain_for`, for 080 AE7's reason against a
@@ -400,8 +325,6 @@ treated by the same declaration as any single erasure.
 
 ## Classifying a store
 
-Examples beat definitions here; every row below is a corpus fixture entry.
-
 | Store | Entry | Why |
 |---|---|---|
 | the person row | `anonymise`, `retained_columns: []`, global, `export_excludes: [password_hash]` | Becomes the shell every other row can still reference; the hash is a credential and leaves with nothing. |
@@ -417,80 +340,10 @@ Per PC3, under
 [`contracts/data-subject-rights/`](../contracts/data-subject-rights/):
 
 - **`inventory.schema.json`**: DR1's declaration and DR5's treatment
-  vocabulary as conditional rules. A retained entry carries its basis and its
-  allowlist, an anonymised entry its allowlist, and a deleted entry neither.
-  A blob entry carries its owning row, and an entry declared free of personal
-  data its reason alone.
-- **`request.schema.json`**: DR2's resource and its status machine. It states
-  which fields each kind and each status requires and forbids.
+  vocabulary as conditional rules.
+- **`request.schema.json`**: DR2's resource and its status machine, with the
+  fields each kind and status requires and forbids.
 - **`manifest.schema.json`**: DR3's manifest, with provenance, the row format,
   and every file with its digest.
-- **`corpus.json`**: seven parts over one fixture. `inventory` and `requests`
-  are schema-decided, and `coverage` is a catalog against the inventory with
-  the expected findings. `erasure` is an implementation run over the fixture,
-  compared on the rows that remain and the treatment order, with two
-  detectors. `export` is manifests validated and the built file list, with
-  counts and column sets compared. `hold` is the lifecycle with a hold placed
-  and released. `transitions` is state and action mapped to status or problem
-  type.
-
-## Enforcement
-
-Every DR rule lands **review only** and is registered in
-[`999-enforcement.md`](999-enforcement.md) with its gate named. Some parts are
-mechanically checkable, and move first. The inventory's schema validity and
-its coverage against the engine's catalog (DR1) is the generative check, and
-the one worth the most. It fails when a table is added without a declaration.
-The request and manifest shapes (DR2, DR3) follow, and the erasure, export,
-hold and transition parts under `job-contract-conformance`.
-
-What stays a review question is said so in the ledger row. That is whether a
-treatment fits its data and a legal basis is real (DR5), and whether `export:
-false` has one of the three reasons (DR3). It is whether suppression,
-revocation and the two records happen in the order stated (DR4, DR7), and
-whether a hold is reviewed (DR6).
-
-## Decisions
-
-- **The inventory is a schema, with one entry per subject column**
-  (2026-09-02). A register in prose cannot be executed or checked against a
-  catalog, so it is stale by the next migration. A declaration is the input
-  to both jobs, and fails a check when a table it does not name appears.
-  Per-table entries cannot express a row naming two people, and the audit
-  corpus's position-versus-subject detector showed that failure first.
-- **Anonymisation is an allowlist, and the audit store is anonymised rather
-  than deleted** (2026-09-02). A denylist of identifying columns is complete
-  only until the next column. The column that leaks is the free-text one
-  nobody classified. The intuitive erasure, delete everything with the id on
-  it, removes the one record that proves the erasure happened. The cost is
-  that an empty list must be written down, which is a decision made visible.
-- **`retain` needs a closed-set kind, a reference and an expiry**
-  (2026-09-02). A checker cannot require what it cannot recognise, and keeping
-  identified data forever is a decision made on purpose or not at all (AE7).
-- **Fourteen days of grace with a security notification, 72 hours to
-  complete, dispatch periodic and erasure per-event** (2026-09-02). Immediate
-  erasure was rejected: a request from a borrowed session is irreversible,
-  and its owner learns of it afterwards. The legal maximum as the deadline
-  was rejected, because it would license a queue a month deep. One periodic
-  job erasing every due request in one run was rejected as the shape 057
-  refuses. Splitting them makes one subject's failure one subject's retry.
-- **Step-up for erasure, session for export; a hold suspends deletion only**
-  (2026-09-02). An export discloses only what the subject can already read. A
-  hold exists to preserve evidence, rather than to withdraw that right.
-  Deletion is the one act a hijacked session must not complete, and 060 AU2
-  carries `auth_time` for exactly this.
-- **The application revokes access and never deletes the identity**
-  (2026-09-02). Rule 060 AU4 gives one account to many applications, and
-  forbids any one of them to disable it. What the identity tier does when no
-  application holds a grant is that tier's rule to state.
-
-## Out of scope, deliberately
-
-- **The stores, the audit record's shape, the ledger's replay, the
-  notification's content**. Standards 025, 026 and 027 build the stores; 080 AE7 defines
-  the tombstone pair; 028 owns the ledger and its replay; 058 the message.
-- **Consent, purposes and the lawful basis for processing in the first
-  place**. A record of processing says why data is held; this standard
-  governs what happens when the subject asks about it or asks it to stop.
-- **A tenant's export of its own business records**. The product's domain;
-  DR8 binds only the subjects' side.
+- **`corpus.json`**: seven parts over one fixture: `inventory`, `requests`,
+  `coverage`, `erasure`, `export`, `hold` and `transitions`.

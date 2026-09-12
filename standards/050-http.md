@@ -1,34 +1,13 @@
 # Service interfaces: protocol selection and HTTP conventions
 
-One of the Aurum Alpha engineering standards, written under the platform
-contract ([`000-platform.md`](000-platform.md)). It is a per-capability
-standard from that contract's roster. Read
-[`999-enforcement.md`](999-enforcement.md) for the tier each rule below
-actually holds. Artifacts: [`contracts/http/`](../contracts/http/).
-
-This document answers two questions in order. **Which protocol** does a
-given interaction use (HA1)? For the default answer, HTTP, **what are the
-conventions** (HA2 onward)?
-
 ## Why this exists
 
 Every product exposes an interface, and without a standard each decides
-alone what protocol to speak. Each then decides its own error shape,
-pagination scheme and versioning habit. Whoever writes the second client
-pays the cost. A frontend handles one error shape per service. A retry that
-is safe against one service duplicates charges against another. A
-pagination loop silently skips rows when the collection changes underneath
-it.
-
-Before any of that, there is the WebSocket opened where a plain HTTP
-request would have done. It carries its own auth scheme because it cannot
-use the normal one.
-
-Almost none of this needs inventing. RFC 9457 defines the error envelope,
-OpenAPI describes the surface, and the HTTP specification already settled
-retries and backpressure. Per PC2 this document is a **profile**: it pins
-the choices those standards leave open. "We use problem+json" unpinned is
-four incompatible error shapes that all validate.
+alone its protocol, its error shape, its pagination scheme and its
+versioning habit. Whoever writes the second client pays: one error shape per
+service, and a retry that is safe against one service and duplicates charges
+against another. RFC 9457 is profiled for the error envelope and OpenAPI for
+the description; this document pins the choices those standards leave open.
 
 ## The rules
 
@@ -50,57 +29,32 @@ them.
 | Both ends push, low latency, genuinely conversational | **WebSocket** | Full duplex. Costs are large and listed below. |
 | Fire-and-forget, durable, retried | **Not a synchronous protocol at all**: the [messaging standard](055-messaging.md)'s envelope. |
 
-**HTTP/2 is not on that list because it is not an interface. It is a
-prerequisite for two things on it, and that is the part to get right**. You
-do not design "an HTTP/2 API" the way you design a REST or a gRPC one. REST
-over HTTP/2 is the same REST, and enabling the version changes no
-application code. So one common move stays wrong: adopting gRPC "since we
-are on HTTP/2 anyway" is a non-sequitur. The transport does not argue for
-the interface.
-
-What that framing gets wrong, if left there, is that **the table above is
-not all available over HTTP/1.1**. An HTTP/1.1 connection carries one
-request and then one response. There is no working multiplexing (pipelining
-is disabled everywhere it was implemented) and no full duplex. HTTP/2 adds
-concurrent streams over one connection, server-initiated streams, and
-bidirectional flow. Those are capabilities, not tuning. Concretely:
+**HTTP/2 is a prerequisite for gRPC and SSE, not an interface**.
 
 - **gRPC requires HTTP/2.** Not as an optimisation: its streaming modes and
   its status trailers have nowhere to live in HTTP/1.1's exchange model.
   Choosing gRPC is choosing HTTP/2 whether anyone writes that down.
-- **SSE requires HTTP/2 to be usable at all in a browser.** This fact makes
-  the recommendation below practical rather than nostalgic. Over HTTP/1.1
+- **SSE requires HTTP/2 to be usable at all in a browser**. Over HTTP/1.1
   each open event stream holds one of the browser's **six** connections
   *per domain, counted across every tab*. So a user with a few tabs open
   has starved the origin, and the next ordinary `fetch` blocks behind an
   event stream. Over HTTP/2 the streams multiplex and the negotiated
   ceiling defaults to **100**;
   [MDN documents both numbers](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events).
-  An SSE surface on HTTP/1.1 passes every local test and fails as soon as
-  someone opens tabs.
 - **Full duplex over plain HTTP**, a client streaming a request body while
   reading the response body, is not expressible in HTTP/1.1 at all. An
   interaction that genuinely needs it needs HTTP/2 or a WebSocket, and that
   requirement belongs in the reason a repository writes down.
 
-The operational half of this is what actually bites: **HTTP/2 has to reach
-the service, not just the edge**. A load balancer that terminates HTTP/2
-and forwards HTTP/1.1 on the internal hop breaks gRPC outright. It also
-silently reimposes the six-connection cap on SSE, while every local test
-passes, because the developer's browser spoke to the process directly. A
-repository serving gRPC or SSE states in its **Conventions** where HTTP/2
-is terminated. It also confirms the backend hop carries it; inside a
-cluster the usual answer is h2c.
+**HTTP/2 has to reach the service, not just the edge**. A load balancer that
+terminates HTTP/2 and forwards HTTP/1.1 on the internal hop breaks gRPC
+outright. It also silently reimposes the six-connection cap on SSE, while
+every local test passes, because the developer's browser spoke to the
+process directly. A repository serving gRPC or SSE states in its
+**Conventions** where HTTP/2 is terminated. It also confirms the backend hop
+carries it; inside a cluster the usual answer is h2c.
 
-HTTP/3 changes the transport again: QUIC, and no TCP head-of-line blocking
-under a multiplexed connection, with the same HTTP semantics above it. It
-is an edge capability to enable where the edge supports it. Unlike HTTP/2
-it is not a prerequisite for anything in the table.
-
-**SSE before WebSocket, unless the client genuinely needs to push**. This
-is the choice most often made wrongly, and in one direction: a WebSocket
-opened for a live feed that only ever flows server-to-client. What that
-discards is not small.
+**SSE before WebSocket, unless the client genuinely needs to push**.
 
 A WebSocket has no status codes, so the error envelope (HA3) does not apply
 and each application invents its own. It cannot carry an `Authorization`
@@ -141,20 +95,17 @@ a copy that drifts.
 
 **3.2 where there is a stream, for the same reason HA1 requires HTTP/2
 there.** [OpenAPI 3.2](https://spec.openapis.org/oas/v3.2.0.html)
-(September 2025) added sequential media types and `itemSchema`. That is
+added sequential media types and `itemSchema`. That is
 what lets a description say *what each event on a `text/event-stream`
 looks like*. In 3.1 the best available description of an SSE endpoint is
 that it returns a string. So the events, the actual payload, the part a
-client must parse, go undescribed and ungenerated. A standard that
-recommends SSE in HA1 and then pins the one version that cannot describe it
-would be recommending an undocumented surface.
+client must parse, go undescribed and ungenerated.
 
 3.2 is not the blanket default because tooling has not uniformly caught up.
 Generator support across the ecosystem is still maturing, and a
 non-streaming API gains nothing from it that is worth that risk. Tying the
 version to the capability that needs it keeps the conservative default
-without leaving a hole. A repository already on 3.2 everywhere is
-conformant and need not justify it; 3.1 is a floor, not a ceiling.
+without leaving a hole. 3.1 is a floor, not a ceiling.
 
 Whether the document is handwritten or generated from code is a per-stack
 choice and belongs in a repository's **Conventions**. What is not a choice:
@@ -186,16 +137,11 @@ is free to. One that changes what `type` means has broken its clients, and
 per PC6 that is a new `type`, not an edited one.
 
 **A slug can be pinned by a standard** where clients of several products
-branch on one class. Each would otherwise invent a spelling. The
-standard that owns the condition pins it, and this table does not repeat
-it. The first is `entitlement-required`, a `403` whose `errors` name the
-capability or metric the tenant's plan lacks, under the
-[billing standard](075-billing.md) BL4.
+branch on one class, so that each does not invent a spelling. The first is
+`entitlement-required`, a `403` whose `errors` name the capability or metric
+the tenant's plan lacks, under the [billing standard](075-billing.md) BL4.
 
-The same redaction rule as SC2 applies with more force, because this
-envelope crosses the trust boundary. Never a secret, never a credential,
-never a record's contents, never an internal hostname, path or stack.
-**What failed and why is almost never the sensitive part.**
+SC2's redaction rule applies.
 
 ### HA4. Collections are paginated by opaque cursor
 
@@ -241,7 +187,9 @@ already reported by [`030-service.md`](030-service.md) SC5, which is where
 Every non-idempotent endpoint accepts an **`Idempotency-Key`** request
 header: a `POST` that creates, anything that charges, sends, or dispatches.
 The header's value is a client-generated identifier in an admitted format
-([`020-identifiers.md`](020-identifiers.md) IP2).
+([`020-identifiers.md`](020-identifiers.md) IP2). It is a header rather
+than a body field: it is metadata about the request, and a header survives
+a body the server never parses.
 
 The server stores the key against the outcome for a **stated window**,
 named in the endpoint's documentation. A repeat within that window
@@ -289,34 +237,16 @@ identifiers are all snake_case already. One spelling therefore covers a
 service's database, its log lines, its events and its API. Deviating on
 this one surface is what would need the argument.
 
-**The rule binds the bytes, never the identifier in source code**. This is
-the half that gets misread, so it is stated rather than implied. It
-generalises the wire-names-not-code-names paragraph the observability
-standard already applies to telemetry fields:
-
-- **A Go server writes `CreatedAt string` with `json:"created_at"`**, and
-  `UserID` with `json:"user_id"`. The field follows
-  [go.dev's initialisms rule](https://go.dev/wiki/CodeReviewComments#initialisms),
-  and the tag follows this contract. Renaming a Go field to `created_at` to
-  match the wire is the wrong fix and produces un-idiomatic Go for no gain.
-  Note that the tag is mandatory either way. Go marshals `CreatedAt` as
-  `"CreatedAt"` untagged, so `json:"created_at"` and `json:"createdAt"` are
-  identical work. And snake_case additionally makes a service's API agree
-  with its own columns.
-- **A PHP or TypeScript server maps at its serialization boundary**: a
-  DTO, a resource class, a serializer. It does so for the same reason and
-  with the same freedom in its own code.
-- **A TypeScript client generates its types from the OpenAPI document**
-  (HA2), so nobody hand-writes `created_at` anywhere. A repository that
-  wants camelCase in its own code generates that mapping from the same
-  source, in one place. It does not transcribe a parallel type by hand. A
-  hand-maintained interface mirroring the API is the drift HA2 exists to
-  prevent, and casing does not make it acceptable.
-
-In-code naming is out of scope for this standard entirely, and follows the
-language authors' own guides per the [platform contract](000-platform.md).
-A repository does not record a **Conventions** entry to use idiomatic
-naming in its own source; that is the default everywhere.
+**The rule binds the bytes, never the identifier in source code**. A Go
+server writes `CreatedAt string` with `json:"created_at"`: the field
+follows
+[go.dev's initialisms rule](https://go.dev/wiki/CodeReviewComments#initialisms),
+and the tag follows this contract. A PHP or TypeScript server maps at its
+serialization boundary the same way. A TypeScript client generates its types
+from the OpenAPI document (HA2), so nobody hand-writes `created_at`. The
+cost of the convention lands on the frontend, and generation removes it. A
+repository wanting camelCase in its own code generates that mapping from the
+same source rather than transcribing a parallel type by hand.
 
 ## The artifacts
 
@@ -329,76 +259,3 @@ Per PC3, under [`contracts/http/`](../contracts/http/):
   service must satisfy. The same idempotency key replays rather than
   repeats. A `429` carries `Retry-After`. An unknown route answers
   problem+json rather than a framework's HTML error page.
-
-## Enforcement
-
-Registered in [`999-enforcement.md`](999-enforcement.md) under "HTTP API
-standard", every rule review-only today. The mechanisms, in the order they
-become cheap:
-
-- **The OpenAPI document exists and lints**: a static check, the cheapest
-  in this standard.
-- **The error envelope is real.** `job-image-starts` already talks to a
-  running service. Requesting a route that cannot exist and asserting
-  problem+json against the schema is one more poll. That single case
-  catches the most common failure of this kind. A framework's default HTML
-  error page escapes to clients from the one path nobody wrote a handler
-  for.
-- **Idempotency and backpressure** need a live harness driving two requests
-  and reading headers: the same `job-contract-conformance` the other
-  capability standards wait on.
-
-What no checker will prove: that the OpenAPI document still describes the
-service. That is why HA2 states it as a rule with a reason rather than
-implying the gate covers it. The honest gate is a repository's own contract
-tests, and the review question is whether they exist.
-
-## Decisions
-
-- **snake_case in request and response bodies** (2026-08-31). This is the
-  house convention holding, not a fresh choice. Log lines, audit events,
-  job envelopes and the id vocabulary are already snake_case, and SQL
-  identifiers case-fold toward it. So one spelling covers the database, the
-  log line, the event and the API. Deviating on this one surface is what
-  would need the justification.
-
-  The cost lands on the frontend, not the backends, which is the opposite
-  of how it first reads. The tag is mandatory either way: Go marshals
-  `CreatedAt` as `"CreatedAt"` unless it is tagged, so `json:"created_at"`
-  and `json:"createdAt"` are the same work. And snake_case additionally
-  makes a service's two boundaries agree with each other, since its columns
-  are already snake_case. A camelCase wire would introduce a
-  database-to-API mismatch for no gain.
-
-  What the frontend pays is smaller than it looks, because HA2 requires a
-  committed OpenAPI document. A TypeScript client **generates** its types
-  rather than hand-writing them, so nobody types `created_at`. A repository
-  wanting camelCase in its own code generates that mapping from the same
-  source. In-code naming is untouched either way, per the platform
-  contract.
-- **OpenAPI 3.1 as the floor, 3.2 where there is a stream** (2026-08-31).
-  The 3.1 dialect is JSON Schema 2020-12, so the existing `$defs` under
-  `contracts/` are referenceable rather than transcribed. The first draft
-  stopped there and pinned 3.1 outright, which was already eleven months
-  stale: 3.2 shipped in September 2025. Worse, it was incoherent: HA1
-  recommends SSE and 3.1 cannot describe an event stream's payload.
-
-  Tying the version to the capability rather than raising the floor for
-  everyone keeps the conservative default while closing that hole. It is
-  the same shape as HA1's HTTP/2 requirement. **OpenAPI 4.0 is not a reason
-  to wait**: the Moonwalk group has no release date and is spending 2026 on
-  LLM clients.
-- **Cursor, not offset** (2026-08-31). Offset pagination over a changing
-  collection returns well-formed wrong answers, which is the worst failure
-  mode available: no error, no signal, missing rows.
-- **`Idempotency-Key` as a header, not a body field** (2026-08-31). It is
-  metadata about the request rather than part of it, and a header survives
-  a body the server chooses not to parse.
-- **HTTP/2 is stated as a requirement, not left to the edge** (2026-08-31).
-  The first draft of HA1 called HTTP/2 purely a transport detail that
-  decides nothing. That is half right and the wrong half to lead with. It
-  does not decide the interface, but it is a hard prerequisite for gRPC.
-  It is also the difference between SSE working and SSE exhausting a
-  browser's six-connection budget. So the rule names which interactions
-  require it, and requires the backend hop to carry it rather than assuming
-  the edge is the whole story.

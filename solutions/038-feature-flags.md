@@ -1,38 +1,25 @@
 # Acceptable solutions: feature flags
 
-The acceptable solutions register for
-[`038-feature-flags.md`](../standards/038-feature-flags.md). It is not a
-standard and states no rule. Read
-[the charter](../README.md#acceptable-solutions-the-register-of-what-satisfies-a-standard)
-for what this class of document is and is not permitted to do. Every
-requirement below is 038's, cited by rule id. Everything here is a claim that
-some route satisfies one, and the date that claim was last checked.
-
-Absence from this page is not refusal. An option nobody has entered is an
-option nobody has surveyed. A repository is permitted to take it by
-demonstrating compliance against 038's rules. It then enters it here so the
-next one need not.
+Register for [`standards/038-feature-flags.md`](../standards/038-feature-flags.md).
 
 ## What adopting anything does and does not do for you
 
-The most expensive mistake available here is believing that choosing a flag
-system implements the standard. It implements one rule and part of two others.
-**Eight of eleven rules are the repository's work whatever is adopted**, because
-they are what 038 invented rather than what it borrowed.
+A flag system implements one rule and part of two others; the remaining eight
+are the repository's work whatever is adopted.
 
 | Rule | What an adopted thing supplies | What is yours regardless |
 |---|---|---|
-| FF1 | The **OpenFeature SDK for the language** supplies almost all of it: the typed calls, the `Details` result, the reason and error enumerations unmodified, the hook mechanism, and the no-op provider that FF1 makes the unconfigured default. A **provider** supplies only the connection to state. | Selecting the provider from configuration (SC3), the startup line that names it, registering the one platform hook set, and readiness staying `degraded` rather than `503` when the provider is down. |
-| FF2 | Nothing. A provider's own flag-definition format describes **state**, and 038 says plainly it is never the declaration. | The declaration file, its schema validation, the hook that answers `FLAG_NOT_FOUND` without asking the provider, and the disjointness of flag names from permission strings. |
-| FF3 | Nothing. Three kinds, each with a lifetime field, is this platform's invention; no provider models it. | All of it. |
-| FF4 | The SDK's default argument returns the declared default on every failure path, so the fail-closed half is free — **unless the evaluation boundary intercepts errors and substitutes its own answer**, which is the failure the corpus exists to catch. | The `false` rule, the naming rule, and keeping the call site's default equal to the declaration's. |
-| FF5 | Nothing, and this is the rule an adopted system makes *easier to break*: per-user targeting in a dashboard is one refactor from being the only thing stopping a request. | The 070 check on every guarded handler, and the 075 entitlement check beside it; the flag is asked first and decides neither. |
-| FF6 | The SDK supplies the context shape. Where the provider runs decides what leaves your network — the one place the register's rows genuinely differ on risk. | The closed vocabulary, the guard hook that rejects anything else, and the judgment on each new attribute. |
-| FF7 | A **server-side** SDK, plus the configuration route the web client already fetches. | Evaluating the set, shaping it, and never shipping a provider credential to the browser. |
-| FF8 | The OpenFeature contrib repositories carry OpenTelemetry hooks for several languages, emitting the semantic conventions FF8 adopts. Verify one exists for yours at the version you pin before assuming it. | Registering it, and the discipline of not logging an evaluation per call. |
-| FF9 | The service FF9 requires — this register is, in effect, the expansion of that rule's one admitted shape. | Naming it in **Conventions**, and attaching with the service's own credential. |
-| FF10 | A percentage rollout, **admitted only if assignment is a hash of the flag name and the targeting key**; check the vendor's bucketing input, because a provider that re-randomises per evaluation cannot be analysed. The OpenFeature tracking API is the exposure call site. | The exposure event through the outbox, once per subject, and the decision at expiry. |
-| FF11 | Nothing. Some vendors report stale flags in their own dashboard; that is a second inventory of a fact the declaration already holds, and it is not the sweep. | The `flags.sweep` job, the CI check over the declaration, and removal as one change. |
+| FF1 | The **OpenFeature SDK for the language** supplies almost all of it: the typed calls, the `Details` result, the reason and error enumerations unmodified, the hook mechanism, and the no-op provider that FF1 makes the unconfigured default. A **provider** supplies only the connection to state. | Provider selection from configuration (SC3), the startup line, the platform hook set, readiness `degraded` when the provider is down. |
+| FF2 | Nothing. A provider's flag-definition format describes **state**, never the declaration. | The declaration file, its validation, the `FLAG_NOT_FOUND` hook, flag names disjoint from permissions. |
+| FF3 | Nothing. No provider models three kinds with a lifetime field. | All of it. |
+| FF4 | The SDK's default argument returns the declared default on every failure path, so the fail-closed half is free unless the evaluation boundary intercepts errors and substitutes its own answer. | The `false` rule, the naming rule, the call site's default equal to the declaration's. |
+| FF5 | Nothing, and an adopted system makes it easier to break: per-user targeting in a dashboard is one refactor from being the only thing stopping a request. | The 070 check and the 075 entitlement check on every guarded handler. |
+| FF6 | The SDK supplies the context shape. Where the provider runs decides what leaves your network, which is where the rows below differ on risk. | The closed vocabulary, the guard hook, the judgment on each new attribute. |
+| FF7 | A **server-side** SDK, plus the configuration route the web client already fetches. | Evaluating and shaping the set; no provider credential in the browser. |
+| FF8 | The OpenFeature contrib repositories carry OpenTelemetry hooks for several languages, emitting the semantic conventions FF8 adopts. Verify one exists for yours at the version you pin. | Registering it; no log line per evaluation. |
+| FF9 | The service FF9 requires. | Naming it in **Conventions**; attaching with the service's own credential. |
+| FF10 | A percentage rollout, **admitted only if assignment is a hash of the flag name and the targeting key**; check the vendor's bucketing input, because a provider that re-randomises per evaluation cannot be analysed. The OpenFeature tracking API is the exposure call site. | The exposure event through the outbox, once per subject; the decision at expiry. |
+| FF11 | Nothing. A vendor's stale-flag dashboard is a second inventory, not the sweep. | The `flags.sweep` job, the CI check over the declaration, removal as one change. |
 
 ## The two routes to FF1, and why one is preferred
 
@@ -52,32 +39,14 @@ is configuration" literally true. Changing vendor becomes a URL and a
 credential rather than a package swap in every service. It also collapses
 Route A's whole verification burden, which is the burden that dates fastest.
 
-**There is no third route.** An earlier version of this page had one: a thin
-adapter over the product's own tables for entitlement flags. It went with the
-entitlement kind. What a tenant has bought is derived and checked under the
-[billing standard](../standards/075-billing.md), and a flag provider has no
-business reading the product's tables. Writing a provider is not admitted for
-anything. FF9 also refuses the shape people reach for first, flag values
-shipped in a committed file. It refuses it on three grounds worth reading
-before anyone proposes it again.
-
 ## The default route
 
 **If a product needs feature flags at all, it takes an off-the-shelf flag
 service.** That is the whole answer. The register's job is only to say which
 ones are known to work.
 
-The reasoning is FF9's and it runs the opposite way to the usual instinct.
-The instinct is to start small and graduate later: flag values in a file, a
-couple of environment overrides, no backing service to run. FF9 refuses that.
-A value that cannot move without a deployment is configuration rather than a
-flag. Building the small thing properly means specifying a file format, an
-override grammar, a precedence order and a reload rule. It also means a typed
-accessor package per language.
-
-And a product that later adds a real service is running two flag systems. The
-small start is not smaller; it is a bespoke flag system with the specification
-work still owed.
+FF9 refuses the small start, values in a file with overrides, because that is
+a bespoke flag system with the specification work still owed.
 
 So the decision a repository actually faces is not *how small can we start*.
 It is a prior question with two honest answers:
@@ -85,14 +54,7 @@ It is a prior question with two honest answers:
 - **This product does not need flags.** Most do not. It has configuration
   under SC3, it says so, and it stops. Nothing here applies.
 - **This product needs flags.** Then it runs a flag service from the table
-  below, and pays for it. The price is a backing service, a credential, and an
-  outage mode where every flag falls to its declared default. That price is
-  the rule working rather than a cost to route around.
-
-What a tenant has bought is not a reason to reach for any row below. It is an
-entitlement, not a flag. It is derived from the subscription and checked under
-the [billing standard](../standards/075-billing.md). It does not belong in a
-third-party dashboard or in a flag provider of any kind.
+  below.
 
 **Where the choice is genuinely open**, and the register takes no side, is
 self-hosted against hosted. Self-hosted keeps FF6's evaluation context inside
@@ -101,33 +63,28 @@ burden somebody else carries. Both are in the table.
 
 ## The register
 
-Checked **2026-09-03** against each project's own documentation. Per-language
-provider coverage is the fastest-moving fact on this page and is deliberately
-not frozen into it. Check the
-[OpenFeature ecosystem catalogue](https://openfeature.dev/ecosystem/) for the
-languages you write before adopting any row.
+Per-language provider coverage is the fastest-moving fact on this page. Check
+the [OpenFeature ecosystem catalogue](https://openfeature.dev/ecosystem/) for
+the languages you write before adopting any row.
 
 | Option | FF9 shape | OFREP | Provider maintained by | Notes against 038 |
 |---|---|---|---|---|
 | **flagd** | Flag service | Yes | The OpenFeature project itself | The project's own flag daemon, so it tracks the specification rather than following it. Its state is fed from files or over gRPC, and it is a running service either way — the file is the operator's input to the daemon, never flag values shipped inside a release, which FF9 refuses. |
-| **GO Feature Flag** | Flag service | Yes | Vendor | Self-hosted relay with broad first-party provider coverage at the checked date. |
+| **GO Feature Flag** | Flag service | Yes | Vendor | Self-hosted relay with broad first-party provider coverage when checked. |
 | **Flipt** | Flag service | Yes | Vendor | Self-hosted or hosted; an early OFREP implementer. |
 | **Flagsmith** | Flag service | Verify | Vendor | Self-hostable or hosted; an OpenFeature founding member, so the provider is unlikely to be an afterthought. |
 | **GrowthBook** | Flag service | Verify | Vendor | Self-hostable; experimentation is the reason to reach for it (FF10), not flagging alone. |
-| **Unleash** | Flag service | Verify | **Community** | Self-hostable. The weakest first-party commitment in the set at the checked date: the providers are community work, which is rule-4 exposure on a page like this. |
+| **Unleash** | Flag service | Verify | **Community** | Self-hostable. The weakest first-party commitment in the set when checked: the providers are community work, which is rule-4 exposure on a page like this. |
 | **LaunchDarkly** | Flag service (hosted) | Verify | Vendor | Provider coverage is materially narrower than its native SDK coverage, and skewed server-side. Verify your languages first; FF7 means the missing browser provider costs you nothing. |
-| **ConfigCat** | Flag service (hosted) | Verify | Vendor | Providers moved from community to official maintenance before the checked date. |
+| **ConfigCat** | Flag service (hosted) | Verify | Vendor | Providers moved from community to official maintenance before it was checked. |
 | **DevCycle** | Flag service (hosted) | Yes | Vendor | Server, client and OFREP support. |
 | **Split** | Flag service (hosted) | Verify | Vendor | Providers across several languages; verify yours. |
 
 "Verify" in the OFREP column means the protocol was not confirmed for that
-option at the checked date, not that it is absent. Check before letting it
+option when checked, not that it is absent. Check before letting it
 decide.
 
 ## Routes 038 refuses, and the rule that refuses them
-
-These are not omissions from the table. They are refused, and the refusal is a
-rule in the standard rather than a preference on this page.
 
 | Route | Refused by |
 |---|---|
@@ -152,16 +109,3 @@ rule in the standard rather than a preference on this page.
    attribute gets sharper.
 5. **What does assignment hash?** Only if FF10 is in play. A rollout that
    re-randomises per evaluation is unanalysable.
-
-Price and contract terms are not on this list, and not on this page, per the
-charter's third rule for this class.
-
-## Re-checking this register
-
-Every claim above carries the checked date at the head of the register. The
-horizon is the charter's 180 days; the next re-check is due **2027-03-02**. A
-re-check confirms, for each row, that the project is still maintained and
-still named what it is named. It confirms that its OpenFeature route is still
-the one stated and that the maintainer column is still true. It confirms that
-no new option has become obvious enough that its absence misleads. Rows that
-fail are corrected or struck, and the date moves.

@@ -1,39 +1,14 @@
 # Authorization: the RBAC model, its operations, and its decision corpus
 
-One of the Aurum Alpha engineering standards, written under the platform
-contract ([`000-platform.md`](000-platform.md)). It is a per-capability standard
-from that contract's roster. Read [`999-enforcement.md`](999-enforcement.md) for
-the tier each rule below actually holds. Artifacts:
-[`contracts/rbac/`](../contracts/rbac/).
-
-This document defines **who is permitted to do what**, as an interface
-specification. That is a data model, a set of operations with defined
-semantics, and a corpus of decision cases any implementation in any language
-must reproduce. It picks up where [`060-auth.md`](060-auth.md) AU6 stops. That
-document produces a trustworthy subject and refuses an unknown one; this one
-decides what a known subject is permitted to do.
-
 ## Why this exists
 
-This is the platform contract's worked example of *an interface specification,
-not a library*. Any language can implement it; one corpus judges them all.
-
-It is also not being invented from nothing. RBAC systems built independently
-**agree on more than they differ**. Each has permissions as a closed set of
-`resource`-plus-`action` strings declared in code. Each has roles as named
-bundles of those permissions, and grants scoped to an organisational unit.
-That agreement is the standard answer, and most of this document is it,
-written down.
-
-Where they differ is where the standard earns its keep. One keeps roles as a
-closed enum in source; another stores them as rows so a tenant can define its
-own. One admits wildcards; another does not. Those are real forks, and left
-alone each new product picks one at random.
-
-**Four failure shapes recur in working production code, and this document
-exists to prevent them**. They are stated below where each rule addresses
-one. A rule with a failure mode behind it gets followed, and a rule asserted
-does not.
+RBAC systems built independently **agree on more than they differ**.
+Permissions are a closed set of `resource`-plus-`action` strings declared in
+code, roles are named bundles of them, and grants are scoped to an
+organisational unit. Where they differ, roles in code or in rows and wildcards admitted or
+not, each new product left alone picks at random. This document writes the
+agreement down, settles the forks, and states the failure each rule
+prevents. Any language can implement it, and one corpus judges them all.
 
 ## The rules
 
@@ -63,27 +38,19 @@ unless somewhere a handler is guarded by
 the same fact written twice. **You cannot add a permission at runtime because
 you cannot add the code that honours it at runtime**.
 
-Five consequences, each a failure that only appears when the set is data:
+Three consequences, each a failure that only appears when the set is data:
 
-- **A permission added without its call site is inert, and inert silently**. An
-  administrator grants it, believes access is conferred, and nothing changes.
-  There is no error to see, because granting something nothing checks is
-  indistinguishable from granting something correctly.
-- **The two halves fall out of step per environment**. Code that checks a
-  permission the database has not got denies everyone. A database holding one
-  the code does not check grants nothing. When the set is compiled in, the
+- **The declaration and the call site drift apart, silently**. A permission
+  added without its call site is inert: an administrator grants it and
+  nothing changes, with no error to see. Code that checks a permission the
+  database has not got denies everyone. When the set is compiled in, the
   check and the declaration ship as one artifact and cannot disagree.
 - **A typo becomes a denial rather than a build failure**. A language enum
   is the form that catches it. `Permission.INVOICE_APPROVE` misspelled does
   not compile. `'invoice.aprove'`
-  in a row fails at check time and looks identical to a correct refusal. That
-  property is the single most valuable one here, and it evaporates the moment
-  the set is data.
-- **"Where is this enforced?" stops being answerable**. A permission that is a
-  code symbol can be found by search, so an auditor can see every call site.
-  The auditor can also find the opposite: a permission that is declared,
-  grantable and never checked anywhere. A permission that is a string in a
-  table can be neither found nor audited.
+  in a row fails at check time and looks identical to a correct refusal. A
+  code symbol can also be found by search, so an auditor sees every call
+  site and every permission declared and never checked.
 - **A new permission is a new capability, and that is a security review event**.
   Adding one expands what the system can be instructed to do. As a diff, someone
   approves it. As an `INSERT`, nobody does. The set of things a system can
@@ -93,7 +60,8 @@ Five consequences, each a failure that only appears when the set is data:
 ### RB2. A permission is `resource.action`
 
 Lowercase, `snake_case` within each segment, a single dot between them:
-`invoice.approve`, `candidate_process.advance`, `purchase_order.void`.
+`invoice.approve`, `candidate_process.advance`, `purchase_order.void`. A name
+matches `^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$`.
 
 **The dot rather than a colon, for a reason that is not taste**. Scope
 references in RB5 are `type:id`, such as `tenant:acme` and `job:8fK2mQ`. Using
@@ -117,37 +85,24 @@ RB1's declared set, and that is validated at write time**. A stored role with a
 typo'd permission grants nothing and says nothing. The failure surfaces later
 as a person who cannot do something everyone believes they can.
 
+**Roles do not nest and do not inherit**. A role that needs what another role
+has lists the same permissions. Inheritance turns *what can this person do*
+into a graph traversal, and the answer stops being readable from the role's own
+definition. The duplication it would remove is duplication a reviewer can see.
+
 #### Why data is safe here when it was not for permissions
 
-The asymmetry is not a compromise, and it is worth stating because it looks like
-one. **A role introduces no capability. It composes capabilities that already
-exist and are already enforced**.
+**A role introduces no capability. It composes capabilities that already
+exist and are already enforced**. So the blast radius of a role invented at
+runtime is bounded, exactly and by construction, by the permission set. **It
+is RB1 that does the bounding. The code-defined permission set is precisely
+what makes runtime roles safe**. Relax RB1 and this rule becomes indefensible
+with it.
 
-Creating *Regional Auditor* as `{report.read, report.export}` adds nothing the
-system could not already do. Both permissions were declared in code, both have
-call sites, both were already grantable. The role is a shorthand for a set that
-was reachable anyway.
-
-So the blast radius of a role invented at runtime is bounded, exactly and by
-construction, by the permission set. **It is RB1 that does the bounding. The
-code-defined permission set is precisely what makes runtime roles safe**. Relax
-RB1 and this rule becomes indefensible with it.
-
-Three further reasons data is the *right* answer for most roles, not merely a
-tolerated one:
-
-- **Roles are organisational structure, and that is the customer's, not ours**.
-  One tenant splits Approver into two grades; another merges them. Requiring a
-  deploy for a customer's internal reporting lines is requiring a deploy for
-  something we have no opinion about.
 - **Multi-tenancy makes code-only roles impossible, not merely awkward**. Tenant
-  A's roles are not tenant B's. The alternatives are a source enum holding the
-  union of every customer's org chart, or a build per tenant. Neither is a real
-  option.
-- **The rates of change differ by orders of magnitude**. Permissions change when
-  features change: slow, deliberate, tied to a release. Roles change when people
-  change jobs: fast, frequent, and by administrators who are not engineers. Two
-  things changing at those two rates do not belong in one release cycle.
+  A's roles are not tenant B's, and roles are the customer's organisational
+  structure. The alternatives are a source enum holding the union of every
+  customer's org chart, or a build per tenant. Neither is a real option.
 
 #### Which roles still belong in code, and why
 
@@ -156,17 +111,12 @@ RB4 forbids code from consulting a role name at all. A product declares system
 roles so that it ships working and can be recovered, not so that anything can
 branch on them.
 
-Four cases:
-
-- **Bootstrap**. A fresh database has no roles and no administrators. Something
-  must grant the first person their access, and it cannot be a role that does not
-  exist yet. This is a chicken-and-egg problem with exactly one solution.
-- **Recovery**. If every administrative role is data, deleting or misconfiguring
-  them locks everyone out. The only path back then involves raw SQL against
-  production. A code-declared role is a floor nobody can remove.
+- **Bootstrap and recovery**. A fresh database has no roles and no
+  administrators, and something must grant the first person their access. If
+  every administrative role is data, deleting or misconfiguring them locks
+  everyone out. A code-declared role is a floor nobody can remove.
 - **A sane default**. A product ships with a small set of workable roles rather
-  than an empty list and an instruction to invent one. Minimal is the target:
-  enough to run the system, not a catalogue.
+  than an empty list and an instruction to invent one.
 - **Roles that cross tenants**. A platform administrator or a support engineer
   belongs to no tenant, so no tenant is permitted to define or edit them. Code
   is where a tenant administrator cannot reach.
@@ -191,31 +141,24 @@ They are the **seed definition** of a system role, and **display**, showing a
 person what they are. Anywhere else, the name has become an authorization input
 and RB1 through RB3 have been routed around.
 
-This is the rule most likely to be broken by accident. `if role == "admin"` is
-the shortest thing to type and it works on the day it is written. Five things
-it breaks:
+`if role == "admin"` is the shortest thing to type and it works on the day it
+is written. Three things it breaks:
 
-- **It asks the wrong question**. A role is a bundle of capabilities, not a
-  capability. *Is this person an administrator* is a question about how they
-  came to hold a permission. The code only ever needs to know whether they hold
-  it.
-- **It denies people who plainly qualify**. A tenant defines its own role
-  carrying every permission the operation needs, and the branch refuses it
-  anyway, because the name does not match. The permission model said yes and
-  the name check said no.
+- **It asks the wrong question, and denies people who plainly qualify**. A
+  role is a bundle of capabilities, not a capability; the code only ever needs
+  to know whether the subject holds the permission. A tenant defines its own
+  role carrying every permission the operation needs, and the branch refuses
+  it anyway, because the name does not match.
 - **It makes editing a role's permissions do nothing**. The whole point of a
   role as a set is that changing the set changes what its holders can do. A
   name branch is not reading the set. So an administrator edits the role, sees
   the change saved, and the behaviour does not move.
-- **It makes `permissionsFor` untrue, exactly as a wildcard does**. A gate that
-  is not a permission gate does not appear in the list. So the `/me` document of
-  [`060-auth.md`](060-auth.md) AU6 describes a subject who can do more or less
-  than it says. The interface then renders the wrong screen. This is the same
-  failure as RB6's wildcard, arriving by a different door.
-- **It is invisible to the corpus**. [`decisions.json`](../contracts/rbac/decisions.json)
-  evaluates `check`. A role-name branch is an authorization decision the corpus
-  cannot see. So an implementation can reproduce all seventeen cases and still
-  have ungoverned gates.
+- **It makes `permissionsFor` untrue, exactly as a wildcard does, and the
+  corpus cannot see it**. A gate that is not a permission gate does not appear
+  in the list. So the `/me` document of [`060-auth.md`](060-auth.md) AU6
+  describes a subject who can do more or less than it says.
+  [`decisions.json`](../contracts/rbac/decisions.json) evaluates `check`, and
+  a role-name branch is an authorization decision it cannot judge.
 
 And where roles are tenant-editable data, a name branch is **code depending on a
 row a customer can rename or delete**.
@@ -223,7 +166,7 @@ row a customer can rename or delete**.
 #### The cases that look like exceptions
 
 A feature flag is not one of them. A flag decides whether a capability is
-wired or shown and never whether a subject is allowed
+wired or shown, never whether a subject is allowed
 ([`038-feature-flags.md`](038-feature-flags.md) FF5).
 
 *"But I need to notify the billing contact."* That is not a role check.
@@ -238,17 +181,6 @@ It is one of two things:
 Both are better than a role lookup, and the second is better than inventing a
 permission for a singleton. The test is whether you are asking *is this person
 permitted to do X* (a permission) or *who is our X* (a field).
-
-*"The admin screen lists roles to assign."* That is data being rendered, not a
-branch. Fine.
-
-*"Migrations and seeds reference role names."* Setup, not a runtime decision.
-Fine.
-
-**Roles do not nest and do not inherit**. A role that needs what another role
-has lists the same permissions. Inheritance turns *what can this person do*
-into a graph traversal, and the answer stops being readable from the role's own
-definition.
 
 ### RB5. A grant binds a subject to a role within a scope
 
@@ -276,9 +208,6 @@ A subject can hold many grants. They are evaluated together, and RB6 says how.
 
 ### RB6. Deny by default, additive only, and no permission means "everything"
 
-Three semantics, and every one of them is a place implementations diverge unless
-pinned.
-
 **Deny by default**. No grant means deny. There is no "allow unless denied."
 
 **Grants are additive, and there are no negative grants**. A subject's
@@ -291,11 +220,10 @@ against.
 To remove access, remove the grant.
 
 **No wildcard is expanded at check time, and no permission grants any other**.
-This is the rule with the most evidence behind it. The failure has a
-recognisable shape: a check that short-circuits on `system.admin`, on
-`system.*` and on `*`, tested in three places with slightly different
-conditions. That is three ways to say "everything", any one of which silently
-defeats every other rule in this document.
+The failure has a recognisable shape: a check that short-circuits on
+`system.admin`, on `system.*` and on `*`, tested in three places with slightly
+different conditions. That is three ways to say "everything", any one of which
+silently defeats every other rule in this document.
 
 The cost of that is not only the bypass. It makes `permissionsFor` **lie**: a
 subject holding `*` has every permission and the list enumerates none of them.
@@ -313,19 +241,13 @@ not in a stored role, not as an argument to `check`, and not as authoring
 shorthand a tool expands later. There is no place in the system where `*`,
 `system.*` or `invoice.*` is accepted.
 
-RB4's role-name branch is the same failure through another door. Both create a
-gate that grants or refuses without a permission behind it. Both make
-`permissionsFor` describe a subject who is not the one the system will actually
-serve.
-
-Authoring shorthand is the tempting exception, and it is refused for the reason
-the paragraph above gives. A role authored as "every permission on `invoice`"
-has two possible behaviours. Either it re-expands on load, and silently gains
-whatever was added to the code since, which is the superuser problem returned
-by another door. Or it freezes at definition and quietly stops meaning what it
-says. Neither is legible, and the authored form is what a reviewer reads in a
-diff. **A rule that admits an implicit form has an implicit form**, and the
-only version of this rule that holds is the flat one.
+Authoring shorthand is the tempting exception. A role authored as "every
+permission on `invoice`" has two possible behaviours. Either it re-expands on
+load, and silently gains whatever was added to the code since, which is the
+superuser problem returned by another door. Or it freezes at definition and
+quietly stops meaning what it says. **A rule that admits an implicit form has
+an implicit form**, and the only version of this rule that holds is the flat
+one.
 
 ### RB7. `check` is a pure function of its arguments
 
@@ -336,11 +258,10 @@ check(subject, permission, scope) → Decision
 **The scope is an argument, never ambient state**. The same subject, permission
 and scope produce the same decision every time, given the same grants.
 
-This is the rule that carries the most weight, and the failure it prevents
-occurs in production, not only in theory. Its shape is a check that reads an
-*active context* from session state rather than taking it as an argument.
-That context is the organisation the user last selected. Two consequences
-follow, and both are the kind that survive a long time:
+The failure it prevents has a shape: a check that reads an *active context*
+from session state rather than taking it as an argument. That context is the
+organisation the user last selected. Two consequences follow, and both are the
+kind that survive a long time:
 
 - **The answer depends on where the user last clicked**. The same call, for the
   same user and permission, returns differently depending on session state that
@@ -352,8 +273,9 @@ follow, and both are the kind that survive a long time:
   ever show it.
 
 A pure `check` makes the second impossible by construction. It also makes the
-corpus of RB9 writable at all. *Given these grants, this check returns deny*
-has no meaning if the answer also depends on state the case cannot state.
+[`decisions.json`](../contracts/rbac/decisions.json) corpus writable at all.
+*Given these grants, this check returns deny* has no meaning if the answer also
+depends on state the case cannot state.
 
 #### The operations
 
@@ -395,11 +317,9 @@ as a rule so it is caught in review rather than in production.
 
 **Every path that changes a grant invalidates**. Granting, revoking, editing a
 role's permissions, deactivating a subject. The invalidation surface has three
-entry points: `clearPermissionCache(userId)`,
-`clearCacheForUsersWithRole(roleId)` and `clearAllPermissionCaches(reason)`,
-with the reason recorded for audit. That is the shape: per-subject, per-role
-and global. A role's permission list changing affects every subject holding
-it, and there is no cheaper correct answer.
+entry points: per subject, per role, and global with the reason recorded for
+audit. A role's permission list changing affects every subject holding it, and
+there is no cheaper correct answer.
 
 A stated maximum TTL bounds what invalidation misses. It is a backstop, not the
 mechanism.
@@ -411,7 +331,8 @@ RB7 makes scope an argument. This rule says where the argument comes from.
 identity, and never from anything the client sent**. That identity is the
 session the [authentication standard](060-auth.md) bound to exactly one tenant
 at login (AU8). Not a header, not a query parameter, not a body field, and not
-the hostname the request arrived on.
+the hostname the request arrived on. The rule is stated that generally so that
+the next plausible-looking source is already refused.
 
 The reason is that every one of those is the caller's to choose. A scope taken
 from a header is a scope the caller selected. A `check` whose scope argument
@@ -441,68 +362,6 @@ comes from here.
 Per PC3, under [`contracts/rbac/`](../contracts/rbac/):
 
 - **`model.schema.json`**: permission, role, grant and scope shapes.
-- **`decisions.json`**: **the corpus that matters**. It is a set of grants,
-  then a list of checks with their expected decisions. This is the file that
-  makes a polyglot standard enforceable from one source, and it is why RB7
-  requires a pure function. Many implementations, one judge.
-
-## Enforcement
-
-Every rule is review-only today, with gates named per rule in
-[`999-enforcement.md`](999-enforcement.md). **This standard is the most
-gateable one in the repository**. That is the point of writing authorization as
-an interface specification rather than as prose.
-
-- **RB6, RB7 and RB5's containment are decided entirely by the decision
-  corpus**. An implementation loads the grants, runs the checks, and either
-  reproduces every expected decision or names the case it failed. No running
-  service, no browser, no network: the corpus is data and the check is a
-  function.
-- **RB2's format is a static check** over the declared permission set. Every
-  entry matches `^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$`, which also catches the
-  three-segment permissions RB2 forbids.
-- **RB3's validation is testable** by attempting to store a role containing an
-  undeclared permission and requiring a refusal.
-- **RB9's cache key resists a static checker** and is caught by a corpus case
-  instead. Check a permission in one scope, then the same permission in another
-  where it is not granted, and require deny. A cache keyed without scope fails
-  it. This is the one gate that catches the cross-tenant cache defect RB7
-  describes.
-- **RB1 and RB8 stay review questions**. That a declaration is genuinely the
-  complete set, and that a reason is genuinely informative, are judgments about
-  content rather than shape.
-
-## Decisions
-
-- **The dot for permissions, the colon for scopes** (2026-09-01): either
-  character works, and taste settles nothing. The reason chosen is that scope
-  references need a separator too. One separator with two meanings is where
-  ambiguity starts.
-- **Roles can be code-declared or data-stored; permissions cannot**
-  (2026-09-01): the fork is real. Each side has a case: type safety on one
-  side, tenant-defined roles on the other. Admitting both while closing the
-  permission set keeps what each is protecting.
-- **No wildcards anywhere, not merely at check time** (2026-09-01): the
-  strongest rule here, and the one most argued with, because `*` is
-  convenient. It is rejected because it defeats every other rule silently and
-  because it makes `permissionsFor` untrue, which the client contract now
-  depends on. An earlier draft of this rule banned wildcards only at check time
-  and permitted them as authoring shorthand. That was inconsistent with this
-  same rule's argument for an enumerated superuser. An authored `invoice.*`
-  either re-expands and silently grows, or freezes and silently stops meaning
-  what it says. The flat denial is the only version that holds.
-- **No role inheritance** (2026-09-01): considered, because it removes
-  duplication between similar roles. Rejected because it converts *what can
-  this person do* from a lookup into a traversal. The duplication it removes is
-  also duplication a reviewer can see.
-- **`check` takes scope as an argument** (2026-09-01): the alternative is an
-  ambient-context design. It is convenient at every call site and it produces
-  a cross-tenant cache defect, because the cache key has no scope to carry.
-  Purity is what the corpus needs, and the corpus is what makes this standard
-  enforceable.
-- **The scope argument comes from the session, never from the request**
-  (2026-09-08): RB7 fixed that scope is passed and left open who supplies it.
-  Tenant hostnames forced the question, because a hostname is the most
-  plausible-looking source of a tenant and is still a value the client chose.
-  The rule is stated generally, as no header, parameter, body field or
-  hostname, so that the next plausible-looking source is already refused.
+- **`decisions.json`**: a set of grants, then a list of checks with their
+  expected decisions. One corpus judges every implementation, which is why
+  RB7 requires a pure function.

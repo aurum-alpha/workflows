@@ -1,65 +1,17 @@
 # The web estate: three surface classes, the front door, and the seams between them
 
-One of the Aurum Alpha engineering standards, written under the platform
-contract ([`000-platform.md`](000-platform.md)). It is a per-capability
-standard from that roster. Read [`999-enforcement.md`](999-enforcement.md) for
-the tier each rule below holds. Artifacts: none of its own.
-
-The one document this standard requires a front door to serve is the web
-client standard's
-[`contracts/web-client/runtime-config.schema.json`](../contracts/web-client/runtime-config.schema.json).
-Which static hosts, generators, content sources and form processors are known
-to satisfy the rules below, and when that was last checked, is
-[`solutions/091-web-estate.md`](../solutions/091-web-estate.md). That register
-states no rule of its own.
-
-This document governs the web surfaces a product business runs, taken
-together. It decides which classes exist and what each can hold (WE1), and how
-a host's name says which class it is in (WE2). It decides what the public
-front door is and is not (WE3, WE4). It decides what every surface owes its
-own repository (WE5), and where surfaces touch and by what contract (WE6). It
-decides what an automated actor is (WE7), and where a campaign page lives
-(WE8). Tenant hostnames are the [tenant hostnames
-standard](092-tenant-hostnames.md)'s; this document places them in the estate
-without restating a rule of theirs.
-
-**It does not decide how a browser behaves**. The bootstrap document, what a
-page can hold as a credential and how a client calls an API are the [web
-client standard](090-web-client.md)'s. This document cites them where a
-surface has to honour them.
-
 ## Why this exists
 
-Every standard before this one governs a process, or a browser talking to one.
-A product business also runs at least one surface that is neither. That is a
-public site anyone can open, which authenticates nobody and changes weekly in
-the hands of people who do not deploy services. Nothing written here applied
-to it. So the decisions it forces were being made by whoever built it first.
-Those are what identity it can hold, what host it lives on, where its copy
-lives, and how it hands a visitor to the product.
-
-Those decisions are entangled with two others that look unrelated until the
-first incident. A product that gives customers their own hostnames has, in
-effect, many product hosts. A business with staff tools has a third kind of
-surface again. The three kinds differ on exactly the axes a standard exists to
-pin. Those are who arrives, what identity is held, whether a process exists,
-and how often it changes. A surface that is a little of two of them is where
-the credentials of one leak into the exposure of the other.
-
-**A marketing page that can set a session cookie is a product surface with
-none of the product's controls**. A staff tool under the product's domain is
-one cookie attribute away from receiving a customer's session.
-
-It is one document, the estate, rather than a front-door standard alone,
-because the front door's rules only make sense against the other two classes.
-What it is not permitted to do is defined by what the product does. Where its
-seams are is defined by what sits on the far side. Written alone it would be a
-list of prohibitions with no argument.
-
-One more thing is stated because it would otherwise be assumed. Coding agents
-will do much of the maintaining of these surfaces, and every property below
-that helps an agent helped a person first. **Agents are a beneficiary of these
-rules and not their justification**.
+A product business runs three kinds of web surface: a public site anyone can
+open, the product customers authenticate into, and the tools staff use. They
+differ on who arrives, what identity is held, whether a process
+exists, and how often they change. A surface that is a little of two of them
+is where the credentials of one leak into the exposure of the other. **A
+marketing page that can set a session cookie is a product surface with none
+of the product's controls**. A staff tool under the product's domain is one
+cookie attribute away from receiving a customer's session. The front door's
+rules only make sense against the other two classes, so this is one document,
+the estate.
 
 ## The rules
 
@@ -91,12 +43,8 @@ the other two surfaces:
 - **An internal surface that accepts tenant identity is reachable by a
   customer**, whatever authorization it runs.
 
-The front door is the odd one out. It is not a *service* in the platform
-contract's sense. It has no process, so the service contract, the workers
-standard and the live checks of the security baseline do not reach it. It
-therefore gets its own rules, WE3 and WE4. The product and internal surfaces
-are governed by the standards already written. This document says which they
-are and where they end.
+The front door has no process, so the service contract and its live checks do
+not reach it; WE3 and WE4 govern it instead.
 
 ### WE2. The host convention is the class boundary, and the class is decidable from the name
 
@@ -142,14 +90,14 @@ domain pointed at the product is a product host (092), not a front door.
 origin**. It holds no session, no credential, and makes no call to an
 authenticated API. There is no process of its own to be healthy, to log, to
 drain or to be provenance-checked. That is why the service contract does not
-apply, and why what follows is stated here instead.
+apply.
 
 **A front door has environments**: development, staging where the product has
-one, and production. This is the rule's load-bearing clause. It has them for
-the same reason a service does: a value on the page differs between them. A
-booking link, a form endpoint, the origin the sign-up handoff points at: each
-is environment-specific. A development deployment carrying the production
-value has sent a test through the production funnel.
+one, and production. It has them for the same reason a service does: a value
+on the page differs between them. A booking link, a form endpoint, the origin
+the sign-up handoff points at: each is environment-specific. A development
+deployment carrying the production value has sent a test through the
+production funnel.
 
 The [web client standard](090-web-client.md) WC2 already states how a browser
 surface learns such values without compiling them in, and it applies here
@@ -163,22 +111,14 @@ this rule it has nothing to call and nobody to log in.
 
 Two consequences, each following from something already written:
 
-- **The build produces one artifact, identical in every environment**
-  ([factor V](https://12factor.net/build-release-run); the
-  [CI standard](010-ci.md), Principle 7, BUILD ONCE). The environment
-  enters at the origin, not at the build. That is
-  [factor III](https://12factor.net/config) honoured through the serving
-  process's environment, as WC2 argues in full. An origin that cannot render
-  a per-environment document forces the value into the build. One build per
-  environment is the failure both factors name.
-- **A host that can only serve files cannot host a front door**. That is the
-  property, stated as WC2's property of the origin rather than as a verdict
-  on any hosting arrangement. A static server in a container that writes the
-  document at start from its environment satisfies it. A static host whose
-  deployment step writes the document into the served directory from the
-  environment satisfies it. A bare object store receiving the build output
-  and nothing else does not. The register names which known arrangements
-  are which.
+- **The build produces one artifact, identical in every environment**, and
+  the environment enters at the origin, as [`090-web-client.md`](090-web-client.md)
+  WC2 argues in full.
+- **A host that can only serve files cannot host a front door**. That is
+  WC2's property of the origin, stated as a property rather than as a
+  verdict on any hosting arrangement. Which static hosts and generators
+  satisfy it is [`solutions/091-web-estate.md`](../solutions/091-web-estate.md)'s
+  to say.
 
 What the directory is not permitted to contain follows from *no credential*:
 nothing that would be a finding under [`032-secrets.md`](032-secrets.md) SE4
@@ -195,17 +135,13 @@ a small diff a reviewer reads as a sentence and not as markup. Components
 render content; they do not contain it.
 
 **The site is rebuilt from the repository, and every change to what is live is
-a change someone can point to**. A content change lands as a pull request, and
-the front door's gates run. A human reads a content diff, and a build produces
-the directory WE3 serves. That is the whole of the flow, and it is the same
-flow every other change in this organisation takes. It is stated because the
-pressure on a front door runs the other way. That pressure is towards an
-editor that publishes now, with no build and nothing to review.
-
-That pressure is refused here with its reason. **Content that went live with
-no build and no record is content nobody can reproduce, roll back or account
-for**. And that is on the one surface whose every word is a public statement
-by the business.
+a change someone can point to**. A content change lands as a pull request, the
+gates run, a human reads the diff, and a build produces the directory WE3
+serves. The pressure on a front door runs the other way, towards
+an editor that publishes now, with no build and nothing to review. **Content
+that went live with no build and no record is content nobody can reproduce,
+roll back or account for**. And that is on the one surface whose every word is
+a public statement by the business.
 
 **A content management system is admitted only as a declared source**. The
 declaration is in the repository: which system, which content types, under
@@ -224,14 +160,9 @@ this rule accepts. What the system publishes on its own is content live
 without a build, and is refused. That is a hosted preview served publicly, a
 page rendered at request time, or a script fetching copy at load.
 
-**A pricing page renders from a catalog it does not own**. Prices, plans and
-what each includes are the product's, held in one place the billing standard
-governs (tracked on [the capability
-roster](000-platform.md#the-capability-roster)). The front door reads them as
-it reads any declared source. They are pulled into the repository as data,
-rendered by a component, and never typed into a content file. Two sources of a
-price disagree in the week it matters, and the one on the public page is the
-one a customer screenshots.
+**A pricing page renders from the catalog [`075-billing.md`](075-billing.md)
+BL1 governs**, pulled into the repository as a declared source and never typed
+into a content file.
 
 ### WE5. Every surface is maintainable from its repository alone
 
@@ -253,12 +184,15 @@ can name, or content that lives somewhere the repository does not declare. It
 is a gate that only runs in one person's environment, or a deployment that
 needs a hand on a console.
 
-Those are properties of the surface, not of who maintains it. A repository
-that builds alone can be reviewed, handed over and recovered alone when the
-person who knew the missing piece has gone. That the *someone* in the test can
-be an agent makes the test cheap enough to run on every change. That is the
-entire extent of what agents contribute to this rule. It is not why the test
-exists.
+A repository that builds alone can be reviewed, handed over and recovered
+alone when the person who knew the missing piece has gone.
+
+**The front door is its own repository and its own deployable**. A directory
+in the product's repository makes every copy change wait for a test suite it
+cannot affect. A front door changes weekly, in the hands of people who do not
+deploy services. A front door that ships with the product can be broken by
+a release and can break one. And a client's public site and a client's product
+part company more often than they stay together.
 
 ### WE6. The seams are the existing contracts, named, and no other route crosses one
 
@@ -278,24 +212,14 @@ boundary without one, and it is refused.
 do with a visitor's intent**. **Together they keep it anonymous**. The sign-up
 handoff carries nothing personal because the front door has nowhere to put
 anything personal. It has no session to bind it to, no store to keep it in, no
-authenticated call to send it through.
+authenticated call to send it through. Lead capture is the one admitted form,
+because a business has to be contactable, and the front door keeps nothing of
+what passes through it.
 
-A name or an email typed into the front door for sign-up is personal data on
-the one surface with no controls for it. WE3 refuses it before this rule is
-reached. The promotional code is admitted because it is not personal; its
-validity is decided on the product.
-
-**Lead capture is the front door's one admitted form**, admitted under
-conditions rather than by exception. It posts to a processor the repository
-declares, or to an intake endpoint the internal surface exposes. The internal
-surface defends that endpoint as the baseline requires of every open route. It
-never posts to the product, because a lead is not a customer. The front door
-keeps nothing: it neither stores the submission nor reads it back. So a
-visitor's data passes through the one surface that cannot protect it without
-resting there.
-
-Who is permitted to show, transact and override across these seams is stated
-below.
+Across these seams, **the front door displays and links; the product
+transacts; internal tools override and observe; and one catalog is the shared
+truth**. Everything that takes money or changes what a tenant is entitled to
+is [`075-billing.md`](075-billing.md)'s.
 
 ### WE7. An automated actor on any surface is a workload identity
 
@@ -307,14 +231,12 @@ from a person. On the internal surface it is a subject in its own right under
 [`070-rbac.md`](070-rbac.md), holding its own grants. Its acts carry its own
 name in the audit record ([`080-audit.md`](080-audit.md) AE2).
 
-The reasons hold for every non-human actor and hold harder here, because the
-surfaces are where the acts become visible. **A borrowed human session makes
-the human the actor of record**. Every act is audited as theirs, every
-permission exercised is theirs, and revoking the automation means revoking
-them. **A long-lived key is a credential with no expiry in the place with the
-most exposure**. The front door's deployment credential can change every
-public word of the business. Federated, it exists for one pipeline run, bound
-to one repository and one environment.
+**A borrowed human session makes the human the actor of record**, so every act
+is audited as theirs and revoking the automation means revoking them. **A
+long-lived key is a credential with no expiry in the place with the most
+exposure**. The front door's deployment credential can change every public
+word of the business. Federated, it exists for one pipeline run, bound to one
+repository and one environment.
 
 And **on the product, automation acts through the internal seam** (WE6), never
 as a customer. An automated actor holding a tenant's identity is a
@@ -329,149 +251,13 @@ in weeks. **It lives as a path or a subdomain of the apex, never in the
 product's zone**. Disposable is fine; the zone is not negotiable.
 
 The reason is WE2's. A campaign host under the product's zone is one a product
-session cookie can reach in the admitted `Domain=` topology. It is one the
-product's certificate arrangements answer for, and one a reader of the name
-will class as product. That is a front door surface with a product host's
-exposure, built and discarded at a cadence no product surface has. That is the
-mix of classes WE1 exists to prevent, arriving through the door marked
-*temporary*.
-
-Under the apex a campaign page inherits exactly the posture it needs. That is
-no cookie, no credential, a build and a record (WE4), and retirement by
-deleting a directory.
-
-## Commerce across the seams
-
-Pricing, sign-up, trials and plan changes cut across all three surfaces, which
-is why they need a boundary rather than a home. One principle decides every
-row. **The front door displays and links; the product transacts; internal
-tools override and observe; and one catalog is the shared truth**. What
-follows is the estate's half of that principle. The catalog itself, the
-subscription and its history, checkout and the provider adapter are the
-billing standard's. So are what an entitlement is and how it is checked, all
-tracked on [the capability roster](000-platform.md#the-capability-roster).
-
-| Concept | Shown on | Transacted on | The crossing |
-|---|---|---|---|
-| **Plan catalog** | front door pricing page; product billing page; internal admin | nowhere; it is read | The front door renders from it as a declared source (WE4). A price is never typed into front-door content. |
-| **Pricing page** | front door | nowhere; content plus a catalog render | Each plan's call to action is the sign-up handoff (WE6): a link to the product's entry with the plan and campaign source as query parameters. |
-| **Sign-up** | the entry is a link on the front door | the product | The front door never renders a form collecting a name or an email for sign-up. That is what keeps it anonymous and store-less. |
-| **Trial and plan state** | product; internal admin | product | Product → internal as 055 events (WE6). |
-| **Upgrade, downgrade, cancellation** | product billing settings | product | Nothing crosses a seam. |
-| **A change on a customer's behalf** | internal admin | internal tool calling the product | Internal → product over 050 with a 070 permission and an 080 event (WE6). Never through the product's interface on a borrowed customer session (WE7). |
-| **Contact sales** | front door, the one form it is allowed | a declared intake endpoint or processor | Front door → internal (WE6). Sales provisions the tenant from the internal surface, which is 060 AU4's administrator-created path; the product is not involved until then. |
-| **Promotional code** | the front door can carry one in the handoff | the product's checkout | A code is non-personal context, so the handoff can carry it; its validity is decided on the product. |
-
-Two shapes this table refuses are reached for first. **A sign-up form on the
-front door** is personal data on the surface with no controls for it (WE3,
-WE6). **Prices typed into front-door content** are a second source of a fact
-the catalog owns (WE4). The page renders the offer and does not define it.
+session cookie can reach in the admitted `Domain=` topology. A reader of the
+name will class it as product. Under the apex it inherits no cookie, no
+credential, a build and a record (WE4), and retirement by deleting a
+directory.
 
 ## The artifacts
 
-This standard adds no artifact of its own, deliberately. The one document it
-requires a surface to serve is the web client standard's bootstrap document,
-under [`contracts/web-client/`](../contracts/web-client/). A second schema for
-it would be this repository's two-answers failure. The seams of WE6 are
-contracts other standards already hold. What this standard pins that no
-contract holds is the classes, the host convention, and the test of WE5. Each
-is a property of an estate rather than a shape on a wire, and the ledger says
-so.
-
-## Enforcement
-
-Every rule here is review-only today, with the gate each is getting named in
-[`999-enforcement.md`](999-enforcement.md). The gateable half of this standard
-is the front door's build output and the responses of its origin, both
-observable without a browser. The other half is an arrangement of repositories
-and hosts, which no boundary shows.
-
-- **WE3 is the one to build first**, and most of it is a gate the web client
-  standard already names. The front door's directory is a build output. So
-  the static check WC2 proposes, nothing environment-specific in the
-  artifact, applies to it unchanged, and the origin's document validates
-  against the schema. What this standard adds is one assertion on the same
-  origin: no `Set-Cookie` on any response. That is the whole of *no session* as a wire fact.
-- **WE2 is decidable from a declaration** of hosts and their classes, which
-  a checker could hold the edge configuration and the certificate list
-  against. The declaration does not exist yet.
-- **WE4 and WE5 share a mechanical half**. A build from a clean checkout
-  with the network closed proves the build reads only the repository. That
-  is WE5's test in its cheapest form. That a content change is a *readable*
-  diff is a review question, asked in those words.
-- **WE1, WE6, WE7 and WE8 govern where things sit**, and a gate that read
-  source to find out would be the PC4 violation. Each row in the ledger
-  states the review question instead, so that unenforced is visibly
-  unenforced.
-
-## Decisions
-
-- **The front door is its own repository and its own deployable**
-  (2026-09-04). A directory in the product's repository, and a separate
-  deployable cut from that repository, were both refused. The grounds each
-  hold alone, and together over-determine it. Change cadence: a front door
-  changes weekly in the hands of people who do not deploy services. A
-  repository whose gates are the product's makes every copy change wait for
-  a test suite it cannot affect. Blast radius: a front door that ships with
-  the product can be broken by a release and can break one.
-
-  Handover: a client's public site and a client's product part company more
-  often than they stay together. A gate set that fits static content: a
-  build, a link check, a content diff, and none of the live checks written
-  for a process. And a repository small enough that one maintainer, human or
-  agent, can hold all of it. That is WE5 in the only form that stays true as
-  the product grows.
-- **The host convention is a security boundary because of the cookie**
-  (2026-09-04). The first draft placed hosts by convention and left the
-  reason as tidiness. The reason that survives is the reach of a `Domain=`
-  cookie in an admitted topology, which makes the registrable domain a blast
-  radius. The host map was drawn from that fact, with host-only cookies on
-  the product's side as the rule that makes it hold
-  ([`092-tenant-hostnames.md`](092-tenant-hostnames.md) TH4).
-- **A front door has environments, and WC2 applies unchanged** (2026-09-05).
-  The temptation was to call a marketing site environment-less and let the
-  build carry its links. A booking URL, a form endpoint and the sign-up
-  origin each differ between development and production. Once a front door
-  has environments, the web client standard's answer to *how does a built
-  artifact learn its environment* is already written. A second answer would
-  be the two-answers failure.
-- **Build it as code, yes; whether to run the serving stack is a property,
-  not a verdict** (2026-09-05). Authoring the front door as a repository was
-  never in question. Whether to operate its origin began as a refusal, and
-  ended as WE3's property once the environments ruling landed. Any
-  arrangement whose origin renders a per-environment document is admitted.
-  The register carries the arrangements; the standard carries the property.
-- **The stack is open below the contract** (2026-09-06). The generator, the
-  host and the content source are not pinned. The rules are stated in terms
-  none of them own: a directory, an origin, a document, a diff. Pinning a
-  tool would put the most perishable sentence in the most durable document.
-- **A declared source lands in the repository before the build reads it**
-  (2026-09-06). A build that fetches from the content system at build time
-  was refused because it makes the build a function of when it ran. So the
-  same commit produces different sites, and no record says which words
-  shipped. The pull is a change, the change is a diff, and the diff is what
-  a human reviews.
-- **No personal data on the front door, with one named exception**
-  (2026-09-07). A sign-up form is the shape every product reaches for and
-  the one that ends the front door's anonymity. Lead capture is admitted
-  because a business has to be contactable. It is admitted under conditions,
-  and not as a licence for forms in general.
-- **Tenant hostnames are their own document** (2026-09-07). They are product
-  topology, and the rules they need are rules about authenticated surfaces
-  that this document has no business stating. The estate places them; the
-  [tenant hostnames standard](092-tenant-hostnames.md) governs them.
-- **The front door displays and links; the product transacts**
-  (2026-09-08). Pricing, sign-up and plan changes were candidates for this
-  document in full, and would have made it a billing standard by accident.
-  What stays is the estate's half: which surface is permitted to show,
-  transact or override, and the seam each crossing uses. Everything that
-  takes money or changes what a tenant is entitled to is the billing
-  standard's, cited by its roster row rather than pre-empted.
-- **Agents are a beneficiary of these properties, not their justification**
-  (2026-09-08). This is stated as a decision because the opposite was
-  argued. Every rule above that helps an agent is separation of concerns,
-  minimal dependencies and a reproducible build. That is a repository that
-  builds alone, content as a diff, a seam as a named contract. Each was good
-  design before any agent existed, and each is checkable without reference
-  to who will do the maintaining. Agents will do much of it, and WE5's test
-  is cheap because of them, but no rule here rests on that.
+This standard adds no artifact; the front door's runtime document is
+[`090-web-client.md`](090-web-client.md) WC2's schema under
+[`contracts/web-client/`](../contracts/web-client/).

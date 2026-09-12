@@ -1,7 +1,6 @@
 # Acceptable solutions: billing
 
 Register for [`standards/075-billing.md`](../standards/075-billing.md).
-Checked 2026-09-08; next check due 2027-03-07.
 
 ## What adopting anything does and does not do for you
 
@@ -10,12 +9,12 @@ only the far side of a call.
 
 | Rule | What an adopted thing supplies | What is yours regardless |
 |---|---|---|
-| BL1 | An API that creates products and prices, and archives them, so that `catalog.provision` can author the provider from the file. **Not every provider offers this**; the table says which did at the checked date, and a provider without it cannot satisfy BL1 by any route. | The catalog file, its CI validation, the provisioning job and the id mapping it writes back. |
+| BL1 | An API that creates products and prices, and archives them, so that `catalog.provision` can author the provider from the file. **Not every provider offers this**; the table says which did when checked, and a provider without it cannot satisfy BL1 by any route. | The catalog file, its CI validation, the provisioning job and the id mapping it writes back. |
 | BL2 | Nothing. | All of it (BL2): the projection, the ledger, the closed sets, the one pending change. |
 | BL3 | Nothing. | All of it (BL3), including refusing anything per user. |
 | BL4 | Nothing on the request path (BL4). | All of it (BL4): the pure function, the check, the cache with `valid_until`, the `/me` block. |
 | BL5 | The adapter's far side: hosted checkout or tokenised fields, a customer portal, invoices, plan changes with proration and `cancel_at_period_end`, promotion codes. The provider's browser-side key is public by its design and reaches the page through the runtime configuration document (090 WC2). | The adapter against 075's interface, selected from configuration (030 SC3); the SDK out of domain code, the credential out of the image. |
-| BL6 | Signed webhooks for every event 075's `verify` maps, with an event id and redelivery. The **signing scheme** is the provider's own at every row below; none documented Standard Webhooks signing at the checked date, so `verify` implements the provider's scheme inside the adapter. A read API the reconciliation job can page. | The AM8 endpoint, the event consumer, `billing.reconcile`. |
+| BL6 | Signed webhooks for every event 075's `verify` maps, with an event id and redelivery. The **signing scheme** is the provider's own at every row below; none documented Standard Webhooks signing when checked, so `verify` implements the provider's scheme inside the adapter. A read API the reconciliation job can page. | The AM8 endpoint, the event consumer, `billing.reconcile`. |
 | BL7 | Proration on upgrade and scheduled changes at period end, so the policies are one adapter call each. | The policies, the over-quota rule, every change in the product. |
 | BL8 | A trial period on the provider's subscription, and a webhook when it converts or ends. | The `trialing` status, `trial_end`, `trial.expire`, the notifications, the declared policy. |
 | BL9 | An idempotent customer-creation call, so the boundary crossing can be retried on the tenant's id. | The one transaction, and its order. |
@@ -44,15 +43,14 @@ decide.
 | Option | Merchant of record | Payment capture (BL5) | Catalog by API (BL1) | Webhooks (BL6) | Metered usage (BL3 allowances) | Notes against 075 |
 |---|---|---|---|---|---|---|
 | **Stripe** | No. Tax computation is offered; liability stays with the business. | Hosted checkout and tokenised fields. | Yes: products and prices created and archived by API; a price is immutable once created, which is BL1's model exactly. | Own scheme, HMAC over timestamp and raw body, with event ids and redelivery. | Yes, through metered prices and meter events. | Scheduled plan changes and `cancel_at_period_end` map to BL7 one call each. |
-| **Paddle** | Yes. | Hosted and overlay checkout. | Yes: products and prices by API. | Own scheme, HMAC over timestamp and raw body. | Verify: usage-based pricing existed at the checked date; confirm the event shape your allowance metric needs. | The merchant-of-record shape with a full catalog API, which is the combination the other MoR row lacked at the checked date. |
-| **Lemon Squeezy** | Yes. | Hosted and overlay checkout. | **Verify.** At the checked date the API read products and variants and did not create them, so `catalog.provision` could not author the provider; the job can still reconcile against it. A row that cannot satisfy BL1 by any route is not a BL1 route. | Own scheme, HMAC over the raw body. | Yes, through usage records. | Acquired by the first row's vendor before the checked date; re-check that the API and roadmap named here are still this product's. |
-| **Chargebee** | No. | Hosted pages and tokenised fields, over a payment gateway it sits in front of. | Yes: plans, items and prices by API. | Verify: at the checked date the documented endpoint authentication was a credential on the endpoint rather than a signature over the body. AM8 verifies a signature over the raw body, so confirm a body-signature scheme is offered before adopting. | Yes, through usage records and metered items. | A subscription-management layer rather than a processor; the gateway beneath it is a second vendor the adapter wraps, and BL5 says one adapter, not one vendor. |
-| **Recurly** | No. | Hosted pages and tokenised fields, over a gateway. | Yes: plans and add-ons by API. | Verify: the same endpoint-credential question as the row above at the checked date. | Yes, through usage-based add-ons. | As above: a management layer over a gateway. |
+| **Paddle** | Yes. | Hosted and overlay checkout. | Yes: products and prices by API. | Own scheme, HMAC over timestamp and raw body. | Verify: usage-based pricing existed when checked; confirm the event shape your allowance metric needs. | The merchant-of-record shape with a full catalog API, which is the combination the other MoR row lacked when checked. |
+| **Lemon Squeezy** | Yes. | Hosted and overlay checkout. | **Verify.** When checked, the API read products and variants and did not create them, so `catalog.provision` could not author the provider; the job can still reconcile against it. A row that cannot satisfy BL1 by any route is not a BL1 route. | Own scheme, HMAC over the raw body. | Yes, through usage records. | Acquired by the first row's vendor before it was checked; re-check that the API and roadmap named here are still this product's. |
+| **Chargebee** | No. | Hosted pages and tokenised fields, over a payment gateway it sits in front of. | Yes: plans, items and prices by API. | Verify: when checked the documented endpoint authentication was a credential on the endpoint rather than a signature over the body. AM8 verifies a signature over the raw body, so confirm a body-signature scheme is offered before adopting. | Yes, through usage records and metered items. | A subscription-management layer rather than a processor; the gateway beneath it is a second vendor the adapter wraps, and BL5 says one adapter, not one vendor. |
+| **Recurly** | No. | Hosted pages and tokenised fields, over a gateway. | Yes: plans and add-ons by API. | Verify: the same endpoint-credential question as the row above when checked. | Yes, through usage-based add-ons. | As above: a management layer over a gateway. |
 | **Orb** | No. | None of its own: invoicing over a processor the adapter also wraps. | Yes: plans and prices by API. | Own scheme, HMAC over the raw body. | **Its reason to exist**: event ingestion and metering as the primary model. | Fits a product whose allowances are billed by consumption rather than capped. A product with no metered feature has no allowances (BL3) and no reason to reach for it. |
 | **Lago** | No. | None of its own: invoicing over a processor the adapter also wraps. | Yes: plans and billable metrics by API. | Own scheme, signature header over the body. | **Its reason to exist**, as the row above. | Open source and self-hostable, which keeps subscription data inside the network at the cost of running it. |
 
-"Verify" in a column means the claim was not confirmed for that option at the
-checked date, not that it is absent. Check before letting it decide.
+"Verify" in a column means the claim was not confirmed for that option when checked, not that it is absent. Check before letting it decide.
 
 ## Routes 075 refuses, and the rule that refuses them
 

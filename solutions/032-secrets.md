@@ -1,7 +1,6 @@
 # Acceptable solutions: secrets
 
 Register for [`standards/032-secrets.md`](../standards/032-secrets.md).
-Checked 2026-09-03; next check due 2027-03-02.
 
 A candidate is admitted by SE10's four properties.
 

@@ -1,7 +1,6 @@
 # Acceptable solutions: feature flags
 
 Register for [`standards/038-feature-flags.md`](../standards/038-feature-flags.md).
-Checked 2026-09-03; next check due 2027-03-02.
 
 ## What adopting anything does and does not do for you
 
@@ -71,18 +70,18 @@ the languages you write before adopting any row.
 | Option | FF9 shape | OFREP | Provider maintained by | Notes against 038 |
 |---|---|---|---|---|
 | **flagd** | Flag service | Yes | The OpenFeature project itself | The project's own flag daemon, so it tracks the specification rather than following it. Its state is fed from files or over gRPC, and it is a running service either way — the file is the operator's input to the daemon, never flag values shipped inside a release, which FF9 refuses. |
-| **GO Feature Flag** | Flag service | Yes | Vendor | Self-hosted relay with broad first-party provider coverage at the checked date. |
+| **GO Feature Flag** | Flag service | Yes | Vendor | Self-hosted relay with broad first-party provider coverage when checked. |
 | **Flipt** | Flag service | Yes | Vendor | Self-hosted or hosted; an early OFREP implementer. |
 | **Flagsmith** | Flag service | Verify | Vendor | Self-hostable or hosted; an OpenFeature founding member, so the provider is unlikely to be an afterthought. |
 | **GrowthBook** | Flag service | Verify | Vendor | Self-hostable; experimentation is the reason to reach for it (FF10), not flagging alone. |
-| **Unleash** | Flag service | Verify | **Community** | Self-hostable. The weakest first-party commitment in the set at the checked date: the providers are community work, which is rule-4 exposure on a page like this. |
+| **Unleash** | Flag service | Verify | **Community** | Self-hostable. The weakest first-party commitment in the set when checked: the providers are community work, which is rule-4 exposure on a page like this. |
 | **LaunchDarkly** | Flag service (hosted) | Verify | Vendor | Provider coverage is materially narrower than its native SDK coverage, and skewed server-side. Verify your languages first; FF7 means the missing browser provider costs you nothing. |
-| **ConfigCat** | Flag service (hosted) | Verify | Vendor | Providers moved from community to official maintenance before the checked date. |
+| **ConfigCat** | Flag service (hosted) | Verify | Vendor | Providers moved from community to official maintenance before it was checked. |
 | **DevCycle** | Flag service (hosted) | Yes | Vendor | Server, client and OFREP support. |
 | **Split** | Flag service (hosted) | Verify | Vendor | Providers across several languages; verify yours. |
 
 "Verify" in the OFREP column means the protocol was not confirmed for that
-option at the checked date, not that it is absent. Check before letting it
+option when checked, not that it is absent. Check before letting it
 decide.
 
 ## Routes 038 refuses, and the rule that refuses them

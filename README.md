@@ -336,8 +336,7 @@ separate document names constructions deemed to satisfy it.
 
 A register names the routes known to satisfy one standard's rules and says
 which rule ids each route satisfies. It says which rules the route leaves for
-the repository to build anyway, and carries the date each claim was last
-checked. Five rules:
+the repository to build anyway. Four rules:
 
 1. **A register never states a rule.** Delete the whole register, and every
    rule must still stand, with every repository still able to comply.
@@ -348,10 +347,7 @@ checked. Five rules:
 3. **A listing is a technical claim on a date, never an endorsement or a
    purchase.** No prices, no contract terms, no vendor ranking. Commercial
    terms perish faster than anything technical.
-4. **Every entry carries the date it was last checked.** The horizon is 180
-   days. An entry not re-checked within it is a finding. A register can lower
-   the horizon and cannot raise it.
-5. **A register can name one default route**, argued, for a repository with
+4. **A register can name one default route**, argued, for a repository with
    no reason to choose otherwise, and says what would change it.
 
 **A tool the standard dictates is part of the rule and stays in the
@@ -362,8 +358,7 @@ choice?** A violation stays in the standard.
 
 Registers in existence today: `032`, `035`, `038`, `060`, `075`, `091`. A
 standard with no register has not been surveyed yet, or closes the choice
-itself in `contracts/`. A register is vendored at handover like a standard;
-the dates travel with the entries.
+itself in `contracts/`. A register is vendored at handover like a standard.
 
 Adding one follows the standards path, shortened. Open an issue with the
 argument. Write `solutions/<number>-<slug>.md` against the rule ids it claims
@@ -373,7 +368,7 @@ to satisfy. Add the number to the list above.
 
 - `standards/`: the numbered documents above.
 - `solutions/`: the acceptable solutions registers. Per standard, what is
-  known to satisfy its rules, and when that was last checked.
+  known to satisfy its rules.
 - `contracts/`: the artifacts behind the application-layer standards. JSON
   Schemas and conformance corpora, one directory per capability.
 - `.github/workflows/job-*.yml`: the shared job catalog. One reusable workflow

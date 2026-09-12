@@ -1,7 +1,6 @@
 # Acceptable solutions: workers
 
 Register for [`standards/035-workers.md`](../standards/035-workers.md).
-Checked 2026-09-03; next check due 2027-03-02.
 
 WK5 names seven verbs, with
 [`runner-contract.json`](../contracts/workers/runner-contract.json) as their

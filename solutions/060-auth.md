@@ -1,7 +1,6 @@
 # Acceptable solutions: authentication
 
 Register for [`standards/060-auth.md`](../standards/060-auth.md).
-Checked 2026-09-03; next check due 2027-03-02.
 
 060 fixes the shape (AU1, AU7) and leaves the proxy module and the identity
 provider to the platform.

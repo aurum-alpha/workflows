@@ -161,8 +161,10 @@ replicas starting together and each applying migrations is a race. A process
 that migrates before it serves is not disposable per
 [factor IX](https://12factor.net/disposability). A failed migration must fail
 the step rather than leave a half-ready process answering health checks. The
-service assumes the schema is current and refuses to start if it is not. That
-refusal is the backstop, not the mechanism.
+service checks the schema version at start. If it is behind, it reports
+`fail` on `/readyz`, naming the version it expects and the version it found,
+and takes no traffic ([`030-service.md`](030-service.md) SC6). That report is
+the backstop, not the mechanism.
 
 **The migration credential is not the runtime credential**, and the separate
 image is what makes that enforceable rather than remembered. The service's

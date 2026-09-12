@@ -41,7 +41,7 @@ can disagree eventually will.
 | 13 | Provenance in every artifact | — | **review only** |
 | 14 | A version is a commit, not a tag | `job-version-gate` + `job-version-release` (partly) | mixed² |
 | 15 | The repo is versioned, not the artifact; images are cut on dependency closure, credential and configuration surface, and an image does one thing | the image set per repository is readable from the catalog calls; the three criteria are a review question | **review only** |
-| 16 | A version exists only where consumed | — | **review only** |
+| 16 | A version is required where consumed, and allowed anywhere | — | **review only** |
 | 17 | Release is promotion, not production | `check-ci-conformance` D4, D5 | gated |
 | 18 | One workflow per repo | `check-ci-conformance` P18 | gated |
 | 19 | The catalog is the default; a local job is a claim | `check-ci-conformance` ADOPT (half) | mixed⁴ |

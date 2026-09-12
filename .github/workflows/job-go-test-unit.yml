@@ -24,9 +24,10 @@ on:
         default: "."
       runner:
         description: >-
-          Override runs-on. Leave empty for the standard default. Set to a
-          GitHub-hosted label where a repo must not build on the runner fleet
-          (CI_STANDARD Principle 4 — e.g. the runner controller itself).
+          Override runs-on. Leave empty for the standard default, which resolves
+          vars.RUNNER. Set a literal label only where that one job has a reason to
+          bypass the fleet, and say the reason in a comment beside it
+          (CI_STANDARD Principle 4).
         type: string
         default: ""
       needs_artifact:

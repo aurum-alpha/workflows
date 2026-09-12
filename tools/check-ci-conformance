@@ -1153,8 +1153,7 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
     # A literal runner is allowed, but the decision has to be written down: an
     # undeclared literal is drift, a declared one is a decision. Declare it per
     # job in the comment above, or once in the file header when the whole
-    # pipeline is hosted for one reason (gha-runner-controller cannot build its
-    # own runner on its own runner).
+    # pipeline is hosted for one reason.
     lines = text.splitlines()
     header_end = next((i for i, ln in enumerate(lines) if ln.rstrip() == "jobs:"), 0)
     declared_file_wide = "Principle 4" in "\n".join(lines[:header_end])

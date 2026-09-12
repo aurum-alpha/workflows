@@ -216,12 +216,6 @@ Two consequences:
   refusing to start, except it is observable, curl-able, and does not
   restart in a loop.
 
-**The one exception is a startup migration**. Some services migrate the
-schema at boot and cannot serve correctly against the old schema. Such a
-service is permitted to block on the database for that migration, and its
-**Conventions** section says so. That is a real dependency on a real
-operation, not a reflexive check.
-
 **Misconfiguration is the one thing that blocks serving** (SC3), and it
 still does not stop the endpoints. A misconfigured service binds its port
 and serves `/healthz` and `/readyz`. It reports `fail` with a check named

@@ -2,41 +2,14 @@
 
 ## Why this exists
 
-A listen port is a number that four different files each believe they own.
-
-The client's build config hardcodes one. The server reads one from the
-environment, falling back to a constant. The development script overrides that
-variable for one of the two processes. The compose file publishes a fourth.
-
-Every one of those files is internally consistent. Nothing compares them, so
-nothing fails. The stack then starts cleanly, with a published host port that no
-process inside the container is listening on.
-
-That failure is silent in the worst way available. The container is up. Its logs
-say the server is serving. A health probe aimed at the published port reports a
-problem. So the probe looks broken, and the probe gets changed.
-
-The cause was a rule that split the numbers by audience. Docker-side ports came
-from the low end of a block. Native ports came from the top of the same block.
-The split is coherent on paper. It cannot survive one script serving both
-audiences. That is what a development image does when its entry point runs the
-command a person runs natively.
-
-Two rules replace it. Between them they leave one number in one place.
-
-**A process reads its port from the environment, with a default in code.** That
-is [`030-service.md`](030-service.md) SC3, applied to the one variable every
-service has. A listen port is an optional variable whose default is safe. So the
-service starts without it, and logs what it resolved.
-
-**The allocation governs host bindings only.** Nothing inside a container sets
-the port. Every process binds the default its own ecosystem already uses, and a
-compose file maps the block onto those defaults. A collision was only ever
-possible on the host, which is where the allocation still applies.
-
-The gain is not tidiness. No application file and no image definition carries a
-number anybody has to remember. The numbers that remain sit in the file whose
-job is deployment-varying values.
+A listen port is a number that four files each believe they own. They are the
+client's build config, the server's fallback constant, the development script
+and the compose file. Every one is internally consistent and nothing compares
+them. So the stack starts cleanly, with a published host port that no process
+inside the container is listening on. The container is up, its logs say it is
+serving, and the probe aimed at the published port looks broken. The rules
+below leave one number in one place, in the file whose job is
+deployment-varying values.
 
 ## The rules
 
@@ -100,15 +73,10 @@ not: LD3 already says those are whatever the image binds. A reverse proxy in
 front of a development server names one in its own configuration, and getting
 that pair wrong fails on the first request.
 
-*That distinction arrived from the gate rather than from this text. The check
-first read any port in a client build config as a finding, which flagged a
-container-side port a proxy owns. The block is the thing nobody can move, so the
-block is what the rule names.*
-
-**Nothing in the stack detects where it is running.** SC3 already forbids that,
-and a development stack is where the temptation is strongest. No variable
-announces that a process is inside a container. No code branches on one.
-Differences between a laptop and a deploy are values.
+**Nothing in the stack detects where it is running**
+([`030-service.md`](030-service.md) SC3). No variable announces that a process
+is inside a container, and no code branches on one. Differences between a
+laptop and a deploy are values.
 
 ### LD3. Host bindings come from one aligned block of twenty
 
@@ -119,10 +87,8 @@ the base to the base plus nineteen, inclusive.
 **No host binding is privileged.** Nothing below 1024, for any service, ever. A
 container serving TLS on 443 publishes on the block's offset eight.
 
-**The block is an allocation.** [`../ports.json`](../ports.json) is where
-allocations are recorded. That file states how a base is chosen. It also states
-why it keeps no list of who is subject to this standard. A project absent from it
-is unallocated, never exempt.
+**The block is an allocation**, recorded in [`../ports.json`](../ports.json). A
+project absent from it is unallocated, never exempt.
 
 **Container-side ports are not in the block and never were.** They are whatever
 the image already binds. Service-to-service addressing on the compose network
@@ -147,20 +113,16 @@ rather than one per project.
 **Offset zero is defined by what a person types into a browser.** Nothing else
 defines it. Where a client development server hosts the pages and proxies the
 API, that server takes offset zero. The API then takes offset one. Where one
-process serves both, it takes offset zero and offset one stays vacant.
+process serves both, it takes offset zero and offset one stays vacant. Giving
+offset zero to the backend, as the deployed thing, leaves a documented main
+ingress that answers nothing in local development.
 
-That reading is worth stating, because the alternative is available and wrong.
-Offset zero could go to the backend, on the grounds that the backend is the
-deployed thing. The result is a stack whose documented main ingress answers
-nothing in local development.
-
-**Offsets ten and eleven belong to mail.** An earlier rule handed them to the
-client and the server, for native runs. It contradicted this table, and it broke
-every stack whose development image ran the native command.
-
-There is no separate native allocation now. Native and containerised runs bind
-the same defaults. A person running two projects natively sets `PORT` for one of
-them.
+**There is no separate native allocation.** Native and containerised runs bind
+the same defaults. A person running two projects natively sets `PORT` for one
+of them. A client development server needs no `strictPort`. Ecosystem defaults
+are not adjacent and the proxy target is read from `PORT`, so the failure it
+guarded against cannot happen. The silent increment instead lets two client
+servers run natively at once.
 
 ### LD5. The development image says so in its name, and it never ships
 
@@ -188,13 +150,6 @@ a watcher to watch, and building it the runtime way keeps `up` exercising the
 shipped artifact. A profiled service is opt-in, so a plain `up` never starts it.
 That is how a repository offers its shipped image locally without making it the
 thing you get by default.
-
-*This rule was stronger when it was written, and measurement refuted it. It said
-every `build` in a development compose file names `Dockerfile.dev`. Two real
-shapes failed it while being right. A third failed on its name alone: a
-repository with two runtimes cannot give two images one name. So the name test
-admits any Dockerfile under a `dev/` directory. The rule asks what stays up,
-rather than what is built.*
 
 ### LD6. The development image installs from the lockfile, with the pinned package manager
 
@@ -251,39 +206,10 @@ needed, they are committed as an example file.
 [`032-secrets.md`](032-secrets.md) SE9 already makes that the contract, and the
 compose file tolerates the absence.
 
-**A source edit is visible without a container restart.** That is the whole
-purpose of the bind mount in LD7. Where file events do not cross a virtual
-machine boundary, polling is turned on by a value in the compose file. It is
-never turned on by code that guesses.
+**A source edit is visible without a container restart.** Where file events do
+not cross a virtual machine boundary, polling is turned on. The switch is a
+value in the compose file, never code that guesses.
 
 **The whole repository is mounted, not a chosen list of directories.** A list
 goes stale the first time somebody adds a directory. The symptom is a file the
 container cannot see, which reads as a caching problem.
-
-## Decisions
-
-**2026-09-10. The allocation moved off a workstation.** It was cited by two
-rules and by several compose files. It lived as a file on one person's laptop. A rule keyed on a document nobody else can open is a rule with no
-content.
-
-**2026-09-10. The split between docker-side and native ports is retired.** It
-gave the low end of a block to containers. Native runs took offsets ten and
-eleven. It contradicted the offset table, which gives those two to mail. It also
-broke every stack whose development image ran the native command. Both audiences
-now bind the same defaults.
-
-**2026-09-10. `strictPort` is no longer required of a client development
-server.** It was required because the client and the server sat on adjacent
-offsets. The client's silent increment landed it on the server's port, and the
-proxy then targeted itself.
-
-Ecosystem defaults are not adjacent, and the proxy target is read from `PORT`
-rather than from a neighbouring number. The failure it guarded against has no
-way to happen now. The silent increment becomes useful instead: two client
-servers can run natively at once.
-
-**2026-09-10. A listen port gets a default, even where a project decided
-otherwise.** Refusing to start without `PORT` is a defensible reading of SC3.
-LD1 overrides it deliberately. SC3 distinguishes variables with a safe
-default from variables without one. It does not distinguish variables that
-matter from variables that do not.

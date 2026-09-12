@@ -2,48 +2,17 @@
 
 ## Why this exists
 
-Every product talks to a relational database, and without a standard each
-decides alone how. The result is not chaos. It is a set of reasonable local
-answers that disagree at every seam a reviewer would want to check:
+Every product talks to a relational database. Without a standard each decides
+alone what a migration is, what a query is, and what a tenant boundary means
+at the row. A product answers those structurally in its first week, by
+whatever its tooling defaults to, and tooling defaults differ. This document
+answers them once, from the properties the answers must have, so the next
+product inherits the answers rather than the questions.
 
-- **A `db:push` script ships in the repository**. That is the schema tool's
-  *make the database look like the code* command. It diffs and applies with no
-  reviewable artifact, no ordering, and no down path. **A committed
-  `migrations/` directory sits beside it**. So the question *how does this
-  repository change its schema* has two answers inside a single tree.
-- **A script named `migrate` runs `drizzle-kit push`.** The command called
-  migrate does the thing a migration exists to prevent. That is not a
-  violation anyone commits; it is what a word means when nobody has defined
-  it.
-- **Queries go through an ORM.** The SQL that reaches the database is
-  generated at runtime from a builder chain. It appears nowhere in the
-  repository. It cannot be read in review, pasted into a console, or profiled.
-- **More than one engine is admitted**, and the identifiers standard wrote a
-  storage profile for MySQL only, deferring every other engine to this
-  document.
-
-None of that is a failure of care. It is what happens when the questions
-themselves have not been stated. The questions are: what a migration *is*,
-what a query is allowed to be, and what a tenant boundary means at the row.
-A product answers those structurally, in its first week, by whatever its
-tooling defaults to, and tooling defaults differ. This document states the
-questions and answers them once, from the properties the answers must have.
-Then the next product inherits the answers rather than the questions.
-
-### The standard evaluated first, per PC2
-
-There is no wire standard here to adopt. A database is not a boundary between
-services, and SQL itself is the standard, adopted whole. The evaluation PC2
-asks for is therefore about *tools* rather than protocols. The answer is the
-one the platform contract gives for every tool. The fleet answer is a set of
-properties an artifact must have: a migration is an ordered `.sql` file, and
-a query is authored text. Any tool that produces artifacts with those
-properties is admitted.
-
-`goose`, `drizzle-kit`'s generator, `sqlc`, a text editor: all are fine. The
-rule binds the file on disk and not the hand that wrote it. The rules below
-exclude a tool that *replaces* the artifact with itself: a runtime query
-builder, or a migration expressed as code. Each rule says why.
+There is no wire standard to adopt here: SQL itself is the standard, adopted
+whole, and the rules bind the artifact on disk. A migration is an ordered
+`.sql` file and a query is authored text. Any tool that produces those is
+admitted, and a tool that replaces the artifact with itself is not.
 
 ## The rules
 
@@ -63,7 +32,7 @@ the engine as though it were swappable. That trades the review surface for a
 portability the product cannot use. The engine is pinned per repository, and
 moving it is a migration project regardless of what the queries look like.
 
-Three consequences make the rule concrete:
+Three consequences follow:
 
 - **Values bind through the driver's native placeholders, always.** A value
   never enters a SQL string by interpolation or concatenation. That is the
@@ -91,12 +60,10 @@ because the engine walks and discards n rows on every page. It is unstable,
 because a row inserted or deleted while a client pages makes the next page
 repeat or skip.
 
-The key with all three properties already exists on every addressable row by
-construction. The UUIDv7 public id of [`020-identifiers.md`](020-identifiers.md)
-IP2 is time-ordered, unique and indexed. Time-ordering is precisely why IP2
-chose v7 over v4. The internal identity key is also monotonic and serves
-keyset paging *inside* the service, but never inside a cursor a client holds.
-IP1 says it never leaves, and a base64 wrapper is not opacity. A listing
+The key with all three properties already exists on every addressable row:
+the UUIDv7 public id of [`020-identifiers.md`](020-identifiers.md) IP2 is
+time-ordered, unique and indexed. The internal key serves keyset paging
+*inside* the service, never inside a cursor a client holds (IP1). A listing
 sorted by something other than creation order keys on
 `(sort_column, public_id)`, the id breaking ties so the order is total.
 
@@ -146,23 +113,14 @@ for a statement, the statement is wrapped in a conditional that checks the
 catalog first. Postgres has none for `ADD CONSTRAINT`, and MySQL has none for
 `ADD COLUMN`.
 
-The version record is not a substitute for this, because the record and the
-schema can disagree. A migration interrupted after its first statement leaves
-the schema changed and the version row unwritten. On MySQL every DDL
-statement commits on its own, so an interrupted multi-statement migration
-there is *always* half-applied.
-
-The next run cannot skip it, because it is not recorded. If its statements
-error on what already exists, it cannot apply it either. The migrate step is
-now stuck. The way out is a person editing a version table by hand at exactly
-the moment nobody ought to be. A migration whose statements converge turns that
-into a re-run that succeeds.
-
-The same holds for a database restored from a backup taken between apply and
-record. It holds for a per-tenant iteration that stopped on the seventh
-tenant, and for a development database someone changed by hand. The version
-record gives ordering and speed; convergence gives recovery. Both are
-required, because each covers the failure the other cannot.
+The version record is not a substitute, because the record and the schema can
+disagree. A migration interrupted after its first statement leaves the schema
+changed and the version row unwritten. On MySQL every DDL statement commits
+on its own, so an interrupted multi-statement migration there is always
+half-applied. The next run cannot skip it and, if its statements error on
+what already exists, cannot apply it either. The same holds for a database
+restored from a backup taken between apply and record. The version record
+gives ordering and speed; convergence gives recovery.
 
 ### SD3. Migrations ship in their own image and run as a step before rollout
 
@@ -174,14 +132,10 @@ runner and the `.sql` files and nothing else: not the listener, not a worker.
 An image does one thing. The migration credential then has exactly one home:
 the runtime image never holds it, and the migrate image holds nothing but it.
 
-Two rules of [`010-ci.md`](010-ci.md) bind the two images. BUILD ONCE: the
-build job is the only compiler in the run, and each artifact is compiled
-exactly once and stored. The migrate image is assembled from what that job
-stored, and is never recompiled at image build. Versioning the repository
-rather than the artifact: that one build job builds every artifact the
-repository ships, every time. So the migrate image and the service image at
-one version carry one schema by construction. They came out of one run that
-compiled and tested them together.
+Two rules of [`010-ci.md`](010-ci.md) bind the two images. Under BUILD ONCE
+the migrate image is assembled from what the build job stored, never
+recompiled. Under repository versioning the migrate image and the service
+image at one version carry one schema by construction.
 
 **The migrate image runs to completion and exits**. It applies every pending
 migration in order and exits zero, or stops at the first failure and exits
@@ -192,20 +146,15 @@ applies nothing and exits zero. A run against a half-migrated one finishes
 the job rather than refusing it.
 
 This is [factor XII](https://12factor.net/admin-processes) met in its own
-terms. The admin process carries the service's provenance because it was
-built beside the service from the same commit. It answers the operator's
-question in the same breath: migrations are run by
-`docker run <service>-migrate:<version>`, against any release, with nothing
-but the image reference. A pipeline step and a person at a keyboard run the
-identical command.
+terms: migrations are run by `docker run <service>-migrate:<version>`,
+against any release, with nothing but the image reference. A pipeline step
+and a person at a keyboard run the identical command.
 
 The migrate image is the first one-shot worker of
-[`035-workers.md`](035-workers.md). The migration is a job under
-[`057-jobs.md`](057-jobs.md): `once_ever`, single-flight, blocking, idempotent
-by SD2, triggered by the deployment. Those documents state the general shape
-and this rule states the migration's specifics; neither restates the other. A
-repository that holds several services has one migrate image per service,
-because each holds a different credential.
+[`035-workers.md`](035-workers.md), and the migration is a `once_ever`,
+single-flight, blocking job under [`057-jobs.md`](057-jobs.md). A repository
+that holds several services has one migrate image per service, because each
+holds a different credential.
 
 **It runs as a discrete step before rollout, never at service boot.** Two
 replicas starting together and each applying migrations is a race. A process
@@ -226,8 +175,7 @@ one table, generalised to all of them.
 Where a product isolates by **one database per tenant** (SD6), the migrate
 image iterates every tenant database. A failure in one is reported by name
 and does not stop the others. That iteration, and the from-previous-release
-gate running once per tenant, is the cost of that isolation pattern. It is
-stated here so it is chosen with the price known.
+gate running once per tenant, is the cost of that isolation pattern.
 
 ### SD4. Migrations expand; contraction is a later release
 
@@ -263,10 +211,8 @@ column nullable. The second is a batched job, in bounded batches, resumable
 and observable, that fills it while the service keeps serving. The third is a
 later migration that adds `NOT NULL` once the job reports the column full.
 
-The migration changes shape, the job moves data, and the shape change is what
-SD3's step applies at rollout, in seconds. How the job itself is built,
-registered and run is [`057-jobs.md`](057-jobs.md)'s. What this rule fixes is
-that rows do not move inside `migrate`.
+How the job is built, registered and run is [`057-jobs.md`](057-jobs.md)'s;
+what this rule fixes is that rows do not move inside `migrate`.
 
 ### SD5. Isolation levels are declared, and they are the RBAC scope types
 
@@ -290,7 +236,7 @@ the storage layer. A product with two hierarchies has two answers to *who is
 this row inside of*, and they will disagree.
 
 **Every scoped table carries the column for every level that contains it,
-denormalized, deliberately.** The columns are redundant by design. The
+denormalized.** The columns are redundant by design. The
 client-organisation row already knows its tenant, so `tenant_id` on every row
 below it repeats a fact. It is repeated so that **every isolation predicate is
 a single joinless comparison**, `tenant_id = current_tenant()`, on the table
@@ -298,16 +244,11 @@ being queried. A predicate that has to join upward to find the tenant is
 slower and easy to get subtly wrong. A policy engine cannot apply it. The
 redundancy is the price of the predicate being trivially right.
 
-**Name the levels, and never use one to mean another**. The middle and
-innermost levels are the ones that blur, because ordinary speech has one word
-for both. *The customer* is the practice to the platform and the client
-organisation to the practice. A codebase that lets the word drift ends up with
-a query scoped at the wrong level. That is a cross-tenant read with a
-plausible variable name.
-
-So the declaration fixes the vocabulary as well as the columns. There is one
-name per level, used for that level and nothing else, in code, schema and
-documentation alike.
+**Name the levels, and never use one to mean another**. *The customer* is the
+practice to the platform and the client organisation to the practice. A
+codebase that lets the word drift ends up with a cross-tenant read under a
+plausible variable name. So the declaration fixes the vocabulary as well as
+the columns: one name per level, in code, schema and documentation alike.
 
 ### SD6. Isolation is a behaviour, proven by enumeration
 
@@ -317,8 +258,9 @@ gate proves. Per PC4 it proves it at the boundary, by issuing the query and
 looking at the rows, without caring how the product achieved it.
 
 Three mechanisms are admitted. The choice depends on the isolation level and
-the security posture the product actually needs. Each is stated with its
-cost:
+the security posture the product actually needs. Row-level security is not
+required, because a requirement would make conformance a property of the
+engine rather than of the design. Each is stated with its cost:
 
 | Mechanism | What it is | What it costs |
 |---|---|---|
@@ -345,13 +287,10 @@ Whichever mechanism, two rules hold across all three:
   does not branch on who you are, it checks what you hold.
 
 **The gate enumerates; it never lists.** Scoped tables are discovered from the
-engine's catalog: every table carrying a declared isolation column. The gate
-asserts that each carries the column for every containing level, with the
-right type and foreign key. It also asserts that the product's mechanism
-covers each. Because the suite enumerates, a table added tomorrow is covered
-the day it lands, and a table added *without* the columns is the finding. A
-list of tables to check rots the day someone adds a table; that is how a
-fixture becomes a scoreboard.
+engine's catalog, as every table carrying a declared isolation column. So a
+table added tomorrow is covered the day it lands, and a table added *without*
+the columns is the finding. A list of tables to check rots the day someone
+adds a table.
 
 ### SD7. Identifiers and primitives in storage, per engine
 
@@ -363,9 +302,7 @@ in, and it is where that standard's deferrals resolve.
 key that never leaves the service *and* a separate public id column. The
 public id column is unique, indexed and immutable, in an admitted IP2 format.
 The public id is not the primary key, so the format can change without a
-foreign-key migration rippling through the schema. This is the check
-[`020-identifiers.md`](020-identifiers.md) said was buildable once a standard
-gave a checker a schema to read. This is that standard.
+foreign-key migration rippling through the schema.
 
 **The storage profile is per admitted engine.** This document does not
 mandate an engine. Postgres and MySQL are both admitted. It does say, for
@@ -414,8 +351,7 @@ arrived.
 
 The database is a backing service in the sense of
 [factor IV](https://12factor.net/backing-services): named by configuration,
-swappable per deploy, and never assumed to be local. Four rules follow. Each
-is short, because a longer version would be restating a factor:
+swappable per deploy, and never assumed to be local. Four rules follow:
 
 - **The connection string comes from the environment** per
   [factor III](https://12factor.net/config) and
@@ -438,13 +374,10 @@ is short, because a longer version would be restating a factor:
   carry, at the point where it is most often broken. A driver's debug mode
   logs everything, and someone will turn it on in production once.
 
-Backup, restore and recovery objectives are deliberately not here. They span
-every kind of storage a product has: structured, blob and document. A rule
-stated for one would be restated for the others, so they belong to the
-[`028-backup-and-recovery.md`](028-backup-and-recovery.md). What this
-document holds is the one dependency. A restore lands the schema at some past
-migration state, and SD2's convergence is what makes running `migrate`
-against it safe.
+Backup, restore and recovery objectives are
+[`028-backup-and-recovery.md`](028-backup-and-recovery.md)'s; what this
+document holds is that SD2's convergence makes running `migrate` against a
+restored schema safe.
 
 ### SD10. The schema carries its invariants
 
@@ -556,9 +489,8 @@ do not hold data after its owner asked us not to* to a regulator, an auditor
 and a client. *We mark it deleted and keep it* is a sentence that has to be
 followed by an explanation.
 
-Data that is not held cannot leak and cannot be compelled. It cannot be the
-subject of an erasure request that the interface already told the user was
-granted.
+Data that is not held cannot leak, cannot be compelled, and cannot be the
+subject of an erasure request the interface already reported as granted.
 
 **Soft delete is the exception, and it needs a domain reason.** Some things
 must be retained past the user's intent to remove them. Examples are a
@@ -596,12 +528,9 @@ services is an interface with no contract, no version and no owner. The
 moment one service changes a column the other breaks at runtime, and neither
 has a test that could have shown it.
 
-The database is a backing service of exactly one service, in all of that
-service's processes, in the sense
-[factor IV](https://12factor.net/backing-services) means it. Those processes
-are its server, its pool, its one-shots and its migrate step. Every process
-that holds its credential is built from the one repository that holds its
-migrations ([`000-platform.md`](000-platform.md#terms), *Service*).
+Every process that holds the database's credential is built from the one
+repository that holds its migrations
+([`000-platform.md`](000-platform.md#terms), *Service*).
 
 **Tests run against the engine the product runs.** Postgres in a container,
 MySQL in a container, never SQLite standing in for either. This follows from
@@ -615,100 +544,8 @@ run them against a substitute and report green.
 
 Per PC3, under [`contracts/structured-data/`](../contracts/structured-data/):
 
-- **`storage-profiles.json`** is SD7's table as data. For each admitted
-  engine it carries the column type per primitive, so a schema checker reads
-  it rather than a human re-deriving it from prose.
-- **`corpus.json`** has three parts. All three are pure functions of their
-  inputs, which is what makes them writable as data and runnable in any
-  language.
-  - `migrations`: given a migrations directory as a listing of names and
-    contents, the expected findings. The findings are a non-`.sql` file, an
-    unordered name, an expand-only violation with and without its marker, and
-    a `db:push` in a reachable script.
-  - `isolation`: given a declared hierarchy, a set of tables with their
-    columns, and a set of queries each issued in a stated context. The output
-    is the expected findings and the expected visibility of each row.
-  - `schema`: given a declared schema, the SD10 findings a checker must
-    report. The declared schema is tables, columns with types and
-    nullability, indexes, foreign keys, and declared types.
-
-## Decisions
-
-- **SQL is the query language; no runtime generation** (2026-09-02): the most
-  consequential rule here. Decided because the alternative hides the review,
-  debugging and performance surface behind a notation that is worse than the
-  thing it abstracts. It was also decided because the portability the
-  alternative buys is one a product with a pinned engine cannot use. Code generation *from*
-  authored SQL is the admitted shape, and the recommended one.
-- **A migration is a `.sql` file and never code; authoring is unconstrained**
-  (2026-09-02): an earlier draft also excluded migrations generated by a
-  schema-diff tool. The grounds were that the SQL was derived from an ORM's
-  model. That was wrong, and it was wrong in a way PC4 predicts: it bound the
-  authoring instead of the artifact. What matters is that an ordered `.sql`
-  file is on disk for a reviewer to read. How it got there is the developer's
-  business.
-- **Every migration converges, and the version record is not a substitute**
-  (2026-09-02): the record answers *has this applied* and the schema answers
-  *is this present*. There are ordinary events after which they give
-  different answers. One is an interrupted run on an engine whose DDL cannot
-  roll back. Others are a restore from between apply and record, and a
-  per-tenant iteration that stopped partway. A migration that errors on what
-  already exists turns each of those into a stuck deploy that a person must
-  unstick by hand. Guards cost a clause per statement; the alternative costs
-  the one property a migrate step must have: running it again is always
-  safe.
-- **Migrations ship in their own image and run as a discrete step**
-  (2026-09-02): the only answer consistent with BUILD ONCE and factor XII at
-  once. It is a separate image rather than a subcommand of the service. An
-  image does one thing, and the migration credential then has exactly one
-  home. The alternatives each fail a rule this repository already has:
-  migrate at boot, migrate from a source checkout, a `migrate` mode inside
-  the service image.
-- **Expand-only, with contraction one release later** (2026-09-02): the
-  rollback argument is the whole justification. A forward-migrated schema
-  must be a superset of what the previous release reads, or redeploying that
-  release destroys data. Rollback is reached for precisely when something is
-  already wrong. Three releases per removal is the price of that being true
-  without anyone having to reason about it under pressure.
-- **No fixed number of isolation levels; the levels are the RBAC scope types**
-  (2026-09-02): products differ in depth for structural reasons. A fixed
-  number would fit some by forcing a fiction on the rest. Tying the
-  declaration to RB5's makes one hierarchy serve both layers, which is the
-  point.
-- **Isolation is a behaviour with three admitted mechanisms, and RLS is not
-  required** (2026-09-02): row-level security is the strongest backstop
-  available on Postgres. MySQL does not have it. A requirement would have
-  made conformance a property of the engine rather than of the design. The behaviour is what the gate proves. Each mechanism
-  is admitted with its cost written down, so the choice is made with the
-  price known.
-- **Per-engine storage profile, no mandated engine** (2026-09-02): the
-  identifiers standard deferred every engine but MySQL here. This resolves
-  the deferral for Postgres and leaves the table open for the next engine.
-  That engine is admitted by filling in its column rather than by an argument
-  about whether it ought to exist.
-- **Hard delete is the default; soft delete is the exception** (2026-09-02):
-  the reverse was considered and rejected. The reverse is soft by default,
-  hard only for security. It was rejected because the default must be the one
-  that is easiest to defend without explanation. *We do not hold data after
-  its owner asked us not to* is that sentence. Soft delete stays available
-  where a domain reason exists. The three rules on it keep a retained row
-  scoped, erasable and visibly excluded.
-- **`READ COMMITTED` by default, `SERIALIZABLE` by choice** (2026-09-02): the
-  default never fails a transaction for a reason the developer did not write
-  for. The stricter level is chosen where two
-  concurrent successes would be wrong, and the retry it demands is written in
-  the same change.
-- **No native enums; `CHECK` or a lookup table** (2026-09-02): the enum's
-  only advantage is brevity. Its costs are no removal, no transactional add
-  on Postgres, and a painful rename. All are paid at migration time, which
-  is when nobody wants a surprise.
-- **Plural table names, `<singular>_id` foreign keys, `snake_case` throughout**
-  (2026-09-02): none of the three is better than its alternative. That is the
-  whole reason to decide them here once. The `snake_case` half has a
-  technical argument as well: unquoted identifiers case-fold silently. It is
-  the same argument HA8 made for the wire.
-- **Backfills are jobs, backups are elsewhere** (2026-09-02): a backfill moves
-  rows and a migration changes shape. Conflating them is how a deploy step
-  times out holding a lock. Backup and recovery span every kind of storage.
-  They get their own document rather than a paragraph here that would be
-  restated twice.
+- **`storage-profiles.json`** is SD7's table as data: the column type per
+  primitive for each admitted engine.
+- **`corpus.json`** has three parts, `migrations`, `isolation` and `schema`,
+  each the expected findings for a given migrations directory, declared
+  hierarchy or declared schema.

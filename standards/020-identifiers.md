@@ -2,26 +2,15 @@
 
 ## Why this exists
 
-Until a standard says what an identifier is, nothing does. Whether internal
-integer primary keys leak into URLs and payloads is then decided per product,
-and a public id format by the first migration. The oldest
-cross-service bugs there are, enumerable ids, timezone drift and
-floating-point money, are each one missing page of doctrine. The other platform standards define
-schemas: log lines, audit events, job envelopes, the RBAC model. Each of
-those has to say what a timestamp, an id, and a money value look like. This
-document answers once, so the others reference instead of re-deciding.
+Until a standard says what an identifier, an instant and a money value look
+like, each product decides alone. Enumerable ids, timezone drift and
+floating-point money follow. The other platform standards define schemas that
+carry all three. This document answers once, so the others reference instead
+of re-deciding.
 
 These are wire rules, per PC1. They bind what crosses a boundary: a URL, a
 payload, a log line, an event. What a language does in memory is its own
 business until the value is serialized.
-
-One rule spans all of them: **the server speaks base representations, and
-presentation is the UI's job, never the server's**. Localisation and i18n
-happen in the presentation layer, against the canonical forms below. That
-means formatting an instant into a viewer's time zone, a money value into
-`€1.999,00`, or a date into the reader's convention. A server that emits
-pre-localised values has baked one viewer's locale into every consumer. It
-has turned every other consumer's correct rendering into a parsing job.
 
 ## The rules
 
@@ -36,8 +25,7 @@ opaque public identifier**. That identifier is generated at creation,
 unique, immutable for the life of the row, and stored beside the internal
 key. The internal key joins; the public id addresses.
 
-These are two rules that usually get conflated, so they are stated apart.
-The first: **never expose the sequence**. An enumerable id is a
+The first rule: **never expose the sequence**. An enumerable id is a
 resource-enumeration vulnerability and a business-metrics leak, such as
 order volume readable from an invoice number. The second: **pick the public
 format deliberately** (IP2). Exposing a UUID column that is also the primary
@@ -69,7 +57,8 @@ of both. At ≥ 12 characters over a 64-symbol alphabet (~71 bits) with a
 unique index and insert-retry, collision is an engineering non-event.
 
 Three formats are **not admitted**. ULID is a second answer to the question
-UUIDv7 answers, per PC2. Sequential integers as public ids are refused under
+UUIDv7 answers, per PC2: a spec with libraries, where UUIDv7 is an RFC with
+native column types. Sequential integers as public ids are refused under
 IP1. UUIDv1/v3/v5 are refused: MAC leakage, name-derivation, and no use case
 here.
 
@@ -108,9 +97,15 @@ precision to everything it emits: never fewer than three, never mixed
 widths. One fixed width per emitter is what keeps string equality and
 instant equality the same test.
 
-A clock produces every timestamp; nobody writes one by hand. Local time
-exists only in the presentation layer, per the base-representation rule
-above.
+A clock produces every timestamp; nobody writes one by hand.
+
+**The server speaks base representations, and presentation is the UI's
+job**. Formatting an instant into a viewer's time zone, or a money value into
+`€1.999,00`, happens in the presentation layer against the canonical forms
+here. That half of the rule is [`090-web-client.md`](090-web-client.md) WC4's.
+A server that emits pre-localised values has baked one viewer's locale into
+every consumer and turned every other consumer's rendering into a parsing
+job.
 
 A **calendar date** (a birthdate, a due date, a holiday) is not an instant
 and does not get a time or a zone glued on. It is RFC 3339 `full-date`:
@@ -135,9 +130,9 @@ decimals. IEEE 754 floats are not admitted for money in any wire shape:
 amount, and a currency assumed from context is a defect waiting for the
 first non-USD tenant.
 
-Sub-minor-unit precision (per-unit prices, FX rates, fractional cents) is
-out of scope here. It belongs to the standard of the capability that needs
-it. What this rule forbids is floats and implied currencies, not precision.
+Sub-minor-unit precision (per-unit prices, FX rates) belongs to the standard
+of the capability that needs it; this rule forbids floats and implied
+currencies, not precision.
 
 ## The artifacts
 
@@ -158,23 +153,3 @@ Per PC3, the contract lives under
   `$def`. `canonical`: parse-then-emit cases, where an implementation reads
   `input` and must emit exactly `emit`. An implementation in any language
   passes the whole file or names the case it fails.
-
-## Decisions
-
-- **UUIDv7 over ULID** (2026-08-31). Identical property (time-ordered,
-  128-bit), but UUIDv7 is an RFC with native column types and driver
-  support in every engine and language in use here. ULID is a spec with
-  libraries. PC2 picks the standard.
-- **`Z`, never `+00:00`; pinned fractional precision, default three,
-  never fewer** (2026-08-31). One canonical string per instant within an
-  emitter, so string equality and instant equality agree. Dedupe keys and
-  log grep both depend on it. Finer timekeeping is a per-repository
-  extension (six or nine digits, stated in its Conventions), never a
-  reduction and never a mix.
-- **Prefixed-handle body is base62, not full nanoid alphabet**
-  (2026-08-31). Keeping `_` out of the body makes the first underscore an
-  unambiguous prefix delimiter, without a parsing rule anyone can get
-  wrong.
-- **`DATETIME(3)` over `TIMESTAMP` in MySQL** (2026-08-31). `TIMESTAMP`
-  ends in 2038 and silently converts through the session time zone. Both
-  are the class of bug this standard exists to remove.

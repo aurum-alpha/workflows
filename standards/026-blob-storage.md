@@ -320,20 +320,22 @@ It acts on four findings:
 | A row whose key prefix is not its `tenant_id` | Report it and touch nothing. It is a defect in the writer, not a job's to guess at. |
 | An incomplete multipart upload with no row | Invisible to `ListObjectsV2`, so a lifecycle rule on the bucket aborts it after a day: the one cleanup the job cannot do. |
 
-### BS9. Encryption at rest is on, and versioning belongs to backup
+### BS9. Encryption at rest is on, and versioning follows the store's role
 
 **Every bucket has default encryption on**, under the platform's key
 management. So the application sets no header and cannot opt an object out.
 **Every connection to the endpoint is TLS**, as SD9 requires of the database.
 
-**Versioning is off by default**. Where a product turns it on it is a backup
-mechanism, and [`028-backup-and-recovery.md`](028-backup-and-recovery.md)
-governs what it retains and for how long. Two consequences hold here
-regardless. The application reads only the current version and never exposes
-a version id. A `DeleteObject` on a versioned bucket leaves a delete marker
-with the versions behind it. So BS8's hard delete completes only when that
-standard's retention window has run, a window bounded by the erasure
-obligations of [`080-audit.md`](080-audit.md) AE7.
+**Versioning follows the store's role under
+[`028-backup-and-recovery.md`](028-backup-and-recovery.md)**. A primary
+store has it on, because BR2 makes it the backup mechanism. A derived store,
+whose objects a job rebuilds, has it off.
+
+Two consequences hold either way. The application reads only the current
+version and never exposes a version id. A `DeleteObject` on a versioned
+bucket leaves a delete marker with the
+versions behind it. So BS8's hard delete completes only when that standard's
+retention window has run, a window BR5 bounds by the erasure horizon.
 
 ### BS10. The key prefix is a convenience; the row and the check are the boundary
 

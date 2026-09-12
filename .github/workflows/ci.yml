@@ -20,10 +20,6 @@ permissions:
   contents: read
 
 jobs:
-  # This repo is the portfolio's CI definition, so its gate is workflow
-  # correctness: actionlint over every workflow file, including the shared
-  # job-*.yml bodies every caller runs. The image tag is pinned for the same
-  # reason the portfolio pins action SHAs; bump it deliberately, not implicitly.
   lint:
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
     steps:
@@ -33,10 +29,6 @@ jobs:
           docker run --rm -v "$PWD:/repo" --workdir /repo
           rhysd/actionlint:1.7.7 -color
 
-  # This repo defines the standard, so it is the first thing the standard has
-  # to hold against. Run from the working tree, not a pinned release: a rule
-  # added in a pull request must gate that same pull request, or the checker
-  # and the document can disagree for as long as it takes someone to notice.
   conformance:
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
     steps:
@@ -106,37 +98,12 @@ jobs:
       - name: Check the shared version-stamp block agrees across jobs
         run: tools/check-version-stamp-shared
 
-  # The catalog eats its own cooking, the local path form — same reasoning as
-  # the ci-ok action below it. A version rule this repo ships to eleven callers
-  # and does not run on itself is a rule nobody has tested.
-  #
-  # It is also the rule this repo needed most. Five of the twenty merges before
-  # this one left .version untouched, and every one of them still reached the
-  # release job below, read a version whose tag already existed, and failed —
-  # after ci-ok had gone green — for the crime of being a documentation change.
   version-gate:
     uses: ./.github/workflows/job-version-gate.yml
     permissions:
       contents: read
       pull-requests: write
 
-  # THE VERSION FILE, READ ONCE. job-version-release never decides whether a
-  # commit cut a release — it takes `version` and `version_changed` as inputs,
-  # because three repositories had hand-written that decision and two of them
-  # had it subtly wrong. Everywhere else those inputs come off a build job:
-  # job-go-build for the Go repos, job-build-cpp-pio for the firmware.
-  #
-  # This repository compiles nothing, so it has no build job to read them from,
-  # and that is the whole reason this job exists. It is repo-local rather than a
-  # catalog job because it would have exactly one caller — the catalog is for
-  # capabilities the portfolio shares, and "a repo that builds nothing but is
-  # still versioned" is a description of this repository alone.
-  #
-  # It carries the shared version-stamp block, which tools/check-version-stamp-shared
-  # compares against every other copy. `stamp` is computed and discarded: nothing
-  # here is compiled, so there is no binary to stamp — but the block is copied
-  # whole rather than trimmed to the half this job uses, because a partial copy
-  # is a copy that cannot be compared.
   version-read:
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
     outputs:
@@ -242,52 +209,6 @@ jobs:
               fh.write(f"version_changed={'true' if changed else 'false'}\n")
           print(f"version={version} release={changed} stamp={stamp}")
 
-  # Housekeeping, downstream of the rollup — rule D6's declared exemption, the
-  # same shape as job-image-prune. Nothing gates on a tag existing; the tag is
-  # a human and machine index created after the fact, which is the direction
-  # Principle 14 requires: file -> build -> tag, never tag -> build.
-  #
-  # THIS WAS FIFTY LINES OF HAND-WRITTEN SHELL, and job-version-release exists
-  # because three repositories had written the same fifty lines. The catalog's
-  # own copy was the fourth, which made this repository the one place the rule
-  # was shipped from and not obeyed. It now calls the job it publishes, in the
-  # local path form — same reasoning as version-gate above and the ci-ok action
-  # below: a rule this repo hands to eleven callers and does not run on itself
-  # is a rule nobody has tested.
-  #
-  # What the catalog job adds over the shell it replaces: a GitHub release
-  # rather than a bare tag, an idempotent retry path through workflow_dispatch,
-  # and — the part that matters most — every step except the publish itself
-  # runs on the pull request, so a broken release fails on the change that
-  # broke it instead of on the merge that had to cut it.
-  #
-  # It also stops re-deriving the release switch. The old body ran its own
-  # `git diff --name-only HEAD^ HEAD | grep -qxF .version`; the decision now
-  # arrives as an input from version-read, which answers it once.
-  #
-  # always() IS LOAD-BEARING, and its absence silently killed this job once.
-  #
-  # GitHub skips a job when ANY job in its `needs` closure was skipped, and
-  # `always()` rescues only the job that carries it. ci-ok carries one, so it
-  # survives version-gate skipping on a push; this job did not, so it
-  # inherited the skip through ci-ok and never ran. The 2673932 merge is the
-  # evidence: lint, conformance and ci-ok all green, this job skipped with no
-  # steps at all.
-  #
-  # version-gate skips on EVERY push to main — it is pull_request-only, since
-  # only a pull request has a base to compare against — so this was not a
-  # one-merge accident. It would have skipped on a release merge too, and the
-  # first anyone would have known is a release that produced no tag, which is
-  # the failure this whole standard exists to stop: something that did not
-  # happen, reported as fine.
-  #
-  # needs.ci-ok.result is then checked explicitly, because always() also
-  # disarms the implicit "only if my dependencies succeeded". Without that
-  # clause this job would tag a commit whose CI had failed.
-  #
-  # What is NOT in the `if:` is the push/main condition. The catalog job applies
-  # that per-step, so gating the job to main here would be rule D5 — and it
-  # would take back the pull-request rehearsal that is half the point.
   version-release:
     needs: [ci-ok, version-read]
     if: >-

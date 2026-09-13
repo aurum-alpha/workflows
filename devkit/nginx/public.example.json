@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "public": [
+    { "prefix": "/events/", "upstream": "server" },
+    { "exact": "/pricing", "upstream": "client" }
+  ],
+  "pages": [
+    { "exact": "/", "upstream": "server" },
+    { "prefix": "/admin", "upstream": "server" }
+  ]
+}

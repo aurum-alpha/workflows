@@ -60,6 +60,9 @@ http {
 # Throwaway render inputs. Nothing about them is meaningful -- the point is a
 # file with no placeholders left in it, which is what nginx can read.
 REPO = "devkit-nginx-check"
+# Rendered with the example declaration, so the locations the renderer emits
+# for a product's public.json are parsed too, not only the template's own.
+EXAMPLE = CATALOG / "devkit" / "nginx" / "public.example.json"
 BASE = 2000
 SERVER_PORT = 8080
 
@@ -126,7 +129,9 @@ def main() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         root = pathlib.Path(tmp)
         try:
-            renderer().render_all(root, REPO, BASE, SERVER_PORT)
+            render = renderer()
+            render.render_all(root, REPO, BASE, SERVER_PORT,
+                              render.read_public(EXAMPLE))
         except (ValueError, FileNotFoundError) as exc:
             print(f"could not render: {exc}", file=sys.stderr)
             return 2

@@ -63,6 +63,58 @@ than repeating it, renders into a scratch tree from the record, and compares
 bytes. Two renderers would drift, and the day they disagreed the drift checker
 would be the thing certifying the drift.
 
+### The product's own public paths
+
+[`../standards/060-auth.md`](../standards/060-auth.md) AU9 has each product
+declare once which paths need no login, in `deploy/public.json`, and has both
+the ingress and the application read it. The renderer is the ingress half.
+When the target carries the file, its entries are rendered into `edge.conf`
+in place of the `__ROUTES__` line. When it does not, that line is dropped
+whole. So a product that declares nothing renders byte for byte what it did
+before. The file is the product's own, never rendered and never checked for
+drift.
+
+```json
+{
+  "schema_version": 1,
+  "public": [
+    { "prefix": "/events/", "upstream": "server" },
+    { "exact":  "/pricing", "upstream": "client" }
+  ],
+  "pages": [
+    { "exact":  "/",      "upstream": "server" },
+    { "prefix": "/admin", "upstream": "server" }
+  ]
+}
+```
+
+| Key | Who reads it | Renders as |
+|---|---|---|
+| `public` | the ingress and the application | a location with no `auth_request` and `Authorization ""`, to the named upstream |
+| `pages` | the ingress only | a location with `auth_request` and `error_page 401 = @sign_in`, to the named upstream |
+
+`exact` renders `location = /x`; `prefix` renders `location /x` and matches
+as nginx matches, so `/admin` also covers `/administrator`. Write `/admin/`
+when that matters. `upstream` is `server` or `client`, the two the fragment
+defines. A `client` upstream also gets the upgrade headers, because the dev
+server's hot-reload socket rides the same location.
+
+`pages` exists for a product whose backend renders its own authenticated
+pages. The template sends `location /` to the client, and a prefix location
+beats it. Naming `/admin` here moves that page to the backend without
+touching the shared file. A product with the SPA on `/` needs nothing in it.
+
+The renderer refuses what nginx would refuse or what the rule forbids, and
+names the entry. Refused: a path the template already declares in the same
+form, a prefix of `/`, an upstream the fragment does not define, a pattern. A product
+with no login at all runs no edge; its `public.json` still says so for the
+application's benefit, and it is not rendered.
+
+[`public.example.json`](nginx/public.example.json) is the sample
+[`../tools/check-devkit-nginx`](../tools/check-devkit-nginx) renders with. So
+the locations this emits are parsed by the pinned nginx on every run, not
+only the template's own.
+
 Placeholders are substituted longest name first, so that
 `__PORT_IDP__` — a prefix of `__PORT_IDP_MGMT__` — cannot eat the first half of
 the longer name. The renderer then audits its own output for anything still
@@ -196,7 +248,9 @@ inside a location that declares one of its own. A block written once at server
 level would therefore vanish from exactly the locations that matter.
 
 The skip list carries only paths a standard defines as answerable before anyone
-is known.
+is known. A product's own public paths are not on it. They come from its
+`deploy/public.json` and are rendered beside it, as the Rendering section
+says.
 
 | Path | Where it comes from |
 |---|---|

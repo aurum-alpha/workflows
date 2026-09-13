@@ -12,10 +12,10 @@ under `deploy/`, and keeps the result equal to this source.
 
 ## Rendering
 
-Two inputs decide everything: the repository name, and the block base recorded
-for that repository in [`../ports.json`](../ports.json). The base is a multiple
-of twenty, and every port below is the base plus the offset LD4 fixes for that
-role.
+Three inputs decide everything: the repository name, the block base recorded
+for that repository in [`../ports.json`](../ports.json), and the container-side
+port the API binds. The base is a multiple of twenty, and every port below is
+the base plus the offset LD4 fixes for that role.
 
 | Placeholder | Value |
 |---|---|
@@ -28,26 +28,47 @@ role.
 | `__SERVER_PORT__` | The container-side port the API binds, which is its LD1 default |
 
 Substitution is textual and nothing else. That is what lets a drift checker
-reverse it and compare a rendered tree against this one.
+render the source again and compare a rendered tree against this one.
+
+[`../tools/render-devkit`](../tools/render-devkit) does it. Adopt once, naming
+the three inputs:
 
 ```sh
-REPO=example-app BASE=2000 SERVER_PORT=8080
-sed -e "s/__PORT_EDGE__/$((BASE+0))/g" \
-    -e "s/__PORT_SERVER__/$((BASE+1))/g" \
-    -e "s/__PORT_DB__/$((BASE+2))/g" \
-    -e "s/__PORT_IDP_MGMT__/$((BASE+7))/g" \
-    -e "s/__PORT_IDP__/$((BASE+6))/g" \
-    -e "s/__SERVER_PORT__/$SERVER_PORT/g" \
-    -e "s/__REPO__/$REPO/g" devkit/nginx/edge.conf > deploy/nginx/edge.conf
+tools/render-devkit --target ../credit-watch \
+                    --repo credit-watch --base 2900 --server-port 5000
 ```
 
-`__PORT_IDP_MGMT__` is substituted before `__PORT_IDP__`, because the second
-name is a prefix of the first.
-
-The rendered files land at `deploy/keycloak/realm.json`,
-`deploy/nginx/edge.conf`, `deploy/oauth2-proxy/oauth2-proxy.cfg` and
+It writes `deploy/keycloak/realm.json`, `deploy/nginx/edge.conf`,
+`deploy/oauth2-proxy/oauth2-proxy.cfg` and
 `deploy/compose/auth.compose.yaml`. The compose fragment resolves the other
 three by relative path, so the rendered tree keeps the shape of this one.
+
+It also writes `deploy/devkit.json`, which records the three inputs. After
+that the target re-renders from its own record and takes no arguments:
+
+```sh
+tools/render-devkit --target ../credit-watch
+```
+
+**That record is why `ports.json` is not read here.** A rendered tree has to be
+checkable from a single clone —
+[`../standards/016-local-development.md`](../standards/016-local-development.md)
+says why, and a repository handed to a client has to keep passing after nothing
+in this repository can see it. So the allocation lives in `ports.json`, a person
+reads the base out of it once, and the rendered tree carries it from then on.
+
+**The renderer is the only implementation of the substitution.**
+[`../tools/check-devkit-drift`](../tools/check-devkit-drift) imports it rather
+than repeating it, renders into a scratch tree from the record, and compares
+bytes. Two renderers would drift, and the day they disagreed the drift checker
+would be the thing certifying the drift.
+
+Placeholders are substituted longest name first, so that
+`__PORT_IDP__` — a prefix of `__PORT_IDP_MGMT__` — cannot eat the first half of
+the longer name. The renderer then audits its own output for anything still
+matching `__NAME__` and refuses to write a file carrying one. A placeholder
+added to a template here, and not to the renderer, fails at the render rather
+than at the first `nginx -t`.
 
 ## The files
 

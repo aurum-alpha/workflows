@@ -1,0 +1,187 @@
+#!/usr/bin/env python3
+"""Render the devkit into a repository's deploy/ tree.
+
+devkit/ holds the configuration half of the authentication tier as templates:
+a Keycloak realm, an nginx edge, an oauth2-proxy relying party, and the compose
+services that run them. A product renders them once, commits the result under
+deploy/, and keeps the result equal to this source.
+
+THIS IS THE ONLY IMPLEMENTATION OF THE SUBSTITUTION, and that is the point.
+check-devkit-drift does not carry a second copy of it; it runs this script into
+a temporary directory and compares bytes. Two renderers would drift, and the
+day they disagreed the drift checker would be the thing certifying the drift.
+
+Three inputs decide everything, and they are recorded in the rendered tree at
+deploy/devkit.json so that a checker handed one clone can reproduce the render
+without consulting anything else. ports.json is not that record and must not
+become one: standards/016-local-development.md keeps per-repository gates
+answerable from a single clone, and a handed-over client repository has to keep
+passing after nothing here can see it.
+
+Python 3 and its standard library only.
+
+Render:  tools/render-devkit --target /path/to/repo --repo NAME --base 2900 \
+                             --server-port 5000
+Re-render from what the tree already records:
+         tools/render-devkit --target /path/to/repo
+
+Exit:    0 rendered, 2 could not
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import pathlib
+import re
+import sys
+
+CATALOG = pathlib.Path(__file__).resolve().parent.parent
+DEVKIT = CATALOG / "devkit"
+
+# Source under devkit/, destination under the target's deploy/. The realm is
+# the one file whose name changes: the source is a template and the rendered
+# result is the import document Keycloak reads, so calling both of them
+# realm.json would leave the tree unable to say which it was looking at.
+#
+# product.example.yaml is deliberately absent. It is a worked example of the
+# three services a product defines for itself, and a product that copied it
+# verbatim would be describing someone else's stack.
+RENDERED = (
+    ("keycloak/realm-template.json", "keycloak/realm.json"),
+    ("nginx/edge.conf", "nginx/edge.conf"),
+    ("oauth2-proxy/oauth2-proxy.cfg", "oauth2-proxy/oauth2-proxy.cfg"),
+    ("compose/auth.compose.yaml", "compose/auth.compose.yaml"),
+)
+
+RECORD = pathlib.Path("deploy") / "devkit.json"
+
+# The offsets 016-local-development.md LD4 fixes. They live here rather than in
+# ports.json because ports.json allocates blocks and says so: "Offsets within a
+# block are fixed by the standard, not by this file."
+OFFSETS = {
+    "__PORT_EDGE__": 0,
+    "__PORT_SERVER__": 1,
+    "__PORT_DB__": 2,
+    "__PORT_IDP__": 6,
+    "__PORT_IDP_MGMT__": 7,
+}
+
+BLOCK = 20
+
+PLACEHOLDER = re.compile(r"__[A-Z][A-Z0-9_]*__")
+
+
+def substitutions(repo: str, base: int, server_port: int) -> dict[str, str]:
+    values = {"__REPO__": repo, "__SERVER_PORT__": str(server_port)}
+    for name, offset in OFFSETS.items():
+        values[name] = str(base + offset)
+    return values
+
+
+def render(text: str, values: dict[str, str]) -> str:
+    """Substitute textually, longest placeholder first.
+
+    __PORT_IDP__ is a prefix of __PORT_IDP_MGMT__, so a pass in dictionary
+    order would rewrite the first half of the second name and leave `_MGMT__`
+    dangling. Ordering by descending length makes that class of collision
+    impossible rather than remembered, which matters because the next
+    placeholder somebody adds will be a prefix of an existing one and nobody
+    will notice until a port is wrong.
+    """
+    for name in sorted(values, key=len, reverse=True):
+        text = text.replace(name, values[name])
+    return text
+
+
+def unsubstituted(text: str) -> list[str]:
+    """Placeholders the renderer does not know about.
+
+    A new __NAME__ added to a template upstream would otherwise be written into
+    a product's deploy/ tree verbatim, and the first thing to notice would be
+    nginx refusing to start. Reported here instead.
+
+    The pattern requires the inside to be upper case, which is what keeps
+    __Host- out of it: that is RFC 6265bis's cookie-name prefix, not a
+    placeholder, and the real placeholder that follows it has already been
+    substituted by the time this runs.
+    """
+    return sorted(set(PLACEHOLDER.findall(text)))
+
+
+def read_record(target: pathlib.Path) -> dict:
+    path = target / RECORD
+    if not path.is_file():
+        raise SystemExit(
+            f"{path} not found. A first render needs --repo, --base and "
+            "--server-port; after that the tree records them."
+        )
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def render_all(target: pathlib.Path, repo: str, base: int,
+               server_port: int) -> list[pathlib.Path]:
+    """Write every rendered file, and return the deploy-relative paths written.
+
+    check-devkit-drift imports and calls this rather than carrying a second
+    copy of the substitution. Two renderers would drift, and the day they
+    disagreed the drift checker would be the thing certifying the drift.
+    """
+    if base % BLOCK:
+        raise ValueError(f"base {base} is not a multiple of {BLOCK}")
+
+    values = substitutions(repo, base, server_port)
+    written = []
+    for source, destination in RENDERED:
+        src = DEVKIT / source
+        if not src.is_file():
+            raise FileNotFoundError(f"devkit source not found at {src}")
+        text = render(src.read_text(encoding="utf-8"), values)
+        left = unsubstituted(text)
+        if left:
+            raise ValueError(f"{source}: unknown placeholder(s) {', '.join(left)}")
+        relative = pathlib.Path("deploy") / destination
+        out = target / relative
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(text, encoding="utf-8")
+        written.append(relative)
+
+    record = {"repo": repo, "port_base": base, "server_port": server_port}
+    (target / RECORD).write_text(json.dumps(record, indent=2) + "\n",
+                                 encoding="utf-8")
+    return written
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--target", required=True, type=pathlib.Path,
+                    help="the repository to render into")
+    ap.add_argument("--repo", help="repository name, which is also the realm name")
+    ap.add_argument("--base", type=int, help="the host-port block base from ports.json")
+    ap.add_argument("--server-port", type=int,
+                    help="the container-side port the API binds, its LD1 default")
+    args = ap.parse_args()
+
+    if args.repo is None or args.base is None or args.server_port is None:
+        record = read_record(args.target)
+        repo = args.repo or record["repo"]
+        base = args.base if args.base is not None else record["port_base"]
+        server_port = (args.server_port if args.server_port is not None
+                       else record["server_port"])
+    else:
+        repo, base, server_port = args.repo, args.base, args.server_port
+
+    try:
+        written = render_all(args.target, repo, base, server_port)
+    except (ValueError, FileNotFoundError) as exc:
+        print(exc, file=sys.stderr)
+        return 2
+
+    for relative in written:
+        print(f"rendered {relative}")
+    print(f"recorded {RECORD}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

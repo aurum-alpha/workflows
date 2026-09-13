@@ -36,6 +36,26 @@ That turns one compromised session into every customer's data. It is refused
 by placing the tenant one layer out, where crossing it means authenticating
 again.
 
+**So a grant held above the tenant is not a candidate on that tenant's host.**
+Containment runs one way for this question. The host's scope has to contain the
+grant's, never the other way about. A person holding a `global` grant who opens
+`acme.example.com` acts in the grants acme's scope contains, and in that one
+they do not. A standing grant working silently on every tenant's host is the
+reach the paragraph above refuses. It arrives through the session layer rather
+than through the hierarchy, and above SQL, where a row-level policy assertion
+cannot see it.
+
+**It strands nobody.** A product naming tenants by hostname also serves a host
+that names no tenant. A grant at `global` is a candidate there, so platform
+work happens on the platform's own surface. Reaching into one tenant
+deliberately is consented, time-boxed impersonation. That creates a real
+membership at the tenant's scope, which satisfies every check as an ordinary
+grant. It is auditable as itself, and it expires.
+
+[`070-rbac.md`](070-rbac.md) RB3's "belongs to no tenant" is honoured exactly.
+The role acts across tenants on the platform's surface, and inside one only by
+becoming a member of it.
+
 ### TH2. Before login the hostname chooses the tenant; after login it only agrees
 
 A hostname does two jobs, one on each side of authentication, and neither is
@@ -287,3 +307,15 @@ Four things this document leaves open on purpose, each stated in the product's
 A product with one host and tenants chosen at login is still bound by TH1 and
 TH4, which hold for a single host. It has nothing for the rest to apply to.
 Its Conventions say so in a line.
+
+## Decisions
+
+- **A `global` grant admitted on every tenant's host.** An operator paged at
+  three in the morning types the customer's hostname.
+  [`070-rbac.md`](070-rbac.md) RB3 also puts the platform
+  administrator in code, as a recovery floor no tenant can remove. It is
+  refused because a role reaching into tenant content from the customer's own
+  host is a bypass role. The products built to this standard forbid one in
+  terms, and enforce it with assertions over their row-level policies. Such an
+  assertion cannot see a reach that happens above SQL. TH1's two remaining
+  paths cover the operator's case, and neither is silent about what was done.

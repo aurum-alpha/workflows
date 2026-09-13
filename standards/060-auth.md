@@ -501,6 +501,11 @@ Per PC3, under [`contracts/auth/`](../contracts/auth/):
 - **`identity-token.schema.json`**: the AU2 claim set, `$ref`-ing the
   identifiers contract for its subject format.
 - **`me.schema.json`**: the AU6 client identity document.
+- **`grants.schema.json`**: the AU8 session grants view, `$ref`-ing the RBAC
+  contract for the grant. It is a rendering input and never a control, and it
+  carries no permission for any grant. What a grant can do is the `me`
+  document's answer for the active one. Listing the others' would put a union
+  on screen.
 - **`corpus.json`**: validity cases for both, plus behavioural cases a live
   deployment must satisfy.
 

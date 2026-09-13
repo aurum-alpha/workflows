@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/auth/grants.schema.json",
+  "title": "Aurum Alpha session grants view",
+  "description": "What a client fetches at GET /api/v1/me/grants to render the grant picker and the switcher. Governed by standards/060-auth.md AU8 and standards/070-rbac.md RB6. THIS IS A RENDERING INPUT AND NEVER A CONTROL: the server decides what a session may activate, and decides again on every request that follows. It carries no permission for any grant, deliberately — what a grant can do is the /me document's answer for the ACTIVE grant, and enumerating the others' would put a union on screen. The options are narrowed to what this session may activate, so a session on one tenant's host is never told that a grant elsewhere exists. schemaVersion 1.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "active": {
+      "$ref": "https://contracts.aurumalpha.dev/rbac/model.schema.json#/$defs/grant",
+      "description": "The grant this session is acting in. ABSENT, never null, where the session has chosen none: absent and a grant are the two states, and a client that tests for one shape has one fewer way to be wrong."
+    },
+    "options": {
+      "type": "array",
+      "description": "Every grant this session may activate, the active one included. Empty is a statement rather than a missing answer: this session may act in nothing, which AU6 refuses with a 403, and a client renders a designed empty state for it rather than a picker with nothing in it.",
+      "items": { "$ref": "#/$defs/option" }
+    },
+    "switch_in_session": {
+      "type": "boolean",
+      "description": "Whether the active grant may still change without a new login (AU8). The member exists so a product's choice reaches the client AS CONFIGURATION: a client reads it and renders a switcher or a sign-out, and nothing has to post to the switch path to discover that the product forbids the act."
+    },
+    "must_choose": {
+      "type": "boolean",
+      "description": "Whether the session must choose before it can act at all. It is not derivable from the members above and must not be inferred from them. 'This session has chosen nothing yet' and 'this session has nothing to choose' render as different screens, and a client guessing between them shows a picker with nothing in it. A session that has never chosen must be able to choose whatever switch_in_session says: the product's refusal is of a CHANGE, and there is nothing yet to change from."
+    }
+  },
+  "required": ["schema_version", "options", "switch_in_session", "must_choose"],
+  "additionalProperties": false,
+  "$defs": {
+    "option": {
+      "type": "object",
+      "description": "One capacity on offer, and whether the session is acting in it.",
+      "properties": {
+        "grant": { "$ref": "https://contracts.aurumalpha.dev/rbac/model.schema.json#/$defs/grant" },
+        "active": { "type": "boolean" }
+      },
+      "required": ["grant", "active"],
+      "additionalProperties": false
+    }
+  }
+}

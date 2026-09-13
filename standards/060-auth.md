@@ -59,13 +59,28 @@ because they differ in what the backend is actually trusting.
 
 | | What crosses | The backend validates | Admitted |
 |---|---|---|---|
-| **(a)** | The provider's access token, forwarded as a bearer | against the provider's JWKS | yes |
+| **(a)** | The provider's ID token, forwarded as a bearer | against the provider's JWKS | yes |
 | **(b)** | A signed identity token the proxy mints | against the proxy's key | **yes, preferred** |
 | **(c)** | Plain injected headers | nothing | **discouraged** |
 
 **(b) is preferred** because it is an intermediary data standard. The backend
 receives one identity shape whatever provider sits behind the proxy. That is
 what makes providers swappable in practice rather than in principle.
+
+**(a) forwards the ID token and never the access token.** Both cross the same
+hop, and a proxy will hand over either. They answer different questions. An ID
+token asserts who authenticated. Its audience is the client, so `aud` names
+exactly the application. The audience check below then means what this rule
+wants it to mean.
+
+An access token authorises a call to a resource server. Its audience is that
+server, often the provider itself. The client id frequently rides along beside
+it. That makes `aud` too weak to carry an authentication decision. The ID token
+also carries OIDC's registered identity claims by definition. An access token's
+contents are the provider's to choose.
+
+Under (a) the token's own shape is OIDC's rather than ours. The claim set below
+governs (b).
 
 **(a) and (b) both require the backend to verify the signature**, not merely
 decode the token. The backend must also enforce expiry and handle key rotation.
@@ -265,15 +280,15 @@ the provider.
   working day does not log someone out at lunch. The absolute cap, because an
   idle timer alone never ends a session somebody keeps warm.
 - **Refresh is invisible to the browser**. The proxy holds the refresh token,
-  rotates it on each use, and renews the access token behind the unchanged
+  rotates it on each use, and renews the tokens it forwards behind the unchanged
   session cookie. A failed refresh drops the session, so the next request
   redirects to login.
 - **Revocation uses OIDC Back-Channel Logout**. The provider posts a logout token
   to the proxy and the proxy destroys the session. It is the standard for exactly
   this, so PC2 says adopt it rather than invent a polling scheme.
-- **The short access token is the backstop**. At five minutes (AU2), a disabled
-  identity stops working within one refresh cycle even where back-channel logout
-  is unsupported or broken. That bounds the damage without depending on a
+- **The short forwarded token is the backstop**. At five minutes (AU2), a
+  disabled identity stops working within one refresh cycle even where
+  back-channel logout is unsupported or broken. That bounds the damage without depending on a
   mechanism that might not fire.
 - **Logout is RP-initiated**: destroy the local session *and* call the provider's
   end-session endpoint. Skipping the second means the user clicks login and is

@@ -4,7 +4,7 @@
 devkit/ is the configuration half of the authentication tier: a Keycloak realm,
 an nginx edge, an oauth2-proxy relying party, and the compose services that run
 them. Every product renders the same source with its own name and port block
-and commits the result under deploy/. So eight products carry eight copies of
+and commits the result under dev/. So eight products carry eight copies of
 one file, differing only where the substitution says they differ.
 
 That is the shape check-lint-configs was written for, and the finding is the
@@ -15,8 +15,9 @@ this runs it rather than carrying a second copy of the substitution — two
 renderers would drift, and the day they disagreed this checker would be the
 thing certifying the drift.
 
-The render inputs come from the repository's own deploy/devkit.json, which is
-the only thing this reads out of the clone besides the rendered files.
+The render inputs come from the repository's own devkit.json at its root,
+which is the only thing this reads out of the clone besides the rendered
+files.
 ports.json is not consulted and must not be: 016-local-development.md keeps
 per-repository gates answerable from a single clone, and a handed-over client
 repository has to keep passing after nothing in this repository can see it.
@@ -29,7 +30,7 @@ products keep a broken edge configuration, passing, until somebody remembered
 to bump each of them one at a time -- which is the drift this exists to catch,
 wearing the costume of a version pin.
 
-A repository with no deploy/devkit.json has not adopted the devkit and passes.
+A repository with no devkit.json has not adopted the devkit and passes.
 That is the same rule check-lint-configs applies to a repository with no
 .oxlintrc.json, and for the same reason: a checker that only runs when someone
 remembers to exclude the right repositories is a checker that stops being run.
@@ -50,7 +51,7 @@ import sys
 import tempfile
 from importlib.machinery import SourceFileLoader
 
-RECORD = pathlib.Path("deploy") / "devkit.json"
+RECORD = pathlib.Path("devkit.json")
 
 
 def renderer(catalog: pathlib.Path):
@@ -81,24 +82,14 @@ def check_repo(render, repo_root: pathlib.Path, label: str,
             print(f"{label}: no {RECORD} — devkit not adopted, nothing to check")
         return 0, 0
 
-    try:
-        inputs = json.loads(record.read_text(encoding="utf-8"))
-        missing = [k for k in ("repo", "port_base", "server_port") if k not in inputs]
-    except json.JSONDecodeError as exc:
-        print(f"{label}: {RECORD} is not valid JSON — {exc}")
-        return 0, 1
-    if missing:
-        print(f"{label}: {RECORD} is missing {', '.join(missing)}")
-        return 0, 1
-
     with tempfile.TemporaryDirectory() as tmp:
         # Rendered from the recorded inputs into a scratch tree, so nothing
-        # this checker does can touch the clone it is judging.
+        # this checker does can touch the clone it is judging. The record is
+        # read from the clone and validated by the renderer, so a malformed
+        # one is reported here in the same words a person sees locally.
         try:
-            public = render.read_public(repo_root / render.PUBLIC)
-            written = render.render_all(pathlib.Path(tmp), inputs["repo"],
-                                        inputs["port_base"], inputs["server_port"],
-                                        public)
+            inputs = render.read_record(repo_root)
+            written = render.render_all(pathlib.Path(tmp), inputs)
         except (ValueError, FileNotFoundError, TypeError) as exc:
             print(f"{label}: could not render — {exc}")
             return 0, 1

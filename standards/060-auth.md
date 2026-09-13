@@ -494,95 +494,88 @@ Roles are unaffected. A person holding three grants in one tenant acts in one
 of them at a time. The grants are 070's, and the session names which one is
 active.
 
-### AU9. The ingress decides whether a login is needed, and the application decides what is allowed
+### AU9. The gateway routes, and where a route goes is how it is authenticated
 
-Two layers answer two different questions, and each owns one status code.
+**The tier in front of an application is a gateway.** A gateway's question is
+which hop comes next. It holds a routing table: a path, and the service the
+request goes to. One of the services it can route to is the relying party
+of AU1, which is a proxy. A request sent there has its whole login handled
+there, and when the proxy is satisfied the request continues to the service
+behind it.
 
-**The ingress answers "does this request need a credential?"** That is the
-whole of AuthN as the request path sees it. A public path goes to its upstream
-with the `Authorization` header stripped. Any other path needs a session. A
-page request without one is redirected to the provider. An API request without
-one is `401`.
+So there is no authentication switch in the gateway. **Choosing the hop is the
+authentication decision**, and everything else follows from it.
 
-**The `401` is the ingress's**, and no application emits one in its place. A redirect to login is the relying party's act, and the
-application is never asked to perform it (AU1).
+- **A route sent to the relying party** requires a user principal from the
+  provider. The proxy runs the login, holds the session, and replaces the
+  `Authorization` header with the identity token before the request goes on.
+- **A route sent straight to a service** is that service's to authenticate. It
+  arrives with every header intact, because the credential the service must
+  check travels in one of them.
 
-**The application answers "what is this person allowed to do?"** That is
-AuthZ, and it runs on every route, public ones included. The application
-verifies the token (AU2) and resolves the subject to a user (AU3, AU6). It
-derives the scope of the request and asks whether the permission holds in
-that scope (070 RB7). **A no is `403`, and the `403` is the application's**.
-
-On a public route with no token the application acts for an anonymous
-principal. That principal holds only the permissions a code-declared
-anonymous role carries. Public never means unchecked.
+**Public is not one of the choices.** A share link, a webhook signature and an
+API key are credentials. Those routes are authenticated, just not by this
+tier. The only genuinely public route is one a service takes with no
+credential at all. That is a property of the service, not of the gateway.
 
 ```mermaid
 flowchart TD
-    B["request"] --> P{"ingress:<br/>public path?"}
-    P -->|yes| S["strip Authorization,<br/>forward to the declared upstream"]
-    P -->|no| C{"ingress:<br/>session?"}
-    C -->|"no · page"| L["302 to the provider"]
-    C -->|"no · API"| U["401"]
-    C -->|yes| T["attach the identity token"]
-    S --> V
-    T --> V["app: verify the token,<br/>or take the anonymous principal<br/>on a declared public route"]
-    V --> R["app: (issuer, subject) → user"]
-    R --> Q["app: scope from the host,<br/>the path, the body,<br/>and the session binding"]
-    Q --> D{"app: permission<br/>in scope?"}
+    B["request"] --> G{"gateway:<br/>which hop?"}
+    G -->|"relying party"| P{"session?"}
+    P -->|"no · page"| L["302 to the provider"]
+    P -->|"no · API"| U["401"]
+    P -->|yes| T["set Authorization<br/>to the identity token"]
+    G -->|"a service"| S["forward untouched"]
+    T --> A
+    S --> A["the service"]
+    A --> V["establish the principal:<br/>user, link, machine<br/>or anonymous"]
+    V --> Q["scope from the host,<br/>the path, the body,<br/>and the session binding"]
+    Q --> D{"permission<br/>in scope?"}
     D -->|no| F["403"]
     D -->|yes| H["handler"]
 ```
 
-The scope step reads every signal the request carries and lets none of them
-widen anything. The host names a tenant (092 TH2). A path segment names a
-resource or a narrower scope inside the tenant, and a body names what is
-being acted on. Each is a *claim* the application checks against the
-session's active grant (AU8, 070 RB10). A claim the grant does not cover is
-refused. The request chooses what it asks about, and never what it holds.
+**Every principal is a role at a scope.** One decision serves all of them. A
+*user* arrives with the provider's token and holds the active grant's role and
+scope. A *link* principal arrives with a token in the path the application
+minted, and holds a declared role at the scope that token resolves to. A
+*machine* principal arrives with a signature or a key the application
+verifies, and holds a declared role at `global`. An *anonymous* principal
+arrives with nothing and holds a code-declared anonymous role. Past that step
+the four are one, and the check of 070 RB7 runs for each.
 
-**Four kinds of principal reach an application, and each is a role at a
-scope**. A *user* arrives with the provider's token and holds the active
-grant's role and scope.
+**Whichever tier establishes a credential owns the refusal for it.** The
+relying party answers `401` for a session it could not establish. It is also
+what redirects a browser to the login, because that is a proxy's act and never
+the application's (AU1). A service answers `401` for a signature or a key it
+could not verify. A link token that resolves to nothing is `404` and
+never `403`, because "it exists but is not yours" is a disclosure.
 
-An *anonymous* principal arrives with nothing and
-holds the code-declared anonymous role, at `global` or at the tenant the
-host names. A *link* principal arrives with a token in the path that the
-application minted. It holds a declared role at the scope the token resolves
-to: a shared group, a candidate's process. A *machine* principal
-arrives with a signature or key the application verifies, and holds a
-declared role at `global`. After that step the four are one: the same
-decision runs for all of them.
+**`403` is the application's alone.** It answers a question no gateway can
+ask: this caller is known, and this act is not theirs. The scope
+step reads every signal the request carries and lets none of them widen
+anything. The host names a tenant (092 TH2). A path segment names a resource
+or a narrower scope inside the tenant, and a body names what is acted on.
+Each is a *claim* the application checks against the session's active grant
+(AU8, 070 RB10). The request chooses what it asks about, never what it holds.
 
-**On a route the application verifies itself, the application is the
-ingress for that credential**. The edge cannot check a link token or a
-webhook signature. So a wrong one is `401` from the application. A missing
-link token is anonymous. A link token that names nothing is `404`, never
-`403`, because "exists but not yours" is a disclosure.
+**The routing table is declared once, and it is the whole of the routing.** A
+gateway configuration that hard-codes a product route asserts an architecture.
+The one it usually asserts is a single application process. A product
+serves its paths from one service or from a dozen. The table is the same shape
+either way. So the table names the services, names the hop
+for every path, and the gateway configuration is rendered from it.
 
-**Which paths are public is declared once, in `deploy/public.json`, and both
-layers read it.** The ingress renders it into its configuration. The
-application loads it at start. A match is a route where a principal other
-than a user is admitted, as the route declares. A path is matched by `exact`
-or by `prefix`, never by a pattern. A link token lives under a prefix and the
-application validates the rest.
+Nothing gates that the table and the services agree about what a route needs.
+Both failure cases surface the first time the route is used. A route sent
+straight through that the service guards is refused by the service. A route
+sent to the relying party that needed no login asks for one nobody needed.
+What is worth asserting is app-specific and belongs in the repository that
+owns it: that every registered route runs the authorization check at all.
 
-Nothing in the catalog asserts that the two readings agree, and nothing needs
-to: the two failure cases are visible on first use. An ingress that opens a path the application guards meets a `401`
-or a `403` from the application. An ingress that guards a path the
-application opens asks for a login nobody needed. Both are fixed in the one
-file. What is app-specific, and stays in the repository that owns it, is a
-check that every registered route runs the authorization filter at all.
-
-An internal tool that is also a public package is admitted to run with
-authentication disabled. It does so by declaring every path public at both
-layers. It is the same file with everything in it, never a second mode
-in the code.
-
-Where an application serves its own pages rather than a separate client
-bundle, the same file names the upstream for those authenticated paths. The
-ingress still asks for the session on them. It only changes where it sends
-the request afterwards.
+An internal tool that is also a public package runs with no identity provider
+by routing every path straight to its service. It is the same table and the
+same code, never a second mode.
 
 ## The artifacts
 
@@ -601,16 +594,20 @@ Per PC3, under [`contracts/auth/`](../contracts/auth/):
 
 ## Decisions
 
-- **The application performs the login redirect**. The ingress would forward
+- **A public-or-not switch at the gateway**. It reads well until the routes
+  that are neither arrive. A share link and a webhook signature are
+  credentials, so calling those routes public groups them with the one case
+  that has none. A gateway told a route is public then strips the header the
+  credential travels in. Routing by hop keeps the distinction the credentials
+  already make (AU9).
+- **The application performing the login redirect**. The gateway would forward
   everything, and an application answering `401` would trigger the relying
   party's redirect. That puts the application in the authentication chain,
-  which AU1 forbids, and asks the ingress to serve static content it has been
-  told to guard. The public list at the ingress is the answer (AU9).
-- **A catalog gate that the ingress's public list matches the application's**.
-  Both read one file, and a disagreement fails on first use in a way the
-  operator sees. A gate would have to read routes to decide what the
-  application enforces, which is the PC4 violation. What is worth a gate is
-  app-specific and lives in each repository (AU9).
+  which AU1 forbids. Routing the path to the proxy is the answer (AU9).
+- **A catalog gate that the table and the services agree**. A disagreement
+  fails on first use in a way the operator sees. A gate would have to read
+  routes to decide what a service enforces, which is the PC4 violation. What
+  is worth a gate is app-specific and lives in each repository (AU9).
 - **A shared user directory in the proxy**. The proxy would resolve to a
   shared user id before minting, hiding the provider from applications
   entirely. That requires the proxy to own a user directory: a great deal

@@ -285,7 +285,7 @@ jobs:
       # day they disagreed this step would be the thing certifying the drift.
       #
       # A repository that has not adopted the devkit carries no
-      # deploy/devkit.json and passes, the same way one with no .oxlintrc.json
+      # devkit.json and passes, the same way one with no .oxlintrc.json
       # passes above.
       - name: The rendered devkit is unedited
         if: ${{ !cancelled() }}

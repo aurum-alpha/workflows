@@ -29,6 +29,19 @@ jobs:
           docker run --rm -v "$PWD:/repo" --workdir /repo
           rhysd/actionlint:1.7.7 -color
 
+      # check-devkit-drift proves each product's rendered copy matches
+      # devkit/. Nothing proved devkit/ is a valid nginx configuration, so a
+      # typo in edge.conf would reach eight products and first show up as a
+      # container that will not start.
+      #
+      # It runs here rather than in job-ci-conformance because the question is
+      # about the SOURCE, and asking it once is enough; a product re-validating
+      # a file it is forbidden to edit learns nothing. The nginx is the one the
+      # devkit's own compose fragment starts, reached through docker the same
+      # way actionlint above is.
+      - name: The devkit's nginx config parses
+        run: tools/check-devkit-nginx
+
   conformance:
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
     steps:

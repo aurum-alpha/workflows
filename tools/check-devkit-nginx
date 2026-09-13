@@ -1,0 +1,162 @@
+#!/usr/bin/env python3
+"""Assert the devkit's nginx configuration parses.
+
+check-devkit-drift proves a product's rendered copy matches devkit/. Nothing
+proved devkit/ itself is a valid nginx configuration. A typo in edge.conf
+therefore reaches every product that renders it, and the first thing to notice
+is a container that will not start -- on someone's machine, after the change
+that broke it has already been rolled everywhere.
+
+This renders the devkit with throwaway inputs and runs `nginx -t` over the
+result. It imports tools/render-devkit rather than substituting placeholders
+itself, for the reason that file gives: two renderers drift, and then the
+checker certifies the drift.
+
+THE NGINX IS THE ONE THE STACK RUNS, read from the compose fragment rather
+than pinned here. Validating against whatever nginx happens to be installed
+would prove something about that nginx; validating against the image the
+devkit starts proves something about the devkit. It also means the version
+moves in one place.
+
+Docker is how that nginx is reached, which is the same arrangement the
+catalog's own actionlint step uses. A developer runs the identical command.
+
+`nginx -t` RESOLVES UPSTREAM HOST NAMES, which is the thing that makes this
+check environment-dependent if it is written naively. edge.conf names `server`,
+`client` and `oauth2-proxy`, which resolve on the compose network and nowhere
+else, so a bare `nginx -t` fails with "host not found in upstream" -- at the
+first upstream block, before it has read a line of the configuration anyone
+cares about. A real syntax error further down is then invisible behind a DNS
+error. Every upstream host is therefore pointed at the loopback with
+--add-host, which changes nothing about the file under test.
+
+Run it:  tools/check-devkit-nginx
+Exit:    0 parses, 1 does not, 2 could not ask
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import pathlib
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from importlib.machinery import SourceFileLoader
+
+CATALOG = pathlib.Path(__file__).resolve().parent.parent
+FRAGMENT = CATALOG / "devkit" / "compose" / "auth.compose.yaml"
+
+# The edge.conf the devkit ships is a server block and its maps, which is a
+# fragment of an http context rather than a whole configuration. nginx needs
+# the rest before it will parse it, and this is the smallest rest there is.
+WRAPPER = """events { worker_connections 1024; }
+http {
+    include /etc/nginx/conf.d/edge.conf;
+}
+"""
+
+# Throwaway render inputs. Nothing about them is meaningful -- the point is a
+# file with no placeholders left in it, which is what nginx can read.
+REPO = "devkit-nginx-check"
+BASE = 2000
+SERVER_PORT = 8080
+
+
+def renderer():
+    path = CATALOG / "tools" / "render-devkit"
+    loader = SourceFileLoader("aurum_render_devkit", str(path))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def edge_image() -> str:
+    """The nginx image the devkit's own compose fragment starts."""
+    text = FRAGMENT.read_text(encoding="utf-8")
+    match = re.search(r"^\s+image:\s*(nginx:\S+)\s*$", text, re.M)
+    if not match:
+        raise LookupError(f"no nginx image found in {FRAGMENT}")
+    return match.group(1)
+
+
+def upstream_hosts(config: str) -> list[str]:
+    """Every host named inside an upstream block, discovered rather than listed.
+
+    Naming them here would mean a new upstream in edge.conf silently
+    reintroduces the DNS failure this exists to avoid, and the message it
+    fails with would point at nginx rather than at the list.
+    """
+    names = []
+    for block in re.findall(r"upstream\s+\S+\s*\{(.*?)\}", config, re.S):
+        for host in re.findall(r"^\s*server\s+([A-Za-z][\w.-]*):\d+", block, re.M):
+            if host not in names:
+                names.append(host)
+    return names
+
+
+def main() -> int:
+    try:
+        image = edge_image()
+    except (OSError, LookupError) as exc:
+        print(exc, file=sys.stderr)
+        return 2
+
+    # Two failures, and they must not look alike. A configuration nginx
+    # rejects is this repository's bug; a daemon that is not running is not,
+    # and reporting the second as the first sends someone to read a file that
+    # is fine. The daemon is probed before anything is rendered, so the only
+    # way past this point is a real answer from nginx.
+    if shutil.which("docker") is None:
+        print("docker is not installed, and it is how the pinned nginx is "
+              "reached. This check could not run.", file=sys.stderr)
+        return 2
+
+    probe = subprocess.run(["docker", "version", "--format", "{{.Server.Version}}"],
+                           capture_output=True, text=True)
+    if probe.returncode:
+        print("the docker daemon is not reachable, so the pinned nginx could "
+              "not be started. This check could not run; it says nothing "
+              "about edge.conf.", file=sys.stderr)
+        print(probe.stderr.strip(), file=sys.stderr)
+        return 2
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        try:
+            renderer().render_all(root, REPO, BASE, SERVER_PORT)
+        except (ValueError, FileNotFoundError) as exc:
+            print(f"could not render: {exc}", file=sys.stderr)
+            return 2
+
+        wrapper = root / "nginx.conf"
+        wrapper.write_text(WRAPPER, encoding="utf-8")
+        edge = root / "deploy" / "nginx" / "edge.conf"
+
+        hosts = []
+        for name in upstream_hosts(edge.read_text(encoding="utf-8")):
+            hosts += ["--add-host", f"{name}:127.0.0.1"]
+
+        result = subprocess.run(
+            ["docker", "run", "--rm", *hosts,
+             "-v", f"{edge}:/etc/nginx/conf.d/edge.conf:ro",
+             "-v", f"{wrapper}:/etc/nginx/nginx.conf:ro",
+             image, "nginx", "-t"],
+            capture_output=True, text=True)
+
+    output = (result.stdout + result.stderr).strip()
+    if result.returncode:
+        print(output)
+        print(f"\nFAIL: devkit/nginx/edge.conf does not parse under {image}. "
+              "Fix it here, before it is rendered into eight products.")
+        return 1
+
+    print(output)
+    print(f"\nPASS: devkit/nginx/edge.conf parses under {image}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

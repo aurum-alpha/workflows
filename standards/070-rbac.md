@@ -199,23 +199,46 @@ hold companies has three (platform, agency, company), with agencies containing
 companies. A standard that named the levels would fit one and force a fiction
 on the other.
 
-**Containment: a grant at a containing scope satisfies a check at a contained
-one**. A grant at `tenant:acme` satisfies a check at `job:V1StGX` when the
-application declares that job as within that tenant. `global` contains
-everything.
+**A session acts in one grant, and that grant fixes the scope**. The session's
+active grant names a role and a scope. Every check in that session is decided
+against that one grant. The active grant travels with the subject as an
+argument to `check`, never as ambient state.
 
-A subject can hold many grants. They are evaluated together, and RB6 says how.
+**Containment: the active grant at a containing scope satisfies a check at a
+contained one**. An active grant at `tenant:acme` satisfies a check at
+`job:V1StGX` when the application declares that job as within that tenant.
+`global` contains everything. A route is permitted to name a scope the active
+grant contains, and never one outside it.
 
-### RB6. Deny by default, additive only, and no permission means "everything"
+Two things are product choices, declared in a repository's **Conventions**. The
+first is whether a subject holds more than one grant. The second is whether the
+active grant changes inside a login session. A subject holding several grants
+acts in one of them at a time. [`060-auth.md`](060-auth.md) AU8 states what a
+change of the active grant does to the session record.
+
+### RB6. Deny by default, one grant at a time, and no permission means "everything"
 
 **Deny by default**. No grant means deny. There is no "allow unless denied."
 
-**Grants are additive, and there are no negative grants**. A subject's
-permissions at a scope are the union of every grant that applies there. Deny
-rules make the outcome depend on evaluation order, which makes two
-correct-looking implementations disagree. They also make the corpus below
-impossible to write, since there would be no single right answer to compare
-against.
+**A session acts in one grant, and the effective permission set is that grant's
+role's set**. Grants are never combined. A subject holding several grants acts
+in one of them, and changes which one by an act of their own.
+`permissionsFor` returns that one role's complete enumerated set.
+
+Three properties follow, and together they are the reason for the rule:
+
+- **What a subject can do right now is readable from one role definition**. A
+  computation over a set of grants has its result in no reviewable place.
+- **An act names the capacity it was done in**. The decision of RB8 names one
+  grant and one role, so an audit row can state which capacity the person used.
+- **A person acting in two capacities at once is refused by construction**. An
+  auditor grant and an administrator grant in one request is the combination a
+  separation of duties exists to prevent.
+
+**There are no negative grants**. Deny rules make the outcome depend on
+evaluation order, which makes two correct-looking implementations disagree.
+They also make the corpus below impossible to write, since there would be no
+single right answer to compare against.
 
 To remove access, remove the grant.
 
@@ -255,8 +278,9 @@ one.
 check(subject, permission, scope) → Decision
 ```
 
-**The scope is an argument, never ambient state**. The same subject, permission
-and scope produce the same decision every time, given the same grants.
+**The scope is an argument, never ambient state**. The active grant is an
+argument in the same way, carried with the subject. The same subject, active
+grant, permission and scope produce the same decision every time.
 
 The failure it prevents has a shape: a check that reads an *active context*
 from session state rather than taking it as an argument. That context is the
@@ -284,7 +308,7 @@ depends on state the case cannot state.
 | `check(subject, permission, scope) → Decision` | The primitive. Deny by default. |
 | `checkAny(subject, permissions[], scope) → Decision` | Allowed if any one is. |
 | `checkAll(subject, permissions[], scope) → Decision` | Allowed only if every one is. |
-| `permissionsFor(subject, scope) → permission[]` | The true, complete, enumerated set. Feeds `/me`. |
+| `permissionsFor(subject, scope) → permission[]` | The active grant's role's set, complete and enumerated. Feeds `/me`. |
 | `rolesFor(subject, scope) → role[]` | For display, and for an admin screen. |
 | `grant(subject, role, scope)` / `revoke(subject, role, scope)` | Administrative. Both are audited events. |
 
@@ -310,9 +334,9 @@ request was refused, and the reason stays in the log.
 
 Caching authorization is normal and often necessary. Two rules make it safe.
 
-**The cache key includes the subject, the permission and the scope**, which is
-every argument of RB7's function. A key missing one of them returns another
-subject's or another tenant's answer. This is the failure RB7 describes, stated
+**The cache key includes the subject, its active grant, the permission and the
+scope**, which is every argument of RB7's function. A key missing one of them
+returns another subject's, another capacity's or another tenant's answer. This is the failure RB7 describes, stated
 as a rule so it is caught in review rather than in production.
 
 **Every path that changes a grant invalidates**. Granting, revoking, editing a
@@ -329,8 +353,8 @@ mechanism.
 RB7 makes scope an argument. This rule says where the argument comes from.
 **The tenant a request is checked against is read from the authenticated
 identity, and never from anything the client sent**. That identity is the
-session the [authentication standard](060-auth.md) bound to exactly one tenant
-at login (AU8). Not a header, not a query parameter, not a body field, and not
+session, which the [authentication standard](060-auth.md) binds to exactly one
+tenant through its active grant (AU8). Not a header, not a query parameter, not a body field, and not
 the hostname the request arrived on. The rule is stated that generally so that
 the next plausible-looking source is already refused.
 
@@ -349,7 +373,7 @@ Two things remain legitimate and are not exceptions:
   is the scope being *checked*, not *chosen*.
 - **A narrower scope inside the tenant can come from the path**. A project
   under a tenant is named by the route, and RB5's containment decides whether
-  the tenant-level grant covers it. The path is permitted to narrow the scope
+  the active grant covers it. The path is permitted to narrow the scope
   the session fixed. It is never permitted to widen it or change the tenant.
 
 Where a product gives tenants their own hostnames, the hostname's role stops
@@ -362,6 +386,16 @@ comes from here.
 Per PC3, under [`contracts/rbac/`](../contracts/rbac/):
 
 - **`model.schema.json`**: permission, role, grant and scope shapes.
-- **`decisions.json`**: a set of grants, then a list of checks with their
-  expected decisions. One corpus judges every implementation, which is why
-  RB7 requires a pure function.
+- **`decisions.json`**: a set of grants, then a list of checks, each with the
+  grant it is made in and the decision it expects. One corpus judges every
+  implementation, which is why RB7 requires a pure function.
+
+## Decisions
+
+- **A subject's permissions as the union of every grant that applies**. The
+  union spares a person the choice of a capacity, and it is what an additive
+  model computes. It loses the two properties RB6 rests on. No single grant
+  authorizes an act, so the decision of RB8 cannot name one and an audit row
+  cannot state the capacity. It also puts an auditor's read and an
+  administrator's write in one request, which is the combination a separation
+  of duties exists to prevent.

@@ -30,7 +30,7 @@
     },
     "grant": {
       "type": "object",
-      "description": "Binds a subject to a role within a scope (RB5). Grants are additive and there are no negative grants: a subject's permissions at a scope are the union of every grant that applies there.",
+      "description": "Binds a subject to a role within a scope (RB5). A session acts in one grant, and the effective permission set is that grant's role's set: grants are never combined and there are no negative grants.",
       "properties": {
         "subject": { "type": "string", "minLength": 1, "description": "The application's own user or service-account id, per IP1. Never the identity provider's subject." },
         "role": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },

@@ -1,7 +1,7 @@
 {
   "contract": "rbac",
   "schemaVersion": 1,
-  "description": "The decision corpus for standards/070-rbac.md \u2014 the artifact that makes a polyglot authorization standard enforceable from one source. An implementation loads 'roles', 'scopeContainment' and 'grants', then evaluates every case in 'checks' and either reproduces each expected decision or names the case it failed. No running service and no network: the corpus is data and check() is a pure function of its arguments, which is what RB7 requires and why it requires it.",
+  "description": "The decision corpus for standards/070-rbac.md \u2014 the artifact that makes a polyglot authorization standard enforceable from one source. An implementation loads 'roles', 'scopeContainment' and 'grants', then evaluates every case in 'checks' and either reproduces each expected decision or names the case it failed. Every check states the 'activeGrant' it is made in: a session acts in exactly one grant and the effective permission set is that grant's role's set, so the active grant is an argument like the subject, the permission and the scope (RB5, RB6). No running service and no network: the corpus is data and check() is a pure function of its arguments, which is what RB7 requires and why it requires it.",
   "fixture": {
     "permissions": [
       "invoice.read",
@@ -119,6 +119,10 @@
       "id": "granted-at-the-exact-scope",
       "check": {
         "subject": "usr_ana",
+        "activeGrant": {
+          "role": "viewer",
+          "scope": "tenant:acme"
+        },
         "permission": "invoice.read",
         "scope": "tenant:acme"
       },
@@ -135,6 +139,10 @@
       "id": "deny-by-default-for-an-ungranted-permission",
       "check": {
         "subject": "usr_ana",
+        "activeGrant": {
+          "role": "viewer",
+          "scope": "tenant:acme"
+        },
         "permission": "invoice.approve",
         "scope": "tenant:acme"
       },
@@ -147,6 +155,10 @@
       "id": "containment-a-tenant-grant-satisfies-a-project-check",
       "check": {
         "subject": "usr_ana",
+        "activeGrant": {
+          "role": "viewer",
+          "scope": "tenant:acme"
+        },
         "permission": "invoice.read",
         "scope": "project:alpha"
       },
@@ -157,24 +169,32 @@
           "scope": "tenant:acme"
         }
       },
-      "note": "a grant at a containing scope satisfies a check at a contained one, and the reason names the scope the grant was actually held at (RB5)"
+      "note": "the active grant at a containing scope satisfies a check at a contained one, and the reason names the scope the grant is actually held at (RB5)"
     },
     {
       "id": "containment-does-not-run-upward",
       "check": {
         "subject": "usr_ben",
+        "activeGrant": {
+          "role": "approver",
+          "scope": "project:alpha"
+        },
         "permission": "invoice.approve",
         "scope": "tenant:acme"
       },
       "expect": {
         "allowed": false
       },
-      "note": "usr_ben holds approver on one project only; a project grant does not reach the tenant. The inverse of the case above, and the one an implementation gets wrong by treating containment as symmetric"
+      "note": "usr_ben acts in approver on one project only; a project grant does not reach the tenant. The inverse of the case above, and the one an implementation gets wrong by treating containment as symmetric"
     },
     {
       "id": "containment-does-not-cross-siblings",
       "check": {
         "subject": "usr_ben",
+        "activeGrant": {
+          "role": "approver",
+          "scope": "project:alpha"
+        },
         "permission": "invoice.approve",
         "scope": "project:beta"
       },
@@ -187,18 +207,26 @@
       "id": "no-leakage-into-another-tenant",
       "check": {
         "subject": "usr_cara",
+        "activeGrant": {
+          "role": "tenant_admin",
+          "scope": "tenant:acme"
+        },
         "permission": "invoice.void",
         "scope": "tenant:globex"
       },
       "expect": {
         "allowed": false
       },
-      "note": "usr_cara is tenant_admin of acme and nothing at all in globex"
+      "note": "usr_cara acts in tenant_admin of acme and holds nothing at all in globex"
     },
     {
       "id": "the-same-permission-in-two-scopes-decides-differently",
       "check": {
         "subject": "usr_cara",
+        "activeGrant": {
+          "role": "tenant_admin",
+          "scope": "tenant:acme"
+        },
         "permission": "invoice.read",
         "scope": "tenant:globex"
       },
@@ -207,18 +235,26 @@
       },
       "before": {
         "subject": "usr_cara",
+        "activeGrant": {
+          "role": "tenant_admin",
+          "scope": "tenant:acme"
+        },
         "permission": "invoice.read",
         "scope": "tenant:acme",
         "expect": {
           "allowed": true
         }
       },
-      "note": "THE CACHE CASE, and the reason it is in the corpus rather than left to review. Evaluate 'before' first, then the check: an implementation whose cache keys on subject and permission without scope returns allowed for both and fails here. That is a cross-tenant authorization result produced by a cache key, and no test exercising one tenant at a time will ever show it (RB7, RB9)"
+      "note": "THE SCOPE CACHE CASE, and the reason it is in the corpus rather than left to review. Evaluate 'before' first, then the check: an implementation whose cache keys on subject and permission without scope returns allowed for both and fails here. That is a cross-tenant authorization result produced by a cache key, and no test exercising one tenant at a time will ever show it (RB7, RB9)"
     },
     {
       "id": "global-contains-every-scope",
       "check": {
         "subject": "usr_dev",
+        "activeGrant": {
+          "role": "auditor",
+          "scope": "global"
+        },
         "permission": "report.export",
         "scope": "project:gamma"
       },
@@ -235,6 +271,10 @@
       "id": "a-global-grant-is-still-only-its-own-permissions",
       "check": {
         "subject": "usr_dev",
+        "activeGrant": {
+          "role": "auditor",
+          "scope": "global"
+        },
         "permission": "invoice.void",
         "scope": "project:gamma"
       },
@@ -247,6 +287,10 @@
       "id": "a-tenant-defined-role-is-decided-only-by-its-permissions",
       "check": {
         "subject": "usr_fay",
+        "activeGrant": {
+          "role": "regional_auditor",
+          "scope": "tenant:acme"
+        },
         "permission": "report.export",
         "scope": "tenant:acme"
       },
@@ -257,12 +301,32 @@
           "scope": "tenant:acme"
         }
       },
-      "note": "THE ROLE-NAME CASE, and the mechanical detector for RB4. usr_fay holds regional_auditor, a tenant-defined role carrying exactly the permissions of the code-declared auditor. An implementation that gates on a role name \u2014 'is this subject an auditor' \u2014 refuses a subject the permission model plainly allows, and fails here while passing every other case. It is also why fixture roles carry an 'origin': the corpus has to be able to express a role the code never heard of"
+      "note": "THE ROLE-NAME CASE, and the mechanical detector for RB4. usr_fay acts in regional_auditor, a tenant-defined role carrying exactly the permissions of the code-declared auditor. An implementation that gates on a role name \u2014 'is this subject an auditor' \u2014 refuses a subject the permission model plainly allows, and fails here while passing every other case. It is also why fixture roles carry an 'origin': the corpus has to be able to express a role the code never heard of"
     },
     {
-      "id": "grants-are-additive",
+      "id": "two-grants-and-the-active-one-does-not-carry-the-permission",
       "check": {
         "subject": "usr_eve",
+        "activeGrant": {
+          "role": "viewer",
+          "scope": "tenant:acme"
+        },
+        "permission": "invoice.approve",
+        "scope": "tenant:acme"
+      },
+      "expect": {
+        "allowed": false
+      },
+      "note": "THE ONE-ACTIVE-GRANT CASE, and the one that separates this model from an additive one. usr_eve holds viewer and approver at the same scope and is acting in viewer. Grants are never combined, so the effective permission set is viewer's set and approver's invoice.approve is not in it. An implementation that unions every grant that applies returns allowed here and fails (RB6)"
+    },
+    {
+      "id": "the-active-grant-is-in-the-cache-key",
+      "check": {
+        "subject": "usr_eve",
+        "activeGrant": {
+          "role": "approver",
+          "scope": "tenant:acme"
+        },
         "permission": "invoice.approve",
         "scope": "tenant:acme"
       },
@@ -273,24 +337,44 @@
           "scope": "tenant:acme"
         }
       },
-      "note": "usr_eve holds viewer and approver at the same scope; the permission set is the union of both (RB6)"
+      "before": {
+        "subject": "usr_eve",
+        "activeGrant": {
+          "role": "viewer",
+          "scope": "tenant:acme"
+        },
+        "permission": "invoice.approve",
+        "scope": "tenant:acme",
+        "expect": {
+          "allowed": false
+        }
+      },
+      "note": "THE GRANT CACHE CASE. Evaluate 'before' first, then the check: same subject, same permission, same scope, and a different active grant. An implementation whose cache key omits the active grant returns the denial again and fails here. That is the RB9 key stated as a case, and it is the defect a change of active grant introduces (RB9)"
     },
     {
-      "id": "an-unheld-permission-is-still-denied-with-two-roles",
+      "id": "an-unheld-permission-is-denied-in-either-grant",
       "check": {
         "subject": "usr_eve",
+        "activeGrant": {
+          "role": "approver",
+          "scope": "tenant:acme"
+        },
         "permission": "invoice.void",
         "scope": "tenant:acme"
       },
       "expect": {
         "allowed": false
       },
-      "note": "additive does not mean generous \u2014 the union of viewer and approver still excludes void"
+      "note": "neither viewer nor approver carries invoice.void, so the answer is deny whichever of the two usr_eve is acting in"
     },
     {
       "id": "no-permission-implies-another",
       "check": {
         "subject": "usr_ben",
+        "activeGrant": {
+          "role": "approver",
+          "scope": "project:alpha"
+        },
         "permission": "invoice.read",
         "scope": "project:alpha"
       },
@@ -307,47 +391,78 @@
       "id": "an-ungranted-subject-is-denied-everything",
       "check": {
         "subject": "usr_nobody",
+        "activeGrant": null,
         "permission": "invoice.read",
         "scope": "tenant:acme"
       },
       "expect": {
         "allowed": false
       },
-      "note": "a subject with no grants at all. Distinct from 060-auth.md AU6's unknown subject, which never reaches a check"
+      "note": "a subject with no grants at all, and so no active grant to act in. Distinct from 060-auth.md AU6's unknown subject, which never reaches a check"
     },
     {
-      "id": "permissionsFor-enumerates-the-true-set",
+      "id": "permissionsFor-enumerates-the-active-roles-set",
       "operation": "permissionsFor",
       "check": {
         "subject": "usr_eve",
+        "activeGrant": {
+          "role": "viewer",
+          "scope": "tenant:acme"
+        },
+        "scope": "tenant:acme"
+      },
+      "expect": {
+        "permissions": [
+          "invoice.read",
+          "report.read"
+        ]
+      },
+      "note": "viewer's set, sorted, complete, and not a union with the approver grant usr_eve also holds. This is what feeds the /me document of 060-auth.md AU6, and it is why RB6 forbids a wildcard surviving into the check: a subject holding one would have every permission while this list enumerated none of them, and the interface would render the wrong screen"
+    },
+    {
+      "id": "permissionsFor-follows-the-active-grant",
+      "operation": "permissionsFor",
+      "check": {
+        "subject": "usr_eve",
+        "activeGrant": {
+          "role": "approver",
+          "scope": "tenant:acme"
+        },
         "scope": "tenant:acme"
       },
       "expect": {
         "permissions": [
           "invoice.approve",
-          "invoice.read",
-          "report.read"
+          "invoice.read"
         ]
       },
-      "note": "the union of viewer and approver, sorted, complete. This is what feeds the /me document of 060-auth.md AU6, and it is why RB6 forbids a wildcard surviving into the check: a subject holding one would have every permission while this list enumerated none of them, and the interface would render the wrong screen"
+      "note": "the same subject at the same scope, acting in the other grant. The pair states RB6 as data: the answer is the active role's set and never the union of the two"
     },
     {
       "id": "permissionsFor-is-scope-sensitive",
       "operation": "permissionsFor",
       "check": {
         "subject": "usr_cara",
+        "activeGrant": {
+          "role": "tenant_admin",
+          "scope": "tenant:acme"
+        },
         "scope": "tenant:globex"
       },
       "expect": {
         "permissions": []
       },
-      "note": "empty rather than absent \u2014 'this subject may do nothing here' is a statement, not a missing answer"
+      "note": "empty rather than absent \u2014 'this subject can do nothing here' is a statement, not a missing answer"
     },
     {
       "id": "checkAll-requires-every-permission",
       "operation": "checkAll",
       "check": {
         "subject": "usr_ana",
+        "activeGrant": {
+          "role": "viewer",
+          "scope": "tenant:acme"
+        },
         "permissions": [
           "invoice.read",
           "invoice.approve"
@@ -364,6 +479,10 @@
       "operation": "checkAny",
       "check": {
         "subject": "usr_ana",
+        "activeGrant": {
+          "role": "viewer",
+          "scope": "tenant:acme"
+        },
         "permissions": [
           "invoice.read",
           "invoice.approve"
@@ -377,7 +496,7 @@
           "scope": "tenant:acme"
         }
       },
-      "note": "both prior portfolio implementations grew checkAny and checkAll independently, which is good evidence that a codebase without them writes the loop by hand and gets it wrong somewhere"
+      "note": "a codebase without checkAny and checkAll writes the loop by hand and gets it wrong somewhere, which is why RB7 declares both"
     }
   ],
   "rejections": [
@@ -436,6 +555,14 @@
         "refused": true
       },
       "note": "this is the check that makes runtime roles safe at all. A role composes capabilities that already exist and are already enforced; the closed permission set of RB1 is exactly what bounds a role's blast radius, so relaxing RB1 would make RB3 indefensible with it"
+    },
+    {
+      "id": "a-second-grant-is-refused-where-the-product-declares-one-grant-per-subject",
+      "stimulus": "in a product whose Conventions declare a single grant per subject, write a second grant for a subject that already holds one",
+      "expect": {
+        "refused": true
+      },
+      "note": "whether a subject holds more than one grant is a product choice declared in Conventions (RB5). Where the product declares one, the second grant is refused at write time rather than left for a session to choose between. A subject holding two grants in a product that admits one has no defined active grant, and the choice of capacity stops being the person's"
     }
   ]
 }

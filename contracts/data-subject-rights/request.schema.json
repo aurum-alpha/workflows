@@ -51,7 +51,7 @@
     "updated_at": { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp" },
     "verified_at": {
       "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp",
-      "description": "DR2. The instant the requester's authentication was last confirmed, from the access token's auth_time (060 AU2). An erasure is created only when this is within the step-up window; the value is kept so the verification is a fact on the resource, not a memory of the handler."
+      "description": "DR2. The instant this request was accepted under a route the identity tier re-authenticated (060 AU9). The application reads no claim about authentication age; the value is kept so the verification is a fact on the resource, not a memory of the handler."
     },
     "deadline_at": {
       "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp",

@@ -395,7 +395,7 @@
     {
       "case": "a-request-without-a-verification-instant-is-rejected",
       "valid": false,
-      "why": "DR2: the verification step is a contract, and its evidence is the instant on the resource. A handler that checked auth_time and did not record it leaves nothing a reviewer can see.",
+      "why": "DR2: the verification step is a contract, and its evidence is the instant on the resource. A handler recording nothing leaves a reviewer nothing to see.",
       "request": { "schema_version": 1, "id": "01923e90-0000-7000-8000-000000000001", "kind": "export", "subject_id": "01923e01-2222-7000-8000-000000000002", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "requested_by": "self", "requester_id": "01923e01-2222-7000-8000-000000000002", "status": "pending", "created_at": "2026-09-02T10:00:00.000Z", "updated_at": "2026-09-02T10:00:00.000Z", "deadline_at": "2026-09-05T10:00:00.000Z" }
     }
   ],
@@ -696,72 +696,65 @@
   ],
   "transitions": [
     {
-      "case": "an-erasure-is-created-when-authentication-is-fresh",
-      "why": "DR2: the step-up window is fifteen minutes from auth_time; sixty seconds is inside it.",
-      "given": { "kind": "erasure", "auth_age_seconds": 60, "open_request": false },
+      "case": "an-erasure-is-created-on-a-re-authenticated-route",
+      "why": "DR2: the erasure route is declared as requiring re-authentication and the relying party runs it, so a request reaching the handler has already passed that bar (060 AU9).",
+      "given": { "kind": "erasure", "open_request": false },
       "action": "create",
       "expect": { "http": 201, "status": "pending" }
     },
     {
-      "case": "an-erasure-with-stale-authentication-is-refused",
-      "why": "DR2: an unattended session must not be able to destroy an account. The refusal is 403 with a stable type, and the client answers it by navigating to re-authenticate, never by retrying.",
-      "given": { "kind": "erasure", "auth_age_seconds": 3600, "open_request": false },
-      "action": "create",
-      "expect": { "http": 403, "problem": "step-up-required" }
-    },
-    {
-      "case": "an-export-is-created-without-step-up",
-      "why": "DR2: an export reveals to the subject what they may already read; the verification bar is the session. A stale auth_time does not refuse it.",
-      "given": { "kind": "export", "auth_age_seconds": 3600, "open_request": false },
+      "case": "an-export-is-created-on-a-route-needing-no-re-authentication",
+      "why": "DR2: an export reveals to the subject what they may already read, so its route needs no re-authentication.",
+      "given": { "kind": "export", "open_request": false },
       "action": "create",
       "expect": { "http": 201, "status": "pending" }
     },
     {
       "case": "a-second-request-while-one-is-open-returns-the-open-one",
       "why": "DR2: one open request per subject per kind. The second creation is not an error and not a second job; it is the existing resource, answered 200 rather than 201 so the client can tell.",
-      "given": { "kind": "export", "auth_age_seconds": 60, "open_request": true },
+      "given": { "kind": "export", "open_request": true },
       "action": "create",
       "expect": { "http": 200, "status": "pending" }
     },
     {
       "case": "a-pending-erasure-is-cancelled-with-fresh-authentication",
       "why": "DR4: cancellation is the grace period's purpose, and it is verified like creation because cancelling someone else's erasure is as harmful as creating one.",
-      "given": { "kind": "erasure", "status": "pending", "auth_age_seconds": 60 },
+      "given": { "kind": "erasure", "status": "pending" },
       "action": "cancel",
       "expect": { "http": 200, "status": "cancelled" }
     },
     {
       "case": "a-running-erasure-cannot-be-cancelled",
       "why": "DR4: once the job holds the request the data is moving in batches, and a cancellation now would leave a state nobody declared. The refusal names the reason.",
-      "given": { "kind": "erasure", "status": "running", "auth_age_seconds": 60 },
+      "given": { "kind": "erasure", "status": "running" },
       "action": "cancel",
       "expect": { "http": 409, "problem": "erasure-not-cancellable" }
     },
     {
       "case": "a-held-erasure-can-still-be-cancelled",
       "why": "DR6: the hold suspends the erasure, not the subject's control of their own request. Withdrawing it is always theirs while nothing has run.",
-      "given": { "kind": "erasure", "status": "held", "auth_age_seconds": 60 },
+      "given": { "kind": "erasure", "status": "held" },
       "action": "cancel",
       "expect": { "http": 200, "status": "cancelled" }
     },
     {
       "case": "a-completed-export-is-streamed-through-the-service",
       "why": "DR3 and 026 BS5: the download route checks the requester and streams the package as an attachment. No URL to the store exists, on the resource or in the answer.",
-      "given": { "kind": "export", "status": "completed", "auth_age_seconds": 60, "past_available_until": false },
+      "given": { "kind": "export", "status": "completed", "past_available_until": false },
       "action": "download",
       "expect": { "http": 200 }
     },
     {
       "case": "an-export-past-its-window-is-gone",
       "why": "DR3: the package is a concentrated copy of personal data and is deleted after seven days; the route says gone rather than not found, because the request existed and the client should not retry.",
-      "given": { "kind": "export", "status": "completed", "auth_age_seconds": 60, "past_available_until": true },
+      "given": { "kind": "export", "status": "completed", "past_available_until": true },
       "action": "download",
       "expect": { "http": 410, "problem": "export-expired", "status": "expired" }
     },
     {
       "case": "an-export-not-yet-built-cannot-be-downloaded",
       "why": "DR3: the request resource is where a client waits; the download route is not a poll.",
-      "given": { "kind": "export", "status": "running", "auth_age_seconds": 60 },
+      "given": { "kind": "export", "status": "running" },
       "action": "download",
       "expect": { "http": 409, "problem": "export-not-ready" }
     },

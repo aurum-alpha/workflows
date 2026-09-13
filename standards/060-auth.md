@@ -125,13 +125,17 @@ those rules, never a redefinition of the token.
 |---|---|---|
 | `iss` and `sub` | AU3 | The link key. RFC 9068 requires both. |
 | `sid` | AU8 | The login session a tenant binding hangs on. |
-| `auth_time` | [`082-data-subject-rights.md`](082-data-subject-rights.md) DR2 | The step-up window on an erasure. |
 | `email`, `email_verified`, `name` | AU3, AU4 | Display, and the provider-is-source condition. Never keys. |
 
-`sid`, `auth_time` and `amr` are not claims RFC 9068 requires, so a provider
-emits them because someone configured it to.
-[`solutions/060-auth.md`](../solutions/060-auth.md) carries the checklist,
-and a rule that reads a claim the provider withholds fails at that provider.
+**Nothing here reads how or when the person authenticated.** Not `auth_time`,
+not `amr`, not `acr`. Those describe the authentication, which is the tier's
+subject and never the application's. Where an operation needs a fresh
+authentication, the route is declared as requiring one and the relying party
+runs it before the request arrives (AU9).
+
+`sid` is the one claim in that table RFC 9068 does not require, so a provider
+emits it because someone configured it to.
+[`solutions/060-auth.md`](../solutions/060-auth.md) carries the checklist.
 
 **Nothing reads `roles`, `groups`, `entitlements` or `scope`**. A provider
 emits what it is configured to emit. The token is well formed with any of
@@ -140,8 +144,8 @@ depend on provider configuration. That is the failure this standard exists to
 prevent, and no schema can hold the rule because the claims are legal.
 
 **One convention conflict, stated rather than left silent**. Registered JWT
-and OIDC claims keep their RFC spelling and NumericDate encoding: `exp`,
-`iat`, `auth_time`, `amr`. This holds even though
+claims keep their RFC spelling and NumericDate encoding: `exp` and `iat`.
+This holds even though
 [`020-identifiers.md`](020-identifiers.md) IP4 otherwise minimises Unix-epoch
 timestamps. Adopting a standard whole is what PC2 asks, and renaming half a
 registered claim set breaks every library that reads it.

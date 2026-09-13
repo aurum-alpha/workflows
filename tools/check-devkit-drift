@@ -1,0 +1,163 @@
+#!/usr/bin/env python3
+"""Assert a repository's rendered devkit equals the devkit it was rendered from.
+
+devkit/ is the configuration half of the authentication tier: a Keycloak realm,
+an nginx edge, an oauth2-proxy relying party, and the compose services that run
+them. Every product renders the same source with its own name and port block
+and commits the result under deploy/. So eight products carry eight copies of
+one file, differing only where the substitution says they differ.
+
+That is the shape check-lint-configs was written for, and the finding is the
+same finding: a shared file edited where it landed rather than where it is
+owned. The difference is that these copies are not byte-identical to the
+source, so the comparison renders first. tools/render-devkit does that, and
+this runs it rather than carrying a second copy of the substitution — two
+renderers would drift, and the day they disagreed this checker would be the
+thing certifying the drift.
+
+The render inputs come from the repository's own deploy/devkit.json, which is
+the only thing this reads out of the clone besides the rendered files.
+ports.json is not consulted and must not be: 016-local-development.md keeps
+per-repository gates answerable from a single clone, and a handed-over client
+repository has to keep passing after nothing in this repository can see it.
+
+WHAT IT COMPARES AGAINST IS THE CATALOG'S CURRENT DEVKIT, not a ref the
+repository records, and the asymmetry is deliberate for the same reason
+check-lint-configs gives. An edit to the devkit reddens every product at once
+and forces one coordinated roll. A recorded ref would instead let seven
+products keep a broken edge configuration, passing, until somebody remembered
+to bump each of them one at a time -- which is the drift this exists to catch,
+wearing the costume of a version pin.
+
+A repository with no deploy/devkit.json has not adopted the devkit and passes.
+That is the same rule check-lint-configs applies to a repository with no
+.oxlintrc.json, and for the same reason: a checker that only runs when someone
+remembers to exclude the right repositories is a checker that stops being run.
+
+Run against local clones:  tools/check-devkit-drift --root /workspace
+Run against one repo:      tools/check-devkit-drift --root DIR --repo NAME
+Exit:                      0 identical, 1 drift, 2 could not ask
+"""
+
+from __future__ import annotations
+
+import argparse
+import importlib.util
+import json
+import os
+import pathlib
+import sys
+import tempfile
+from importlib.machinery import SourceFileLoader
+
+RECORD = pathlib.Path("deploy") / "devkit.json"
+
+
+def renderer(catalog: pathlib.Path):
+    """Import tools/render-devkit as a module.
+
+    It has no .py extension because it is a command a person runs, so the
+    loader is named explicitly. Everything below the import guard is
+    definitions, so importing it renders nothing.
+
+    Importing rather than reimplementing is the whole design: the paths, the
+    substitution and the placeholder audit all come from the one file that
+    products render with.
+    """
+    path = catalog / "tools" / "render-devkit"
+    loader = SourceFileLoader("aurum_render_devkit", str(path))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def check_repo(render, repo_root: pathlib.Path, label: str,
+               verbose: bool) -> tuple[int, int]:
+    """Return (files compared, files that differ)."""
+    record = repo_root / RECORD
+    if not record.is_file():
+        if verbose:
+            print(f"{label}: no {RECORD} — devkit not adopted, nothing to check")
+        return 0, 0
+
+    try:
+        inputs = json.loads(record.read_text(encoding="utf-8"))
+        missing = [k for k in ("repo", "port_base", "server_port") if k not in inputs]
+    except json.JSONDecodeError as exc:
+        print(f"{label}: {RECORD} is not valid JSON — {exc}")
+        return 0, 1
+    if missing:
+        print(f"{label}: {RECORD} is missing {', '.join(missing)}")
+        return 0, 1
+
+    with tempfile.TemporaryDirectory() as tmp:
+        # Rendered from the recorded inputs into a scratch tree, so nothing
+        # this checker does can touch the clone it is judging.
+        try:
+            written = render.render_all(pathlib.Path(tmp), inputs["repo"],
+                                        inputs["port_base"], inputs["server_port"])
+        except (ValueError, FileNotFoundError, TypeError) as exc:
+            print(f"{label}: could not render — {exc}")
+            return 0, 1
+
+        compared = 0
+        differ = 0
+        for relative in written:
+            want = (pathlib.Path(tmp) / relative).read_bytes()
+            got_path = repo_root / relative
+            if not got_path.is_file():
+                print(f"{label}: MISSING {relative}")
+                differ += 1
+                continue
+            compared += 1
+            if got_path.read_bytes() == want:
+                if verbose:
+                    print(f"{label}: identical ({relative})")
+            else:
+                differ += 1
+                print(f"{label}: DIFFERS from devkit/ ({relative})")
+    return compared, differ
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--root", default="/workspace", type=pathlib.Path)
+    ap.add_argument("--repo", action="append", help="limit to specific repo(s)")
+    args = ap.parse_args()
+
+    # The same override check-lint-configs takes, for the same reason: a
+    # caller's conformance run takes its RULES from a pinned standard_ref,
+    # which is right, but "what does the devkit say now" is a question about
+    # the catalog as it is now.
+    catalog = pathlib.Path(os.environ.get("AURUM_CATALOG_ROOT")
+                           or pathlib.Path(__file__).resolve().parent.parent)
+    if not (catalog / "devkit").is_dir():
+        print(f"devkit not found at {catalog / 'devkit'}", file=sys.stderr)
+        return 2
+    render = renderer(catalog)
+
+    repos = args.repo or sorted(p.name for p in args.root.iterdir() if p.is_dir())
+
+    compared = 0
+    differ = 0
+    for repo in repos:
+        c, d = check_repo(render, args.root / repo, repo, verbose=bool(args.repo))
+        compared += c
+        differ += d
+
+    if differ:
+        print(
+            f"\nFAIL: {differ} rendered devkit file(s) do not match devkit/. "
+            "The fix is never to edit the rendered file: change devkit/ in "
+            "aurum-alpha/workflows, then re-render with tools/render-devkit "
+            "and roll every product that carries it."
+        )
+        return 1
+
+    print(f"\nPASS: {compared} rendered devkit file(s) match the catalog")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

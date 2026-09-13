@@ -29,17 +29,17 @@ services:
       timeout: 3s
       retries: 12
 
-  api:
+  server:
     build:
       context: ../..
       dockerfile: Dockerfile.dev
     restart: unless-stopped
     working_dir: /app
     ports:
-      - "__PORT_API__:__API_PORT__"
+      - "__PORT_SERVER__:__SERVER_PORT__"
     volumes:
       - ../..:/app
-      - api_deps:/app/node_modules
+      - server_deps:/app/node_modules
     depends_on:
       db:
         condition: service_healthy
@@ -58,5 +58,5 @@ services:
 
 volumes:
   db_data:
-  api_deps:
+  server_deps:
   client_deps:

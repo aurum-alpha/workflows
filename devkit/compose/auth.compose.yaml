@@ -9,7 +9,7 @@
 # Relative paths below resolve against this file's directory, which is why the
 # devkit tree and the rendered deploy/ tree have the same shape.
 #
-# The product defines db, api and client. devkit/compose/product.example.yaml
+# The product defines db, server and client. devkit/compose/product.example.yaml
 # is the worked example of those three, and validates this file beside them.
 #
 # Host ports come from the project's block in ports.json, at the offsets

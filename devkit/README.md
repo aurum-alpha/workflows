@@ -21,23 +21,23 @@ role.
 |---|---|
 | `__REPO__` | The repository name, which is also the realm name |
 | `__PORT_EDGE__` | base + 0, the edge, the address a person types |
-| `__PORT_API__` | base + 1, the API reached directly with a token |
+| `__PORT_SERVER__` | base + 1, the API reached directly with a token |
 | `__PORT_DB__` | base + 2, the database |
 | `__PORT_IDP__` | base + 6, Keycloak |
 | `__PORT_IDP_MGMT__` | base + 7, Keycloak's management and health port |
-| `__API_PORT__` | The container-side port the API binds, which is its LD1 default |
+| `__SERVER_PORT__` | The container-side port the API binds, which is its LD1 default |
 
 Substitution is textual and nothing else. That is what lets a drift checker
 reverse it and compare a rendered tree against this one.
 
 ```sh
-REPO=example-app BASE=2000 API_PORT=8080
+REPO=example-app BASE=2000 SERVER_PORT=8080
 sed -e "s/__PORT_EDGE__/$((BASE+0))/g" \
-    -e "s/__PORT_API__/$((BASE+1))/g" \
+    -e "s/__PORT_SERVER__/$((BASE+1))/g" \
     -e "s/__PORT_DB__/$((BASE+2))/g" \
     -e "s/__PORT_IDP_MGMT__/$((BASE+7))/g" \
     -e "s/__PORT_IDP__/$((BASE+6))/g" \
-    -e "s/__API_PORT__/$API_PORT/g" \
+    -e "s/__SERVER_PORT__/$SERVER_PORT/g" \
     -e "s/__REPO__/$REPO/g" devkit/nginx/edge.conf > deploy/nginx/edge.conf
 ```
 
@@ -57,7 +57,7 @@ three by relative path, so the rendered tree keeps the shape of this one.
 | `nginx/edge.conf` | The edge at offset +0, and the only routing table |
 | `oauth2-proxy/oauth2-proxy.cfg` | The relying party behind `auth_request` |
 | `compose/auth.compose.yaml` | The `edge`, `oauth2-proxy`, `keycloak`, `migrate` and `seed` services |
-| `compose/product.example.yaml` | The `db`, `api` and `client` services a product defines itself |
+| `compose/product.example.yaml` | The `db`, `server` and `client` services a product defines itself |
 
 ## The three clients
 
@@ -205,7 +205,7 @@ The fragment defines five services and expects three more:
 | Service | Who defines it |
 |---|---|
 | `edge`, `oauth2-proxy`, `keycloak`, `migrate`, `seed` | The fragment |
-| `db`, `api`, `client` | The product, in its own `compose.yaml` |
+| `db`, `server`, `client` | The product, in its own `compose.yaml` |
 
 The two one-shots run the product's own commands. `tools/migrate` applies the
 identity tables, and `tools/seed-personas` writes the application-side user and

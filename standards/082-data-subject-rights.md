@@ -61,9 +61,9 @@ and reading it until it is terminal. The routes, under 050 HA5's prefix:
 | Route | Who | Authorized by |
 |---|---|---|
 | `POST /v1/me/data-exports` · `GET …/{id}` · `GET …/{id}/download` | the subject | identity: the actor is the target |
-| `POST /v1/me/erasures` · `GET …/{id}` · `POST …/{id}/cancel` | the subject | identity, on a re-authenticated route |
+| `POST /v1/me/erasures` · `GET …/{id}` · `POST …/{id}/cancel` | the subject | identity: the actor is the target |
 | `POST /v1/tenants/{tenant_id}/subjects/{subject_id}/data-exports` | a tenant administrator | `data_subject.export` in the tenant's scope (070 RB5) |
-| `POST /v1/tenants/{tenant_id}/subjects/{subject_id}/erasures` | a tenant administrator | `data_subject.erase` in the tenant's scope, on a re-authenticated route |
+| `POST /v1/tenants/{tenant_id}/subjects/{subject_id}/erasures` | a tenant administrator | `data_subject.erase` in the tenant's scope (070 RB5) |
 | `POST /v1/tenants/{tenant_id}/subjects/{subject_id}/legal-holds` · `POST …/{id}/release` | a tenant administrator | `legal_hold.place` · `legal_hold.release` |
 
 The four permissions are declared per 070 RB1, so the administrator's form has
@@ -89,18 +89,6 @@ returns the open resource with `200`, rather than a new one with `201`.
 Creation honours `Idempotency-Key` per 050 HA6, and the job is `idempotent` on
 the request id per 057 JB2. A retried click, a retried request and a
 redelivered message produce one export and one erasure.
-
-**An erasure requires a fresh authentication, and the tier performs it**.
-How recently somebody authenticated is a fact about the authentication, so it
-belongs to the identity tier and never to the application. The erasure routes
-are declared as requiring re-authentication, and the relying party runs it
-before the request arrives (060 AU9). The application reads no claim about
-it. An export needs the session alone: it reveals to the subject what they
-can already read.
-
-The instant the request was accepted is recorded as `verified_at`. The
-verification is then a fact on the resource and not a memory of the handler.
-The administrator's form is verified the same way.
 
 **Deadlines are a floor the service meets, and lateness is an alert**. Every
 request carries `deadline_at`: 72 hours after creation for an export, and 72

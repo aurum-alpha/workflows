@@ -83,14 +83,11 @@ What to verify on any of them, in this order:
    AU2 wants the backend's resource indicator in `aud`. Either RFC 8707's
    `resource` parameter or a provider audience mapper reaches it. Keycloak
    uses an Audience protocol mapper on the client.
-6. **Whether `sid` reaches the access token**. RFC 9068 defines no `sid`, and
-   AU2 adds no requirement of its own. AU8's tenant binding keys on it, so a
-   provider withholding it is a provider that rule cannot run against.
-7. **Whether the relying party can force a fresh authentication on a named
-   route**, with OIDC's `max_age` or `prompt=login`. 082 DR2 needs one before
-   an erasure. The application reads no claim about authentication age, so
-   the tier is the only thing that can enforce this.
-8. **Whether back-channel logout is supported**, for AU5's revocation not
+6. **Whether `sid` reaches the access token**, and only where the product
+   lets a person hold more than one grant in one tenant. RFC 9068 defines no
+   `sid`. AU8 admits the relying party's own session identifier instead, so
+   a provider withholding `sid` rules out one source and not the rule.
+7. **Whether back-channel logout is supported**, for AU5's revocation not
    waiting on session expiry. **The default route above does not support it**,
    whatever the provider offers: oauth2-proxy has no back-channel logout
    endpoint for a provider to post to. On that route AU5's revocation rests on

@@ -124,17 +124,17 @@ those rules, never a redefinition of the token.
 | Claim | Read by | For |
 |---|---|---|
 | `iss` and `sub` | AU3 | The link key. RFC 9068 requires both. |
-| `sid` | AU8 | The login session a tenant binding hangs on. |
+| `sid` | AU8, conditionally | The login session, where a person can hold more than one grant in one tenant. |
 | `email`, `email_verified`, `name` | AU3, AU4 | Display, and the provider-is-source condition. Never keys. |
 
 **Nothing here reads how or when the person authenticated.** Not `auth_time`,
-not `amr`, not `acr`. Those describe the authentication, which is the tier's
-subject and never the application's. Where an operation needs a fresh
-authentication, the route is declared as requiring one and the relying party
-runs it before the request arrives (AU9).
+not `amr`, not `acr`. Those describe the authentication, and the
+authentication is the tier's. Session lifetime, session freshness and how a
+person proved who they are belong to OAuth and OIDC, and this document
+restates none of it.
 
-`sid` is the one claim in that table RFC 9068 does not require, so a provider
-emits it because someone configured it to.
+`sid` is the one claim in that table RFC 9068 does not require, and AU8
+admits any stable per-login identifier in its place.
 [`solutions/060-auth.md`](../solutions/060-auth.md) carries the checklist.
 
 **Nothing reads `roles`, `groups`, `entitlements` or `scope`**. A provider
@@ -444,10 +444,25 @@ provider's and the commercial architecture's, not this document's.
   tenant. So the tenant binding is a consequence of the active grant rather
   than a second mechanism beside it. A session still authenticates into
   exactly one tenant.
-- **The binding lives per login session, and never on the user record**. Its
-  key is the identity provider's session id, which AU2 carries as `sid`. Two logins by one person are two sessions, and each holds its
-  own active grant. A binding on the user record makes one device's choice
-  change another device's scope.
+- **The binding lives per login session, and never on the user record**. Two
+  logins by one person are two sessions, and each holds its own active grant.
+  A binding on the user record makes one device's choice change another
+  device's scope.
+- **A session identifier reaches the application where a person can hold more
+  than one grant inside one tenant**, and only there. That is the one case
+  where the request alone does not decide the scope. The host names the
+  tenant (092 TH2) and the user is known, and a person with two grants there
+  still needs one chosen.
+- **Where a person holds at most one grant per tenant, no session identifier
+  is needed.** The host and the user decide the scope between them. The
+  identifier earns its place only when a choice exists. Activating a grant is
+  an act on a session, so the application has to know which session is
+  asking.
+- **Any stable per-login identifier serves, and the standard names none.**
+  The provider's `sid` is one, where the provider emits it. The relying
+  party's own session identifier is another, where the proxy forwards it. A
+  product picks one and says which in its **Conventions**. What the
+  identifier must be is stable for one login and different for the next.
 - **Whether the active grant changes inside a session is a product choice**,
   declared in the repository's **Conventions**. Where a product admits the
   change, it rebinds that session's record and writes an audit event naming

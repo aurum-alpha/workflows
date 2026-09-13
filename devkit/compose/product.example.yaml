@@ -36,7 +36,7 @@ services:
     restart: unless-stopped
     working_dir: /app
     ports:
-      - "__PORT_SERVER__:__SERVER_PORT__"
+      - "__PORT_SERVER__:5000"
     volumes:
       - ../..:/app
       - server_deps:/app/node_modules

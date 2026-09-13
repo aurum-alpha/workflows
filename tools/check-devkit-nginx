@@ -59,12 +59,20 @@ http {
 
 # Throwaway render inputs. Nothing about them is meaningful -- the point is a
 # file with no placeholders left in it, which is what nginx can read.
-REPO = "devkit-nginx-check"
-# Rendered with the example declaration, so the locations the renderer emits
-# for a product's public.json are parsed too, not only the template's own.
-EXAMPLE = CATALOG / "devkit" / "nginx" / "public.example.json"
-BASE = 2000
-SERVER_PORT = 8080
+# The routing table carries one route of every shape the renderer can emit, so
+# the locations a product's own table produces are parsed here too and not
+# only the template's own.
+RECORD = {
+    "repo": "devkit-nginx-check",
+    "port_base": 2000,
+    "upstreams": {"app": "app:8080", "client": "client:5173"},
+    "routes": [
+        {"exact": "/healthz", "next": "app"},
+        {"prefix": "/hooks/", "next": "app"},
+        {"prefix": "/api/", "next": "auth", "then": "app"},
+        {"prefix": "/", "next": "auth", "then": "client", "no_session": "redirect"},
+    ],
+}
 
 
 def renderer():
@@ -129,16 +137,14 @@ def main() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         root = pathlib.Path(tmp)
         try:
-            render = renderer()
-            render.render_all(root, REPO, BASE, SERVER_PORT,
-                              render.read_public(EXAMPLE))
+            renderer().render_all(root, RECORD)
         except (ValueError, FileNotFoundError) as exc:
             print(f"could not render: {exc}", file=sys.stderr)
             return 2
 
         wrapper = root / "nginx.conf"
         wrapper.write_text(WRAPPER, encoding="utf-8")
-        edge = root / "deploy" / "nginx" / "edge.conf"
+        edge = root / "dev" / "nginx" / "edge.conf"
 
         hosts = []
         for name in upstream_hosts(edge.read_text(encoding="utf-8")):

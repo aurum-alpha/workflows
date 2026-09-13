@@ -4,13 +4,15 @@
 # A product's own compose.yaml at the repository root includes this file:
 #
 #   include:
-#     - path: deploy/compose/auth.compose.yaml
+#     - path: dev/compose/auth.compose.yaml
 #
 # Relative paths below resolve against this file's directory, which is why the
-# devkit tree and the rendered deploy/ tree have the same shape.
+# devkit tree and the rendered dev/ tree have the same shape.
 #
-# The product defines db, server and client. devkit/compose/product.example.yaml
-# is the worked example of those three, and validates this file beside them.
+# The product defines the services its routing table names, plus its database.
+# devkit/compose/product.example.yaml is a worked example of that, and
+# validates this file beside it. The names are the product's: one process or
+# several, and this file cannot tell the difference.
 #
 # Host ports come from the project's block in ports.json, at the offsets
 # 016-local-development.md LD4 fixes: the edge at +0, the identity provider at

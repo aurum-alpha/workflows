@@ -1,29 +1,39 @@
 #!/usr/bin/env python3
-"""Render the devkit into a repository's deploy/ tree.
+"""Render the devkit into a repository's dev/ tree.
 
 devkit/ holds the configuration half of the authentication tier as templates:
 a Keycloak realm, an nginx edge, an oauth2-proxy relying party, and the compose
 services that run them. A product renders them once, commits the result under
-deploy/, and keeps the result equal to this source.
+dev/, and keeps the result equal to this source.
+
+THE TREE IS dev/ AND NOT deploy/, because every file in it is local
+development: a dev realm, dev ports, a password every persona shares. It is
+never deployed anywhere, and a directory called deploy/ said the one thing
+that is not true of it.
 
 THIS IS THE ONLY IMPLEMENTATION OF THE SUBSTITUTION, and that is the point.
 check-devkit-drift does not carry a second copy of it; it runs this script into
 a temporary directory and compares bytes. Two renderers would drift, and the
 day they disagreed the drift checker would be the thing certifying the drift.
 
-Three inputs decide everything, and they are recorded in the rendered tree at
-deploy/devkit.json so that a checker handed one clone can reproduce the render
-without consulting anything else. ports.json is not that record and must not
-become one: standards/016-local-development.md keeps per-repository gates
-answerable from a single clone, and a handed-over client repository has to keep
-passing after nothing here can see it.
+devkit.json at the repository root is the whole input, and it is the product's
+file rather than a rendered one. It names the repository, its port block, the
+services the gateway can reach, and where each path goes. A checker handed one
+clone reproduces the render from it and nothing else. ports.json is not that
+record and must not become one: standards/016-local-development.md keeps
+per-repository gates answerable from a single clone, and a handed-over client
+repository has to keep passing after nothing here can see it.
+
+THE ROUTING TABLE IS THE WHOLE OF THE PRODUCT'S ROUTING. The template holds the
+authentication tier's own endpoints and no others, so nothing here assumes that
+/ is a client and /api/ is a server. A monolith points every upstream at one
+host; a product split into services points them at several; this file cannot
+tell the difference and does not try.
 
 Python 3 and its standard library only.
 
-Render:  tools/render-devkit --target /path/to/repo --repo NAME --base 2900 \
-                             --server-port 5000
-Re-render from what the tree already records:
-         tools/render-devkit --target /path/to/repo
+Render:  tools/render-devkit --target /path/to/repo
+         (reads /path/to/repo/devkit.json)
 
 Exit:    0 rendered, 2 could not
 """
@@ -39,7 +49,7 @@ import sys
 CATALOG = pathlib.Path(__file__).resolve().parent.parent
 DEVKIT = CATALOG / "devkit"
 
-# Source under devkit/, destination under the target's deploy/. The realm is
+# Source under devkit/, destination under the target's dev/. The realm is
 # the one file whose name changes: the source is a template and the rendered
 # result is the import document Keycloak reads, so calling both of them
 # realm.json would leave the tree unable to say which it was looking at.
@@ -54,15 +64,14 @@ RENDERED = (
     ("compose/auth.compose.yaml", "compose/auth.compose.yaml"),
 )
 
-RECORD = pathlib.Path("deploy") / "devkit.json"
+RECORD = pathlib.Path("devkit.json")
+OUT = pathlib.Path("dev")
 
-# The product's public-path declaration, 060-auth.md AU9. Both layers read it:
-# this renderer turns it into nginx locations, and the application loads it at
-# start to know where a principal other than a user is admitted. It is the
-# product's own file, never rendered, and absent where there is nothing to say.
-PUBLIC = pathlib.Path("deploy") / "public.json"
-UPSTREAMS = ("server", "client")
-ROUTES_LINE = "    __ROUTES__\n"
+# `auth` is the one hop name the devkit owns, because the devkit is what
+# supplies that service. Every other name belongs to the product.
+AUTH_HOP = "auth"
+UPSTREAM_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
+UPSTREAM_ADDRESS = re.compile(r"^[A-Za-z0-9.-]+:[0-9]{1,5}$")
 
 # The offsets 016-local-development.md LD4 fixes. They live here rather than in
 # ports.json because ports.json allocates blocks and says so: "Offsets within a
@@ -80,8 +89,8 @@ BLOCK = 20
 PLACEHOLDER = re.compile(r"__[A-Z][A-Z0-9_]*__")
 
 
-def substitutions(repo: str, base: int, server_port: int) -> dict[str, str]:
-    values = {"__REPO__": repo, "__SERVER_PORT__": str(server_port)}
+def substitutions(repo: str, base: int) -> dict[str, str]:
+    values = {"__REPO__": repo}
     for name, offset in OFFSETS.items():
         values[name] = str(base + offset)
     return values
@@ -106,7 +115,7 @@ def unsubstituted(text: str) -> list[str]:
     """Placeholders the renderer does not know about.
 
     A new __NAME__ added to a template upstream would otherwise be written into
-    a product's deploy/ tree verbatim, and the first thing to notice would be
+    a product's dev/ tree verbatim, and the first thing to notice would be
     nginx refusing to start. Reported here instead.
 
     The pattern requires the inside to be upper case, which is what keeps
@@ -117,71 +126,126 @@ def unsubstituted(text: str) -> list[str]:
     return sorted(set(PLACEHOLDER.findall(text)))
 
 
-def read_public(path: pathlib.Path) -> dict | None:
-    """Read and validate a deploy/public.json, or return None where there is none.
+def read_record(target: pathlib.Path) -> dict:
+    """Read and validate the product's devkit.json.
 
-    Two keys. `public` is what both layers read: paths that need no session.
-    `pages` is edge-only: authenticated paths whose upstream is not the
-    fragment's default. Each entry names a path as `exact` or `prefix` and an
-    upstream the fragment defines. A prefix is used as nginx uses it, so
-    `/admin` also matches `/administrator`; write `/admin/` when that matters.
+    Four keys. `repo` and `port_base` are what the substitution needs.
+    `upstreams` names every service the gateway can reach and where it is.
+    `routes` is the routing table: a path, the hop it goes to next, and where
+    that hop forwards to when the hop is the authentication proxy.
 
     Every problem is collected and reported at once, because a product writes
-    this file by hand and a checker that stops at the first mistake sends the
+    this by hand and a checker that stops at the first mistake sends the
     person back once per line.
     """
+    path = target / RECORD
     if not path.is_file():
-        return None
+        raise ValueError(
+            f"{path} not found. It is the product's own file and names the "
+            "repository, its port block, its upstreams and its routes; "
+            "devkit/README.md carries the shape."
+        )
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise ValueError(f"{path}: not valid JSON ({exc})") from None
-
-    problems: list[str] = []
     if not isinstance(data, dict):
         raise ValueError(f"{path}: the top level is not an object")
-    if data.get("schema_version", 1) != 1:
-        problems.append(f"schema_version {data['schema_version']!r} is not 1")
+
+    problems: list[str] = []
     for key in data:
-        if key not in ("schema_version", "public", "pages"):
+        if key not in ("repo", "port_base", "upstreams", "routes"):
             problems.append(f"unknown key {key!r}")
-    seen: set[str] = set()
-    for key in ("public", "pages"):
-        entries = data.get(key, [])
-        if not isinstance(entries, list):
-            problems.append(f"{key} is not a list")
+    if not isinstance(data.get("repo"), str) or not data.get("repo"):
+        problems.append("repo must be the repository name")
+    base = data.get("port_base")
+    if not isinstance(base, int):
+        problems.append("port_base must be the block base from ports.json")
+    elif base % BLOCK:
+        problems.append(f"port_base {base} is not a multiple of {BLOCK}")
+
+    upstreams = data.get("upstreams")
+    if not isinstance(upstreams, dict) or not upstreams:
+        problems.append("upstreams must name at least one service")
+        upstreams = {}
+    for name, address in upstreams.items():
+        if name == AUTH_HOP:
+            problems.append(f"upstreams: {AUTH_HOP!r} is the devkit's own hop "
+                            "and cannot be redeclared")
+        elif not UPSTREAM_NAME.match(name):
+            problems.append(f"upstreams: {name!r} is not a usable nginx name")
+        if not isinstance(address, str) or not UPSTREAM_ADDRESS.match(address):
+            problems.append(f"upstreams.{name}: expected host:port")
+
+    routes = data.get("routes")
+    if not isinstance(routes, list) or not routes:
+        problems.append("routes must declare at least one path")
+        routes = []
+    seen: set[tuple[str, str]] = set()
+    used: set[str] = set()
+    for n, entry in enumerate(routes):
+        where = f"routes[{n}]"
+        if not isinstance(entry, dict):
+            problems.append(f"{where}: not an object")
             continue
-        for n, entry in enumerate(entries):
-            where = f"{key}[{n}]"
-            if not isinstance(entry, dict):
-                problems.append(f"{where}: not an object")
-                continue
-            forms = [f for f in ("exact", "prefix") if f in entry]
-            if len(forms) != 1:
-                problems.append(f"{where}: exactly one of exact or prefix")
-                continue
-            form = forms[0]
-            value = entry[form]
-            if not isinstance(value, str) or not value.startswith("/"):
-                problems.append(f"{where}: {form} must be a path starting with /")
-            elif form == "prefix" and value == "/":
-                problems.append(
-                    f"{where}: prefix / would make every path public at the "
-                    "edge. A product with no login runs no edge; the "
-                    "application still reads this file.")
-            elif value in seen:
-                problems.append(f"{where}: {value} is declared twice")
+        forms = [f for f in ("exact", "prefix") if f in entry]
+        if len(forms) != 1:
+            problems.append(f"{where}: exactly one of exact or prefix")
+            continue
+        form = forms[0]
+        value = entry[form]
+        if not isinstance(value, str) or not value.startswith("/"):
+            problems.append(f"{where}: {form} must be a path starting with /")
+        elif (form, value) in seen:
+            problems.append(f"{where}: {form} {value} is declared twice")
+        else:
+            seen.add((form, value))
+
+        hop = entry.get("next")
+        if hop == AUTH_HOP:
+            then = entry.get("then")
+            if then is None:
+                problems.append(f"{where}: next is {AUTH_HOP!r}, so then must "
+                                "name where the proxy forwards afterward")
+            elif then not in upstreams:
+                problems.append(f"{where}: then {then!r} is not an upstream")
             else:
-                seen.add(value)
-            if entry.get("upstream") not in UPSTREAMS:
-                problems.append(f"{where}: upstream must be one of "
-                                f"{', '.join(UPSTREAMS)}")
-            for extra in entry:
-                if extra not in (form, "upstream"):
-                    problems.append(f"{where}: unknown key {extra!r}")
+                used.add(then)
+            answer = entry.get("no_session", "401")
+            if answer not in ("401", "redirect"):
+                problems.append(f"{where}: no_session must be 401 or redirect")
+        elif hop in upstreams:
+            used.add(hop)
+            if "then" in entry:
+                problems.append(f"{where}: then belongs only to a route whose "
+                                f"next is {AUTH_HOP!r}")
+            if "no_session" in entry:
+                problems.append(f"{where}: no_session belongs only to a route "
+                                f"whose next is {AUTH_HOP!r}")
+        else:
+            problems.append(f"{where}: next {hop!r} is neither {AUTH_HOP!r} "
+                            "nor an upstream")
+        for extra in entry:
+            if extra not in (form, "next", "then", "no_session"):
+                problems.append(f"{where}: unknown key {extra!r}")
+
+    for name in upstreams:
+        if name not in used and name != AUTH_HOP:
+            problems.append(f"upstreams.{name}: no route goes there. nginx "
+                            "resolves an upstream's host when it parses, so a "
+                            "service nothing reaches still has to be running.")
+
     if problems:
         raise ValueError(f"{path}:\n  " + "\n  ".join(problems))
     return data
+
+
+def upstreams_text(upstreams: dict[str, str]) -> str:
+    """The nginx upstream blocks, one per service the product named."""
+    return "".join(
+        f"upstream {name} {{\n    server {address};\n}}\n\n"
+        for name, address in upstreams.items()
+    )
 
 
 def template_locations(text: str) -> set[tuple[str, str]]:
@@ -190,88 +254,73 @@ def template_locations(text: str) -> set[tuple[str, str]]:
     nginx refuses a duplicate location at parse time. This renderer cannot
     run nginx, so it refuses first, naming the path. An exact and a prefix
     location on the same path are two locations to nginx, so the form is
-    part of the key: `= /` beside the template's `location /` is allowed.
+    part of the key.
     """
     found = re.findall(r"^\s*location\s+(=\s*)?(/\S*)\s*\{", text, re.M)
     return {("exact" if eq else "prefix", path) for eq, path in found}
 
 
-def routes_text(public: dict | None, template: str) -> str:
-    """The nginx locations a product's public.json renders to.
+def routes_text(routes: list[dict], template: str) -> str:
+    """The nginx locations the routing table renders to.
 
-    The rendered block opens with a comment naming its source, so a reader of
-    the rendered file knows these lines came from the product and not the
-    template. A public location carries no auth_request and clears
-    Authorization, so the backend never sees a credential on it. A page location asks for the
-    session and sends a missing one to the same sign-in redirect the template
-    has. A client upstream also gets the upgrade headers, because the dev
-    server's hot-reload socket rides the same location.
+    A route whose next hop is the authentication proxy runs the auth_request
+    subrequest, replaces the Authorization header with the ID token the proxy
+    returned, and sends a page with no session to the sign-in redirect.
+
+    A route handed straight to a service SETS NO Authorization HEADER AT ALL,
+    so whatever the client sent arrives intact. That is the whole point: the
+    service authenticates the request itself, and it cannot do that against a
+    header the gateway threw away.
+
+    Every location carries the upgrade headers, because any service may hold a
+    websocket and the map above closes the connection when no upgrade was
+    asked for.
     """
-    if public is None:
-        return ""
     taken = template_locations(template)
-    blocks = ["    # Rendered from deploy/public.json. Public paths need no session;\n"
-              "    # pages ask for one and are served from the upstream named there.\n"]
-    for key in ("public", "pages"):
-        for entry in public.get(key, []):
-            form = "exact" if "exact" in entry else "prefix"
-            path = entry[form]
-            if (form, path) in taken:
-                raise ValueError(f"{PUBLIC}: {form} {path} is already a "
-                                 "location in the devkit's edge.conf")
-            upstream = entry["upstream"]
-            head = f"    location {'= ' if form == 'exact' else ''}{path} {{\n"
-            lines = []
-            if key == "pages":
-                lines += ["        auth_request     /oauth2/auth;",
-                          "        auth_request_set $token $upstream_http_authorization;",
-                          "        error_page 401 = @sign_in;",
-                          ""]
-            if upstream == "client":
-                lines += ["        proxy_http_version                 1.1;"]
-            lines += [f"        proxy_pass                         http://{upstream};"]
-            if upstream == "client":
-                lines += ["        proxy_set_header Upgrade           $http_upgrade;",
-                          "        proxy_set_header Connection        $connection_upgrade;"]
-            lines += ["        proxy_set_header Host              $host;",
-                      "        proxy_set_header X-Real-IP         $remote_addr;",
-                      "        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;",
-                      "        proxy_set_header X-Forwarded-Proto $scheme;",
-                      "        proxy_set_header Authorization     "
-                      + ("$token;" if key == "pages" else '"";')]
-            blocks.append(head + "\n".join(lines) + "\n    }\n")
-    return "\n".join(blocks)
+    blocks = []
+    for entry in routes:
+        form = "exact" if "exact" in entry else "prefix"
+        path = entry[form]
+        if (form, path) in taken:
+            raise ValueError(f"{RECORD}: {form} {path} is already a location "
+                             "in the devkit's edge.conf")
+        guarded = entry["next"] == AUTH_HOP
+        upstream = entry["then"] if guarded else entry["next"]
+        lines = [f"    location {'= ' if form == 'exact' else ''}{path} {{"]
+        if guarded:
+            lines += ["        auth_request     /oauth2/auth;",
+                      "        auth_request_set $token $upstream_http_authorization;"]
+            if entry.get("no_session", "401") == "redirect":
+                lines.append("        error_page 401 = @sign_in;")
+            lines.append("")
+        lines += ["        proxy_http_version                 1.1;",
+                  f"        proxy_pass                         http://{upstream};",
+                  "        proxy_set_header Upgrade           $http_upgrade;",
+                  "        proxy_set_header Connection        $connection_upgrade;",
+                  "        proxy_set_header Host              $host;",
+                  "        proxy_set_header X-Real-IP         $remote_addr;",
+                  "        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;",
+                  "        proxy_set_header X-Forwarded-Proto $scheme;"]
+        if guarded:
+            lines.append("        proxy_set_header Authorization     $token;")
+        lines.append("    }")
+        blocks.append("\n".join(lines) + "\n")
+    return "\n".join(blocks) + "\n"
 
 
-def read_record(target: pathlib.Path) -> dict:
-    path = target / RECORD
-    if not path.is_file():
-        raise SystemExit(
-            f"{path} not found. A first render needs --repo, --base and "
-            "--server-port; after that the tree records them."
-        )
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def render_all(target: pathlib.Path, repo: str, base: int,
-               server_port: int, public: dict | None = None) -> list[pathlib.Path]:
-    """Write every rendered file, and return the deploy-relative paths written.
+def render_all(target: pathlib.Path, record: dict) -> list[pathlib.Path]:
+    """Write every rendered file, and return the dev-relative paths written.
 
     check-devkit-drift imports and calls this rather than carrying a second
     copy of the substitution. Two renderers would drift, and the day they
     disagreed the drift checker would be the thing certifying the drift.
 
-    `public` is the product's parsed deploy/public.json, or None. It is an
-    argument rather than read from the target because the drift checker
-    renders into a scratch tree and reads the file from the clone it judges.
-    With None the placeholder line is dropped whole, so a product that
-    declares nothing renders byte for byte what it rendered before the line
-    existed.
+    The record is passed in rather than read here, because the drift checker
+    renders into a scratch tree while reading the record from the clone it is
+    judging.
     """
-    if base % BLOCK:
-        raise ValueError(f"base {base} is not a multiple of {BLOCK}")
-
-    values = substitutions(repo, base, server_port)
+    values = substitutions(record["repo"], record["port_base"])
+    upstreams = upstreams_text(record["upstreams"])
     written = []
     for source, destination in RENDERED:
         src = DEVKIT / source
@@ -279,55 +328,39 @@ def render_all(target: pathlib.Path, repo: str, base: int,
             raise FileNotFoundError(f"devkit source not found at {src}")
         text = src.read_text(encoding="utf-8")
         if source == "nginx/edge.conf":
-            if ROUTES_LINE not in text:
-                raise ValueError(f"{source}: the routes placeholder line is missing")
-            routes = routes_text(public, text)
-            text = text.replace(ROUTES_LINE, routes + "\n" if routes else "")
+            for token in ("__UPSTREAMS__", "__ROUTES__"):
+                if token not in text:
+                    raise ValueError(f"{source}: {token} is missing")
+            text = text.replace("__UPSTREAMS__\n", upstreams)
+            text = text.replace("    __ROUTES__\n",
+                                routes_text(record["routes"], text))
         text = render(text, values)
         left = unsubstituted(text)
         if left:
             raise ValueError(f"{source}: unknown placeholder(s) {', '.join(left)}")
-        relative = pathlib.Path("deploy") / destination
+        relative = OUT / destination
         out = target / relative
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(text, encoding="utf-8")
         written.append(relative)
-
-    record = {"repo": repo, "port_base": base, "server_port": server_port}
-    (target / RECORD).write_text(json.dumps(record, indent=2) + "\n",
-                                 encoding="utf-8")
     return written
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--target", required=True, type=pathlib.Path,
-                    help="the repository to render into")
-    ap.add_argument("--repo", help="repository name, which is also the realm name")
-    ap.add_argument("--base", type=int, help="the host-port block base from ports.json")
-    ap.add_argument("--server-port", type=int,
-                    help="the container-side port the API binds, its LD1 default")
+                    help="the repository to render into, which carries devkit.json")
     args = ap.parse_args()
 
-    if args.repo is None or args.base is None or args.server_port is None:
-        record = read_record(args.target)
-        repo = args.repo or record["repo"]
-        base = args.base if args.base is not None else record["port_base"]
-        server_port = (args.server_port if args.server_port is not None
-                       else record["server_port"])
-    else:
-        repo, base, server_port = args.repo, args.base, args.server_port
-
     try:
-        public = read_public(args.target / PUBLIC)
-        written = render_all(args.target, repo, base, server_port, public)
+        record = read_record(args.target)
+        written = render_all(args.target, record)
     except (ValueError, FileNotFoundError) as exc:
         print(exc, file=sys.stderr)
         return 2
 
     for relative in written:
         print(f"rendered {relative}")
-    print(f"recorded {RECORD}")
     return 0
 
 

@@ -8,14 +8,82 @@ offsets [`standards/016-local-development.md`](../standards/016-local-developmen
 LD4 fixes.
 
 Every file here is a template. A product renders it once, commits the result
-under `deploy/`, and keeps the result equal to this source.
+under `dev/`, and keeps the result equal to this source.
+
+**The tree is `dev/` and not `deploy/`.** Every file in it is local
+development: a dev realm, dev ports, one password every persona shares. It is
+never deployed anywhere, and a directory named for deployment said the one
+thing that is not true of it.
 
 ## Rendering
 
-Three inputs decide everything: the repository name, the block base recorded
-for that repository in [`../ports.json`](../ports.json), and the container-side
-port the API binds. The base is a multiple of twenty, and every port below is
-the base plus the offset LD4 fixes for that role.
+`devkit.json` at the repository root is the whole input, and it belongs to the
+product rather than to this directory. It names the repository, its port block,
+every service the gateway can reach, and where each path goes.
+
+```json
+{
+  "repo": "credit-watch",
+  "port_base": 2900,
+  "upstreams": {
+    "app": "server:5000",
+    "client": "client:5173"
+  },
+  "routes": [
+    { "exact":  "/healthz", "next": "app" },
+    { "prefix": "/hooks/",  "next": "app" },
+    { "prefix": "/api/",    "next": "auth", "then": "app" },
+    { "prefix": "/",        "next": "auth", "then": "client", "no_session": "redirect" }
+  ]
+}
+```
+
+Render it, and re-render it after any change:
+
+```sh
+tools/render-devkit --target ../credit-watch
+```
+
+### The routing table is the whole of the product's routing
+
+`edge.conf` holds the authentication tier's own endpoints and no others. There
+is no built-in rule that `/` is a client and `/api/` is a server. That is an
+architecture this directory has no business assuming. A monolith points
+every upstream at one host. A product split into services points them at
+several. The rendered gateway cannot tell the difference and does not try.
+
+| Key | What it says |
+|---|---|
+| `upstreams` | A name the routes use, and the `host:port` behind it. The name is the product's; `auth` is reserved, because the devkit is what supplies that service |
+| `next` | The hop this path goes to. Either `auth` or one of the product's upstreams |
+| `then` | Where the authentication proxy forwards once it is satisfied. Required when `next` is `auth`, and meaningless otherwise |
+| `no_session` | What a guarded route does when nobody is signed in: `401`, or `redirect` to send a browser to the login. Defaults to `401` |
+| `exact` / `prefix` | The path, matched as nginx matches. A prefix of `/admin` also covers `/administrator`, so write `/admin/` when that matters |
+
+**A route whose `next` is a service is handed over untouched.** No
+`Authorization` line is set on it, so whatever the caller sent arrives intact.
+That is the point. A webhook signature or an API key is a credential the
+service must check, and it cannot check one the gateway threw away. Only a route the tier authenticated itself gets its `Authorization`
+replaced, with the identity token the relying party returned.
+
+**"Public" is not a category here.** A path anyone reaches with no credential
+is a route handed to a service that requires nothing on it. A share
+link and a webhook are handed straight over too, and both are authenticated,
+just not by this tier. The gateway's only question is which hop
+comes next.
+
+The renderer refuses each of these and names the entry:
+
+- a path the template already declares
+- a `next` that is neither `auth` nor a declared upstream
+- a `then` on a route that is not guarded
+- an upstream nothing routes to
+- an address that is not `host:port`
+- a port block that is not a multiple of twenty
+
+Every problem in the file is reported at once.
+
+### What is substituted, and how
 
 | Placeholder | Value |
 |---|---|
@@ -25,102 +93,37 @@ the base plus the offset LD4 fixes for that role.
 | `__PORT_DB__` | base + 2, the database |
 | `__PORT_IDP__` | base + 6, Keycloak |
 | `__PORT_IDP_MGMT__` | base + 7, Keycloak's management and health port |
-| `__SERVER_PORT__` | The container-side port the API binds, which is its LD1 default |
+| `__UPSTREAMS__` | The upstream blocks, from `upstreams` |
+| `__ROUTES__` | The locations, from `routes` |
 
-Substitution is textual and nothing else. That is what lets a drift checker
-render the source again and compare a rendered tree against this one.
+The first six are textual substitution and nothing else, which is what lets a
+drift checker render the source again and compare bytes.
 
-[`../tools/render-devkit`](../tools/render-devkit) does it. Adopt once, naming
-the three inputs:
+It writes `dev/keycloak/realm.json`, `dev/nginx/edge.conf`,
+`dev/oauth2-proxy/oauth2-proxy.cfg` and `dev/compose/auth.compose.yaml`. The
+compose fragment resolves the other three by relative path, so the rendered
+tree keeps the shape of this one.
 
-```sh
-tools/render-devkit --target ../credit-watch \
-                    --repo credit-watch --base 2900 --server-port 5000
-```
-
-It writes `deploy/keycloak/realm.json`, `deploy/nginx/edge.conf`,
-`deploy/oauth2-proxy/oauth2-proxy.cfg` and
-`deploy/compose/auth.compose.yaml`. The compose fragment resolves the other
-three by relative path, so the rendered tree keeps the shape of this one.
-
-It also writes `deploy/devkit.json`, which records the three inputs. After
-that the target re-renders from its own record and takes no arguments:
-
-```sh
-tools/render-devkit --target ../credit-watch
-```
-
-**That record is why `ports.json` is not read here.** A rendered tree has to be
-checkable from a single clone —
+**`ports.json` is not read here, and must not become the record.** A rendered
+tree has to be checkable from a single clone.
 [`../standards/016-local-development.md`](../standards/016-local-development.md)
-says why, and a repository handed to a client has to keep passing after nothing
-in this repository can see it. So the allocation lives in `ports.json`, a person
-reads the base out of it once, and the rendered tree carries it from then on.
+says why, and a repository handed to a client has to keep passing after
+nothing in this repository can see it. So the allocation lives in
+`ports.json`, a person reads the base out of it once, and `devkit.json` carries
+it from then on.
 
 **The renderer is the only implementation of the substitution.**
 [`../tools/check-devkit-drift`](../tools/check-devkit-drift) imports it rather
-than repeating it, renders into a scratch tree from the record, and compares
+than repeating it. It renders into a scratch tree from the record and compares
 bytes. Two renderers would drift, and the day they disagreed the drift checker
 would be the thing certifying the drift.
 
-### The product's own public paths
-
-[`../standards/060-auth.md`](../standards/060-auth.md) AU9 has each product
-declare once which paths need no login, in `deploy/public.json`, and has both
-the ingress and the application read it. The renderer is the ingress half.
-When the target carries the file, its entries are rendered into `edge.conf`
-in place of the `__ROUTES__` line. When it does not, that line is dropped
-whole. So a product that declares nothing renders byte for byte what it did
-before. The file is the product's own, never rendered and never checked for
-drift.
-
-```json
-{
-  "schema_version": 1,
-  "public": [
-    { "prefix": "/events/", "upstream": "server" },
-    { "exact":  "/pricing", "upstream": "client" }
-  ],
-  "pages": [
-    { "exact":  "/",      "upstream": "server" },
-    { "prefix": "/admin", "upstream": "server" }
-  ]
-}
-```
-
-| Key | Who reads it | Renders as |
-|---|---|---|
-| `public` | the ingress and the application | a location with no `auth_request` and `Authorization ""`, to the named upstream |
-| `pages` | the ingress only | a location with `auth_request` and `error_page 401 = @sign_in`, to the named upstream |
-
-`exact` renders `location = /x`; `prefix` renders `location /x` and matches
-as nginx matches, so `/admin` also covers `/administrator`. Write `/admin/`
-when that matters. `upstream` is `server` or `client`, the two the fragment
-defines. A `client` upstream also gets the upgrade headers, because the dev
-server's hot-reload socket rides the same location.
-
-`pages` exists for a product whose backend renders its own authenticated
-pages. The template sends `location /` to the client, and a prefix location
-beats it. Naming `/admin` here moves that page to the backend without
-touching the shared file. A product with the SPA on `/` needs nothing in it.
-
-The renderer refuses what nginx would refuse or what the rule forbids, and
-names the entry. Refused: a path the template already declares in the same
-form, a prefix of `/`, an upstream the fragment does not define, a pattern. A product
-with no login at all runs no edge; its `public.json` still says so for the
-application's benefit, and it is not rendered.
-
-[`public.example.json`](nginx/public.example.json) is the sample
-[`../tools/check-devkit-nginx`](../tools/check-devkit-nginx) renders with. So
-the locations this emits are parsed by the pinned nginx on every run, not
-only the template's own.
-
-Placeholders are substituted longest name first, so that
-`__PORT_IDP__` — a prefix of `__PORT_IDP_MGMT__` — cannot eat the first half of
-the longer name. The renderer then audits its own output for anything still
-matching `__NAME__` and refuses to write a file carrying one. A placeholder
-added to a template here, and not to the renderer, fails at the render rather
-than at the first `nginx -t`.
+Placeholders are substituted longest name first, so that `__PORT_IDP__`, a
+prefix of `__PORT_IDP_MGMT__`, cannot eat the first half of the longer name.
+The renderer then audits its own output for anything still matching `__NAME__`
+and refuses to write a file carrying one. A placeholder added to a template
+here, and not to the renderer, fails at the render rather than at the first
+`nginx -t`.
 
 ## The files
 
@@ -247,21 +250,16 @@ That repetition is load-bearing. nginx drops every inherited `proxy_set_header`
 inside a location that declares one of its own. A block written once at server
 level would therefore vanish from exactly the locations that matter.
 
-The skip list carries only paths a standard defines as answerable before anyone
-is known. A product's own public paths are not on it. They come from its
-`deploy/public.json` and are rendered beside it, as the Rendering section
-says.
-
-| Path | Where it comes from |
-|---|---|
-| `/healthz`, `/readyz` | [`standards/030-service.md`](../standards/030-service.md) SC1 |
-| `/config.json` | [`standards/090-web-client.md`](../standards/090-web-client.md) WC2 |
-| `/.well-known/security.txt` | [`standards/085-security-baseline.md`](../standards/085-security-baseline.md) SB7 |
-| `/api/client-errors` | [`standards/090-web-client.md`](../standards/090-web-client.md) WC5 |
-
-WC5 fixes that report's shape and not its path. So the edge names
-`/api/client-errors`. A product with a path of its own renders that line to
-match.
+Five paths are the ones every product's table carries, each defined by a
+standard as answerable before anyone is known. `/healthz` and `/readyz`
+([`standards/030-service.md`](../standards/030-service.md) SC1),
+`/config.json` and `/api/client-errors`
+([`standards/090-web-client.md`](../standards/090-web-client.md) WC2 and WC5),
+and `/.well-known/security.txt`
+([`standards/085-security-baseline.md`](../standards/085-security-baseline.md)
+SB7). They are routes like any other. A product split into services might
+serve them from somewhere other than its API, and this directory cannot know
+which.
 
 `/logout` is the RP-initiated logout of AU5 in one hop. It ends the proxy
 session and then sends the browser to the provider's end-session endpoint.
@@ -293,10 +291,10 @@ Compose validates port numbers, so both commands run against a rendered tree
 rather than against the templates.
 
 ```sh
-docker compose -f deploy/compose/auth.compose.yaml \
-               -f deploy/compose/product.example.yaml config
+docker compose -f dev/compose/auth.compose.yaml \
+               -f dev/compose/product.example.yaml config
 
-python3 -c "import json; json.load(open('deploy/keycloak/realm.json'))"
+python3 -c "import json; json.load(open('dev/keycloak/realm.json'))"
 
-nginx -t -c /path/to/a/wrapper/that/includes/deploy/nginx/edge.conf
+nginx -t -c /path/to/a/wrapper/that/includes/dev/nginx/edge.conf
 ```

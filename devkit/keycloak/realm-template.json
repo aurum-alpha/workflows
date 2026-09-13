@@ -1,0 +1,252 @@
+{
+  "realm": "__REPO__",
+  "displayName": "__REPO__ (local development)",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "registrationEmailAsUsername": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "verifyEmail": true,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "rememberMe": false,
+  "bruteForceProtected": true,
+  "defaultSignatureAlgorithm": "RS256",
+  "accessTokenLifespan": 300,
+  "accessTokenLifespanForImplicitFlow": 300,
+  "ssoSessionIdleTimeout": 28800,
+  "ssoSessionMaxLifespan": 604800,
+  "ssoSessionIdleTimeoutRememberMe": 0,
+  "ssoSessionMaxLifespanRememberMe": 0,
+  "clientSessionIdleTimeout": 0,
+  "clientSessionMaxLifespan": 0,
+  "clients": [
+    {
+      "clientId": "__REPO__",
+      "name": "__REPO__ browser session, the oauth2-proxy relying party",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "devkit-local-only-__REPO__",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": false,
+      "fullScopeAllowed": false,
+      "redirectUris": [
+        "http://localhost:__PORT_EDGE__/oauth2/callback"
+      ],
+      "webOrigins": [
+        "http://localhost:__PORT_EDGE__"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:__PORT_EDGE__/*"
+      },
+      "protocolMappers": [],
+      "defaultClientScopes": [
+        "acr",
+        "basic",
+        "email",
+        "profile",
+        "web-origins"
+      ],
+      "optionalClientScopes": []
+    },
+    {
+      "clientId": "__REPO__-admin",
+      "name": "__REPO__ control plane, the application's own credential at the provider",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "devkit-local-only-__REPO__-admin",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "redirectUris": [],
+      "webOrigins": [],
+      "protocolMappers": [],
+      "defaultClientScopes": [
+        "acr",
+        "basic",
+        "email",
+        "profile",
+        "roles",
+        "web-origins"
+      ],
+      "optionalClientScopes": []
+    },
+    {
+      "clientId": "__REPO__-devtools",
+      "name": "__REPO__ developer tooling, direct grant, local development only",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": false,
+      "redirectUris": [],
+      "webOrigins": [],
+      "protocolMappers": [],
+      "defaultClientScopes": [
+        "acr",
+        "basic",
+        "email",
+        "profile",
+        "web-origins"
+      ],
+      "optionalClientScopes": []
+    }
+  ],
+  "users": [
+    {
+      "id": "aa000001-0000-4000-8000-000000000001",
+      "username": "platform-admin",
+      "email": "platform-admin@__REPO__.test",
+      "firstName": "Platform",
+      "lastName": "Administrator",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "devkit-local-only",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "aa000002-0000-4000-8000-000000000002",
+      "username": "tenant-a-admin",
+      "email": "tenant-a-admin@__REPO__.test",
+      "firstName": "Tenant A",
+      "lastName": "Administrator",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "devkit-local-only",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "aa000003-0000-4000-8000-000000000003",
+      "username": "tenant-b-admin",
+      "email": "tenant-b-admin@__REPO__.test",
+      "firstName": "Tenant B",
+      "lastName": "Administrator",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "devkit-local-only",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "aa000004-0000-4000-8000-000000000004",
+      "username": "two-tenant-member",
+      "email": "two-tenant-member@__REPO__.test",
+      "firstName": "Two Tenant",
+      "lastName": "Member",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "devkit-local-only",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "aa000005-0000-4000-8000-000000000005",
+      "username": "single-tenant-member",
+      "email": "single-tenant-member@__REPO__.test",
+      "firstName": "Single Tenant",
+      "lastName": "Member",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "devkit-local-only",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "aa000006-0000-4000-8000-000000000006",
+      "username": "no-application-access",
+      "email": "no-application-access@__REPO__.test",
+      "firstName": "No Application",
+      "lastName": "Access",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "devkit-local-only",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "aa000007-0000-4000-8000-000000000007",
+      "username": "deactivated-member",
+      "email": "deactivated-member@__REPO__.test",
+      "firstName": "Deactivated",
+      "lastName": "Member",
+      "enabled": false,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "devkit-local-only",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "aa000008-0000-4000-8000-000000000008",
+      "username": "unverified-email-member",
+      "email": "unverified-email-member@__REPO__.test",
+      "firstName": "Unverified Email",
+      "lastName": "Member",
+      "enabled": true,
+      "emailVerified": false,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "devkit-local-only",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "service-account-__REPO__-admin",
+      "enabled": true,
+      "emailVerified": true,
+      "serviceAccountClientId": "__REPO__-admin",
+      "clientRoles": {
+        "realm-management": [
+          "manage-users",
+          "view-users",
+          "query-users"
+        ]
+      }
+    }
+  ]
+}

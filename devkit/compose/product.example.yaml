@@ -1,0 +1,62 @@
+# The three services auth.compose.yaml expects the product to define, as a
+# worked example. A product writes these into its own compose.yaml at the
+# repository root, beside the include of the fragment.
+#
+# It is also how the fragment is validated without a daemon:
+#
+#   docker compose -f devkit/compose/auth.compose.yaml \
+#                  -f devkit/compose/product.example.yaml config
+#
+# Host ports are the block's fixed offsets: the API at +1, the database at +2.
+# The client dev server publishes nothing, because the edge at +0 is the
+# address a person types (016-local-development.md LD4).
+
+services:
+  db:
+    image: postgres:17.5-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: __REPO__
+      POSTGRES_PASSWORD: devkit-local-only
+      POSTGRES_DB: __REPO__
+    ports:
+      - "__PORT_DB__:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U __REPO__ -d __REPO__"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  api:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.dev
+    restart: unless-stopped
+    working_dir: /app
+    ports:
+      - "__PORT_API__:__API_PORT__"
+    volumes:
+      - ../..:/app
+      - api_deps:/app/node_modules
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  client:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.dev
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ../..:/app
+      - client_deps:/app/node_modules
+
+volumes:
+  db_data:
+  api_deps:
+  client_deps:

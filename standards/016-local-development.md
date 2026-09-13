@@ -101,8 +101,8 @@ rather than one per project.
 
 | Offset | Role | Offset | Role |
 |---|---|---|---|
-| +0 | main ingress, over HTTP | +8 | ingress over TLS |
-| +1 | the API, where separately addressable | +9 | debugger |
+| +0 | the edge, over HTTP | +8 | the edge, over TLS |
+| +1 | the API, reached directly with a token | +9 | debugger |
 | +2 | primary database | +10 / +11 | mail, SMTP and its UI |
 | +3 | database admin UI | +12 | observability UI |
 | +4 | object storage API | +13 / +14 | telemetry, gRPC and HTTP |
@@ -110,12 +110,22 @@ rather than one per project.
 | +6 | identity provider | +16 to +19 | spare, project-specific |
 | +7 | identity management and health | | |
 
-**Offset zero is defined by what a person types into a browser.** Nothing else
+**Offset zero is defined by what a person types into a browser**. Nothing else
 defines it. Where a client development server hosts the pages and proxies the
-API, that server takes offset zero. The API then takes offset one. Where one
-process serves both, it takes offset zero and offset one stays vacant. Giving
-offset zero to the backend, as the deployed thing, leaves a documented main
-ingress that answers nothing in local development.
+API, that server takes offset zero. Where one process serves both, it takes
+offset zero and offset one stays vacant. Giving offset zero to the backend, as
+the deployed thing, leaves a documented main ingress that answers nothing in
+local development.
+
+**Offset zero is the edge**: the one process a browser is pointed at, and the
+one that routes to everything else. A stack fronted by a proxy gives that proxy
+offset zero, for the same reason a client development server takes it. The rule
+is one rule, and the edge is whatever answers the address a person types.
+
+**Offset one is the API**, published so that a developer reaches it directly
+with a token. That is the only reason it is published. A browser goes to the
+edge, and a request that arrives at offset one has skipped whatever the edge
+does.
 
 **There is no separate native allocation.** Native and containerised runs bind
 the same defaults. A person running two projects natively sets `PORT` for one

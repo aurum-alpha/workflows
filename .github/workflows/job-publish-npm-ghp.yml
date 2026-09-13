@@ -165,15 +165,6 @@ jobs:
       # (rule CM), because the manifest in the tarball is the only place that
       # rendering has to exist.
       packages: write
-    env:
-      # Suppress prepack / prepare / prepublishOnly on every pnpm invocation in
-      # this job. Verified against pnpm 10.34.5: `pnpm pack --ignore-scripts` is
-      # rejected as an unknown option, and this env var is what actually takes
-      # (a `prepack` writing a sentinel file ran without it and did not with
-      # it). It is a structural guarantee of the paragraph at the top of this
-      # file — a publish job that runs a build script is producing bytes no gate
-      # has seen, whatever its comments say.
-      npm_config_ignore_scripts: "true"
     steps:
       # Shallow. The release decision is an input, so there is no parent commit
       # to diff against here — the job that produced `version_changed` is the
@@ -434,6 +425,9 @@ jobs:
         env:
           PACKAGES: ${{ inputs.packages }}
           VERSION: ${{ inputs.version }}
+          # Suppresses prepack / prepare / prepublishOnly; see the note on
+          # "Pack each package" for why this is per-step and never job-level.
+          npm_config_ignore_scripts: "true"
         shell: bash
         run: |
           set -euo pipefail
@@ -465,6 +459,19 @@ jobs:
       - name: Pack each package
         env:
           PACKAGES: ${{ inputs.packages }}
+          # Suppress prepack / prepare / prepublishOnly. Verified against pnpm
+          # 10.34.5: `pnpm pack --ignore-scripts` is rejected as an unknown
+          # option, and this env var is what actually takes (a `prepack`
+          # writing a sentinel file ran without it and did not with it). It is
+          # the structural guarantee behind the paragraph at the top of this
+          # file — a publish job that runs a build script is producing bytes no
+          # gate has seen, whatever its comments say.
+          #
+          # PER-STEP, never on the job. As a job-level env it also reached
+          # pnpm/action-setup's self-installer, whose postinstall is what puts
+          # the real @pnpm/exe binary in place; suppressed, the installer left
+          # a stub that exits 127 and no pnpm ran at all.
+          npm_config_ignore_scripts: "true"
         shell: bash
         run: |
           set -euo pipefail
@@ -592,6 +599,9 @@ jobs:
                 && github.event_name != 'pull_request') }}
         env:
           NODE_AUTH_TOKEN: ${{ github.token }}
+          # Suppresses prepack / prepare / prepublishOnly; see the note on
+          # "Pack each package" for why this is per-step and never job-level.
+          npm_config_ignore_scripts: "true"
         shell: bash
         run: |
           set -euo pipefail
@@ -615,6 +625,9 @@ jobs:
           && github.event_name != 'pull_request'
         env:
           NODE_AUTH_TOKEN: ${{ github.token }}
+          # Suppresses prepack / prepare / prepublishOnly; see the note on
+          # "Pack each package" for why this is per-step and never job-level.
+          npm_config_ignore_scripts: "true"
         shell: bash
         run: |
           set -euo pipefail

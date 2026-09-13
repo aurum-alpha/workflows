@@ -13,18 +13,22 @@ A repository with no reason to choose otherwise takes this one.
 | Choice | The route | Why |
 |---|---|---|
 | The edge | **nginx**, with **oauth2-proxy** behind `auth_request` | One routing table serves the static files, a client development server and a backend in any language. The relying party stays one job behind that table, so a second backend is a new upstream rather than a second authentication implementation. |
-| The token | **AU2 form (a)**: the provider's ID token, forwarded as `Authorization: Bearer` | No off-the-shelf proxy mints form (b)'s intermediary token, so form (b) here would be first-party code in the tier AU1 exists to keep free of it. |
+| The token | The provider's RFC 9068 access token, audience-scoped to the backend | AU2 admits one form. The proxy obtains it and forwards it; nothing at the edge signs anything. |
 
 That edge is the `oauth2-proxy` row below. It sits behind nginx's
 `auth_request` rather than in front of the API. nginx stays the one routing
 table, and oauth2-proxy answers the subrequest.
 
-**Form (a) makes signature verification a backend obligation rather than a
-proxy guarantee**. Under form (b) the tier is the only thing that signs, and a
-backend trusts one key. Under form (a) each backend verifies the signature, the
-issuer, the audience and the expiry against the provider's JWKS. A backend that
-decodes without verifying is an unauthenticated service. AU2 says so for
-both admitted forms, and this route is the one where it is load-bearing.
+**Signature verification is a backend obligation on this route**. Each backend
+runs AU2's five checks against the provider's JWKS: the `typ` header, the
+issuer, the audience, the signature and the expiry. A backend that decodes
+without verifying is an unauthenticated service.
+
+**oauth2-proxy puts the ID token in `Authorization` and the access token in
+`X-Forwarded-Access-Token`**. AU2's token is the access token, so a backend on
+this route reads that header. Carrying the access token in `Authorization` is
+an open request upstream. AU2 asks the repository to name the header it uses
+in its **Conventions**, and this is the route that needs it named.
 
 **The development configuration is split-horizon, and that breaks discovery**.
 The browser reaches the provider at one host. A backend inside the network
@@ -43,7 +47,7 @@ These modules deliver AU1's edge authentication with no first-party code.
 | `mod_auth_openidc` | Apache httpd | The longest-standing of these; an OpenID Connect relying party as an Apache module. |
 | `lua-resty-openidc` | OpenResty, or nginx built with the Lua module | **Verify the build first.** Stock open-source nginx does not run it; a platform standardised on plain nginx is choosing a different row, not this one. |
 | `oauth2-proxy` | Its own process, in front of the API | A standalone proxy rather than a module, which suits a platform whose edge is not one of the two above. Still AU7's B1 shape: the OAuth client is at the edge and the API server is not internet-facing. |
-| An edge proxy's built-in OIDC filter | The service mesh or ingress | Verify that it holds the tokens and mints AU2's identity token rather than passing the provider's token through, which is the failure AU2 exists to prevent. |
+| An edge proxy's built-in OIDC filter | The service mesh or ingress | Verify that it holds the tokens and forwards the provider's access token, audience-scoped to the backend. A filter forwarding the ID token to an API is refused by AU2. |
 
 ## The identity provider (AU3, AU4, AU6)
 
@@ -70,7 +74,20 @@ What to verify on any of them, in this order:
    checked. It matters only for AU4's provider-is-source mode, where an HR or
    identity-governance system owns the workforce lifecycle and provisions
    into the provider.
-4. **Whether back-channel logout is supported**, for AU5's revocation not
+4. **Whether the provider emits RFC 9068 access tokens, and how it is
+   switched on**. AU2 pins the `typ` header to `at+jwt`, and a resource server
+   rejects any other value. In Keycloak this is the client setting *Use
+   'at+jwt' as access token header type*, and it is **off by default** for
+   backward compatibility.
+5. **Whether the provider restricts the audience, and by which mechanism.**
+   AU2 wants the backend's resource indicator in `aud`. Either RFC 8707's
+   `resource` parameter or a provider audience mapper reaches it. Keycloak
+   uses an Audience protocol mapper on the client.
+6. **Whether `auth_time`, `amr` and `sid` reach the access token.** RFC 9068
+   makes the first two optional and defines no `sid`, and AU2 requires all
+   three. Without `auth_time` a step-up decision is undecidable, and 082 DR2's
+   fifteen-minute window has nothing to read.
+7. **Whether back-channel logout is supported**, for AU5's revocation not
    waiting on session expiry. **The default route above does not support it**,
    whatever the provider offers: oauth2-proxy has no back-channel logout
    endpoint for a provider to post to. On that route AU5's revocation rests on
@@ -82,7 +99,9 @@ What to verify on any of them, in this order:
 | Route | Refused by |
 |---|---|
 | An OIDC library linked into the application as the authentication chain | **AU1**, which admits an application-code BFF only where the repository states the reason in **Conventions** and accepts AU7's costs. |
-| A token the backend decodes and does not verify | **AU2**, which requires the signature, the expiry and key rotation to be checked on both admitted forms. A parsed token is no check at all. |
-| Plain injected headers, with no network isolation stated and enforced | **AU2** form (c). An unsigned header rests an authentication guarantee on a topology property, and that property is usually written down nowhere. |
+| A token the backend decodes and does not verify | **AU2**, which requires the `typ` header, the issuer, the audience, the signature and the expiry to be checked. A parsed token is no check at all. |
+| The provider's ID token forwarded as a bearer to an API | **AU2** and RFC 9068 section 4. An ID token asserts who authenticated to a client, carries no audience for the backend, and is rejected on its `typ`. |
+| A bespoke identity token the proxy mints for the internal hop | **PC2**. RFC 9068 fixes the shape, RFC 8707 and RFC 9700 restrict the audience, and RFC 8693 puts the minting at the authorization server. |
+| Plain injected headers, with or without network isolation | **AU2**, which admits one form. An unsigned header rests an authentication guarantee on a topology property nobody writes down. |
 | Roles or groups read from the provider's token to decide access | **070 RB1** and 060's own boundary: the provider supplies identity, never authorization. |
 | The email address used as the application's key for a person | **AU3**. The link is on `sub`; an email change must cost nothing. |

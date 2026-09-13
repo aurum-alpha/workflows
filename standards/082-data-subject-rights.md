@@ -91,7 +91,7 @@ the request id per 057 JB2. A retried click, a retried request and a
 redelivered message produce one export and one erasure.
 
 **Verification is a contract**: an erasure is created or cancelled only when
-the requester's `auth_time` (060 AU2) is within fifteen minutes. Otherwise the
+the requester's `auth_time`, the access token claim AU2 requires, is within fifteen minutes. Otherwise the
 answer is `403 step-up-required`, and the client re-authenticates rather than
 retrying. Fifteen minutes completes the flow and leaves an unattended session
 unable to destroy an account. An export needs the session alone: it reveals to

@@ -42,116 +42,132 @@ at all. [`solutions/060-auth.md`](../solutions/060-auth.md) names which.
 An application-code BFF is admitted where a repository states the reason in its
 **Conventions**. AU7 sets out what that choice costs.
 
-#### The application does talk to the provider, on one plane only
+#### The application does talk to the provider, on two planes, and one of them is narrow
 
-*Never in the authentication chain* is a statement about the data plane.
+*Never in the authentication chain* is a statement about the token lifecycle.
+The application performs no code exchange, no refresh, no rotation, no
+revocation and no session management. Every one of those belongs to the proxy.
 
 - **Control plane**: the application calls the provider directly, to provision
   identities (AU4). This is admin-triggered, and it is where the
   application's own credential for the provider lives.
-- **Data plane**: the application never calls the provider. It validates what
-  the proxy hands it and nothing else.
+- **Data plane**: the application fetches the provider's public keys, and
+  makes no other call. Verifying a signature needs the key that made it, so
+  key distribution is the one contact the data plane has. It is stated here
+  rather than left as an unwritten exception to the rule above.
 
-### AU2. One signed identity token crosses the proxy to the backend
+Three operational notes follow from that one call. The keys are cached, so a
+request does not wait on the provider. An unknown `kid` triggers one refresh,
+throttled, because an attacker choosing key identifiers otherwise chooses how
+often the backend calls out. A provider the backend cannot reach is reported
+as degraded rather than failing readiness. A cached key set keeps serving
+every token it already covers.
 
-Three forms could cross that hop. Two are admitted and one is discouraged,
-because they differ in what the backend is actually trusting.
+### AU2. One access token crosses to the backend, and the backend verifies it
 
-| | What crosses | The backend validates | Admitted |
-|---|---|---|---|
-| **(a)** | The provider's ID token, forwarded as a bearer | against the provider's JWKS | yes |
-| **(b)** | A signed identity token the proxy mints | against the proxy's key | **yes, preferred** |
-| **(c)** | Plain injected headers | nothing | **discouraged** |
+There is one way an application receives identity. It is **an access token
+the identity provider issued, profiled on
+[RFC 9068](https://www.rfc-editor.org/rfc/rfc9068.html)**. The token is
+audience-restricted to that one backend, and the backend verifies it against
+the provider's JWKS. No other form is admitted.
 
-**(b) is preferred** because it is an intermediary data standard. The backend
-receives one identity shape whatever provider sits behind the proxy. That is
-what makes providers swappable in practice rather than in principle.
+This is what [RFC 10017 / BCP 212](https://www.rfc-editor.org/rfc/rfc10017.html)
+describes, and AU1 already adopts that document whole. Section 6.1 gives the
+relying party's third responsibility as forwarding requests to a resource
+server, augmenting them with the correct access token. The RFC names no other
+token on that hop.
 
-**(a) forwards the ID token and never the access token.** Both cross the same
-hop, and a proxy will hand over either. They answer different questions. An ID
-token asserts who authenticated. Its audience is the client, so `aud` names
-exactly the application. The audience check below then means what this rule
-wants it to mean.
+**The proxy does not mint a token of its own.** An intermediary shape the
+proxy signs is an internal contract. PC2 admits one only where no standard
+suffices, and three standards suffice here. RFC 9068 fixes the JWT
+access token shape across vendors, so one shape does not need inventing.
+[RFC 8707](https://www.rfc-editor.org/rfc/rfc8707.html) and
+[RFC 9700 / BCP 240](https://www.rfc-editor.org/rfc/rfc9700.html) section 2.3
+give the audience restriction that stops one backend's token working at
+another. [RFC 8693](https://www.rfc-editor.org/rfc/rfc8693.html) covers the
+swap case, and in it the authorization server mints rather than the proxy.
 
-An access token authorises a call to a resource server. Its audience is that
-server, often the provider itself. The client id frequently rides along beside
-it. That makes `aud` too weak to carry an authentication decision. The ID token
-also carries OIDC's registered identity claims by definition. An access token's
-contents are the provider's to choose.
+**Plain injected headers are not admitted.** A header carries no signature,
+so there is nothing for the backend to verify. Authentication would rest
+entirely on nothing being able to reach the backend except through the proxy.
+That is a topology property holding up an authentication guarantee, and it is
+written down nowhere.
 
-Under (a) the token's own shape is OIDC's rather than ours. The claim set below
-governs (b).
+**Forbidden: any browser-based OIDC client requiring a credential compiled
+into a frontend bundle**. No client secret, no provider credential, nothing
+that lets a page complete an exchange itself. Native and mobile clients are a
+separate case with no same-origin model to lean on, and they are out of scope
+here.
 
-**(a) and (b) both require the backend to verify the signature**, not merely
-decode the token. The backend must also enforce expiry and handle key rotation.
-A parsed but unverified token is no check at all.
+#### Why the backend's job is this small
 
-**(c) is admitted only where network isolation is stated and enforced**, and it
-is a migration source rather than a target. Injected headers carry no
-signature. Authentication then rests entirely on nothing being able to reach
-the backend except through the proxy. That is a topology property, holding up
-an authentication guarantee, and it is usually written down nowhere.
-
-**Forbidden in all cases: any browser-based OIDC client requiring a credential
-compiled into a frontend bundle**. No client secret, no provider credential,
-nothing that lets a page complete an exchange itself. Native and mobile clients
-are a separate case with no same-origin model to lean on, and they are out of
-scope here.
+A session binds a credential to a known user and a known source. That binding
+is authentication, and it belongs to the tier, along with the caching that
+stops a person logging in on every request. The application asks the token
+one question: who is authenticated. Where the request came from is a real
+concern and it is the proxy's. The application's own code concerns itself
+with authorization, which is [`070-rbac.md`](070-rbac.md)'s.
 
 #### The claim set
 
-The token of (b), shaped by
-[`contracts/auth/identity-token.schema.json`](../contracts/auth/identity-token.schema.json):
+The token, shaped by
+[`contracts/auth/access-token.schema.json`](../contracts/auth/access-token.schema.json):
 
 ```json
 {
-  "iss": "https://rp.aurumalpha.dev",
-  "aud": "billing-api",
+  "iss": "https://id.aurumalpha.dev/realms/aurum",
+  "aud": "https://billing.aurumalpha.dev",
+  "sub": "f7c1d2e8-5a44-4b91-9c3e-2d8a1b0f6e77",
+  "client_id": "edge-rp",
   "exp": 1788312045,
   "iat": 1788311745,
   "jti": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
   "auth_time": 1788309000,
   "amr": ["pwd", "otp"],
-  "identity": {
-    "issuer":  "https://id.aurumalpha.dev/realms/aurum",
-    "subject": "f7c1d2e8-5a44-4b91-9c3e-2d8a1b0f6e77",
-    "email": "someone@example.com",
-    "email_verified": true,
-    "name": "Someone Example"
-  },
-  "session_id": "8fK2mQ7xW3pLzR"
+  "sid": "8fK2mQ7xW3pLzR",
+  "email": "someone@example.com",
+  "email_verified": true,
+  "name": "Someone Example"
 }
 ```
 
-Each field is a decision:
+The profile pins what RFC 9068 leaves open. Pinning an optional claim is what
+PC2 means by profiling a standard rather than replacing it.
 
-- **`iss` is the proxy, not the identity provider**. It names who signed this
-  token, which is what the backend validates against. The identity's own issuer
-  is nested, because `(issuer, subject)` is the link key of AU3 and has to travel
-  as a unit. Flattening them is how an application ends up keying on the wrong
-  issuer.
-- **`aud` names the application and is enforced**. Without that check, a token
-  minted for one application replays against another.
-- **`exp` is short**. Five minutes, because this is an internal hop rather than
-  a user session. This is also the backstop of AU5.
-- **`auth_time` and `amr`** are present so an application can require step-up
-  for a sensitive operation without needing to understand how authentication
-  happened.
-- **`session_id`** is present for correlation and for back-channel logout.
-- **`identity.email` and `identity.name` are cached display attributes**. They
-  are never keys, per AU3.
-- **Nothing about authorization appears**. No roles, no groups, no permissions,
-  no tenant assignment. A token carrying them would make every application's
-  access control depend on provider configuration. That is the failure this
-  standard exists to prevent.
+| Claim | RFC 9068 | This profile | Why |
+|---|---|---|---|
+| `typ` header | `at+jwt` | as the RFC | Section 4 makes the resource server reject any other value. This is what stops an ID token being accepted as an access token. |
+| `iss` | required | the identity provider | Half the AU3 link key, and where the JWKS is fetched from. |
+| `sub` | required | the provider's subject | The other half. Opaque, never displayed, never parsed. |
+| `aud` | required | the one backend's resource indicator | RFC 9700 section 2.3. Obtained with RFC 8707 `resource` or a provider audience mapper. |
+| `client_id` | required | the proxy's client | Names the relying party that obtained the token. |
+| `exp`, `iat`, `jti` | required | as the RFC, `exp` pinned to five minutes | Five, because this is an internal hop rather than a user session. This is the backstop of AU5. |
+| `auth_time`, `amr` | optional (2.2.1) | **required** | Step-up for a sensitive operation, without the application understanding how authentication happened. Also DR2's fifteen-minute window. |
+| `sid` | not defined | **required** | The registered OIDC claim for the login session. Correlation, back-channel logout, and the tenant binding key of AU8. |
+| `email`, `email_verified`, `name` | permitted (2.2.2) | optional, display only | Registered claim names, per the RFC's preference for them. Never keys, per AU3. |
+| `groups`, `roles`, `entitlements`, `scope` | permitted where the provider emits them (2.2.3) | **never read for authorization** | A provider emits what it emits. Reading one would make every application's access control depend on provider configuration, which is the failure this standard exists to prevent. |
 
-**One convention conflict, stated rather than left silent**. Registered JWT and
-OIDC claims keep their RFC spelling and NumericDate encoding: `exp`, `iat`,
-`auth_time`, `amr`. This holds even though
+**The validation order is RFC 9068 section 4's**, and it is normative here:
+
+1. Verify the `typ` header is `at+jwt`, and refuse anything else.
+2. Match `iss` exactly against the configured issuer string.
+3. Verify `aud` names this backend.
+4. Verify the signature against the provider's JWKS, and refuse `alg: none`.
+5. Check `exp`.
+
+A parsed but unverified token is no check at all. The backend also handles key
+rotation, which AU1 sets out.
+
+**Presentation is [RFC 6750](https://www.rfc-editor.org/rfc/rfc6750.html)**:
+`Authorization: Bearer`. Where the proxy cannot put the access token there,
+the repository names the header it uses in its own **Conventions**.
+
+**One convention conflict, stated rather than left silent**. Registered JWT
+and OIDC claims keep their RFC spelling and NumericDate encoding: `exp`,
+`iat`, `auth_time`, `amr`. This holds even though
 [`020-identifiers.md`](020-identifiers.md) IP4 otherwise minimises Unix-epoch
 timestamps. Adopting a standard whole is what PC2 asks, and renaming half a
-registered claim set breaks every library that reads it. Locally added claims
-follow the same conventions: snake_case, and RFC 3339 where they carry a time.
+registered claim set breaks every library that reads it.
 
 ### AU3. An application stores a reference to the subject, never adopts it as a key
 
@@ -160,14 +176,14 @@ migration disasters.
 
 | Value | Its job | The rule |
 |---|---|---|
-| `(issuer, subject)` | **The identity.** | The only value stored as the link. Opaque, never displayed, never parsed. |
+| `(iss, sub)` | **The identity.** | The only value stored as the link, read straight off the token. Opaque, never displayed, never parsed. |
 | Email | The matching key at provisioning, the invitation channel, a cached display attribute. | **Never a foreign key.** Unique and verified within the identity domain. |
 | Username | The provider's login handle, where a domain uses one. | Never crosses to the application as an identifier. |
 
 **The application keeps its own user primary key**. Per IP1, an externally
 minted identifier is not the application's own. Beside it, the application
-keeps an identity-link record holding `(issuer, subject)`. The external key is
-the **pair**, never `subject` alone. OIDC guarantees a subject is unique and
+keeps an identity-link record holding `(iss, sub)`. The external key is
+the **pair**, never `sub` alone. OIDC guarantees a subject is unique and
 never reassigned only *within* an issuer.
 
 A provider migration is then: add a second link row per user, cut over, drop the
@@ -262,8 +278,7 @@ product lets a person register at the provider with no directory behind it.
 
 **Two conditions hold, and the mode needs both of them:**
 
-- **The email is verified.** `identity.email_verified` is true in the token of
-  AU2. An unverified address is a claim about a mailbox that belongs to
+- **The email is verified.** `email_verified` is true in the token of AU2. An unverified address is a claim about a mailbox that belongs to
   somebody else.
 - **The product declares the grant a new person receives**, as a role and a
   scope under [`070-rbac.md`](070-rbac.md) RB5. Without it an authenticated
@@ -286,7 +301,7 @@ the provider.
 - **Revocation uses OIDC Back-Channel Logout**. The provider posts a logout token
   to the proxy and the proxy destroys the session. It is the standard for exactly
   this, so PC2 says adopt it rather than invent a polling scheme.
-- **The short forwarded token is the backstop**. At five minutes (AU2), a
+- **The short access token is the backstop**. At five minutes (AU2), a
   disabled identity stops working within one refresh cycle even where
   back-channel logout is unsupported or broken. That bounds the damage without depending on a
   mechanism that might not fire.
@@ -307,7 +322,7 @@ first login, so no unknown subject reaches this refusal.
 
 ```mermaid
 flowchart LR
-    T["identity token<br/>(issuer, subject)"] --> L{"known<br/>subject?"}
+    T["access token<br/>(iss, sub)"] --> L{"known<br/>subject?"}
     L -->|yes| R["the app's own RBAC decides"]
     L -->|no| X["403, then end the session"]
 ```
@@ -417,7 +432,7 @@ Two variants, and only one box differs between them.
 |---|---|---|
 | The OAuth client is | the proxy at the edge | the API server |
 | Tokens live | in the proxy, never in application memory | in the application process |
-| The API server receives | a signed identity token | its own session |
+| The API server receives | the provider's access token | its own session |
 | API server internet-facing | no | yes |
 | Scaling out horizontally | the proxy's concern | needs a shared session store or sticky sessions |
 | An OIDC library as a runtime dependency | none | one, per language |
@@ -449,8 +464,7 @@ provider's and the commercial architecture's, not this document's.
   than a second mechanism beside it. A session still authenticates into
   exactly one tenant.
 - **The binding lives per login session, and never on the user record**. Its
-  key is the identity provider's session id, which AU2 carries as
-  `session_id`. Two logins by one person are two sessions, and each holds its
+  key is the identity provider's session id, which AU2 carries as `sid`. Two logins by one person are two sessions, and each holds its
   own active grant. A binding on the user record makes one device's choice
   change another device's scope.
 - **Whether the active grant changes inside a session is a product choice**,
@@ -507,8 +521,8 @@ So there is no authentication switch in the gateway. **Choosing the hop is the
 authentication decision**, and everything else follows from it.
 
 - **A route sent to the relying party** requires a user principal from the
-  provider. The proxy runs the login, holds the session, and replaces the
-  `Authorization` header with the identity token before the request goes on.
+  provider. The proxy runs the login, holds the session, and puts the access
+  token of AU2 in the `Authorization` header before the request goes on.
 - **A route sent straight to a service** is that service's to authenticate. It
   arrives with every header intact, because the credential the service must
   check travels in one of them.
@@ -524,7 +538,7 @@ flowchart TD
     G -->|"relying party"| P{"session?"}
     P -->|"no · page"| L["302 to the provider"]
     P -->|"no · API"| U["401"]
-    P -->|yes| T["set Authorization<br/>to the identity token"]
+    P -->|yes| T["set Authorization<br/>to the access token"]
     G -->|"a service"| S["forward untouched"]
     T --> A
     S --> A["the service"]
@@ -581,19 +595,42 @@ same code, never a second mode.
 
 Per PC3, under [`contracts/auth/`](../contracts/auth/):
 
-- **`identity-token.schema.json`**: the AU2 claim set, `$ref`-ing the
-  identifiers contract for its subject format.
+- **`access-token.schema.json`**: the AU2 claim set, and the claims a token
+  carries that nothing reads.
 - **`me.schema.json`**: the AU6 client identity document.
 - **`grants.schema.json`**: the AU8 session grants view, `$ref`-ing the RBAC
   contract for the grant. It is a rendering input and never a control, and it
   carries no permission for any grant. What a grant can do is the `me`
   document's answer for the active one. Listing the others' would put a union
   on screen.
-- **`corpus.json`**: validity cases for both, plus behavioural cases a live
-  deployment must satisfy.
+- **`corpus.json`**: validity cases for the token and the client identity
+  document, plus behavioural cases a live deployment must satisfy.
 
 ## Decisions
 
+- **A proxy-minted identity token, as the preferred form**. One shape would
+  reach every backend whatever provider sat behind the proxy, which is a real
+  benefit. It is also an internal contract, and PC2 admits one only where no
+  standard suffices. RFC 9068 fixes the shape, RFC 8707 and RFC 9700 restrict
+  the audience, and RFC 8693 covers the swap with the authorization server
+  minting. RFC 10017, which AU1 adopts whole, describes the provider's access
+  token and no other (AU2).
+- **The transaction-tokens draft, as the standard that would have admitted
+  minting**. `draft-ietf-oauth-transaction-tokens` is the one document
+  describing an edge-minted internal token. It is an Internet-Draft that has
+  not reached the IESG, and it expires in January 2027. Even in it a separate
+  Transaction Token Service mints, rather than the edge signing for itself.
+  This is the candidate PC2 asks a standard to name (AU2).
+- **Plain injected headers, admitted where network isolation is enforced**.
+  Not admitted, and nothing stands in their place. A header carries no
+  signature, so a backend has nothing to verify. The guarantee would rest on
+  a topology property, which is the condition rather than a mitigation of it
+  (AU2).
+- **The cost of one admitted form, stated plainly**. A provider emits
+  `roles` or `groups` where someone configured it to, and the token is valid
+  with them present. Under a minted shape the field could not exist at all.
+  Now the rule is a rule rather than an absent field, and the corpus tests it
+  as behaviour rather than as validity (AU2).
 - **A public-or-not switch at the gateway**. It reads well until the routes
   that are neither arrive. A share link and a webhook signature are
   credentials, so calling those routes public groups them with the one case

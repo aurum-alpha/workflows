@@ -64,7 +64,7 @@ several. The rendered gateway cannot tell the difference and does not try.
 `Authorization` line is set on it, so whatever the caller sent arrives intact.
 That is the point. A webhook signature or an API key is a credential the
 service must check, and it cannot check one the gateway threw away. Only a route the tier authenticated itself gets its `Authorization`
-replaced, with the identity token the relying party returned.
+replaced, with the access token the relying party obtained (060 AU2).
 
 **"Public" is not a category here.** A path anyone reaches with no credential
 is a route handed to a service that requires nothing on it. A share
@@ -268,8 +268,8 @@ click signs the person straight back in.
 
 The API is also published at offset +1, which is how a developer reaches it
 directly with a token. That path skips the edge by design. It is safe because
-form (a) makes the backend verify the token for itself. The signature, the
-issuer, the audience and the expiry are all checked there.
+AU2 makes the backend verify the token for itself. The `typ` header, the
+issuer, the audience, the signature and the expiry are all checked there.
 
 ## What the product supplies
 

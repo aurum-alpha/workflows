@@ -84,9 +84,11 @@ What to verify on any of them, in this order:
    `resource` parameter or a provider audience mapper reaches it. Keycloak
    uses an Audience protocol mapper on the client.
 6. **Whether `auth_time`, `amr` and `sid` reach the access token.** RFC 9068
-   makes the first two optional and defines no `sid`, and AU2 requires all
-   three. Without `auth_time` a step-up decision is undecidable, and 082 DR2's
-   fifteen-minute window has nothing to read.
+   section 2.2.1 makes the first two optional, and it defines no `sid` at all.
+   AU2 adds no requirement of its own. So this item decides whether two rules
+   work at a given provider. 082 DR2's step-up window reads `auth_time`, and
+   AU8's tenant binding keys on `sid`. A provider emitting
+   neither is a provider those two rules cannot run against.
 7. **Whether back-channel logout is supported**, for AU5's revocation not
    waiting on session expiry. **The default route above does not support it**,
    whatever the provider offers: oauth2-proxy has no back-channel logout

@@ -1,93 +1,8 @@
 {
   "contract": "auth",
   "schemaVersion": 1,
-  "description": "Conformance corpus for standards/060-auth.md. 'validity': the value must validate (or fail) against the named schema root — 'access-token' or 'me'. 'behaviour': black-box cases a live deployment must satisfy. An implementation passes the whole file or names the case it fails.",
+  "description": "Conformance corpus for standards/060-auth.md. 'validity': the value must validate (or fail) against the named schema root. The AU2 access token has no root here on purpose — its shape is RFC 9068's and this repository describes none of it, so every claim about the token is a live case under 'behaviour'. 'behaviour': black-box cases a live deployment must satisfy. An implementation passes the whole file or names the case it fails.",
   "validity": [
-    {
-      "id": "token-minimal-ok",
-      "def": "access-token",
-      "value": {
-        "iss": "https://id.aurumalpha.dev/realms/aurum",
-        "sub": "f7c1d2e8-5a44-4b91-9c3e-2d8a1b0f6e77",
-        "aud": "https://billing.aurumalpha.dev",
-        "client_id": "edge-rp",
-        "exp": 1788312045,
-        "iat": 1788311745,
-        "jti": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
-        "auth_time": 1788309000,
-        "amr": [
-          "pwd",
-          "otp"
-        ],
-        "sid": "8fK2mQ7xW3pLzR"
-      },
-      "valid": true,
-      "note": "the irreducible token: the link key (iss, sub), the one backend it is for, who obtained it, when it dies, and how the person authenticated (AU2)"
-    },
-    {
-      "id": "token-full-ok",
-      "def": "access-token",
-      "value": {
-        "iss": "https://id.aurumalpha.dev/realms/aurum",
-        "sub": "f7c1d2e8-5a44-4b91-9c3e-2d8a1b0f6e77",
-        "aud": "https://billing.aurumalpha.dev",
-        "client_id": "edge-rp",
-        "exp": 1788312045,
-        "iat": 1788311745,
-        "jti": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
-        "auth_time": 1788309000,
-        "amr": [
-          "pwd",
-          "otp"
-        ],
-        "sid": "8fK2mQ7xW3pLzR",
-        "email": "someone@example.com",
-        "email_verified": true,
-        "name": "Someone Example"
-      },
-      "valid": true,
-      "note": "display attributes carry RFC 9068 section 2.2.2's registered claim names and are never keys (AU3)"
-    },
-    {
-      "id": "token-rejects-missing-aud",
-      "def": "access-token",
-      "value": {
-        "iss": "https://id.aurumalpha.dev/realms/aurum",
-        "sub": "f7c1d2e8-5a44-4b91-9c3e-2d8a1b0f6e77",
-        "client_id": "edge-rp",
-        "exp": 1788312045,
-        "iat": 1788311745,
-        "jti": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
-        "auth_time": 1788309000,
-        "amr": [
-          "pwd",
-          "otp"
-        ],
-        "sid": "8fK2mQ7xW3pLzR"
-      },
-      "valid": false,
-      "note": "without an audience a token issued for one backend replays against another (RFC 9700 section 2.3, AU2)"
-    },
-    {
-      "id": "token-rejects-subject-without-issuer",
-      "def": "access-token",
-      "value": {
-        "sub": "f7c1d2e8-5a44-4b91-9c3e-2d8a1b0f6e77",
-        "aud": "https://billing.aurumalpha.dev",
-        "client_id": "edge-rp",
-        "exp": 1788312045,
-        "iat": 1788311745,
-        "jti": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
-        "auth_time": 1788309000,
-        "amr": [
-          "pwd",
-          "otp"
-        ],
-        "sid": "8fK2mQ7xW3pLzR"
-      },
-      "valid": false,
-      "note": "a subject is unique only within its issuer, so half the link key is not a key at all (AU3)"
-    },
     {
       "id": "me-minimal-ok",
       "def": "me",
@@ -174,6 +89,14 @@
         "status_code": 401
       },
       "note": "without this check the portfolio's services are interchangeable to an attacker holding any one token. The audience is the one backend's resource indicator, which is what makes the case decidable (RFC 9700 section 2.3, AU2)"
+    },
+    {
+      "id": "a-token-with-no-audience-is-refused",
+      "stimulus": "present a well-formed access token carrying no aud claim",
+      "expect": {
+        "status_code": 401
+      },
+      "note": "RFC 9068 requires aud, so this is the provider misconfigured rather than a shape this repository defines. The backend refuses it either way: without an audience a token issued for one backend replays against another (RFC 9700 section 2.3, AU2)"
     },
     {
       "id": "an-id-token-presented-as-a-bearer-is-refused",

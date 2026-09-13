@@ -63,13 +63,11 @@ often the backend calls out. A provider the backend cannot reach is reported
 as degraded rather than failing readiness. A cached key set keeps serving
 every token it already covers.
 
-### AU2. One access token crosses to the backend, and the backend verifies it
+### AU2. The credential is the provider's access token, and the backend verifies it
 
-There is one way an application receives identity. It is **an access token
-the identity provider issued, profiled on
-[RFC 9068](https://www.rfc-editor.org/rfc/rfc9068.html)**. The token is
-audience-restricted to that one backend, and the backend verifies it against
-the provider's JWKS. No other form is admitted.
+There is one way an application receives identity. It is the identity
+provider's access token, forwarded by the relying party, in the form
+[RFC 9068](https://www.rfc-editor.org/rfc/rfc9068.html) defines.
 
 This is what [RFC 10017 / BCP 212](https://www.rfc-editor.org/rfc/rfc10017.html)
 describes, and AU1 already adopts that document whole. Section 6.1 gives the
@@ -77,15 +75,18 @@ relying party's third responsibility as forwarding requests to a resource
 server, augmenting them with the correct access token. The RFC names no other
 token on that hop.
 
-**The proxy does not mint a token of its own.** An intermediary shape the
+**The token's shape is RFC 9068's and this standard adds nothing to it**.
+There is no claim set here, and no contract in this repository describes one.
+The RFC states which claims a JWT access token carries and which are
+optional, and a provider emits what it emits.
+
+**The proxy does not mint a token of its own**. An intermediary shape the
 proxy signs is an internal contract. PC2 admits one only where no standard
-suffices, and three standards suffice here. RFC 9068 fixes the JWT
-access token shape across vendors, so one shape does not need inventing.
-[RFC 8707](https://www.rfc-editor.org/rfc/rfc8707.html) and
-[RFC 9700 / BCP 240](https://www.rfc-editor.org/rfc/rfc9700.html) section 2.3
-give the audience restriction that stops one backend's token working at
-another. [RFC 8693](https://www.rfc-editor.org/rfc/rfc8693.html) covers the
-swap case, and in it the authorization server mints rather than the proxy.
+suffices. [RFC 8707](https://www.rfc-editor.org/rfc/rfc8707.html)
+and [RFC 9700 / BCP 240](https://www.rfc-editor.org/rfc/rfc9700.html) section
+2.3 restrict the audience to the one backend.
+[RFC 8693](https://www.rfc-editor.org/rfc/rfc8693.html) covers the swap case,
+and in it the authorization server mints rather than the proxy.
 
 **Plain injected headers are not admitted.** A header carries no signature,
 so there is nothing for the backend to verify. Authentication would rest
@@ -99,6 +100,13 @@ that lets a page complete an exchange itself. Native and mobile clients are a
 separate case with no same-origin model to lean on, and they are out of scope
 here.
 
+**The backend verifies the token per RFC 9068 section 4**, against the
+provider's JWKS. A parsed but unverified token is no check at all. Key
+rotation is AU1's. Presentation is
+[RFC 6750](https://www.rfc-editor.org/rfc/rfc6750.html)'s
+`Authorization: Bearer`; where the proxy puts the access token in another
+header, the repository names that header in its **Conventions**.
+
 #### Why the backend's job is this small
 
 A session binds a credential to a known user and a known source. That binding
@@ -108,59 +116,28 @@ one question: who is authenticated. Where the request came from is a real
 concern and it is the proxy's. The application's own code concerns itself
 with authorization, which is [`070-rbac.md`](070-rbac.md)'s.
 
-#### The claim set
+#### What this standard reads, and what it never reads
 
-The token, shaped by
-[`contracts/auth/access-token.schema.json`](../contracts/auth/access-token.schema.json):
+The rules below name the claims they depend on. That is a statement about
+those rules, never a redefinition of the token.
 
-```json
-{
-  "iss": "https://id.aurumalpha.dev/realms/aurum",
-  "aud": "https://billing.aurumalpha.dev",
-  "sub": "f7c1d2e8-5a44-4b91-9c3e-2d8a1b0f6e77",
-  "client_id": "edge-rp",
-  "exp": 1788312045,
-  "iat": 1788311745,
-  "jti": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
-  "auth_time": 1788309000,
-  "amr": ["pwd", "otp"],
-  "sid": "8fK2mQ7xW3pLzR",
-  "email": "someone@example.com",
-  "email_verified": true,
-  "name": "Someone Example"
-}
-```
+| Claim | Read by | For |
+|---|---|---|
+| `iss` and `sub` | AU3 | The link key. RFC 9068 requires both. |
+| `sid` | AU8 | The login session a tenant binding hangs on. |
+| `auth_time` | [`082-data-subject-rights.md`](082-data-subject-rights.md) DR2 | The step-up window on an erasure. |
+| `email`, `email_verified`, `name` | AU3, AU4 | Display, and the provider-is-source condition. Never keys. |
 
-The profile pins what RFC 9068 leaves open. Pinning an optional claim is what
-PC2 means by profiling a standard rather than replacing it.
+`sid`, `auth_time` and `amr` are not claims RFC 9068 requires, so a provider
+emits them because someone configured it to.
+[`solutions/060-auth.md`](../solutions/060-auth.md) carries the checklist,
+and a rule that reads a claim the provider withholds fails at that provider.
 
-| Claim | RFC 9068 | This profile | Why |
-|---|---|---|---|
-| `typ` header | `at+jwt` | as the RFC | Section 4 makes the resource server reject any other value. This is what stops an ID token being accepted as an access token. |
-| `iss` | required | the identity provider | Half the AU3 link key, and where the JWKS is fetched from. |
-| `sub` | required | the provider's subject | The other half. Opaque, never displayed, never parsed. |
-| `aud` | required | the one backend's resource indicator | RFC 9700 section 2.3. Obtained with RFC 8707 `resource` or a provider audience mapper. |
-| `client_id` | required | the proxy's client | Names the relying party that obtained the token. |
-| `exp`, `iat`, `jti` | required | as the RFC, `exp` pinned to five minutes | Five, because this is an internal hop rather than a user session. This is the backstop of AU5. |
-| `auth_time`, `amr` | optional (2.2.1) | **required** | Step-up for a sensitive operation, without the application understanding how authentication happened. Also DR2's fifteen-minute window. |
-| `sid` | not defined | **required** | The registered OIDC claim for the login session. Correlation, back-channel logout, and the tenant binding key of AU8. |
-| `email`, `email_verified`, `name` | permitted (2.2.2) | optional, display only | Registered claim names, per the RFC's preference for them. Never keys, per AU3. |
-| `groups`, `roles`, `entitlements`, `scope` | permitted where the provider emits them (2.2.3) | **never read for authorization** | A provider emits what it emits. Reading one would make every application's access control depend on provider configuration, which is the failure this standard exists to prevent. |
-
-**The validation order is RFC 9068 section 4's**, and it is normative here:
-
-1. Verify the `typ` header is `at+jwt`, and refuse anything else.
-2. Match `iss` exactly against the configured issuer string.
-3. Verify `aud` names this backend.
-4. Verify the signature against the provider's JWKS, and refuse `alg: none`.
-5. Check `exp`.
-
-A parsed but unverified token is no check at all. The backend also handles key
-rotation, which AU1 sets out.
-
-**Presentation is [RFC 6750](https://www.rfc-editor.org/rfc/rfc6750.html)**:
-`Authorization: Bearer`. Where the proxy cannot put the access token there,
-the repository names the header it uses in its own **Conventions**.
+**Nothing reads `roles`, `groups`, `entitlements` or `scope`**. A provider
+emits what it is configured to emit. The token is well formed with any of
+them present. Reading one would make every application's access control
+depend on provider configuration. That is the failure this standard exists to
+prevent, and no schema can hold the rule because the claims are legal.
 
 **One convention conflict, stated rather than left silent**. Registered JWT
 and OIDC claims keep their RFC spelling and NumericDate encoding: `exp`,
@@ -595,16 +572,19 @@ same code, never a second mode.
 
 Per PC3, under [`contracts/auth/`](../contracts/auth/):
 
-- **`access-token.schema.json`**: the AU2 claim set, and the claims a token
-  carries that nothing reads.
 - **`me.schema.json`**: the AU6 client identity document.
+
+**There is no schema for the AU2 token, and its absence is the rule.** The
+shape is RFC 9068's. A file here restating it would be a second answer to a
+settled question, drifting from the RFC the moment either moved.
 - **`grants.schema.json`**: the AU8 session grants view, `$ref`-ing the RBAC
   contract for the grant. It is a rendering input and never a control, and it
   carries no permission for any grant. What a grant can do is the `me`
   document's answer for the active one. Listing the others' would put a union
   on screen.
-- **`corpus.json`**: validity cases for the token and the client identity
-  document, plus behavioural cases a live deployment must satisfy.
+- **`corpus.json`**: validity cases for the client identity document, plus
+  behavioural cases a live deployment must satisfy. Every claim about the
+  token is a behavioural case, because nothing here describes its shape.
 
 ## Decisions
 
@@ -626,11 +606,16 @@ Per PC3, under [`contracts/auth/`](../contracts/auth/):
   signature, so a backend has nothing to verify. The guarantee would rest on
   a topology property, which is the condition rather than a mitigation of it
   (AU2).
-- **The cost of one admitted form, stated plainly**. A provider emits
-  `roles` or `groups` where someone configured it to, and the token is valid
-  with them present. Under a minted shape the field could not exist at all.
-  Now the rule is a rule rather than an absent field, and the corpus tests it
-  as behaviour rather than as validity (AU2).
+- **A contract of our own describing the RFC 9068 token**. It would pin the
+  optional claims this repository's rules read, and a validator would then
+  catch a misconfigured provider before a request did. It is also an internal
+  contract for a shape a standard already fixes. That is the act PC2 forbids,
+  and the same act as minting one size down. The provider checklist in the
+  register carries the verification instead (AU2).
+- **The cost of adding nothing, stated plainly**. A provider emits `roles` or
+  `groups` where someone configured it to, and the token is well formed with
+  them present. No schema can refuse a claim the RFC permits. So the rule
+  against reading them is a rule, tested as behaviour (AU2).
 - **A public-or-not switch at the gateway**. It reads well until the routes
   that are neither arrive. A share link and a webhook signature are
   credentials, so calling those routes public groups them with the one case

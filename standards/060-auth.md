@@ -494,6 +494,96 @@ Roles are unaffected. A person holding three grants in one tenant acts in one
 of them at a time. The grants are 070's, and the session names which one is
 active.
 
+### AU9. The ingress decides whether a login is needed, and the application decides what is allowed
+
+Two layers answer two different questions, and each owns one status code.
+
+**The ingress answers "does this request need a credential?"** That is the
+whole of AuthN as the request path sees it. A public path goes to its upstream
+with the `Authorization` header stripped. Any other path needs a session. A
+page request without one is redirected to the provider. An API request without
+one is `401`.
+
+**The `401` is the ingress's**, and no application emits one in its place. A redirect to login is the relying party's act, and the
+application is never asked to perform it (AU1).
+
+**The application answers "what is this person allowed to do?"** That is
+AuthZ, and it runs on every route, public ones included. The application
+verifies the token (AU2) and resolves the subject to a user (AU3, AU6). It
+derives the scope of the request and asks whether the permission holds in
+that scope (070 RB7). **A no is `403`, and the `403` is the application's**.
+
+On a public route with no token the application acts for an anonymous
+principal. That principal holds only the permissions a code-declared
+anonymous role carries. Public never means unchecked.
+
+```mermaid
+flowchart TD
+    B["request"] --> P{"ingress:<br/>public path?"}
+    P -->|yes| S["strip Authorization,<br/>forward to the declared upstream"]
+    P -->|no| C{"ingress:<br/>session?"}
+    C -->|"no · page"| L["302 to the provider"]
+    C -->|"no · API"| U["401"]
+    C -->|yes| T["attach the identity token"]
+    S --> V
+    T --> V["app: verify the token,<br/>or take the anonymous principal<br/>on a declared public route"]
+    V --> R["app: (issuer, subject) → user"]
+    R --> Q["app: scope from the host,<br/>the path, the body,<br/>and the session binding"]
+    Q --> D{"app: permission<br/>in scope?"}
+    D -->|no| F["403"]
+    D -->|yes| H["handler"]
+```
+
+The scope step reads every signal the request carries and lets none of them
+widen anything. The host names a tenant (092 TH2). A path segment names a
+resource or a narrower scope inside the tenant, and a body names what is
+being acted on. Each is a *claim* the application checks against the
+session's active grant (AU8, 070 RB10). A claim the grant does not cover is
+refused. The request chooses what it asks about, and never what it holds.
+
+**Four kinds of principal reach an application, and each is a role at a
+scope**. A *user* arrives with the provider's token and holds the active
+grant's role and scope.
+
+An *anonymous* principal arrives with nothing and
+holds the code-declared anonymous role, at `global` or at the tenant the
+host names. A *link* principal arrives with a token in the path that the
+application minted. It holds a declared role at the scope the token resolves
+to: a shared group, a candidate's process. A *machine* principal
+arrives with a signature or key the application verifies, and holds a
+declared role at `global`. After that step the four are one: the same
+decision runs for all of them.
+
+**On a route the application verifies itself, the application is the
+ingress for that credential**. The edge cannot check a link token or a
+webhook signature. So a wrong one is `401` from the application. A missing
+link token is anonymous. A link token that names nothing is `404`, never
+`403`, because "exists but not yours" is a disclosure.
+
+**Which paths are public is declared once, in `deploy/public.json`, and both
+layers read it.** The ingress renders it into its configuration. The
+application loads it at start. A match is a route where a principal other
+than a user is admitted, as the route declares. A path is matched by `exact`
+or by `prefix`, never by a pattern. A link token lives under a prefix and the
+application validates the rest.
+
+Nothing in the catalog asserts that the two readings agree, and nothing needs
+to: the two failure cases are visible on first use. An ingress that opens a path the application guards meets a `401`
+or a `403` from the application. An ingress that guards a path the
+application opens asks for a login nobody needed. Both are fixed in the one
+file. What is app-specific, and stays in the repository that owns it, is a
+check that every registered route runs the authorization filter at all.
+
+An internal tool that is also a public package is admitted to run with
+authentication disabled. It does so by declaring every path public at both
+layers. It is the same file with everything in it, never a second mode
+in the code.
+
+Where an application serves its own pages rather than a separate client
+bundle, the same file names the upstream for those authenticated paths. The
+ingress still asks for the session on them. It only changes where it sends
+the request afterwards.
+
 ## The artifacts
 
 Per PC3, under [`contracts/auth/`](../contracts/auth/):
@@ -511,6 +601,16 @@ Per PC3, under [`contracts/auth/`](../contracts/auth/):
 
 ## Decisions
 
+- **The application performs the login redirect**. The ingress would forward
+  everything, and an application answering `401` would trigger the relying
+  party's redirect. That puts the application in the authentication chain,
+  which AU1 forbids, and asks the ingress to serve static content it has been
+  told to guard. The public list at the ingress is the answer (AU9).
+- **A catalog gate that the ingress's public list matches the application's**.
+  Both read one file, and a disagreement fails on first use in a way the
+  operator sees. A gate would have to read routes to decide what the
+  application enforces, which is the PC4 violation. What is worth a gate is
+  app-specific and lives in each repository (AU9).
 - **A shared user directory in the proxy**. The proxy would resolve to a
   shared user id before minting, hiding the provider from applications
   entirely. That requires the proxy to own a user directory: a great deal

@@ -56,6 +56,14 @@ RENDERED = (
 
 RECORD = pathlib.Path("deploy") / "devkit.json"
 
+# The product's public-path declaration, 060-auth.md AU9. Both layers read it:
+# this renderer turns it into nginx locations, and the application loads it at
+# start to know where a principal other than a user is admitted. It is the
+# product's own file, never rendered, and absent where there is nothing to say.
+PUBLIC = pathlib.Path("deploy") / "public.json"
+UPSTREAMS = ("server", "client")
+ROUTES_LINE = "    __ROUTES__\n"
+
 # The offsets 016-local-development.md LD4 fixes. They live here rather than in
 # ports.json because ports.json allocates blocks and says so: "Offsets within a
 # block are fixed by the standard, not by this file."
@@ -109,6 +117,132 @@ def unsubstituted(text: str) -> list[str]:
     return sorted(set(PLACEHOLDER.findall(text)))
 
 
+def read_public(path: pathlib.Path) -> dict | None:
+    """Read and validate a deploy/public.json, or return None where there is none.
+
+    Two keys. `public` is what both layers read: paths that need no session.
+    `pages` is edge-only: authenticated paths whose upstream is not the
+    fragment's default. Each entry names a path as `exact` or `prefix` and an
+    upstream the fragment defines. A prefix is used as nginx uses it, so
+    `/admin` also matches `/administrator`; write `/admin/` when that matters.
+
+    Every problem is collected and reported at once, because a product writes
+    this file by hand and a checker that stops at the first mistake sends the
+    person back once per line.
+    """
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{path}: not valid JSON ({exc})") from None
+
+    problems: list[str] = []
+    if not isinstance(data, dict):
+        raise ValueError(f"{path}: the top level is not an object")
+    if data.get("schema_version", 1) != 1:
+        problems.append(f"schema_version {data['schema_version']!r} is not 1")
+    for key in data:
+        if key not in ("schema_version", "public", "pages"):
+            problems.append(f"unknown key {key!r}")
+    seen: set[str] = set()
+    for key in ("public", "pages"):
+        entries = data.get(key, [])
+        if not isinstance(entries, list):
+            problems.append(f"{key} is not a list")
+            continue
+        for n, entry in enumerate(entries):
+            where = f"{key}[{n}]"
+            if not isinstance(entry, dict):
+                problems.append(f"{where}: not an object")
+                continue
+            forms = [f for f in ("exact", "prefix") if f in entry]
+            if len(forms) != 1:
+                problems.append(f"{where}: exactly one of exact or prefix")
+                continue
+            form = forms[0]
+            value = entry[form]
+            if not isinstance(value, str) or not value.startswith("/"):
+                problems.append(f"{where}: {form} must be a path starting with /")
+            elif form == "prefix" and value == "/":
+                problems.append(
+                    f"{where}: prefix / would make every path public at the "
+                    "edge. A product with no login runs no edge; the "
+                    "application still reads this file.")
+            elif value in seen:
+                problems.append(f"{where}: {value} is declared twice")
+            else:
+                seen.add(value)
+            if entry.get("upstream") not in UPSTREAMS:
+                problems.append(f"{where}: upstream must be one of "
+                                f"{', '.join(UPSTREAMS)}")
+            for extra in entry:
+                if extra not in (form, "upstream"):
+                    problems.append(f"{where}: unknown key {extra!r}")
+    if problems:
+        raise ValueError(f"{path}:\n  " + "\n  ".join(problems))
+    return data
+
+
+def template_locations(text: str) -> set[tuple[str, str]]:
+    """The locations edge.conf already declares, so a product cannot redeclare one.
+
+    nginx refuses a duplicate location at parse time. This renderer cannot
+    run nginx, so it refuses first, naming the path. An exact and a prefix
+    location on the same path are two locations to nginx, so the form is
+    part of the key: `= /` beside the template's `location /` is allowed.
+    """
+    found = re.findall(r"^\s*location\s+(=\s*)?(/\S*)\s*\{", text, re.M)
+    return {("exact" if eq else "prefix", path) for eq, path in found}
+
+
+def routes_text(public: dict | None, template: str) -> str:
+    """The nginx locations a product's public.json renders to.
+
+    The rendered block opens with a comment naming its source, so a reader of
+    the rendered file knows these lines came from the product and not the
+    template. A public location carries no auth_request and clears
+    Authorization, so the backend never sees a credential on it. A page location asks for the
+    session and sends a missing one to the same sign-in redirect the template
+    has. A client upstream also gets the upgrade headers, because the dev
+    server's hot-reload socket rides the same location.
+    """
+    if public is None:
+        return ""
+    taken = template_locations(template)
+    blocks = ["    # Rendered from deploy/public.json. Public paths need no session;\n"
+              "    # pages ask for one and are served from the upstream named there.\n"]
+    for key in ("public", "pages"):
+        for entry in public.get(key, []):
+            form = "exact" if "exact" in entry else "prefix"
+            path = entry[form]
+            if (form, path) in taken:
+                raise ValueError(f"{PUBLIC}: {form} {path} is already a "
+                                 "location in the devkit's edge.conf")
+            upstream = entry["upstream"]
+            head = f"    location {'= ' if form == 'exact' else ''}{path} {{\n"
+            lines = []
+            if key == "pages":
+                lines += ["        auth_request     /oauth2/auth;",
+                          "        auth_request_set $token $upstream_http_authorization;",
+                          "        error_page 401 = @sign_in;",
+                          ""]
+            if upstream == "client":
+                lines += ["        proxy_http_version                 1.1;"]
+            lines += [f"        proxy_pass                         http://{upstream};"]
+            if upstream == "client":
+                lines += ["        proxy_set_header Upgrade           $http_upgrade;",
+                          "        proxy_set_header Connection        $connection_upgrade;"]
+            lines += ["        proxy_set_header Host              $host;",
+                      "        proxy_set_header X-Real-IP         $remote_addr;",
+                      "        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;",
+                      "        proxy_set_header X-Forwarded-Proto $scheme;",
+                      "        proxy_set_header Authorization     "
+                      + ("$token;" if key == "pages" else '"";')]
+            blocks.append(head + "\n".join(lines) + "\n    }\n")
+    return "\n".join(blocks)
+
+
 def read_record(target: pathlib.Path) -> dict:
     path = target / RECORD
     if not path.is_file():
@@ -120,12 +254,19 @@ def read_record(target: pathlib.Path) -> dict:
 
 
 def render_all(target: pathlib.Path, repo: str, base: int,
-               server_port: int) -> list[pathlib.Path]:
+               server_port: int, public: dict | None = None) -> list[pathlib.Path]:
     """Write every rendered file, and return the deploy-relative paths written.
 
     check-devkit-drift imports and calls this rather than carrying a second
     copy of the substitution. Two renderers would drift, and the day they
     disagreed the drift checker would be the thing certifying the drift.
+
+    `public` is the product's parsed deploy/public.json, or None. It is an
+    argument rather than read from the target because the drift checker
+    renders into a scratch tree and reads the file from the clone it judges.
+    With None the placeholder line is dropped whole, so a product that
+    declares nothing renders byte for byte what it rendered before the line
+    existed.
     """
     if base % BLOCK:
         raise ValueError(f"base {base} is not a multiple of {BLOCK}")
@@ -136,7 +277,13 @@ def render_all(target: pathlib.Path, repo: str, base: int,
         src = DEVKIT / source
         if not src.is_file():
             raise FileNotFoundError(f"devkit source not found at {src}")
-        text = render(src.read_text(encoding="utf-8"), values)
+        text = src.read_text(encoding="utf-8")
+        if source == "nginx/edge.conf":
+            if ROUTES_LINE not in text:
+                raise ValueError(f"{source}: the routes placeholder line is missing")
+            routes = routes_text(public, text)
+            text = text.replace(ROUTES_LINE, routes + "\n" if routes else "")
+        text = render(text, values)
         left = unsubstituted(text)
         if left:
             raise ValueError(f"{source}: unknown placeholder(s) {', '.join(left)}")
@@ -172,7 +319,8 @@ def main() -> int:
         repo, base, server_port = args.repo, args.base, args.server_port
 
     try:
-        written = render_all(args.target, repo, base, server_port)
+        public = read_public(args.target / PUBLIC)
+        written = render_all(args.target, repo, base, server_port, public)
     except (ValueError, FileNotFoundError) as exc:
         print(exc, file=sys.stderr)
         return 2

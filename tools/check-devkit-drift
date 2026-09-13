@@ -95,8 +95,10 @@ def check_repo(render, repo_root: pathlib.Path, label: str,
         # Rendered from the recorded inputs into a scratch tree, so nothing
         # this checker does can touch the clone it is judging.
         try:
+            public = render.read_public(repo_root / render.PUBLIC)
             written = render.render_all(pathlib.Path(tmp), inputs["repo"],
-                                        inputs["port_base"], inputs["server_port"])
+                                        inputs["port_base"], inputs["server_port"],
+                                        public)
         except (ValueError, FileNotFoundError, TypeError) as exc:
             print(f"{label}: could not render — {exc}")
             return 0, 1

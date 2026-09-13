@@ -144,6 +144,15 @@ standard owns, so that every product spells them identically:
 | `auth.logout` | The user ended the session. |
 | `auth.session_revoked` | The session was ended by something other than the user: back-channel logout, an administrator, an expiry. |
 | `auth.access_denied` | An authenticated subject was refused, including [`060-auth.md`](060-auth.md) AU6's unknown-subject refusal. |
+| `auth.grant_activated` | A session bound to a grant, or changed which grant it acts in. It carries the grant activated, and the previous grant where there was one. |
+
+**`auth.grant_activated` is one action for both acts**. There is no second
+action for the change. A session acts in one grant
+([`070-rbac.md`](070-rbac.md) RB5), and binding to a grant and rebinding to
+another are the same act on the same record. The event's fields say which one
+happened, because the previous grant is present on a change and absent on the
+first binding. Two actions for one act make *when did this person's capacity
+change* a query that needs a union.
 
 A product does not add to this namespace; `auth.*` is this standard's. Everything
 else a product audits is one of its own declared permissions.

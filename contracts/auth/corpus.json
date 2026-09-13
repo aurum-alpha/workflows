@@ -170,12 +170,12 @@
   "behaviour": [
     {
       "id": "token-signed-with-wrong-key-is-refused",
-      "stimulus": "present a well-formed identity token signed with a key the backend does not trust",
+      "stimulus": "present a well-formed token signed with a key the backend does not trust: the provider's ID token under form (a), the proxy's identity token under form (b)",
       "expect": {
         "status_code": 401,
         "side_effect": "no application state read or written"
       },
-      "note": "the difference between verifying and decoding, which is the whole security value of variant (b) (AU2)"
+      "note": "the difference between verifying and decoding, and it holds for both admitted forms. Form (a) validates against the provider's JWKS, form (b) against the proxy's key (AU2)"
     },
     {
       "id": "token-for-another-audience-is-refused",
@@ -183,7 +183,7 @@
       "expect": {
         "status_code": 401
       },
-      "note": "without this check the portfolio's services are interchangeable to an attacker holding any one token (AU2)"
+      "note": "without this check the portfolio's services are interchangeable to an attacker holding any one token. Form (a) forwards the ID token rather than the access token so that aud names the application and this case is decidable (AU2)"
     },
     {
       "id": "unknown-subject-is-403-and-logged-out",

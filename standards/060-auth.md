@@ -233,13 +233,31 @@ holds permissions in other applications is not knowable to it. Knowing would
 require reading another application's authorization state, which is the
 coupling this separation exists to prevent.
 
-#### Where the provider is the source instead
+#### The provider-is-source mode
 
-Where an HR or identity-governance system owns the workforce lifecycle, it
-provisions **into** the provider. That is what a provider's own SCIM support is
-for. Applications then learn of a person by roster sync or on first login. That
-is a third case, admitted, and it does not change anything above for
-application-initiated users.
+Everything above is the default provisioning mode: an administrator creates the
+user, and the application creates the identity. There is a second mode, named
+**provider-is-source**, and a repository declares which one it runs in its
+**Conventions**. In it the provider owns the lifecycle, and the application
+learns of a person on first login.
+
+Two shapes reach it. An HR or identity-governance system provisions **into** the
+provider, which is what a provider's own SCIM support is for. A self-service
+product lets a person register at the provider with no directory behind it.
+
+**Two conditions hold, and the mode needs both of them:**
+
+- **The email is verified.** `identity.email_verified` is true in the token of
+  AU2. An unverified address is a claim about a mailbox that belongs to
+  somebody else.
+- **The product declares the grant a new person receives**, as a role and a
+  scope under [`070-rbac.md`](070-rbac.md) RB5. Without it an authenticated
+  stranger becomes a user with no decision behind it.
+
+**The control plane is off in this mode.** The four operations above are not
+called, because the application is not the source. The application writes its
+own user record and its identity link on first login, and it changes nothing at
+the provider.
 
 ### AU5. Sessions end, and revocation does not wait for them to
 
@@ -268,7 +286,9 @@ why. Looser than the above needs the same, and a harder argument.
 
 An identity created at the provider grants nothing. A user exists in an
 application only because an admin added them there (AU4), so an authenticated
-subject with no local user is refused.
+subject with no local user is refused. This is the rule of AU4's default
+provisioning mode. Under provider-is-source the application writes the user on
+first login, so no unknown subject reaches this refusal.
 
 ```mermaid
 flowchart LR
@@ -408,12 +428,22 @@ everything below. This document binds a session to a tenant. How a provider
 models tenants, a realm per customer or one realm with groups, is the
 provider's and the commercial architecture's, not this document's.
 
-- **A session is bound to one tenant at login and never changes it**. The
-  binding is made when the session is created, from the tenant the entry
-  point belongs to. It is recorded in the session, not inferred later. A
-  person who works in two tenants authenticates twice and holds two sessions.
-  There is no *switch tenant* inside a session. A switch is a new binding,
-  which is a new login.
+- **The binding is the active grant's tenant**. A session acts in one grant,
+  per [`070-rbac.md`](070-rbac.md) RB5, and that grant names a role and a
+  tenant. So the tenant binding is a consequence of the active grant rather
+  than a second mechanism beside it. A session still authenticates into
+  exactly one tenant.
+- **The binding lives per login session, and never on the user record**. Its
+  key is the identity provider's session id, which AU2 carries as
+  `session_id`. Two logins by one person are two sessions, and each holds its
+  own active grant. A binding on the user record makes one device's choice
+  change another device's scope.
+- **Whether the active grant changes inside a session is a product choice**,
+  declared in the repository's **Conventions**. Where a product admits the
+  change, it rebinds that session's record and writes an audit event naming
+  the grant activated. Where a product does not, the session's first choice
+  holds and a change of capacity is a new login. The scope comes from the
+  binding either way, and never from the request.
 - **This is true whatever the topology**. A product serving every tenant from
   one host under AU7's topology A still binds each session to one tenant. A
   product giving tenants their own hostnames under the
@@ -428,20 +458,26 @@ provider's and the commercial architecture's, not this document's.
   waiting for a routing mistake.
 - **An identity in several tenants is not a session in several tenants**. The
   identity link of AU3 can exist in more than one tenant's user table; the
-  session names one of them. Which one is decided by where the person logged
-  in, never by a choice the client sends afterwards.
+  session names one of them. The person decides which, by the grant they
+  activate, and never by a value the client sends on a request.
 - **A subject with no user in the session's tenant is refused as AU6 says**:
   `403`, session ended. That the same identity has a user in another tenant
   changes nothing here.
 
-The reason the binding is fixed rather than switchable is RB7's. A check is a
-pure function of subject, permission and scope, and the scope has to come from
-somewhere the caller cannot choose. A session that can change tenant on request
-is ambient state by another name. The cross-tenant cache defect RB7 describes
-returns through it.
+**The binding sits in the session because the caller must not choose it**. RB7
+makes the scope an argument of `check`, and RB10 says that argument is read
+from the authenticated session. A tenant named by a header, a query parameter
+or a body field is a tenant the caller picked. Activating a grant is an act on
+the session, recorded in it and audited, and a request never carries one.
 
-Roles are unaffected. A person with three roles in one tenant has one session
-and three grants. The roles are 070's and the session does not know them.
+Where a hostname names the tenant, the
+[tenant hostnames standard](092-tenant-hostnames.md) TH1 to TH5 continue to
+hold. The host narrows which grants are candidates for the session. The binding
+is still the active grant.
+
+Roles are unaffected. A person holding three grants in one tenant acts in one
+of them at a time. The grants are 070's, and the session names which one is
+active.
 
 ## The artifacts
 

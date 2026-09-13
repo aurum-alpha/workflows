@@ -197,9 +197,9 @@ happened. That is a judgment, so the standard states a floor that is not:
 2. **Authorization changes**: `grant` and `revoke`, which
    [`070-rbac.md`](070-rbac.md) RB7 already calls audited events; a role's
    permission set changing; a role being created, renamed or deleted.
-3. **Identity lifecycle**: the four operations of [`060-auth.md`](060-auth.md)
+3. **Identity lifecycle**: the five operations of [`060-auth.md`](060-auth.md)
    AU4. A person invited, app access granted, app access revoked, the local
-   record removed.
+   record removed, a login email changed.
 4. **Destructive and irreversible writes**: delete, void, cancel, refund,
    publish, and anything a user cannot undo from the interface.
 5. **Security-posture configuration changes**: session lifetimes, allowed

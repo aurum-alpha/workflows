@@ -152,13 +152,14 @@ registered claim set breaks every library that reads it.
 
 ### AU3. An application stores a reference to the subject, never adopts it as a key
 
-Three values do three different jobs. Conflating them is what produces
+Four values do four different jobs. Conflating them is what produces
 migration disasters.
 
 | Value | Its job | The rule |
 |---|---|---|
 | `(iss, sub)` | **The identity.** | The only value stored as the link, read straight off the token. Opaque, never displayed, never parsed. |
-| Email | The matching key at provisioning, the invitation channel, a cached display attribute. | **Never a foreign key.** Unique and verified within the identity domain. |
+| The login email | The matching key at provisioning, and the invitation channel. | **Never a foreign key.** Unique and verified within the identity domain. Mastered by the provider (AU10). |
+| The contact email | Where the product writes to a person. | Mastered by the application (AU10). Allowed to differ from the login email. |
 | Username | The provider's login handle, where a domain uses one. | Never crosses to the application as an identifier. |
 
 **The application keeps its own user primary key**. Per IP1, an externally
@@ -178,9 +179,10 @@ Two consequences:
 - **Email uniqueness is enforced at the provider, and verified**. Otherwise a
   second unverified account on the same address exists, and the matching key
   stops matching one person.
-- **A person changing their email costs nothing**. The subject does not change,
-  the link holds, and no foreign key moves. That is the payoff for not keying
-  on it.
+- **A person changing either email costs nothing**. The subject does not
+  change, the link holds, and no foreign key moves. That is the payoff for not
+  keying on it. A contact email is a plain write; a login email goes through
+  AU4's `changeLoginEmail`, because it is a credential.
 
 **Pin the subject identifier type to `public`**. OIDC defines two. Under
 `pairwise` the provider issues *a different subject to each client for the same
@@ -214,7 +216,7 @@ The application receives the subject in the creation response, so **the identity
 link exists before the person has ever logged in**. There is no roster to
 reconcile and no matching bug waiting to happen.
 
-#### The four operations
+#### The five operations
 
 An adapter implements them over SCIM, the provider's admin API, or anything
 else with the same semantics; the interface binds and not the transport (PC4).
@@ -227,6 +229,7 @@ the first-login actions, the invitation, or the access grant.
 | `grantAppAccess(subject)` | Sets the coarse gate on this application's registration at the provider. |
 | `revokeAppAccess(subject)` | Removes this application's grant and its local record. **Never disables the identity.** |
 | `sendInvitation(subject, actions)` | Triggers the first-login flow: verify email, set a password, enrol MFA. |
+| `changeLoginEmail(subject, email)` | Sets the login email **unverified** and triggers the provider's verification. The one operation a person triggers rather than an administrator. **Never sets `email_verified`** (AU10). |
 
 **The application sends the invitation by default**, and it is permitted to
 defer to the provider. It is that way round because the message names the
@@ -236,9 +239,11 @@ Deferring is cheaper and stays admitted, stated in the repository's
 
 #### One provider account, many applications
 
-**Profile attributes belong to the provider**. They are written at creation
-and not fought over afterwards. Disabling an identity is an organisational
-offboarding action with its own trigger, and no application admin performs it.
+**The identity belongs to the provider and the profile does not** (AU10).
+What the provider holds is the subject and the credentials, and those are
+written at creation and not fought over afterwards. Disabling an identity is
+an organisational offboarding action with its own trigger, and no application
+admin performs it.
 
 From the application's side the user is deleted, and whether that person still
 holds permissions in other applications is not knowable to it. Knowing would
@@ -265,10 +270,14 @@ product lets a person register at the provider with no directory behind it.
   scope under [`070-rbac.md`](070-rbac.md) RB5. Without it an authenticated
   stranger becomes a user with no decision behind it.
 
-**The control plane is off in this mode.** The four operations above are not
+**The control plane is off in this mode.** The five operations above are not
 called, because the application is not the source. The application writes its
 own user record and its identity link on first login, and it changes nothing at
 the provider.
+
+**The directory masters the profile in this mode**, which is AU10's third row.
+Every field the directory carries is read-only in the application, and a person
+changes it where their organisation administers it.
 
 ### AU5. Sessions end, and revocation does not wait for them to
 
@@ -322,7 +331,9 @@ identity and permissions at load, shaped by
 [`contracts/auth/me.schema.json`](../contracts/auth/me.schema.json):
 
 - `user`: the application's own public id (IP1), plus OIDC's registered claim
-  names for display.
+  names for display. The values come from the application's own user record.
+  That record is authoritative for every field the application masters, and a
+  cache of the provider's for the rest (AU10).
 - `permissions`: a flat list the interface can test against.
 - `roles`: for showing someone what they are, not for branching on.
 - `entitlements`: what the session's tenant has bought, derived under the
@@ -587,6 +598,94 @@ An internal tool that is also a public package runs with no identity provider
 by routing every path straight to its service. It is the same table and the
 same code, never a second mode.
 
+### AU10. Each identity field has one master, and the application renders read-only what it does not master
+
+Who owns a person's name, email and profile is one question with one answer,
+and the answer is per field. A rule that answers it per deployment, or per
+provider, describes a system nobody runs.
+
+#### Federation moves a master, and changes nothing else
+
+A provider brokers an upstream one: a social login, or a customer's own
+directory. There are then three parties, and the application sees the middle
+one.
+
+```mermaid
+flowchart LR
+    U["upstream provider<br/>Google, a customer's IdP"] --> P["the provider<br/>the application's IdP"]
+    P --> A["the application"]
+    A -. "never reaches" .-> U
+```
+
+**The token's `iss` is the provider, never the upstream.** The `sub` is the
+provider's subject. AU3's link key is untouched, and the application never
+learns the upstream exists. What brokering changes is that a field's master
+moves one hop up, and the provider becomes a cache of the upstream's copy.
+
+So brokering is not a mode the application switches into. It is a fact about
+where some fields are written. The application's rule is the same either way:
+render read-only what it does not master.
+
+#### The default masters
+
+| Field | Master | Why |
+|---|---|---|
+| The subject | The provider | It is the identity. AU3. |
+| Password, MFA enrolment | The provider | Credentials. A tier that holds one is in the authentication chain (AU1). |
+| The login email, and `email_verified` | The provider | The address a person signs in and recovers with is a credential, and its verification is an authentication-grade fact. |
+| Display name, avatar, locale, timezone, and every product preference | **The application** | The upstream never had them, and nobody else writes them. |
+| The contact email | **The application** | A display and notification attribute, not a credential. |
+| A profile field a provider mapper syncs, and every field under AU4's provider-is-source mode | The provider | Something upstream writes it, so the application caches it. |
+
+**A brokered person still edits their timezone in the product.** Only the
+fields with a master upstream go read-only. A provider's mapper decides which,
+and that is configuration rather than a property of brokering.
+
+**A repository declares the fields it masters** in its **Conventions**, and
+never a global mode. One provider brokers a social login for one tenant and
+holds local passwords for another, so a deployment-wide switch describes
+nothing true.
+
+#### The login email and the contact email are two fields
+
+They start equal and they are allowed to diverge.
+
+| | Login email | Contact email |
+|---|---|---|
+| Master | The provider | The application |
+| What it is | A credential: the address that signs in and recovers | An attribute: where the product writes to a person |
+| Verified by | The provider, and `email_verified` says so | The application, for its own delivery purposes |
+| Changing it | AU4's `changeLoginEmail`, and the provider verifies | A plain write |
+
+A product with one address for both is the common case, and it holds them as
+two fields that happen to agree. **Treating them as one is what makes a
+notification preference change look like a credential change.**
+
+#### The application owns the screen, and the provider performs the operation
+
+An application whose provider is its own has no reason to send a person to an
+unbranded account console. It builds the screen. What it does behind the
+screen differs by what the field is.
+
+| The person changes | The application does |
+|---|---|
+| A field it masters | Writes it. No provider call. |
+| The login email | Calls `changeLoginEmail` (AU4), which sets the address **unverified** and triggers the provider's verification. |
+| A password, or an MFA enrolment | Opens a provider-hosted flow. Never a form the application posts. |
+
+**The application never asserts verification about an address it mailed**.
+Setting `email_verified` from application code makes the claim mean whatever
+the application decided. Every rule reading it then rests on nothing, AU4's
+provider-is-source condition among them.
+
+**A password never enters the application's process.** That is AU1, and a
+branded page collecting one breaks it as thoroughly as an OIDC library would.
+The application decides where the person goes and what it looks like, and the
+provider owns the form.
+
+The line is one sentence: **the application owns the navigation, never the
+credential**.
+
 ## The artifacts
 
 Per PC3, under [`contracts/auth/`](../contracts/auth/):
@@ -607,6 +706,23 @@ settled question, drifting from the RFC the moment either moved.
 
 ## Decisions
 
+- **The provider owning the whole profile, as the identity provider does at a
+  social login**. A person edits their name where they signed in, and the
+  application caches it. That reads well where the provider is somebody else's
+  and the person already administers an account there. It is wrong where the
+  provider is the product's own. It sends a person to an unbranded console
+  for a field the product could have written itself. AU10 keeps it as
+  the third row, for the fields something upstream actually writes.
+- **The application owning the whole profile and pushing it back**. One screen
+  writes everything, and a synchroniser carries the credentials up to the
+  provider. That gives two writable copies of one fact, and the synchroniser
+  is where they diverge. Worse, it puts a password in the application's
+  process, which AU1 forbids for reasons that have nothing to do with profile
+  (AU10).
+- **A deployment-wide mode, provider-owned or application-owned**. It reads as
+  the simpler rule until one provider brokers a social login for one tenant
+  and holds local passwords for another. The master is a property of the
+  field, so the declaration is a list of fields (AU10).
 - **A proxy-minted identity token, as the preferred form**. One shape would
   reach every backend whatever provider sat behind the proxy, which is a real
   benefit. It is also an internal contract, and PC2 admits one only where no

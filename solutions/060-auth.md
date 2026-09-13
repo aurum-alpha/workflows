@@ -65,29 +65,43 @@ What to verify on any of them, in this order:
    the application's link on `sub`. A provider configured for pairwise
    subjects, or one that mints a new `sub` when an account is re-created,
    breaks the link silently. The application then sees AU6's unknown subject.
-2. **Email uniqueness is enforced on the verified address, and you know where
+2. **Whether `sub` survives a change of connection.** This is the same failure
+   arriving by a different route, and it separates the providers checked here.
+   Keycloak's subject is its own user record's, so brokering an upstream
+   provider does not move it. **Auth0's subject embeds the connection**:
+   `google-oauth2|1234` against `auth0|5678`. A person who signed in with a
+   password and later signs in with a social login is a second subject and a
+   second account. Auth0's account linking is a deliberate API call, never
+   automatic. A product admitting more than one connection per person plans
+   for that before the first duplicate.
+3. **Which fields the provider masters, and which it lets the application
+   write** (AU10). A brokered upstream provider masters what its mapper syncs.
+   A mapper set to overwrite on every login makes an application write
+   disappear at the next sign-in. Keycloak's identity-provider mappers carry a
+   sync mode for this, and `force` is the one that overwrites.
+4. **Email uniqueness is enforced on the verified address, and you know where
    the setting lives.** In Keycloak it is the realm's duplicate-emails
    setting. The equivalent exists elsewhere under other names, and it is
    frequently *off* by default. AU4 depends on it.
-3. **Whether SCIM provisioning is first-party or an extension.** This differs
+5. **Whether SCIM provisioning is first-party or an extension.** This differs
    sharply between providers and is the item most often assumed rather than
    checked. It matters only for AU4's provider-is-source mode, where an HR or
    identity-governance system owns the workforce lifecycle and provisions
    into the provider.
-4. **Whether the provider emits RFC 9068 access tokens, and how it is
+6. **Whether the provider emits RFC 9068 access tokens, and how it is
    switched on**. AU2 pins the `typ` header to `at+jwt`, and a resource server
    rejects any other value. In Keycloak this is the client setting *Use
    'at+jwt' as access token header type*, and it is **off by default** for
    backward compatibility.
-5. **Whether the provider restricts the audience, and by which mechanism.**
+7. **Whether the provider restricts the audience, and by which mechanism.**
    AU2 wants the backend's resource indicator in `aud`. Either RFC 8707's
    `resource` parameter or a provider audience mapper reaches it. Keycloak
    uses an Audience protocol mapper on the client.
-6. **Whether `sid` reaches the access token**, and only where the product
+8. **Whether `sid` reaches the access token**, and only where the product
    lets a person hold more than one grant in one tenant. RFC 9068 defines no
    `sid`. AU8 admits the relying party's own session identifier instead, so
    a provider withholding `sid` rules out one source and not the rule.
-7. **Whether back-channel logout is supported**, for AU5's revocation not
+9. **Whether back-channel logout is supported**, for AU5's revocation not
    waiting on session expiry. **The default route above does not support it**,
    whatever the provider offers: oauth2-proxy has no back-channel logout
    endpoint for a provider to post to. On that route AU5's revocation rests on

@@ -541,10 +541,31 @@ being acted on. Each is a *claim* the application checks against the
 session's active grant (AU8, 070 RB10). A claim the grant does not cover is
 refused. The request chooses what it asks about, and never what it holds.
 
+**Four kinds of principal reach an application, and each is a role at a
+scope**. A *user* arrives with the provider's token and holds the active
+grant's role and scope.
+
+An *anonymous* principal arrives with nothing and
+holds the code-declared anonymous role, at `global` or at the tenant the
+host names. A *link* principal arrives with a token in the path that the
+application minted. It holds a declared role at the scope the token resolves
+to: a shared group, a candidate's process. A *machine* principal
+arrives with a signature or key the application verifies, and holds a
+declared role at `global`. After that step the four are one: the same
+decision runs for all of them.
+
+**On a route the application verifies itself, the application is the
+ingress for that credential**. The edge cannot check a link token or a
+webhook signature. So a wrong one is `401` from the application. A missing
+link token is anonymous. A link token that names nothing is `404`, never
+`403`, because "exists but not yours" is a disclosure.
+
 **Which paths are public is declared once, in `deploy/public.json`, and both
 layers read it.** The ingress renders it into its configuration. The
-application loads it at start and treats a match as a route where an
-anonymous principal is admitted.
+application loads it at start. A match is a route where a principal other
+than a user is admitted, as the route declares. A path is matched by `exact`
+or by `prefix`, never by a pattern. A link token lives under a prefix and the
+application validates the rest.
 
 Nothing in the catalog asserts that the two readings agree, and nothing needs
 to: the two failure cases are visible on first use. An ingress that opens a path the application guards meets a `401`

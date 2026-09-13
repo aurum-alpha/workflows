@@ -1,0 +1,651 @@
+# aurum-job: capability=publish-npm language=js role=publish
+# Portfolio capability: publish one or more JS/TS packages to GitHub Packages
+# under the @aurum-alpha scope (CI_STANDARD Principle 12 — one way per
+# capability). Single-job reusable workflow: the caller owns the job id and the
+# needs: wiring; this file owns the entire job body.
+#
+# WHY IT EXISTS. platform-ts and platform-web are libraries. A library that
+# cannot be installed is not a deliverable, and until this job the catalog had
+# no way to ship one: every publish path it owned pointed at a container
+# registry (workflows#389). platform-go and platform-php need nothing like it —
+# a Go module IS its repository and Composer reads tags off it, so the tag
+# job-version-release cuts is the whole of their release.
+#
+# IT BUILDS NOTHING, and that is the load-bearing property. Release is
+# promotion, not production (Principle 17): the bytes it publishes are the ones
+# earlier jobs produced and every gate passed, restored here through
+# `artifacts:` exactly as job-image-build restores them. Nothing here runs a
+# compiler, no dependency is installed, and lifecycle scripts are suppressed
+# (`npm_config_ignore_scripts`) so a `prepack` cannot smuggle a second build in.
+# The fleet's only other npm publish path — design-system's publish.yml, which
+# this replaces rather than copies — runs `pnpm install && pnpm build` inside
+# the publishing job, so what it ships is a build no gate ever saw.
+#
+# IT DECIDES NOTHING ABOUT THE VERSION EITHER. `version` and `version_changed`
+# are inputs, read from whichever job carries the shared version-stamp block
+# ("One versioning implementation, and no repo defines its own"). Rendering is
+# per-ecosystem; deciding is not. What this job renders is npm's spelling of
+# the repository's version: it writes `version` into each manifest before
+# packing, the way the .deb version is rendered in gha-runner-controller's
+# Makefile rather than copied from a second file. package.json's `version`
+# field is npm's rendering of `.version` and never a second source of truth —
+# both platform repositories say so in their own AGENTS.md — and this is the
+# job that makes that true rather than hoped for.
+#
+# WHAT A PULL REQUEST GETS. Everything except the publish itself: artifacts
+# placed, version rendered, manifests checked, tarballs packed, tarball
+# contents asserted against what the manifest's `exports` promises, and a
+# `pnpm publish --dry-run`. Only the final push is suppressed (Principle 17,
+# rule D5). The alternative is a code path whose first execution ever is the
+# merge that had to work, and an npm version is the worst possible place for
+# that: a container tag can be repointed, but a published version is permanent
+# and cannot be reused even after the version is deleted.
+#
+# WHERE THE CALLER PUTS IT. Below `ci-ok`, with the same guard
+# job-version-release takes, so the package and the tag are minted by the same
+# rollup:
+#
+#   publish-npm:
+#     needs: [ci-ok, <the job that resolved the version>]
+#     if: >-
+#       always()
+#       && needs.ci-ok.result == 'success'
+#     uses: aurum-alpha/workflows/.github/workflows/job-publish-npm-ghp.yml@main
+#     with:
+#       version: ${{ needs.<build-job>.outputs.version }}
+#       version_changed: ${{ needs.<build-job>.outputs.version_changed }}
+#       artifacts: |
+#         dist=dist
+#     permissions:
+#       contents: read
+#       packages: write
+#
+# `always()` is not optional there. job-version-gate is pull_request-only, so
+# it is skipped on every push to main, and GitHub propagates that skip
+# transitively through `needs:` to everything below the rollup. Without the
+# guard the publish is silently absent from the very run that was the release.
+#
+# The `if:` carries no main-only condition, and must not: that lives on the
+# publishing step below (rule D5).
+#
+# NO JOB-LEVEL CONCURRENCY GROUP, and Principle 6 raises the question for
+# publish jobs, so here is the answer. Nothing two runs could race to move: a
+# published version is immutable, and a version already there is skipped rather
+# than overwritten. What a group would add is a pending publish that a third
+# run cancels — and this job sits below ci-ok, which has already reported, so
+# that cancellation is a release that quietly did not happen. A queue is the
+# more expensive failure than the race it prevents.
+name: job-publish-npm-ghp
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: >-
+          The version this commit carries, bare, with no leading v — the
+          `version` output of the job that read the version file. Never the
+          stamp: `0.2.1-dev.abc1234` names no release, and this job refuses
+          anything that is not a bare MAJOR.MINOR.PATCH.
+
+          A repository publishing packages must have a version file. Principle
+          16 makes one REQUIRED wherever something outside the repository
+          decides from the version string, and a dependency resolver is the
+          example it gives. So `dev` — what the build jobs return for a repo
+          with no version file — is an error here rather than a quiet no-op.
+        type: string
+        required: true
+      version_changed:
+        description: >-
+          'true' when this commit changed the version file — the
+          `version_changed` output of that same job. THIS IS THE RELEASE
+          SWITCH: a versioned package is a version-named emission, so it is
+          produced only by the commit that moved the version ("Only a version
+          change mints a version"). Everything between releases packs, proves
+          and publishes nothing.
+
+          This job does not re-derive it. Two implementations of "did this
+          commit cut a release" is how the fleet got a `grep -qx '.version'`
+          whose unescaped dot matched `aversion`.
+        type: string
+        required: true
+      workdir:
+        description: >-
+          Directory holding the `.node-version` and the `package.json` whose
+          `packageManager` pins pnpm, relative to the repo root. Defaults to
+          `.`. This is the toolchain root, not the thing being published: a
+          workspace keeps its pins at the root and names its packages below.
+        type: string
+        default: "."
+      packages:
+        description: >-
+          Newline-separated directories, each holding one package.json to
+          publish, relative to the REPO ROOT. Defaults to `.`, the
+          single-package repository. A workspace lists its packages, one per
+          line, and they all publish at the repository's one version
+          (Principle 15 — the repo is versioned, not the artifact).
+        type: string
+        default: "."
+      artifacts:
+        description: >-
+          Newline-separated `artifact-name=destination` pairs, restored before
+          anything is packed. Same idiom as job-image-build's input of the same
+          name, and the same reason: BUILD ONCE (Principle 7). `dist=dist` says
+          the tarball is packed around the build this run already produced and
+          gated.
+
+          Destinations are relative to the repo root. A package whose entire
+          published content is committed to the repository needs none of this
+          and leaves it empty; a package that ships a build output and passes
+          nothing here will fail the tarball assertion below rather than
+          publish an empty package.
+        type: string
+        default: ""
+      required_files:
+        description: >-
+          Optional. Newline-separated globs that must be present INSIDE each
+          tarball, in addition to everything the manifest's `exports`, `main`,
+          `module`, `types` and `bin` already promise (those are derived and
+          need no input). Paths are as they appear in the package, with no
+          `package/` prefix: `contracts/**`.
+
+          For content a consumer needs that no entry point names — a schema
+          corpus, a stylesheet — where `files` including it and the build
+          actually producing it are two different claims.
+        type: string
+        default: ""
+
+jobs:
+  publish-npm:
+    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      # GitHub Packages. Nothing here writes to the repository: the version is
+      # rendered into the checkout's package.json and never committed back
+      # (rule CM), because the manifest in the tarball is the only place that
+      # rendering has to exist.
+      packages: write
+    env:
+      # Suppress prepack / prepare / prepublishOnly on every pnpm invocation in
+      # this job. Verified against pnpm 10.34.5: `pnpm pack --ignore-scripts` is
+      # rejected as an unknown option, and this env var is what actually takes
+      # (a `prepack` writing a sentinel file ran without it and did not with
+      # it). It is a structural guarantee of the paragraph at the top of this
+      # file — a publish job that runs a build script is producing bytes no gate
+      # has seen, whatever its comments say.
+      npm_config_ignore_scripts: "true"
+    steps:
+      # Shallow. The release decision is an input, so there is no parent commit
+      # to diff against here — the job that produced `version_changed` is the
+      # one that needed fetch-depth: 2.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Is this a release commit, and is the version publishable?
+        id: decide
+        env:
+          VERSION_CHANGED: ${{ inputs.version_changed }}
+          VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # A bare SemVer triple or nothing. A stamp wired in by mistake, or
+          # `dev` from a repository with no version file, must fail here rather
+          # than reach a registry — npm would accept `0.2.1-dev.abc1234` as a
+          # valid pre-release and publish it, and a pre-release nobody chose is
+          # a version this fleet does not mint. An anchored regex, not a case
+          # glob: `[0-9]*.[0-9]*.[0-9]*` also matches `1.2.3.4`.
+          if ! [[ "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::version reads '${VERSION}'; expected a bare" \
+                 "MAJOR.MINOR.PATCH. A repository that publishes packages" \
+                 "needs a version file (Principle 16) — a dependency resolver" \
+                 "decides from the string, so provenance alone is not enough."
+            exit 1
+          fi
+
+          # workflow_dispatch is the retry path: a publish that failed after the
+          # merge has to be repeatable without inventing a new version number.
+          # Safe because the publish below skips a version the registry already
+          # has rather than failing on it.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            release=true
+          else
+            release="${VERSION_CHANGED}"
+          fi
+
+          echo "release=${release}" >> "$GITHUB_OUTPUT"
+          if [ "${release}" != "true" ]; then
+            echo "Version unchanged; this run packs and proves, and publishes nothing."
+          fi
+
+      # Everything from here to the publish runs on every event, release or
+      # not. The pack and its assertions are the rehearsal, and a rehearsal
+      # that only happened on release commits would run once a quarter.
+      - name: Resolve the artifact download pattern
+        id: wanted
+        if: ${{ inputs.artifacts != '' }}
+        env:
+          ARTIFACTS: ${{ inputs.artifacts }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # ONE glob, not a list of names: download-artifact hands the whole
+          # input to a single minimatch, so a two-line value is one pattern
+          # containing a newline and matches nothing — silently, because a
+          # pattern that matches nothing exits 0. Brace alternation is the glob
+          # that means "any of these". Identical in shape and reasoning to
+          # job-image-build's copy, which found this the hard way.
+          names=()
+          while IFS= read -r line; do
+            # Two guards, for unrelated reasons. `<<<` feeds one line even when
+            # the variable is empty, and a `|` block scalar is literal text, so
+            # a leading `#` is data rather than a comment.
+            [ -n "$line" ] || continue
+            [ "${line#\#}" = "$line" ] || continue
+            name="${line%%=*}"
+            case "$name" in
+              *[!A-Za-z0-9._-]*|'')
+                echo "::error::Artifact name '$name' is not matched literally" \
+                     "here — names must be [A-Za-z0-9._-]+ so the download" \
+                     "glob cannot mean something other than these names."
+                exit 1
+                ;;
+            esac
+            names+=("$name")
+          done <<< "$ARTIFACTS"
+
+          if [ "${#names[@]}" -eq 0 ]; then
+            echo "::error::artifacts input has no entries after blanks and" \
+                 "comments. Omit the input instead of passing an empty one."
+            exit 1
+          fi
+          if [ "${#names[@]}" -eq 1 ]; then
+            pattern="${names[0]}"
+          else
+            pattern="$(IFS=,; echo "{${names[*]}}")"
+          fi
+          echo "Downloading artifacts matching: $pattern"
+          echo "pattern=${pattern}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: ${{ inputs.artifacts != '' }}
+        with:
+          path: .ci-artifacts
+          pattern: ${{ steps.wanted.outputs.pattern }}
+
+      - name: Place the build outputs
+        if: ${{ inputs.artifacts != '' }}
+        env:
+          ARTIFACTS: ${{ inputs.artifacts }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          requested=0
+          while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            [ "${line#\#}" = "$line" ] || continue
+            requested=$((requested + 1))
+          done <<< "$ARTIFACTS"
+
+          while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            [ "${line#\#}" = "$line" ] || continue
+            name="${line%%=*}"; dest="${line#*=}"
+            if [ -d ".ci-artifacts/$name" ]; then
+              src=".ci-artifacts/$name"
+            elif [ "$requested" -eq 1 ] && [ -n "$(ls -A .ci-artifacts 2>/dev/null)" ]; then
+              # download-artifact documents a per-artifact directory and then
+              # does not create one when exactly one artifact is downloaded: it
+              # extracts straight into `path`.
+              src=".ci-artifacts"
+              echo "note: single-artifact run — '$name' was extracted flat" \
+                   "into .ci-artifacts rather than .ci-artifacts/$name"
+            elif [ -z "$(ls -A .ci-artifacts 2>/dev/null)" ]; then
+              echo "::error::No artifacts were downloaded: nothing in this run" \
+                   "matched the names this mapping asks for. Check that the" \
+                   "jobs producing them ran, and that they upload under exactly" \
+                   "these names ('$name' among them)."
+              exit 1
+            else
+              echo "::error::No artifact named '$name' in this run." \
+                   "Available: $(find .ci-artifacts -mindepth 1 -maxdepth 1 -printf '%f ' 2>/dev/null)"
+              exit 1
+            fi
+            mkdir -p "$dest"
+            cp -a "$src/." "$dest/"
+            echo "Placed $name -> $dest"
+          done <<< "$ARTIFACTS"
+
+      # The prelude, inline. The shared jobs spell it out rather than call
+      # setup/node-pnpm, which runs in the caller's checkout — the same reason
+      # every other job-*.yml carries these three steps verbatim. What is
+      # missing from the copy is deliberate: no store cache and no
+      # `pnpm install`, because this job installs nothing. Publishing needs a
+      # manifest, a tarball and a credential, and a node_modules tree here would
+      # be the first half of a build.
+      #
+      # Node before pnpm: a self-hosted runner's bundled node is sometimes
+      # broken, and setup-node puts a real Node and npm on PATH first.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ${{ inputs.workdir }}/.node-version
+          # This is the whole of the credential arrangement, and it is the
+          # publishing half of what client-manager's client/.npmrc describes on
+          # the consuming side. setup-node writes a USER-level ~/.npmrc holding
+          # the scope mapping and the literal string `${NODE_AUTH_TOKEN}` — not
+          # the token, which npm substitutes from the environment at the moment
+          # it needs it. So no credential is ever written to a file (workflows#389),
+          # and nothing has to be cleaned up afterwards.
+          #
+          # User-level and not a project .npmrc, because pnpm 10 ignores auth
+          # settings in a project file as supply-chain hardening. A publish job
+          # writing `//npm.pkg.github.com/:_authToken=…` into the checkout —
+          # which is what design-system's publish.yml does — is a line pnpm 10
+          # would silently ignore, leaving an unauthenticated publish and a
+          # token in the workspace.
+          registry-url: https://npm.pkg.github.com
+          scope: "@aurum-alpha"
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: ${{ inputs.workdir }}/package.json
+          # The default dest is ~/setup-pnpm, shared by every job on a
+          # persistent self-hosted host; two installing pnpm at once race and
+          # one dies on ENOTEMPTY. runner.temp is per-job.
+          standalone: true
+          dest: ${{ runner.temp }}/setup-pnpm
+
+      - name: Each manifest is publishable to GitHub Packages
+        env:
+          PACKAGES: ${{ inputs.packages }}
+        shell: python3 {0}
+        run: |
+          import json, os, pathlib, sys
+
+          SCOPE = "@aurum-alpha"
+          REGISTRY = "https://npm.pkg.github.com"
+          repo = os.environ["GITHUB_REPOSITORY"]            # owner/name
+          repo_name = repo.split("/", 1)[1]
+
+          def entries(raw):
+              """Lines of a `|` block scalar, minus blanks and # annotations."""
+              return [ln.strip() for ln in raw.splitlines()
+                      if ln.strip() and not ln.strip().startswith("#")]
+
+          dirs = entries(os.environ["PACKAGES"])
+          if not dirs:
+              print("::error::packages has no entries after blanks and comments.")
+              sys.exit(1)
+
+          bad = 0
+          for d in dirs:
+              mf = pathlib.Path(d) / "package.json"
+              if not mf.is_file():
+                  print(f"::error::no package.json at packages entry '{d}'.")
+                  bad = 1
+                  continue
+              pkg = json.loads(mf.read_text())
+              name = pkg.get("name", "")
+              pc = pkg.get("publishConfig") or {}
+              before = bad
+
+              # Fail closed on the registry. `--registry` does NOT override
+              # publishConfig.registry, so the manifest is what decides where a
+              # package lands: a private package whose manifest omits this goes
+              # to the public npmjs.org registry, and nothing about the command
+              # line would have said so.
+              if pc.get("registry") != REGISTRY:
+                  print(f"::error::{d}/package.json has publishConfig.registry="
+                        f"{pc.get('registry')!r}; this job publishes to {REGISTRY} "
+                        "and the manifest is what decides the destination.")
+                  bad = 1
+              if pc.get("access") != "restricted":
+                  print(f"::error::{d}/package.json has publishConfig.access="
+                        f"{pc.get('access')!r}; expected 'restricted'.")
+                  bad = 1
+
+              # The scope has to be the one setup-node mapped, or the token in
+              # ~/.npmrc applies to a registry this package does not use.
+              if not name.startswith(SCOPE + "/"):
+                  print(f"::error::{d}/package.json is named {name!r}; this job "
+                        f"authenticates the {SCOPE} scope and nothing else.")
+                  bad = 1
+
+              # GITHUB_TOKEN can publish only a package linked to the repository
+              # it came from. GitHub takes the link from `repository.url` when it
+              # is there, and otherwise from the package name matching the
+              # repository name. Neither holding is a 401 on the merge that was
+              # cutting the release, with nothing in the message about manifests.
+              field = pkg.get("repository") or {}
+              url = field.get("url", "") if isinstance(field, dict) else str(field)
+              linked = repo.lower() in url.lower().replace(".git", "")
+              if not linked and name.split("/", 1)[-1] != repo_name:
+                  print(f"::error::{d}/package.json neither names {repo} in "
+                        "`repository.url` nor matches the repository name, so "
+                        "GITHUB_TOKEN has no permission on the package it would "
+                        "create. Add the repository field.")
+                  bad = 1
+
+              if bad == before:
+                  print(f"  {d}: {name} -> {pc.get('registry')} "
+                        f"({pc.get('access')})")
+          sys.exit(bad)
+
+      - name: Render the version into each manifest
+        env:
+          PACKAGES: ${{ inputs.packages }}
+          VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Rendered, never trusted to agree. `.version` is the repository's
+          # version and package.json's field is npm's spelling of it, so this
+          # writes one from the other rather than asserting that two files were
+          # edited in step. Same rule as the .deb version in
+          # gha-runner-controller: a packaging job renders its target's
+          # spelling, and never re-decides what the version is.
+          #
+          # For a release the two strings are identical — npm and SemVer agree
+          # about a bare triple — so the render is the identity function today.
+          # It is still the render that runs, because the day they disagree the
+          # answer must come from one place.
+          while IFS= read -r dir; do
+            [ -n "$dir" ] || continue
+            [ "${dir#\#}" = "$dir" ] || continue
+            was="$(cd "$dir" && pnpm pkg get version | tr -d '"')"
+            if [ "$was" != "$VERSION" ]; then
+              echo "::warning::$dir/package.json read version '$was' and the" \
+                   "version file says '$VERSION'; publishing '$VERSION'." \
+                   "The manifest field is npm's rendering of the version file," \
+                   "so a release pull request moves both."
+            fi
+            (cd "$dir" && pnpm pkg set "version=$VERSION")
+            echo "Rendered $dir/package.json version=$VERSION"
+          done <<< "$PACKAGES"
+
+      - name: Pack each package
+        env:
+          PACKAGES: ${{ inputs.packages }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/npm-pack"
+          rm -rf "$out"; mkdir -p "$out"
+          i=0
+          while IFS= read -r dir; do
+            [ -n "$dir" ] || continue
+            [ "${dir#\#}" = "$dir" ] || continue
+            i=$((i + 1))
+            # --json reports the tarball path and every file inside it, which is
+            # what the next step asserts against. Packing here and publishing
+            # THAT tarball, rather than pointing publish at a directory, is what
+            # makes the bytes proved and the bytes shipped the same bytes.
+            (cd "$dir" && pnpm pack --json --pack-destination "$out") \
+              > "$out/pack-$i.json"
+          done <<< "$PACKAGES"
+          ls -l "$out"
+
+      - name: Each tarball carries what its manifest promises
+        env:
+          PACKAGES: ${{ inputs.packages }}
+          REQUIRED_FILES: ${{ inputs.required_files }}
+        shell: python3 {0}
+        run: |
+          import fnmatch, json, os, pathlib, sys
+
+          # A package whose declarations are missing typechecks nowhere, and
+          # nothing else in the pipeline would notice: it installs, it imports
+          # at runtime, and every consumer's `tsc` fails on a package that
+          # arrived without its .d.ts files. The promise is already written down
+          # in the manifest — `exports`, `main`, `module`, `types`, `bin` name
+          # every file a consumer can reach — so this asserts the promise rather
+          # than a list somebody has to keep in step with it.
+          out = pathlib.Path(os.environ["RUNNER_TEMP"]) / "npm-pack"
+
+          def entries(raw):
+              return [ln.strip() for ln in raw.splitlines()
+                      if ln.strip() and not ln.strip().startswith("#")]
+
+          extra = entries(os.environ["REQUIRED_FILES"])
+          dirs = entries(os.environ["PACKAGES"])
+
+          def promised(node):
+              """Every relative path a manifest field points at."""
+              if isinstance(node, str):
+                  yield node
+              elif isinstance(node, dict):
+                  for v in node.values():
+                      yield from promised(v)
+              elif isinstance(node, list):
+                  for v in node:
+                      yield from promised(v)
+
+          rows, bad = [], 0
+          for i, d in enumerate(dirs, start=1):
+              report = json.loads((out / f"pack-{i}.json").read_text())
+              packed = {f["path"] for f in report["files"]}
+              pkg = json.loads((pathlib.Path(d) / "package.json").read_text())
+
+              want = set()
+              for field in ("exports", "main", "module", "types", "typings", "bin"):
+                  for p in promised(pkg.get(field)):
+                      # A subpath PATTERN (`./dist/*`) names a set rather than a
+                      # file, so there is nothing here to assert; `files` and the
+                      # globs below cover that case.
+                      if p.startswith("./") and "*" not in p:
+                          want.add(p[2:])
+
+              missing = sorted(p for p in want if p not in packed)
+              for p in missing:
+                  print(f"::error::{report['name']} promises '{p}' in its manifest "
+                        "and the tarball does not carry it. Either the build that "
+                        "produces it did not run in this pipeline, or `files` "
+                        "excludes it.")
+                  bad = 1
+              for glob in extra:
+                  if not any(fnmatch.fnmatch(p, glob) for p in packed):
+                      print(f"::error::{report['name']}: nothing in the tarball "
+                            f"matches required_files entry '{glob}'.")
+                      bad = 1
+
+              tag = f"{report['name']}@{report['version']}"
+              if missing:
+                  print(f"{tag}: {len(missing)} promised path(s) missing")
+              else:
+                  print(f"{tag}: {len(packed)} files, {len(want)} promised "
+                        "entry points, all present")
+              rows.append((report["name"], report["version"], report["filename"]))
+
+          # What the publish step reads. Written by the step that proved the
+          # tarballs rather than by the one that made them, so nothing can be
+          # published that this step did not look inside.
+          (out / "packed.tsv").write_text(
+              "".join("\t".join(r) + "\n" for r in rows))
+
+          summary = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary:
+              with open(summary, "a") as fh:
+                  for name, version, fn in rows:
+                      fh.write(f"- `{name}@{version}` — `{os.path.basename(fn)}`\n")
+          sys.exit(bad)
+
+      - name: Publish the tarballs for inspection
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: npm-tarballs
+          path: ${{ runner.temp }}/npm-pack/*.tgz
+          # A hand-off inside one run, and a reviewer's copy of exactly what a
+          # release would push. The durable home of a released tarball is the
+          # registry, so nothing here is the only copy of anything (rule RET).
+          retention-days: 1
+          if-no-files-found: error
+
+      # The rehearsal, on every run that is not publishing. --dry-run does
+      # everything a publish does except the PUT, so the credential wiring, the
+      # registry resolution and the tarball are all exercised on the pull
+      # request that changed them.
+      - name: Rehearse the publish
+        # Exactly the complement of the publish step's condition below, written
+        # as its negation so the two cannot drift into a run that does neither.
+        if: >-
+          ${{ !(steps.decide.outputs.release == 'true'
+                && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
+                && github.event_name != 'pull_request') }}
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS=$'\t' read -r name version tarball; do
+            echo "::group::dry-run $name@$version"
+            # --no-git-checks: the render above dirties the working tree, and
+            # pnpm's own branch check defaults to `master`. The branch question
+            # this job actually cares about is answered by the `if:` conditions,
+            # which name main explicitly.
+            pnpm publish "$tarball" --no-git-checks --access restricted --dry-run
+            echo "::endgroup::"
+          done < "$RUNNER_TEMP/npm-pack/packed.tsv"
+
+      # The one step a pull request does not run. Gated on the STEP and not the
+      # job, so everything above it is exercised on every change (Principle 17,
+      # rule D5).
+      - name: Publish to GitHub Packages
+        if: >-
+          steps.decide.outputs.release == 'true'
+          && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
+          && github.event_name != 'pull_request'
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS=$'\t' read -r name version tarball; do
+            # Idempotent, because the workflow_dispatch retry path exists and
+            # because a re-run of a release merge must not fail. A version the
+            # registry already has is the success case — and it is the only
+            # recoverable one: GitHub Packages refuses to republish a version
+            # even after it has been deleted, so there is no correcting a
+            # publish, only a new version.
+            #
+            # `pnpm view` exits non-zero for "not published" and for "cannot
+            # reach the registry" alike, so the two are told apart by what it
+            # printed. Never guessed: an auth failure read as "not published"
+            # would fall through to a publish that fails a second time with a
+            # worse message.
+            if seen="$(pnpm view "$name@$version" version 2>&1)"; then
+              echo "$name@$version is already published; nothing to do."
+              echo "\`$name@$version\` was already published." >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+            case "$seen" in
+              *E404*|*"is not in this registry"*|*"404 Not Found"*) ;;
+              *)
+                echo "::error::could not ask the registry about $name@$version:"
+                echo "$seen"
+                exit 1
+                ;;
+            esac
+
+            pnpm publish "$tarball" --no-git-checks --access restricted
+            echo "Published $name@$version"
+            echo "Published \`$name@$version\` to GitHub Packages." >> "$GITHUB_STEP_SUMMARY"
+          done < "$RUNNER_TEMP/npm-pack/packed.tsv"

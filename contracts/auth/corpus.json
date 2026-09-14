@@ -37,10 +37,7 @@
         ],
         "roles": [
           "billing_admin"
-        ],
-        "session": {
-          "expires_at": "2026-09-02T03:44:03.187Z"
-        }
+        ]
       },
       "valid": true
     },

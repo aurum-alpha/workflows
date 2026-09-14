@@ -30,6 +30,16 @@ repository alone.
   DS5  a development image installs from a lockfile, with the pinned manager
   DS6  no client build config hardcodes a port
 
+WHERE THE FILES ARE. The compose file is one, at the repository root. The
+development image and the client build config are not: a repository holding
+several services puts each under services/<name>/ with its own Dockerfile.dev
+(010-ci.md, the layout section; 016 LD5), and a service in one language cannot
+share a toolchain image with a service in another. So DS5 walks every
+Dockerfile.dev at the root, under client/ and under services/*/, and DS6 walks
+every vite.config.ts at the root, under client/, and under services/*/ and
+services/*/client/. A checker that read one file at the root would report
+success for a repository whose three dev images it never opened.
+
 Run against local clones:  tools/check-dev-stack --root /workspace --repo NAME
 Check the allocation:      tools/check-dev-stack --registry
 """
@@ -50,6 +60,21 @@ PRIVILEGED = 1024
 # A development compose file. A file whose name says prod is a deployment, and
 # 016 leaves deployments alone.
 DEV_COMPOSE = ("docker-compose.yml", "docker-compose.yaml", "compose.yaml", "compose.yml")
+
+# Where a development image lives, relative to the repository root: the root
+# for a one-toolchain repository, client/ for a browser UI beside another
+# runtime, and services/<name>/ for each service of a multi-service one. The
+# globs are bounded on purpose: a walk of the whole tree would read the dev
+# image of every vendored dependency and call it the repository's.
+DEV_IMAGE_GLOBS = ("Dockerfile.dev", "client/Dockerfile.dev", "services/*/Dockerfile.dev")
+
+# Where a client build config lives, by the same layout.
+CLIENT_CONFIG_GLOBS = (
+    "vite.config.ts",
+    "client/vite.config.ts",
+    "services/*/vite.config.ts",
+    "services/*/client/vite.config.ts",
+)
 
 # "2900:5173", "${FASTGEN_HOST_PORT:-4600}:8180", "127.0.0.1:8080:8080".
 HOST_PORT = re.compile(
@@ -203,34 +228,44 @@ def check_compose(label: str, path: pathlib.Path) -> tuple[list[str], int | None
     return findings, base
 
 
-def check_dev_image(label: str, path: pathlib.Path) -> list[str]:
+def check_dev_image(label: str, path: pathlib.Path, shown: str) -> list[str]:
     """DS5. A development image that resolves dependencies differently from CI
     proves nothing, and the failure it hides is the one a developer most wants
-    caught before a push."""
+    caught before a push. `shown` is the path relative to the repository, so a
+    finding on services/ts/Dockerfile.dev says which of several it means."""
     findings = []
     text = path.read_text()
     hand = HAND_PINNED.search(text)
     if hand:
         findings.append(
-            f"DS5 {label}: {path.name} writes out {hand.group(0)!r}. Read the version from "
+            f"DS5 {label}: {shown} writes out {hand.group(0)!r}. Read the version from "
             "the pin the repository already declares, which is Principle 1 inside a "
             "Dockerfile (LD6)."
         )
     installs = "pnpm install" in text or "npm install" in text or "npm ci" in text
     if installs and "--frozen-lockfile" not in text and "npm ci" not in text:
         findings.append(
-            f"DS5 {label}: {path.name} installs without --frozen-lockfile, so the dev "
+            f"DS5 {label}: {shown} installs without --frozen-lockfile, so the dev "
             "container's dependency tree is one nobody else has (LD6)."
         )
     if ENV_PORT.search(text):
         findings.append(
-            f"DS5 {label}: {path.name} sets ENV PORT. A development image binds the "
+            f"DS5 {label}: {shown} sets ENV PORT. A development image binds the "
             "default its code declares (LD2)."
         )
     return findings
 
 
-def check_client_config(label: str, path: pathlib.Path, base: int | None) -> list[str]:
+def located(root_dir: pathlib.Path, globs: tuple[str, ...]) -> list[pathlib.Path]:
+    """Every file one of the layout globs names, in a stable order, so findings
+    read the same on every machine."""
+    found: list[pathlib.Path] = []
+    for pattern in globs:
+        found += sorted(p for p in root_dir.glob(pattern) if p.is_file())
+    return found
+
+
+def check_client_config(label: str, path: pathlib.Path, base: int | None, shown: str) -> list[str]:
     """DS6. The host block does not appear in application code. That is the
     number 016 exists to remove: the block belongs to the host binding, and the
     process inside the container binds its own default.
@@ -267,7 +302,7 @@ def check_client_config(label: str, path: pathlib.Path, base: int | None) -> lis
         for m in pattern.finditer(inside):
             if base <= int(m.group(1)) < base + BLOCK:
                 findings.append(
-                    f"DS6 {label}: {path.name} names {key} {m.group(1)}, which is inside "
+                    f"DS6 {label}: {shown} names {key} {m.group(1)}, which is inside "
                     f"this stack's host block {base}-{base + BLOCK - 1}. {why} (LD2)."
                 )
     return findings
@@ -287,16 +322,13 @@ def check_repo(root: pathlib.Path, repo: str) -> tuple[list[str], bool]:
             findings += compose_findings
             break
 
-    dev_image = root_dir / "Dockerfile.dev"
-    if dev_image.is_file():
+    for dev_image in located(root_dir, DEV_IMAGE_GLOBS):
         looked = True
-        findings += check_dev_image(repo, dev_image)
+        findings += check_dev_image(repo, dev_image, dev_image.relative_to(root_dir).as_posix())
 
-    for candidate in ("vite.config.ts", "client/vite.config.ts"):
-        path = root_dir / candidate
-        if path.is_file():
-            looked = True
-            findings += check_client_config(repo, path, block)
+    for path in located(root_dir, CLIENT_CONFIG_GLOBS):
+        looked = True
+        findings += check_client_config(repo, path, block, path.relative_to(root_dir).as_posix())
 
     return findings, looked
 

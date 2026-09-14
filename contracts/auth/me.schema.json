@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.aurumalpha.dev/auth/me.schema.json",
   "title": "Aurum Alpha client identity document",
-  "description": "What a client fetches at load to know who is signed in and what to render. Governed by standards/060-auth.md AU6. THE PERMISSIONS AND ENTITLEMENTS HERE ARE ADVISORY: the client uses them to decide what to render, never to decide what is allowed, and every one is enforced again on the server on every request. The permission vocabulary belongs to the RBAC standard and the entitlement vocabulary to the billing standard, not here. schemaVersion 1 — the entitlements block, session.tenant_id and user.editable_fields were added additively per PC6.",
+  "description": "What a client fetches at load to know who is signed in and what to render. Governed by standards/060-auth.md AU6. THE PERMISSIONS AND ENTITLEMENTS HERE ARE ADVISORY: the client uses them to decide what to render, never to decide what is allowed, and every one is enforced again on the server on every request. The permission vocabulary belongs to the RBAC standard and the entitlement vocabulary to the billing standard, not here. schemaVersion 1 — the entitlements block and user.editable_fields were added additively per PC6. The session block was removed: an application holds no session, so it cannot say when one ends (AU2).",
   "type": "object",
   "properties": {
     "schema_version": { "type": "integer", "const": 1 },
@@ -76,19 +76,6 @@
         }
       },
       "required": ["plan_id", "status", "capabilities"],
-      "additionalProperties": false
-    },
-    "session": {
-      "type": "object",
-      "description": "So the client can warn before a session lapses rather than losing work to a surprise redirect, and so it knows which tenant this session is bound to (AU8).",
-      "properties": {
-        "expires_at": { "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp" },
-        "tenant_id": {
-          "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/publicId",
-          "description": "The one tenant this session was bound to at login (AU8). Display and routing only: the server reads the tenant from its own session record, never from anything the client echoes back (070 RB10)."
-        }
-      },
-      "required": ["expires_at"],
       "additionalProperties": false
     }
   },

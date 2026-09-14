@@ -590,6 +590,20 @@ jobs:
       # everything a publish does except the PUT, so the credential wiring, the
       # registry resolution and the tarball are all exercised on the pull
       # request that changed them.
+      #
+      # IT SKIPS A VERSION THE REGISTRY ALREADY HAS, exactly as the publish
+      # below does, and for a different reason. --dry-run still asks the
+      # registry to accept the version, and the registry refuses one it already
+      # holds. Between releases a repository's version file names the version
+      # it last published, so without this guard every pull request that is not
+      # itself a release fails here — which is nearly all of them, and none of
+      # them for a reason the author can act on.
+      #
+      # The `pnpm view` probe is the same one the publish uses, so the
+      # credential wiring and the registry resolution are still exercised on
+      # every run. What a rehearsal cannot prove for an already-published
+      # version is whether the registry would ACCEPT the tarball, and no
+      # arrangement of this job can: that answer is permanently "no".
       - name: Rehearse the publish
         # Exactly the complement of the publish step's condition below, written
         # as its negation so the two cannot drift into a run that does neither.
@@ -606,6 +620,25 @@ jobs:
         run: |
           set -euo pipefail
           while IFS=$'\t' read -r name version tarball; do
+            # Told apart by what pnpm printed, never guessed, for the reason
+            # the publish step gives: `pnpm view` exits non-zero for "not
+            # published" and for "cannot reach the registry" alike, and an auth
+            # failure read as "not published" would fall through to a dry-run
+            # that fails again with a worse message.
+            if seen="$(pnpm view "$name@$version" version 2>&1)"; then
+              echo "$name@$version is already published; there is nothing a" \
+                   "dry-run could prove about it."
+              continue
+            fi
+            case "$seen" in
+              *E404*|*"is not in this registry"*|*"404 Not Found"*) ;;
+              *)
+                echo "::error::could not ask the registry about $name@$version:"
+                echo "$seen"
+                exit 1
+                ;;
+            esac
+
             echo "::group::dry-run $name@$version"
             # --no-git-checks: the render above dirties the working tree, and
             # pnpm's own branch check defaults to `master`. The branch question

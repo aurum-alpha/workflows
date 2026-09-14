@@ -234,17 +234,50 @@ the first-login actions, the invitation, or the access grant.
 
 | Operation | Semantics |
 |---|---|
-| `ensureIdentity(person) → (issuer, subject)` | Idempotent. Creates if absent, returns the existing identity if present. **Never assumes ownership**: a second application inviting the same human reuses the account. |
-| `grantAppAccess(subject)` | Sets the coarse gate on this application's registration at the provider. |
-| `revokeAppAccess(subject)` | Removes this application's grant and its local record. **Never disables the identity.** |
-| `sendInvitation(subject, actions)` | Triggers the first-login flow: verify email, set a password, enrol MFA. |
-| `changeLoginEmail(subject, email)` | Sets the login email **unverified** and triggers the provider's verification. The one operation a person triggers rather than an administrator. **Never sets `email_verified`** (AU10). |
+| `ensureIdentity(person) → (identity, created)` | Idempotent. Creates if absent, returns the existing identity if present, and says which. **Never assumes ownership**: a second application inviting the same human reuses the account. |
+| `grantAppAccess(identity)` | Sets the coarse gate on this application's registration at the provider. |
+| `revokeAppAccess(identity)` | Removes this application's grant and its local record. **Never disables the identity.** |
+| `sendInvitation(identity, actions, delivery)` | Arms the first-login flow at the provider: verify email, set a password, enrol MFA. `delivery` names who sends the mail. |
+| `changeLoginEmail(identity, email)` | Sets the login email **unverified** and triggers the provider's verification. The one operation a person triggers rather than an administrator. **Never sets `email_verified`** (AU10). |
+
+**`identity` is the `(issuer, subject)` pair, never the subject alone.** That
+is AU3's rule, and a bare subject cannot honour it. An adapter handed a
+reference from a provider it does not serve has to refuse it. A string
+carries nothing to refuse on.
+
+**`ensureIdentity` says whether it created the account.** The caller cannot
+honour "never assumes ownership" without knowing. Arming a first-login flow
+with `set_password` on an existing account resets a credential another
+application's user relies on. So an invitation is sent only where `created`
+is true. The corpus measures the bit as `identities_created`.
+
+**`revokeAppAccess` is defined by its goal state**: this application's grant is
+not set at the provider. A revoke that finds nothing has reached that state.
+It reports success, never a fault, and the removal continues to the local
+record. Otherwise a local user stays linked to an identity the provider no
+longer holds, which is the dangling state the operation exists to clear.
+
+Tolerance is not silence. The result carries that the provider held nothing,
+so an operator can tell "removed" from "there was nothing there". A wrong realm
+or a wrong subject then cannot "revoke" thousands of people while touching
+nothing. That also makes the removal idempotent, as every other step of the
+retry story already is.
+
+**The provider enforces the gate `grantAppAccess` sets, at login.** An
+identity holding no grant for this application is refused before any token is
+issued. A grant nothing checks is a gate that is open. It fails silently:
+every identity reaches the application whether or not the application admitted
+it. AU6 is the second gate behind this one, for the person the provider admits
+and the application does not know.
 
 **The application sends the invitation by default**, and it is permitted to
 defer to the provider. It is that way round because the message names the
 application and carries its branding, which provider-sent mail usually cannot.
 Deferring is cheaper and stays admitted, stated in the repository's
-**Conventions**.
+**Conventions**. Under either choice the required actions are armed at the
+provider, because nothing else can require them of a person at login. What
+`delivery` decides is who sends the mail. It is one product decision rather
+than two that can disagree.
 
 #### One provider account, many applications
 
@@ -270,6 +303,9 @@ learns of a person on first login.
 Two shapes reach it. An HR or identity-governance system provisions **into** the
 provider, which is what a provider's own SCIM support is for. A self-service
 product lets a person register at the provider with no directory behind it.
+**The second is the normal mode for a product sold to individuals.** There is
+no administrator to add anyone. The person adds themselves at the provider,
+and the application learns of them when they first arrive.
 
 **Two conditions hold, and the mode needs both of them:**
 
@@ -522,6 +558,15 @@ from the authenticated session. A tenant named by a header, a query parameter
 or a body field is a tenant the caller picked. Activating a grant is an act on
 the session, recorded in it and audited, and a request never carries one.
 
+**Activating a grant names a role and a scope, and nothing else**. A body that
+also names a subject or a session is refused as a validation failure, never
+ignored, and the error names the member. The subject is the authenticated
+principal's and the session is the one asking. A client that sends either
+believes it chooses one, and ignoring the member leaves that belief intact
+until something reads it. The cost is that a member added later is not
+backward compatible against an older server. For a request that binds a
+session's scope, that is the right way round.
+
 Where a hostname names the tenant, the
 [tenant hostnames standard](092-tenant-hostnames.md) TH1 to TH5 continue to
 hold. The host narrows which grants are candidates for the session. The binding
@@ -530,6 +575,65 @@ is still the active grant.
 Roles are unaffected. A person holding three grants in one tenant acts in one
 of them at a time. The grants are 070's, and the session names which one is
 active.
+
+#### Two tenancies, and a product declares one
+
+A repository names one of two tenancies in its **Conventions**, and there is
+no third.
+
+| Tenancy | What the host decides | Where a session's candidates come from |
+|---|---|---|
+| `single_host` | Nothing. One hostname serves every tenant, and a product with no tenants at all. | Every grant the subject holds |
+| `host_names_tenant` | The tenant, before login (092 TH2). | The grants the host's tenant contains (092 TH1) |
+
+`single_host` is also the declaration of a product with no tenants. A third
+value for that case resolves identically to `single_host` in every
+implementation. A value nothing reads drifts from what a product believes it
+set.
+
+#### A product with no tenants
+
+A product sold to individuals has accounts and no tenants. Its shape under
+this document and [`070-rbac.md`](070-rbac.md) is fixed, so that no such
+product invents one:
+
+- **Every account holds one grant**: a system role at `global`. The tenancy is
+  `single_host` and the subject holds one grant. The active grant never
+  changes inside a session, because there is nothing to change it to.
+- **A resource shared between accounts is a resource with an access list, and
+  never a scope**. A group with members, a document with collaborators, a
+  list a person invites another into: each is a row with a membership table.
+  Whether this account acts on this row is RB10's ownership check, run after
+  the permission check. A grant per membership would hand a person with ten
+  groups ten grants. RB6 makes a session act in one of them at a time, so the
+  person would choose a capacity to see their own list. That is the shape RB6
+  refuses, and the refusal is right.
+- **Provisioning is provider-is-source** (AU4). A person registers at the
+  provider. The application writes the user and the identity link on first
+  login with the declared default grant, and `email_verified` is required. An
+  invitation into a shared resource is matched on the login email at that
+  first login (AU3's matching key), and never stored as a key.
+
+#### Resolving the active grant has three outcomes
+
+Whatever the tenancy, a request's session resolves to one of three answers.
+The third carries one of four reasons. Every implementation names them the
+same way. A binding that has to re-derive a reason from a status is a binding
+that will derive a different one.
+
+| Outcome | Meaning | The answer |
+|---|---|---|
+| `active` | The session acts in one grant. | The request proceeds under that grant. |
+| `choose` | No grant is active, more than one is reachable, and this session is still permitted to choose. | `200` on the routes that serve a choosing session; a chooser in the client. |
+| `none` · `no_grant` | The subject holds no grant this host reaches. | AU6: `403`, and the session ends. |
+| `none` · `binding_lost` | The session's bound grant no longer stands, and the product admits no change of active grant. | `403`, and the session ends: binding to another grant would be the change the product refuses, performed by the software. Where the product admits the change, the stale binding is dropped and resolution runs again instead. |
+| `none` · `host_disagrees` | The host names one tenant and the session is bound to another (092 TH3). | `403`, the session is kept, and an `auth.access_denied` event is written: the session is valid for its own tenant and the request is the fault. |
+| `none` · `host_names_no_tenant` | The host names no tenant (092 TH3). | `404`, which the edge answers before the application runs; the application answers the same where it is reached. |
+
+`choose` is exactly the case the grants view's `must_choose` reports, and is
+not derived beside it. A session that has already chosen, under a product
+admitting no change, is `binding_lost` when its grant goes, whatever the
+candidate count says.
 
 ### AU9. The gateway routes, and where a route goes is how it is authenticated
 
@@ -785,3 +889,31 @@ settled question, drifting from the RFC the moment either moved.
   shared user id before minting, hiding the provider from applications
   entirely. That requires the proxy to own a user directory: a great deal
   more than a proxy, and the beginning of the framework PC1 forbids.
+- **A bare subject as the argument of AU4's operations**. It reads as the
+  shorter signature. It contradicts AU3 one section above it. It also leaves
+  an adapter unable to refuse a reference from a provider it does not serve
+  (AU4).
+- **`ensureIdentity` returning the pair alone**. The caller then cannot tell
+  whether it created the account. An invitation armed with `set_password` on
+  an account another application owns resets a working credential (AU4).
+- **A revoke that reports a fault when the provider holds nothing**. It reads
+  as the honest answer to a 404. It aborts the removal ahead of the local
+  record and leaves the dangling link the operation exists to clear. A result
+  carrying "nothing was held" keeps the honesty without the damage (AU4).
+- **A third tenancy for a product with no tenants**. It names the case. It
+  also resolves identically to `single_host` in every implementation, so it
+  is a value nothing reads. A declared value nothing reads drifts from what
+  the product believes it declared (AU8).
+- **A shared resource's membership as a grant at a scope**. It fits RB5's
+  shape. It gives a person one grant per group, and RB6 gives a session one
+  active grant. A person then picks a capacity to see their own list. The
+  membership is an access list on the row and the check is RB10's ownership
+  case (AU8).
+- **Ignoring a body member the activation does not read**. It is the more
+  compatible answer and the wrong one. A client sending `subject` or
+  `session` believes it chose one, and ignoring the member leaves that belief
+  intact until something reads it (AU8).
+- **Two no-grant reasons, with the HTTP binding deriving the host cases**.
+  It keeps the resolver smaller. Every binding then re-derives 092 TH3's two
+  host answers from what the resolver did not say. Two bindings derived them
+  differently (AU8).

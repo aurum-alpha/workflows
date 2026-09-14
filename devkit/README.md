@@ -72,6 +72,20 @@ link and a webhook are handed straight over too, and both are authenticated,
 just not by this tier. The gateway's only question is which hop
 comes next.
 
+**`devkit.json` is ingress configuration, and nothing else reads it.** Two
+things open the file: `tools/render-devkit`, which turns it into the four
+rendered files under `dev/`, and `tools/check-devkit-drift`, which renders it
+again to compare bytes. No application process reads it, at startup, at build
+time or in a test; it is not mounted into a container; no script derives
+anything for the application from it. The `routes` above are nginx's hop
+table and decide which paths pass through `auth_request`, and that is the
+whole of what they decide. The application registers its own routes in its own
+source, guards every one of them itself whatever hop the edge chose (060 AU9),
+and proves that with its own route-coverage test. A product that generated a
+route table, a guard list or a list of open paths from this file would have
+made the gateway's table the application's, and the two are different tables
+with different owners.
+
 The renderer refuses each of these and names the entry:
 
 - a path the template already declares

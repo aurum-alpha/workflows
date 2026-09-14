@@ -101,6 +101,15 @@ the default entry for an unknown host means any name pointed at the edge shows
 the product's login page under that name. That is a phishing kit the product
 built itself.
 
+**The application carries the first two cases as named reasons, and answers
+them the same way where it is reached**. `host_names_no_tenant` is the unknown
+host, `404`. `host_disagrees` is the disagreeing session, `403` with the
+session kept. They are two of the four reasons [`060-auth.md`](060-auth.md)
+AU8 gives a session that resolves to no active grant. The application's answer
+is decided by the reason it carries, never re-derived by whichever binding is
+serving the request. The edge answering the unknown host first is defence in
+depth, not a reason for the application to have no answer of its own.
+
 ### TH4. The session cookie is host-only, and `Domain=` is never set
 
 **A session cookie on a tenant host is set without a `Domain=` attribute**,
@@ -134,22 +143,36 @@ across hosts.
 
 ### TH5. One callback host per topology, and the session lands on the tenant host without the browser holding a token
 
-The identity provider holds a closed list of redirect URIs, and **that list
-names one callback host per deployment topology, not one per tenant**. A
-custom domain verified this afternoon must not require a provider change. A
-per-tenant redirect URI puts onboarding on the provider's timetable, and a
-wildcard is an open redirect the specification refuses. Both put the tenant
-table in two places.
+The identity provider holds a closed list of redirect URIs. **For a customer's
+own domain, that list names one callback host per deployment topology, not one
+per tenant**. A custom domain verified this afternoon must not require a
+provider change. A per-tenant redirect URI for it puts onboarding on the
+provider's timetable, and a wildcard is an open redirect the specification
+refuses. Both put the tenant table in two places.
+
+**A tenant subdomain under the product's own zone is the one host the list
+names per tenant**. The product controls the zone, so a redirect URI there
+sends the browser nowhere the product does not serve. The application already
+holds a control-plane credential at the provider for
+[`060-auth.md`](060-auth.md) AU4. Writing the subdomain's redirect URI when the
+tenant is created is one more write on that plane, at the product's own pace.
+The list stays derived from the tenant table rather than becoming a second
+copy of it. That is TH7's shape for the certificate allowlist, applied here: a
+subdomain is a redirect target because the table holds the tenant.
+
+A custom domain gets none of this. Until TH6's state machine reaches
+`verified`, the product does not know the customer holds the name. A redirect
+URI for a host somebody else controls is the open redirect the specification
+refuses. For every host the list does not name, the rest of this rule holds.
 
 That creates the problem this rule answers: under TH4 the session cookie is
-host-only to the tenant host, and the callback is not there. **The code
-exchange completes at the callback host, in the relying party tier the
-authentication standard's AU1 describes**. **The browser is returned to the
-tenant host carrying an opaque, single-use handle**. The handle is a random
-value the relying party minted, bound to the tenant host and to the flow's
-state. It is redeemable once, within seconds, only by the tier that minted it.
-The tenant host redeems it server-side, establishes the session and sets its
-own host-only cookie.
+host-only to the tenant host, and the callback is not there. **The code exchange completes at the
+callback host, in the relying party tier the authentication standard's AU1
+describes**. **The browser is returned to the tenant host carrying an opaque,
+single-use handle**. The handle is a random value the relying party minted,
+bound to the tenant host and to the flow's state. It is redeemable once,
+within seconds, only by the tier that minted it. The tenant host redeems it
+server-side, establishes the session and sets its own host-only cookie.
 
 Where one relying party tier serves every host, the redemption is a lookup in
 its session store; where not, a server-to-server call. Either way the browser
@@ -319,3 +342,16 @@ Its Conventions say so in a line.
   terms, and enforce it with assertions over their row-level policies. Such an
   assertion cannot see a reach that happens above SQL. TH1's two remaining
   paths cover the operator's case, and neither is silent about what was done.
+- **One callback host for tenant subdomains as well, with the handle serving
+  every tenant host.** It is one rule with no second clause. A relying party
+  that implements the handle gives it for free. It also rules out every
+  relying party that does not, for hosts the product itself controls and could
+  have listed. A subdomain under the product's zone is a redirect target the
+  product can vouch for. The control plane the application already holds
+  writes the list from the tenant table. The handle stays the rule for a
+  customer's own domain, where the product controls nothing (TH5).
+- **Two no-grant reasons, with the two host cases left to the binding.** The
+  resolver stays smaller. Each binding then re-derives the unknown host and
+  the disagreeing session from what the resolver did not say. Two bindings
+  derived them differently. The four answers in TH3 are the resolver's to
+  name (TH3, 060 AU8).

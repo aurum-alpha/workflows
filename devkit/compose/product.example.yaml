@@ -56,6 +56,19 @@ services:
       - ../..:/app
       - client_deps:/app/node_modules
 
+  # The fragment's one-shots depend on no database, because the fragment does
+  # not know whether the product has one. A product with a `db` service says
+  # so here, on both, so `up` orders them after it.
+  migrate:
+    depends_on:
+      db:
+        condition: service_healthy
+
+  seed:
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   db_data:
   server_deps:

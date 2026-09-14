@@ -114,9 +114,10 @@ The first six are textual substitution and nothing else, which is what lets a
 drift checker render the source again and compare bytes.
 
 It writes `dev/keycloak/realm.json`, `dev/nginx/edge.conf`,
-`dev/oauth2-proxy/oauth2-proxy.cfg` and `dev/compose/auth.compose.yaml`. The
-compose fragment resolves the other three by relative path, so the rendered
-tree keeps the shape of this one.
+`dev/oauth2-proxy/oauth2-proxy.cfg`, `dev/compose/auth.compose.yaml` and
+`dev/tools/dev-token`. The compose fragment resolves the first three by
+relative path, so the rendered tree keeps the shape of this one. A source that
+is a command is rendered as one: the mode bits come across with the bytes.
 
 **`ports.json` is not read here, and must not become the record.** A rendered
 tree has to be checkable from a single clone.
@@ -143,11 +144,12 @@ here, and not to the renderer, fails at the render rather than at the first
 
 | File | What it is |
 |---|---|
-| `keycloak/realm-template.json` | The realm import document: three clients and eight personas |
+| `keycloak/realm-template.json` | The realm import document: three clients, the access gate, and nine personas |
 | `nginx/edge.conf` | The edge at offset +0, and the only routing table |
 | `oauth2-proxy/oauth2-proxy.cfg` | The relying party behind `auth_request` |
 | `compose/auth.compose.yaml` | The `edge`, `oauth2-proxy`, `keycloak`, `migrate` and `seed` services |
-| `compose/product.example.yaml` | The `db`, `server` and `client` services a product defines itself |
+| `compose/product.example.yaml` | The `db`, `server` and `client` services a product defines itself, and the `db` dependency it adds to the one-shots |
+| `tools/dev-token` | Mints a persona's access token through the direct-grant client, for a terminal or a test |
 
 ## The three clients
 
@@ -159,57 +161,85 @@ here, and not to the renderer, fails at the render rather than at the first
 
 The devtools client exists because a functional test wants a token and not a
 login page. It is a local development client, and a rendered realm is never
-deployed anywhere.
+deployed anywhere. `dev/tools/dev-token <persona>` is the command that uses it.
 
 ## What the realm file cannot say in itself
 
-JSON carries no comments, so the reasoning behind four of its settings lives
-here.
+JSON carries no comments, so the reasoning behind its settings lives here.
+
+**The two clients whose tokens reach the application mint RFC 9068 access
+tokens for it.** `__REPO__` and `__REPO__-devtools` carry the
+`access.token.header.type.rfc9068` attribute, so the header's `typ` is
+`at+jwt`, and an audience mapper naming `__REPO__`, so `aud` names the
+application's registration at the provider. Those are two of the five checks
+AU2 makes a backend run, and a realm without them mints tokens every backend
+refuses. The audience is the `__REPO__` client itself: it is the one
+registration the application has at the provider, and the same registration
+the access role below hangs off.
 
 **No role mappers and no group mappers, anywhere.** AU2 keeps authorization
 out of the token, and the RB rules put roles in the application. The mechanism
 is two settings per client: `fullScopeAllowed` is false, and the `roles` scope
 is absent from `defaultClientScopes`. Adding either back puts `realm_access`
-into the ID token, and the application's access control then depends on
-provider configuration. A realm shipping role mappers defeats the standard
-silently, so this is not an omission to correct.
+into the token, and the application's access control then depends on provider
+configuration. A realm shipping role mappers defeats the standard silently, so
+this is not an omission to correct.
 
-**The admin client is the one exception.** Its service account carries
-`realm-management` roles, because Keycloak's admin API authorizes from them.
-Those roles govern the provider's control plane and never reach the
-application. That is why `__REPO__-admin` keeps the `roles` scope and the other
-two clients do not.
+**The admin client is the one exception, and it is the opposite on both
+settings.** Its service account carries `realm-management` roles, because
+Keycloak's admin API authorizes from them, and Keycloak puts a role into a
+token only where the client's scope admits it. So `__REPO__-admin` keeps the
+`roles` scope and has `fullScopeAllowed` true, and the other two clients have
+neither. Its token reaches Keycloak's admin API and nothing else, so the roles
+in it govern the provider's control plane and never reach the application.
+The roles are the four the control plane needs: `manage-users`, `view-users`
+and `query-users` for the identity and its mappings, and `view-clients` to
+resolve the application's client and read the access role.
+
+**The provider enforces the access gate at login** (060 AU4). `__REPO__`
+declares one client role, `access`, which is what `grantAppAccess` sets and
+`revokeAppAccess` clears. The realm binds a flow to each of the two
+application-facing clients: `__REPO__ browser` on the relying party and
+`__REPO__ direct grant` on the devtools client. Each authenticates and then
+runs a conditional sub-flow that denies an identity not holding
+`__REPO__.access`. An identity without the role is refused on the login page,
+and the direct grant answers `401` with the provider's error page rather than
+a token. `dev/tools/dev-token` reads that page and prints its one line.
 
 **The subject identifier type is public.** AU3 requires it, because a pairwise
 subject differs per client for one human. Two applications behind one provider
 then cannot tell they are looking at the same person. Keycloak makes a subject
-pairwise through a protocol mapper, so public is the absence of one. Every
-client here declares `protocolMappers` as an empty list.
+pairwise through a dedicated protocol mapper, and no client here carries one.
+The audience mapper above is a different mapper and changes nothing about
+`sub`.
 
 **The lifespans are AU5's numbers.** The token lives 300 seconds, the session
 idles out after 28800, and it ends absolutely at 604800. `duplicateEmailsAllowed`
 is false and `verifyEmail` is true, because AU3 keys provisioning on an address
 that is unique and verified.
 
-## The eight personas
+## The nine personas
 
 Subject ids are fixed in the file. A test that logs in as a persona and asserts
-on a subject cannot have that subject change per machine.
+on a subject cannot have that subject change per machine. Every persona
+exercises exactly one refusal, or none, so a test that sees one knows which.
 
-| Persona | Subject | What it exercises |
-|---|---|---|
-| `platform-admin` | `aa000001-…-000000000001` | A grant that is global rather than inside one tenant |
-| `tenant-a-admin` | `aa000002-…-000000000002` | Administration inside one tenant |
-| `tenant-b-admin` | `aa000003-…-000000000003` | The same, in a second tenant, so isolation has two sides |
-| `two-tenant-member` | `aa000004-…-000000000004` | AU8: one session acts in one tenant, and switching is an act on the session |
-| `single-tenant-member` | `aa000005-…-000000000005` | The ordinary case, where one grant is active without a choice |
-| `no-application-access` | `aa000006-…-000000000006` | AU6: an authenticated subject the application does not know is refused and logged out |
-| `deactivated-member` | `aa000007-…-000000000007` | A disabled identity, refused at the provider |
-| `unverified-email-member` | `aa000008-…-000000000008` | An unverified address, refused at the login page and again at the proxy |
+| Persona | Subject | Holds `access` | What it exercises |
+|---|---|---|---|
+| `platform-admin` | `aa000001-…-000000000001` | yes | A grant that is global rather than inside one tenant |
+| `tenant-a-admin` | `aa000002-…-000000000002` | yes | Administration inside one tenant |
+| `tenant-b-admin` | `aa000003-…-000000000003` | yes | The same, in a second tenant, so isolation has two sides |
+| `two-tenant-member` | `aa000004-…-000000000004` | yes | AU8: one session acts in one tenant, and switching is an act on the session |
+| `single-tenant-member` | `aa000005-…-000000000005` | yes | The ordinary case, where one grant is active without a choice |
+| `no-application-access` | `aa000006-…-000000000006` | yes | AU6: the provider admits the identity, the application does not know it, and it is refused and logged out. Under provider-is-source this is the first-login case instead, and the application writes the user |
+| `deactivated-member` | `aa000007-…-000000000007` | yes | A disabled identity, refused at the provider |
+| `unverified-email-member` | `aa000008-…-000000000008` | yes | An unverified address, refused at the login page and again at the proxy |
+| `no-provider-access` | `aa000009-…-000000000009` | **no** | AU4: an identity this application never granted access, refused by the provider's gate before any token exists |
 
-The realm holds identities and nothing else. Which tenants a persona belongs to
-is application data, written by the `seed` one-shot against the product's own
-tables.
+Personas 7 and 8 hold the role so that each trips its own refusal and not the
+gate's. The realm holds identities and nothing else. Which tenants a persona
+belongs to is application data, written by the `seed` one-shot against the
+product's own tables.
 
 ## Browser-facing against container-facing
 
@@ -250,15 +280,32 @@ to every host under it. The `__Host-` prefix stops being available at all.
 
 ## The edge
 
-`auth_request /oauth2/auth` guards every path that is not on the skip list.
-`auth_request_set $token $upstream_http_authorization` reads the ID token
-oauth2-proxy returns, and each guarded location forwards it upstream.
+`auth_request /oauth2/auth` guards every path whose hop is `auth`. The relying
+party answers the subrequest with the session's access token in the
+`X-Auth-Request-Access-Token` response header, which is what `set_xauthrequest`
+together with `pass_access_token` produces in `oauth2-proxy.cfg`.
+`auth_request_set $token $upstream_http_x_auth_request_access_token` reads it,
+and each guarded location sets `Authorization: Bearer $token` on the request it
+forwards. That is the one credential a backend receives (060 AU2), and it is
+RFC 9068's shape: the backend checks `typ`, issuer, audience, signature and
+expiry for itself. The relying party emits no ID token at all
+(`set_authorization_header` is false): an ID token asserts who authenticated to
+a client, and a backend refuses it on its `typ`.
 
-**An inbound `Authorization` header never reaches a backend.** Every location
-that proxies sets the header explicitly. A guarded location sets it to the
-token from the subrequest. Every other location sets it to the empty string.
-The subrequest location clears it too, because nginx passes the client's
-headers into the subrequest by default.
+**An inbound `Authorization` header never reaches a backend on a guarded
+route.** Every location that proxies through the tier sets the header
+explicitly. A guarded location sets it to the token from the subrequest. The
+relying party's own locations set it to the empty string. The subrequest
+location clears it too, because nginx passes the client's headers into the
+subrequest by default. A route handed straight to a service sets no
+`Authorization` line, so what the caller sent arrives intact for that service
+to check.
+
+**A `return 302 /path` is emitted as written.** `absolute_redirect` is off in
+the server block, because nginx otherwise builds an absolute `Location` from
+its own listen port. That port is 80 inside the container and not the block's
++0 on the host, so the sign-in redirect would send a browser to a port nothing
+publishes.
 
 That repetition is load-bearing. nginx drops every inherited `proxy_set_header`
 inside a location that declares one of its own. A block written once at server
@@ -287,17 +334,24 @@ issuer, the audience, the signature and the expiry are all checked there.
 
 ## What the product supplies
 
-The fragment defines five services and expects three more:
+The fragment defines five services and expects the product to define the
+services its routing table names, plus whatever database it has:
 
 | Service | Who defines it |
 |---|---|
 | `edge`, `oauth2-proxy`, `keycloak`, `migrate`, `seed` | The fragment |
-| `db`, `server`, `client` | The product, in its own `compose.yaml` |
+| `server`, `client`, and `db` where there is one | The product, in its own `compose.yaml` |
 
 The two one-shots run the product's own commands. `tools/migrate` applies the
 identity tables, and `tools/seed-personas` writes the application-side user and
 grant rows the realm's personas correspond to. Both are idempotent, both exit,
 and `docker compose up` runs them in order before anything serves.
+
+**The one-shots depend on no database in the fragment.** The fragment does not
+know whether the product has one: a product on SQLite migrates a file. A
+product with a `db` service adds `depends_on: db` to `migrate` and `seed` in
+its own `compose.yaml`, which is what `product.example.yaml` shows, so `up`
+orders them after it.
 
 ## Checking a change
 
@@ -310,5 +364,20 @@ docker compose -f dev/compose/auth.compose.yaml \
 
 python3 -c "import json; json.load(open('dev/keycloak/realm.json'))"
 
-nginx -t -c /path/to/a/wrapper/that/includes/dev/nginx/edge.conf
+tools/check-devkit-nginx
 ```
+
+**A change to the realm, the relying party or the edge is proved on the
+running stack, never by reading it.** Render into a scratch tree whose
+upstream echoes its request headers, `docker compose up`, and then: log a
+persona in through the edge and read the `Authorization` header the upstream
+received; decode the token and check `typ` is `at+jwt`, `aud` names the realm's
+client and `sid` is present; mint the same persona through
+`dev/tools/dev-token`; log `no-provider-access` in and see the provider's
+refusal with no callback reached; mint `deactivated-member` and
+`unverified-email-member` and see each refused for its own reason; and, with
+a client-credentials token for `__REPO__-admin`, read the application's client
+and its `access` role, grant it to `no-provider-access`, mint a token, revoke
+it, and see the refusal return. Keycloak's permission model is easy to be one
+setting wrong about, and a realm that imports without error can still mint a
+token every backend refuses.

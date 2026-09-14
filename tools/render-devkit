@@ -62,6 +62,7 @@ RENDERED = (
     ("nginx/edge.conf", "nginx/edge.conf"),
     ("oauth2-proxy/oauth2-proxy.cfg", "oauth2-proxy/oauth2-proxy.cfg"),
     ("compose/auth.compose.yaml", "compose/auth.compose.yaml"),
+    ("tools/dev-token", "tools/dev-token"),
 )
 
 RECORD = pathlib.Path("devkit.json")
@@ -264,8 +265,9 @@ def routes_text(routes: list[dict], template: str) -> str:
     """The nginx locations the routing table renders to.
 
     A route whose next hop is the authentication proxy runs the auth_request
-    subrequest, replaces the Authorization header with the ID token the proxy
-    returned, and sends a page with no session to the sign-in redirect.
+    subrequest, sets the Authorization header to the access token the proxy
+    returned as a bearer (060-auth.md AU2), and sends a page with no session
+    to the sign-in redirect.
 
     A route handed straight to a service SETS NO Authorization HEADER AT ALL,
     so whatever the client sent arrives intact. That is the whole point: the
@@ -289,7 +291,7 @@ def routes_text(routes: list[dict], template: str) -> str:
         lines = [f"    location {'= ' if form == 'exact' else ''}{path} {{"]
         if guarded:
             lines += ["        auth_request     /oauth2/auth;",
-                      "        auth_request_set $token $upstream_http_authorization;"]
+                      "        auth_request_set $token $upstream_http_x_auth_request_access_token;"]
             if entry.get("no_session", "401") == "redirect":
                 lines.append("        error_page 401 = @sign_in;")
             lines.append("")
@@ -302,7 +304,7 @@ def routes_text(routes: list[dict], template: str) -> str:
                   "        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;",
                   "        proxy_set_header X-Forwarded-Proto $scheme;"]
         if guarded:
-            lines.append("        proxy_set_header Authorization     $token;")
+            lines.append('        proxy_set_header Authorization     "Bearer $token";')
         lines.append("    }")
         blocks.append("\n".join(lines) + "\n")
     return "\n".join(blocks) + "\n"
@@ -342,6 +344,10 @@ def render_all(target: pathlib.Path, record: dict) -> list[pathlib.Path]:
         out = target / relative
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(text, encoding="utf-8")
+        # A source that is a command stays one when rendered. The drift
+        # checker compares bytes and not modes, so this is for the person
+        # who runs dev/tools/dev-token rather than for the gate.
+        out.chmod(src.stat().st_mode & 0o777)
         written.append(relative)
     return written
 

@@ -107,6 +107,15 @@ rotation is AU1's. Presentation is
 `Authorization: Bearer`; where the proxy puts the access token in another
 header, the repository names that header in its **Conventions**.
 
+**A provider that issues only opaque access tokens is not admitted**. An
+opaque token carries nothing. The only way to read one is to ask the
+provider on every request, through
+[RFC 7662](https://www.rfc-editor.org/rfc/rfc7662.html) introspection or
+OIDC UserInfo. That is the data-plane call AU1 forbids, and it makes the
+application unavailable whenever the provider is. Whether a provider can
+issue a JWT access token is therefore a selection criterion rather than a
+configuration detail.
+
 #### Why the backend's job is this small
 
 A session binds a credential to a known user and a known source. That binding
@@ -334,6 +343,13 @@ identity and permissions at load, shaped by
   names for display. The values come from the application's own user record.
   That record is authoritative for every field the application masters, and a
   cache of the provider's for the rest (AU10).
+- `user.editable_fields`: which of them this person can change here. **It is
+  served rather than compiled in, because the master moves**. One provider
+  brokers a social login for one tenant and holds local passwords for
+  another. The same client against two tenants then has two answers (AU10). A
+  product with no editable profile omits it; a product with one lists what it
+  masters. An empty list and an absent list are different claims, as they are
+  for `permissions`.
 - `permissions`: a flat list the interface can test against.
 - `roles`: for showing someone what they are, not for branching on.
 - `entitlements`: what the session's tenant has bought, derived under the

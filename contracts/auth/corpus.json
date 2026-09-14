@@ -28,7 +28,12 @@
           "id": "usr_8fK2mQ7xW3pLzR",
           "name": "Someone Example",
           "email": "someone@example.com",
-          "email_verified": true
+          "email_verified": true,
+          "editable_fields": [
+            "name",
+            "locale",
+            "timezone"
+          ]
         },
         "permissions": [
           "invoice.read",
@@ -42,7 +47,26 @@
           "expires_at": "2026-09-02T03:44:03.187Z"
         }
       },
-      "valid": true
+      "valid": true,
+      "note": "editable_fields is what the client renders as writable. It omits email, which the provider masters here, so the client draws that read-only (AU10)"
+    },
+    {
+      "id": "me-rejects-a-non-snake-case-editable-field",
+      "def": "me",
+      "value": {
+        "schema_version": 1,
+        "user": {
+          "id": "usr_8fK2mQ7xW3pLzR",
+          "editable_fields": [
+            "displayName"
+          ]
+        },
+        "permissions": [
+          "invoice.read"
+        ]
+      },
+      "valid": false,
+      "note": "a field name the server does not recognise is a field the client renders writable and the server then refuses. The names are the record's own, snake_case per 020 IP conventions (AU6, AU10)"
     },
     {
       "id": "me-rejects-malformed-permission",

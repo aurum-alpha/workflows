@@ -88,20 +88,24 @@ What to verify on any of them, in this order:
    checked. It matters only for AU4's provider-is-source mode, where an HR or
    identity-governance system owns the workforce lifecycle and provisions
    into the provider.
-6. **Whether the provider emits RFC 9068 access tokens, and how it is
+6. **Whether the provider can issue a JWT access token at all**. AU2 does not
+   admit a provider that issues only opaque tokens. Reading one takes a call
+   to the provider on every request, which AU1 forbids. This is a selection criterion, so
+   it is checked before the rest of this list matters.
+7. **Whether the provider emits RFC 9068 access tokens, and how it is
    switched on**. AU2 pins the `typ` header to `at+jwt`, and a resource server
    rejects any other value. In Keycloak this is the client setting *Use
    'at+jwt' as access token header type*, and it is **off by default** for
    backward compatibility.
-7. **Whether the provider restricts the audience, and by which mechanism.**
+8. **Whether the provider restricts the audience, and by which mechanism.**
    AU2 wants the backend's resource indicator in `aud`. Either RFC 8707's
    `resource` parameter or a provider audience mapper reaches it. Keycloak
    uses an Audience protocol mapper on the client.
-8. **Whether `sid` reaches the access token**, and only where the product
+9. **Whether `sid` reaches the access token**, and only where the product
    lets a person hold more than one grant in one tenant. RFC 9068 defines no
    `sid`. AU8 admits the relying party's own session identifier instead, so
    a provider withholding `sid` rules out one source and not the rule.
-9. **Whether back-channel logout is supported**, for AU5's revocation not
+10. **Whether back-channel logout is supported**, for AU5's revocation not
    waiting on session expiry. **The default route above does not support it**,
    whatever the provider offers: oauth2-proxy has no back-channel logout
    endpoint for a provider to post to. On that route AU5's revocation rests on

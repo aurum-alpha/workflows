@@ -21,6 +21,19 @@
   "ssoSessionMaxLifespanRememberMe": 0,
   "clientSessionIdleTimeout": 0,
   "clientSessionMaxLifespan": 0,
+  "roles": {
+    "realm": [],
+    "client": {
+      "__REPO__": [
+        {
+          "name": "access",
+          "description": "The coarse gate grantAppAccess sets and revokeAppAccess clears (060-auth.md AU4). The provider refuses a login for this application to an identity that does not hold it.",
+          "composite": false,
+          "clientRole": true
+        }
+      ]
+    }
+  },
   "clients": [
     {
       "clientId": "__REPO__",
@@ -44,9 +57,27 @@
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "http://localhost:__PORT_EDGE__/*"
+        "post.logout.redirect.uris": "http://localhost:__PORT_EDGE__/*",
+        "access.token.header.type.rfc9068": "true"
       },
-      "protocolMappers": [],
+      "authenticationFlowBindingOverrides": {
+        "browser": "aa0000f1-0000-4000-8000-0000000000f1"
+      },
+      "protocolMappers": [
+        {
+          "name": "audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "__REPO__",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "lightweight.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ],
       "defaultClientScopes": [
         "acr",
         "basic",
@@ -68,7 +99,7 @@
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": true,
-      "fullScopeAllowed": false,
+      "fullScopeAllowed": true,
       "redirectUris": [],
       "webOrigins": [],
       "protocolMappers": [],
@@ -95,7 +126,27 @@
       "fullScopeAllowed": false,
       "redirectUris": [],
       "webOrigins": [],
-      "protocolMappers": [],
+      "attributes": {
+        "access.token.header.type.rfc9068": "true"
+      },
+      "authenticationFlowBindingOverrides": {
+        "direct_grant": "aa0000f2-0000-4000-8000-0000000000f2"
+      },
+      "protocolMappers": [
+        {
+          "name": "audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "__REPO__",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "lightweight.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ],
       "defaultClientScopes": [
         "acr",
         "basic",
@@ -104,6 +155,185 @@
         "web-origins"
       ],
       "optionalClientScopes": []
+    }
+  ],
+  "authenticationFlows": [
+    {
+      "id": "aa0000f1-0000-4000-8000-0000000000f1",
+      "alias": "__REPO__ browser",
+      "description": "The browser flow for the relying party: authenticate, then refuse an identity that does not hold this application's access role (060-auth.md AU4).",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticatorFlow": true,
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "autheticatorFlow": true,
+          "flowAlias": "__REPO__ browser authenticate",
+          "userSetupAllowed": false
+        },
+        {
+          "authenticatorFlow": true,
+          "requirement": "CONDITIONAL",
+          "priority": 20,
+          "autheticatorFlow": true,
+          "flowAlias": "__REPO__ browser access gate",
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "id": "aa0000f3-0000-4000-8000-0000000000f3",
+      "alias": "__REPO__ browser authenticate",
+      "description": "An existing session's cookie, or the login form.",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-cookie",
+          "authenticatorFlow": false,
+          "requirement": "ALTERNATIVE",
+          "priority": 10,
+          "autheticatorFlow": false,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticatorFlow": true,
+          "requirement": "ALTERNATIVE",
+          "priority": 20,
+          "autheticatorFlow": true,
+          "flowAlias": "__REPO__ browser forms",
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "id": "aa0000f4-0000-4000-8000-0000000000f4",
+      "alias": "__REPO__ browser forms",
+      "description": "Username and password.",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-username-password-form",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "autheticatorFlow": false,
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "id": "aa0000f5-0000-4000-8000-0000000000f5",
+      "alias": "__REPO__ browser access gate",
+      "description": "Runs only for an identity that lacks the access role, and denies it.",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "conditional-user-role",
+          "authenticatorConfig": "__REPO__ lacks access",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "autheticatorFlow": false,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "deny-access-authenticator",
+          "authenticatorConfig": "__REPO__ access denied",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 20,
+          "autheticatorFlow": false,
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "id": "aa0000f2-0000-4000-8000-0000000000f2",
+      "alias": "__REPO__ direct grant",
+      "description": "The direct-grant flow for developer tooling: validate the credentials, then refuse an identity that does not hold this application's access role (060-auth.md AU4).",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "direct-grant-validate-username",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "autheticatorFlow": false,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "direct-grant-validate-password",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 20,
+          "autheticatorFlow": false,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticatorFlow": true,
+          "requirement": "CONDITIONAL",
+          "priority": 30,
+          "autheticatorFlow": true,
+          "flowAlias": "__REPO__ direct grant access gate",
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "id": "aa0000f6-0000-4000-8000-0000000000f6",
+      "alias": "__REPO__ direct grant access gate",
+      "description": "Runs only for an identity that lacks the access role, and denies it.",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "conditional-user-role",
+          "authenticatorConfig": "__REPO__ lacks access",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "autheticatorFlow": false,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "deny-access-authenticator",
+          "authenticatorConfig": "__REPO__ access denied",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 20,
+          "autheticatorFlow": false,
+          "userSetupAllowed": false
+        }
+      ]
+    }
+  ],
+  "authenticatorConfig": [
+    {
+      "id": "aa0000c1-0000-4000-8000-0000000000c1",
+      "alias": "__REPO__ lacks access",
+      "config": {
+        "condUserRole": "__REPO__.access",
+        "negate": "true"
+      }
+    },
+    {
+      "id": "aa0000c2-0000-4000-8000-0000000000c2",
+      "alias": "__REPO__ access denied",
+      "config": {
+        "denyErrorMessage": "This account has not been granted access to __REPO__."
+      }
     }
   ],
   "users": [
@@ -115,6 +345,9 @@
       "lastName": "Administrator",
       "enabled": true,
       "emailVerified": true,
+      "clientRoles": {
+        "__REPO__": ["access"]
+      },
       "credentials": [
         {
           "type": "password",
@@ -131,6 +364,9 @@
       "lastName": "Administrator",
       "enabled": true,
       "emailVerified": true,
+      "clientRoles": {
+        "__REPO__": ["access"]
+      },
       "credentials": [
         {
           "type": "password",
@@ -147,6 +383,9 @@
       "lastName": "Administrator",
       "enabled": true,
       "emailVerified": true,
+      "clientRoles": {
+        "__REPO__": ["access"]
+      },
       "credentials": [
         {
           "type": "password",
@@ -163,6 +402,9 @@
       "lastName": "Member",
       "enabled": true,
       "emailVerified": true,
+      "clientRoles": {
+        "__REPO__": ["access"]
+      },
       "credentials": [
         {
           "type": "password",
@@ -179,6 +421,9 @@
       "lastName": "Member",
       "enabled": true,
       "emailVerified": true,
+      "clientRoles": {
+        "__REPO__": ["access"]
+      },
       "credentials": [
         {
           "type": "password",
@@ -195,6 +440,9 @@
       "lastName": "Access",
       "enabled": true,
       "emailVerified": true,
+      "clientRoles": {
+        "__REPO__": ["access"]
+      },
       "credentials": [
         {
           "type": "password",
@@ -211,6 +459,9 @@
       "lastName": "Member",
       "enabled": false,
       "emailVerified": true,
+      "clientRoles": {
+        "__REPO__": ["access"]
+      },
       "credentials": [
         {
           "type": "password",
@@ -227,6 +478,25 @@
       "lastName": "Member",
       "enabled": true,
       "emailVerified": false,
+      "clientRoles": {
+        "__REPO__": ["access"]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "devkit-local-only",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "aa000009-0000-4000-8000-000000000009",
+      "username": "no-provider-access",
+      "email": "no-provider-access@__REPO__.test",
+      "firstName": "No Provider",
+      "lastName": "Access",
+      "enabled": true,
+      "emailVerified": true,
       "credentials": [
         {
           "type": "password",
@@ -244,7 +514,8 @@
         "realm-management": [
           "manage-users",
           "view-users",
-          "query-users"
+          "query-users",
+          "view-clients"
         ]
       }
     }

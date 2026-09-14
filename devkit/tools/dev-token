@@ -1,0 +1,56 @@
+#!/bin/sh
+# Print a persona's access token, minted by the realm's direct-grant client.
+#
+# The access token is what crosses to the backend (060-auth.md AU2), so that
+# is what this prints: paste it into an Authorization header against the API
+# at +1 and the request is the one the edge would have made.
+#
+#   curl -H "Authorization: Bearer $(dev/tools/dev-token single-tenant-member)" \
+#        http://localhost:__PORT_SERVER__/api/v1/me
+#
+# Rendered by textual substitution from devkit/tools/dev-token, so a product
+# never edits it. POSIX sh, curl and sed, because those are on every machine
+# that runs the stack and nothing else is assumed.
+set -eu
+
+persona="${1:-}"
+if [ -z "$persona" ]; then
+  echo "usage: dev/tools/dev-token <persona>" >&2
+  echo "personas: platform-admin tenant-a-admin tenant-b-admin two-tenant-member" >&2
+  echo "          single-tenant-member no-application-access deactivated-member" >&2
+  echo "          unverified-email-member no-provider-access" >&2
+  exit 2
+fi
+
+response=$(curl -sS -X POST \
+  "http://localhost:__PORT_IDP__/realms/__REPO__/protocol/openid-connect/token" \
+  -d "client_id=__REPO__-devtools" \
+  -d "grant_type=password" \
+  -d "scope=openid" \
+  -d "username=$persona" \
+  -d "password=devkit-local-only")
+
+# The token endpoint answers flat JSON, so one sed expression reads the one
+# member this prints. A refusal from the provider is printed as the provider
+# wrote it, because "invalid_grant" is the answer to most of the questions this
+# script gets asked: a disabled persona, an unverified address, a typo.
+#
+# One refusal is not JSON. An identity that does not hold the application's
+# access role is denied by the realm's direct-grant flow (060-auth.md AU4),
+# and that authenticator answers with the provider's HTML error page. The one
+# line a person needs is the message on it.
+token=$(printf '%s' "$response" | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
+if [ -z "$token" ]; then
+  case "$response" in
+    *kc-error-message*)
+      message=$(printf '%s' "$response" | tr -d '\n' \
+        | sed -n 's/.*kc-error-message">[[:space:]]*<p[^>]*>\([^<]*\)<.*/\1/p')
+      echo "refused by the provider: ${message:-see the login page}" >&2
+      ;;
+    *)
+      echo "$response" >&2
+      ;;
+  esac
+  exit 1
+fi
+printf '%s\n' "$token"

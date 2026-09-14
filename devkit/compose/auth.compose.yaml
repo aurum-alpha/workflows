@@ -89,6 +89,11 @@ services:
   # LD8). The product supplies the commands: migrate applies the identity
   # tables, seed writes the application-side user and grant rows the realm's
   # personas correspond to.
+  #
+  # Neither depends on a database here, because this file does not know
+  # whether the product has one: a product on SQLite migrates a file. A
+  # product with a `db` service adds `depends_on: db` to both in its own
+  # compose.yaml, which product.example.yaml shows.
   migrate:
     build:
       context: ../..
@@ -100,9 +105,6 @@ services:
       # A product whose dev image resolves dependencies at build time mounts
       # its named dependency volume here too (LD7).
       - ../..:/app
-    depends_on:
-      db:
-        condition: service_healthy
 
   seed:
     build:
@@ -114,8 +116,6 @@ services:
     volumes:
       - ../..:/app
     depends_on:
-      db:
-        condition: service_healthy
       keycloak:
         condition: service_healthy
       migrate:

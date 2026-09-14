@@ -7,7 +7,7 @@
 # @tailwindcss/vite, and an entire unused session and auth stack across three
 # repos -- was found by hand, during a survey looking for something else. That
 # is not a detection method; it is luck, and it has already failed once: an
-# issue was filed proposing that `@types/ws` be CONVERGED across the fleet
+# issue was filed proposing that `@types/ws` be CONVERGED across adopting repositories
 # before anyone checked that `ws` itself is imported nowhere in any of the five
 # repos declaring it (workflows#287, withdrawn).
 #

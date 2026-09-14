@@ -26,7 +26,7 @@ on:
         description: >-
           Override runs-on. Leave empty for the standard default, which resolves
           vars.RUNNER. Set a literal label only where that one job has a reason to
-          bypass the fleet, and say the reason in a comment beside it
+          bypass the standard runner, and say the reason in a comment beside it
           (CI_STANDARD Principle 4).
         type: string
         default: ""

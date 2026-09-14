@@ -1,4 +1,4 @@
-# The fleet auth devkit
+# The auth devkit
 
 The configuration half of a working authentication tier: a Keycloak realm, an
 nginx edge, an oauth2-proxy relying party, and the compose services that run

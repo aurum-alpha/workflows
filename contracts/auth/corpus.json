@@ -42,10 +42,7 @@
         ],
         "roles": [
           "billing_admin"
-        ],
-        "session": {
-          "expires_at": "2026-09-02T03:44:03.187Z"
-        }
+        ]
       },
       "valid": true,
       "note": "editable_fields is what the client renders as writable. It omits email, which the provider masters here, so the client draws that read-only (AU10)"

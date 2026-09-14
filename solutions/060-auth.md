@@ -24,11 +24,31 @@ runs AU2's five checks against the provider's JWKS: the `typ` header, the
 issuer, the audience, the signature and the expiry. A backend that decodes
 without verifying is an unauthenticated service.
 
-**oauth2-proxy puts the ID token in `Authorization` and the access token in
-`X-Forwarded-Access-Token`**. AU2's token is the access token, so a backend on
-this route reads that header. Carrying the access token in `Authorization` is
-an open request upstream. AU2 asks the repository to name the header it uses
-in its **Conventions**, and this is the route that needs it named.
+**Behind `auth_request`, oauth2-proxy answers the subrequest with the access
+token in `X-Auth-Request-Access-Token`, and the edge puts it in
+`Authorization`**. The relying party is asked whether a session exists. It
+answers `202` with the session's tokens as response headers. The ID token is
+in `Authorization`; the access token is in `X-Auth-Request-Access-Token`, with
+`pass_access_token` and `set_xauthrequest` on. The edge reads the second with
+`auth_request_set` and sets `Authorization: Bearer <access token>` on the
+request it forwards. The backend then reads AU2's token from RFC 6750's header
+and names no other in its **Conventions**.
+
+The ID token is never forwarded. It asserts who authenticated to a client, and
+a backend refuses it on its `typ` (RFC 9068 section 4). The devkit's
+`edge.conf` and `oauth2-proxy.cfg` are the one implementation of this
+arrangement. A rendered copy that forwards anything else is the devkit's
+defect to fix, never a product's to work around.
+
+**The default route serves a product's own tenant subdomains, and it does not
+implement the handle of 092 TH5**. The proxy has no redemption hop, so it
+cannot land a session on a host the provider's redirect list does not name.
+For a product whose tenants live under its own zone, that is enough. TH5
+admits one redirect URI per tenant subdomain, written from the tenant table by
+the control plane. oauth2-proxy derives the redirect from the request's host.
+A product offering a customer's own domain needs a relying party that
+implements the handle. That is a different row from this one, to be named
+here when a product reaches it.
 
 **The development configuration is split-horizon, and that breaks discovery**.
 The browser reaches the provider at one host. A backend inside the network

@@ -48,6 +48,17 @@ service's logs. The service echoes it to the caller in the `x-request-id`
 response header. It is the value a person reads off an error page and pastes
 into a support ticket. A trace id that sampling dropped cannot be that value.
 
+**The service mints `request_id` and never adopts one from a request header**.
+It is minted once, by the first thing in the service that needs it. Every
+later handler and every error envelope of that request reads the one value.
+
+An inbound `x-request-id` is a value the caller chose. Two unrelated requests
+can carry one, and a log query keyed on it can be steered by whoever sent it.
+That is [`060-auth.md`](060-auth.md) AU2's argument against an injected
+header, applied to a smaller field. Correlation across a proxy hop is what
+`trace_id` and `traceparent` are for. This table keeps the two jobs on two
+fields so neither has to do the other's.
+
 These are **wire names, not code names**. The rule binds the bytes on an
 emitted line, never the identifier in source. A Go struct writes
 `TraceID string` with a `json:"trace_id"` tag. The field follows Go's own

@@ -161,6 +161,12 @@ shipped artifact. A profiled service is opt-in, so a plain `up` never starts it.
 That is how a repository offers its shipped image locally without making it the
 thing you get by default.
 
+**A repository holding several services carries one `Dockerfile.dev` per
+service, under `services/<name>/`** ([`010-ci.md`](010-ci.md), the layout
+section), and the name rule holds for each of them. Two services in two
+languages cannot share a toolchain image. A checker that reads one file at
+the repository root reads none of them, so it walks the tree.
+
 ### LD6. The development image installs from the lockfile, with the pinned package manager
 
 The version comes from the pin the repository already declares, read at build

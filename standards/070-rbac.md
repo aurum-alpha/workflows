@@ -315,6 +315,12 @@ depends on state the case cannot state.
 `checkAny` and `checkAll` exist because a codebase without them writes the
 loop by hand and gets it wrong somewhere.
 
+**Both refuse an empty list**, with the denial reason `no_permissions_requested`.
+Every permission in an empty list is held, so `checkAll([])` written naively
+allows. A guard that allows everything it is put in front of is not a guard.
+The empty list is a call site that forgot to say what it was checking. The
+answer to that is a refusal it can see, never a pass it cannot.
+
 ### RB8. A decision carries its reason
 
 `check` returns a **Decision**, not a boolean. It carries the outcome, and
@@ -365,12 +371,19 @@ hold a grant in and a resource they do not. The session's tenant is the one
 value the caller cannot pick after authenticating, which is what makes it fit
 to be the argument.
 
-Two things remain legitimate and are not exceptions:
+Three things remain legitimate and are not exceptions:
 
 - **A resource's own tenant is compared against the session's**. A request
   for `/invoices/inv_42` resolves the invoice's tenant from the row and
   refuses when it differs from the session's, per 025's isolation rule. That
   is the scope being *checked*, not *chosen*.
+- **A resource's own owner or membership is compared against the principal**,
+  after the permission check. A product with no tenants holds one grant per
+  account at `global` ([`060-auth.md`](060-auth.md) AU8). Whether this
+  account acts on this row is answered by the row: its owner, or a membership
+  table beside it. That is the tenant comparison one level down, and it is
+  never a scope. A group with members is a row with an access list, not a
+  scope with grants.
 - **A narrower scope inside the tenant can come from the path**. A project
   under a tenant is named by the route, and RB5's containment decides whether
   the active grant covers it. The path is permitted to narrow the scope
@@ -399,3 +412,15 @@ Per PC3, under [`contracts/rbac/`](../contracts/rbac/):
   cannot state the capacity. It also puts an auditor's read and an
   administrator's write in one request, which is the combination a separation
   of duties exists to prevent.
+- **A shared resource's membership as a scope, with a grant per membership**.
+  A group, a shared list or a document with collaborators fits RB5's `type:id`
+  shape, and containment would run over it. It also gives a person one grant
+  per group they belong to. RB6 makes a session act in one grant at a time,
+  so the person picks a capacity to see their own groups. Membership is an
+  access list on the row, checked as RB10's ownership case after the
+  permission (RB10).
+- **`checkAll([])` as vacuous truth**. It is what the loop computes and what
+  a language's `every` returns. It is also a guard that passes whatever it is
+  put in front of. The call site that wrote it forgot to name a permission.
+  Both operations refuse the empty list with a reason the caller can read
+  (RB7).

@@ -18,7 +18,8 @@ no repository and tracks no compliance.
   D4a   no repository name: no aurum-alpha/<name> other than this repository,
         and none of the portfolio's repository slugs
   D4b   no inventory phrase: no count of repositories, no "existing" or
-        "prior" implementation, no "in the portfolio", no "measured across"
+        "prior" implementation, no "in the portfolio", no "measured across",
+        no "fleet"
 
 And the countable half of D11, the no-history rule: a document states the
 rule and its reason, never the story of its own drafting.
@@ -73,6 +74,7 @@ INVENTORY = [
     (re.compile(r"\b" + COUNT + r"(?: of \w+)? (?:\w+ )?(?:repos|repositories)\b", re.I), "count of repositories"),
     (re.compile(r"\b(?:existing|prior|current|legacy) (?:implementations?|products?|applications?)\b", re.I), "existing implementation"),
     (re.compile(r"\b(?:in|across) the portfolio\b|\bthe portfolio's\b|\bwhere the portfolio stands\b|\bportfolio-wide\b", re.I), "portfolio inventory"),
+    (re.compile(r"\bfleet\b", re.I), "fleet"),
     (re.compile(r"\bmeasured (?:on|across|before|after|the day)\b", re.I), "measured"),
 ]
 

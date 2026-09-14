@@ -9,11 +9,11 @@
 # prettier here. When it does, the swap is a visible rename rather than a
 # silent change of behaviour inside a file whose name never moved.
 #
-# WHY PRETTIER AND NOT OXFMT TODAY. The fleet standardised its linter on oxc,
+# WHY PRETTIER AND NOT OXFMT TODAY. The linter is oxc,
 # so oxfmt is the obvious sibling — and it is 0.67.0, pre-1.0, released days
 # before this job was written. A formatter rewrites every file it touches, so
 # adopting one before it commits to a stable output is buying a second
-# whole-fleet reformat. prettier 3.9.6 is the current stable release. Revisit
+# reformat of every repository. prettier 3.9.6 is the current stable release. Revisit
 # at oxfmt 1.0.
 #
 # THE INVOCATION IS THE `format` SCRIPT'S BODY, MINUS `pnpm exec`. That is
@@ -177,7 +177,7 @@ jobs:
       # by walking up from each file, which is what lets one file at the repo
       # root serve client/, server/ and shared/ alike.
       #
-      # Ignores are NOT shared and there is no fleet .prettierignore. Prettier 3
+      # Ignores are NOT shared and there is no shared .prettierignore. Prettier 3
       # reads .gitignore by default (--ignore-path defaults to
       # [.gitignore, .prettierignore]), so dist/, coverage/ and build output are
       # already out of scope everywhere without a file. What is left is

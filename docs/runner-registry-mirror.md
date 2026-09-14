@@ -1,4 +1,4 @@
-# Runner-fleet registry pull-through mirror (spec)
+# Runner registry pull-through mirror (spec)
 
 Owner: Jared (host side). Status: spec 2026-08-16, from the event-manager
 timing analysis — every job runs on a fresh ephemeral dind sidecar

@@ -11,7 +11,7 @@ It is deliberately built to run TWO ways from ONE source:
   * `--repo-root .`  — inside a repo's own CI, via job-ci-conformance.yml, so a
     repo cannot drift without its own ci-ok going red. This is the enforcement.
   * `--portfolio DIR`  — across every clone under DIR, for sweeps from a
-    workstation. This is the audit. `--fleet` is a deprecated alias for it.
+    workstation. This is the audit.
 
 Rules, each naming the principle it enforces and the incident that proved the
 principle needed enforcing:
@@ -1319,11 +1319,8 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     g = ap.add_mutually_exclusive_group()
     g.add_argument("--repo-root", type=pathlib.Path, help="check one repo (default: cwd)")
-    # --fleet is the old spelling, kept as an alias so a sweep in someone's
-    # shell history does not start failing on a vocabulary change. argparse
-    # takes the dest from the first long option, so args.portfolio covers both.
-    g.add_argument("--portfolio", "--fleet", type=pathlib.Path,
-                   help="check every clone under DIR (--fleet: deprecated alias)")
+    g.add_argument("--portfolio", type=pathlib.Path,
+                   help="check every clone under DIR")
     args = ap.parse_args()
 
     if args.portfolio:

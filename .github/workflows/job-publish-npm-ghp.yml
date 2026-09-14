@@ -17,7 +17,7 @@
 # `artifacts:` exactly as job-image-build restores them. Nothing here runs a
 # compiler, no dependency is installed, and lifecycle scripts are suppressed
 # (`npm_config_ignore_scripts`) so a `prepack` cannot smuggle a second build in.
-# The fleet's only other npm publish path — design-system's publish.yml, which
+# The only other npm publish path — design-system's publish.yml, which
 # this replaces rather than copies — runs `pnpm install && pnpm build` inside
 # the publishing job, so what it ships is a build no gate ever saw.
 #
@@ -104,7 +104,7 @@ on:
           and publishes nothing.
 
           This job does not re-derive it. Two implementations of "did this
-          commit cut a release" is how the fleet got a `grep -qx '.version'`
+          commit cut a release" produced a `grep -qx '.version'`
           whose unescaped dot matched `aversion`.
         type: string
         required: true
@@ -184,7 +184,7 @@ jobs:
           # `dev` from a repository with no version file, must fail here rather
           # than reach a registry — npm would accept `0.2.1-dev.abc1234` as a
           # valid pre-release and publish it, and a pre-release nobody chose is
-          # a version this fleet does not mint. An anchored regex, not a case
+          # a version this job does not mint. An anchored regex, not a case
           # glob: `[0-9]*.[0-9]*.[0-9]*` also matches `1.2.3.4`.
           if ! [[ "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "::error::version reads '${VERSION}'; expected a bare" \

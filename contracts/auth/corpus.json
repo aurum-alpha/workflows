@@ -1,103 +1,8 @@
 {
   "contract": "auth",
   "schemaVersion": 1,
-  "description": "Conformance corpus for standards/060-auth.md. 'validity': the value must validate (or fail) against the named schema root \u2014 'identity-token' or 'me'. 'behaviour': black-box cases a live deployment must satisfy. An implementation passes the whole file or names the case it fails.",
+  "description": "Conformance corpus for standards/060-auth.md. 'validity': the value must validate (or fail) against the named schema root. The AU2 access token has no root here on purpose — its shape is RFC 9068's and this repository describes none of it, so every claim about the token is a live case under 'behaviour'. 'behaviour': black-box cases a live deployment must satisfy. An implementation passes the whole file or names the case it fails.",
   "validity": [
-    {
-      "id": "token-minimal-ok",
-      "def": "identity-token",
-      "value": {
-        "iss": "https://rp.aurumalpha.dev",
-        "aud": "billing-api",
-        "exp": 1788312045,
-        "iat": 1788311745,
-        "jti": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
-        "identity": {
-          "issuer": "https://id.aurumalpha.dev/realms/aurum",
-          "subject": "f7c1d2e8-5a44-4b91-9c3e-2d8a1b0f6e77"
-        }
-      },
-      "valid": true,
-      "note": "the irreducible token: who signed it, who it is for, when it dies, and the link key (AU2)"
-    },
-    {
-      "id": "token-full-ok",
-      "def": "identity-token",
-      "value": {
-        "iss": "https://rp.aurumalpha.dev",
-        "aud": "billing-api",
-        "exp": 1788312045,
-        "iat": 1788311745,
-        "jti": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
-        "auth_time": 1788309000,
-        "amr": [
-          "pwd",
-          "otp"
-        ],
-        "identity": {
-          "issuer": "https://id.aurumalpha.dev/realms/aurum",
-          "subject": "f7c1d2e8-5a44-4b91-9c3e-2d8a1b0f6e77",
-          "email": "someone@example.com",
-          "email_verified": true,
-          "name": "Someone Example"
-        },
-        "session_id": "8fK2mQ7xW3pLzR"
-      },
-      "valid": true,
-      "note": "amr present so an application can require step-up without understanding how authentication happened (AU2)"
-    },
-    {
-      "id": "token-rejects-roles-claim",
-      "def": "identity-token",
-      "value": {
-        "iss": "https://rp.aurumalpha.dev",
-        "aud": "billing-api",
-        "exp": 1788312045,
-        "iat": 1788311745,
-        "jti": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
-        "identity": {
-          "issuer": "https://id.aurumalpha.dev/realms/aurum",
-          "subject": "f7c1d2e8-5a44-4b91-9c3e-2d8a1b0f6e77"
-        },
-        "roles": [
-          "billing_admin"
-        ]
-      },
-      "valid": false,
-      "note": "THE case this shape exists for. A roles claim would make every application's access control depend on provider configuration, which is the failure the whole standard prevents (AU2)"
-    },
-    {
-      "id": "token-rejects-missing-aud",
-      "def": "identity-token",
-      "value": {
-        "iss": "https://rp.aurumalpha.dev",
-        "exp": 1788312045,
-        "iat": 1788311745,
-        "jti": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
-        "identity": {
-          "issuer": "https://id.aurumalpha.dev/realms/aurum",
-          "subject": "f7c1d2e8-5a44-4b91-9c3e-2d8a1b0f6e77"
-        }
-      },
-      "valid": false,
-      "note": "without an audience a token minted for one application replays against another (AU2)"
-    },
-    {
-      "id": "token-rejects-subject-without-issuer",
-      "def": "identity-token",
-      "value": {
-        "iss": "https://rp.aurumalpha.dev",
-        "aud": "billing-api",
-        "exp": 1788312045,
-        "iat": 1788311745,
-        "jti": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
-        "identity": {
-          "subject": "f7c1d2e8-5a44-4b91-9c3e-2d8a1b0f6e77"
-        }
-      },
-      "valid": false,
-      "note": "a subject is unique only within its issuer, so half the link key is not a key at all (AU3)"
-    },
     {
       "id": "me-minimal-ok",
       "def": "me",
@@ -170,20 +75,45 @@
   "behaviour": [
     {
       "id": "token-signed-with-wrong-key-is-refused",
-      "stimulus": "present a well-formed token signed with a key the backend does not trust: the provider's ID token under form (a), the proxy's identity token under form (b)",
+      "stimulus": "present a well-formed access token signed with a key the provider's JWKS does not carry",
       "expect": {
         "status_code": 401,
         "side_effect": "no application state read or written"
       },
-      "note": "the difference between verifying and decoding, and it holds for both admitted forms. Form (a) validates against the provider's JWKS, form (b) against the proxy's key (AU2)"
+      "note": "the difference between verifying and decoding. The backend validates against the provider's JWKS and refuses alg: none, which is step 4 of AU2's validation order"
     },
     {
       "id": "token-for-another-audience-is-refused",
-      "stimulus": "present a valid token whose aud names a different application",
+      "stimulus": "present a valid access token whose aud names a different backend",
       "expect": {
         "status_code": 401
       },
-      "note": "without this check the portfolio's services are interchangeable to an attacker holding any one token. Form (a) forwards the ID token rather than the access token so that aud names the application and this case is decidable (AU2)"
+      "note": "without this check the portfolio's services are interchangeable to an attacker holding any one token. The audience is the one backend's resource indicator, which is what makes the case decidable (RFC 9700 section 2.3, AU2)"
+    },
+    {
+      "id": "a-token-with-no-audience-is-refused",
+      "stimulus": "present a well-formed access token carrying no aud claim",
+      "expect": {
+        "status_code": 401
+      },
+      "note": "RFC 9068 requires aud, so this is the provider misconfigured rather than a shape this repository defines. The backend refuses it either way: without an audience a token issued for one backend replays against another (RFC 9700 section 2.3, AU2)"
+    },
+    {
+      "id": "an-id-token-presented-as-a-bearer-is-refused",
+      "stimulus": "present the provider's ID token for the same session as Authorization: Bearer",
+      "expect": {
+        "status_code": 401,
+        "side_effect": "no application state read or written"
+      },
+      "note": "RFC 9068 section 4 makes the resource server reject a typ other than at+jwt. An ID token asserts who authenticated to a client and carries no audience for this backend, so accepting one would skip the audience check entirely (AU2)"
+    },
+    {
+      "id": "a-roles-claim-in-the-token-changes-no-decision",
+      "stimulus": "configure the provider to emit a roles claim naming a privilege the local user does not hold, then call an endpoint that privilege would allow",
+      "expect": {
+        "status_code": 403
+      },
+      "note": "the token is VALID with roles present: RFC 9068 section 2.2.3 permits the claim and a provider emits what it is configured to emit. The rule is that nothing reads it, so this is behaviour rather than validity. A roles claim read for access would make every application's access control depend on provider configuration (AU2, 070 RB1)"
     },
     {
       "id": "unknown-subject-is-403-and-logged-out",

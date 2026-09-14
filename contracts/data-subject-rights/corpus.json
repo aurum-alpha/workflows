@@ -350,53 +350,47 @@
       "case": "a-pending-export-is-accepted",
       "valid": true,
       "why": "DR2: created, verified, with its deadline computed at creation.",
-      "request": { "schema_version": 1, "id": "01923e90-0000-7000-8000-000000000001", "kind": "export", "subject_id": "01923e01-2222-7000-8000-000000000002", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "requested_by": "self", "requester_id": "01923e01-2222-7000-8000-000000000002", "status": "pending", "created_at": "2026-09-02T10:00:00.000Z", "updated_at": "2026-09-02T10:00:00.000Z", "verified_at": "2026-09-02T09:58:00.000Z", "deadline_at": "2026-09-05T10:00:00.000Z" }
+      "request": { "schema_version": 1, "id": "01923e90-0000-7000-8000-000000000001", "kind": "export", "subject_id": "01923e01-2222-7000-8000-000000000002", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "requested_by": "self", "requester_id": "01923e01-2222-7000-8000-000000000002", "status": "pending", "created_at": "2026-09-02T10:00:00.000Z", "updated_at": "2026-09-02T10:00:00.000Z", "deadline_at": "2026-09-05T10:00:00.000Z" }
     },
     {
       "case": "a-completed-export-carries-its-package",
       "valid": true,
       "why": "DR3: size, digest, file count and the availability window, and no URL - the download route mints one per 026.",
-      "request": { "schema_version": 1, "id": "01923e90-0000-7000-8000-000000000001", "kind": "export", "subject_id": "01923e01-2222-7000-8000-000000000002", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "requested_by": "self", "requester_id": "01923e01-2222-7000-8000-000000000002", "status": "completed", "created_at": "2026-09-02T10:00:00.000Z", "updated_at": "2026-09-02T10:04:12.000Z", "verified_at": "2026-09-02T09:58:00.000Z", "deadline_at": "2026-09-05T10:00:00.000Z", "completed_at": "2026-09-02T10:04:12.000Z",
+      "request": { "schema_version": 1, "id": "01923e90-0000-7000-8000-000000000001", "kind": "export", "subject_id": "01923e01-2222-7000-8000-000000000002", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "requested_by": "self", "requester_id": "01923e01-2222-7000-8000-000000000002", "status": "completed", "created_at": "2026-09-02T10:00:00.000Z", "updated_at": "2026-09-02T10:04:12.000Z", "deadline_at": "2026-09-05T10:00:00.000Z", "completed_at": "2026-09-02T10:04:12.000Z",
         "package": { "size_bytes": 61234, "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08", "files": 10, "available_until": "2026-09-09T10:04:12.000Z" } }
     },
     {
       "case": "a-held-erasure-carries-its-hold",
       "valid": true,
       "why": "DR6: the hold is visible on the resource by id and instant, and the administrator's reason is not.",
-      "request": { "schema_version": 1, "id": "01923e90-0000-7000-8000-000000000002", "kind": "erasure", "subject_id": "01923e01-2222-7000-8000-000000000002", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "requested_by": "self", "requester_id": "01923e01-2222-7000-8000-000000000002", "status": "held", "created_at": "2026-09-02T10:00:00.000Z", "updated_at": "2026-09-16T10:00:00.000Z", "verified_at": "2026-09-02T09:58:00.000Z", "deadline_at": "2026-09-19T10:00:00.000Z", "grace_ends_at": "2026-09-16T10:00:00.000Z",
+      "request": { "schema_version": 1, "id": "01923e90-0000-7000-8000-000000000002", "kind": "erasure", "subject_id": "01923e01-2222-7000-8000-000000000002", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "requested_by": "self", "requester_id": "01923e01-2222-7000-8000-000000000002", "status": "held", "created_at": "2026-09-02T10:00:00.000Z", "updated_at": "2026-09-16T10:00:00.000Z", "deadline_at": "2026-09-19T10:00:00.000Z", "grace_ends_at": "2026-09-16T10:00:00.000Z",
         "hold": { "id": "01923e91-0000-7000-8000-000000000001", "placed_at": "2026-09-03T15:00:00.000Z" } }
     },
     {
       "case": "a-completed-erasure-carries-its-proof",
       "valid": true,
       "why": "DR7: the counts, whether identity access was revoked, the ledger entry 028 replays, and the audit event 080 keeps.",
-      "request": { "schema_version": 1, "id": "01923e90-0000-7000-8000-000000000003", "kind": "erasure", "subject_id": "01923e01-2222-7000-8000-000000000002", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "requested_by": "tenant_admin", "requester_id": "01923e01-1111-7000-8000-000000000001", "status": "completed", "created_at": "2026-09-02T10:00:00.000Z", "updated_at": "2026-09-16T11:30:00.000Z", "verified_at": "2026-09-02T09:58:00.000Z", "deadline_at": "2026-09-19T10:00:00.000Z", "grace_ends_at": "2026-09-16T10:00:00.000Z", "completed_at": "2026-09-16T11:30:00.000Z",
+      "request": { "schema_version": 1, "id": "01923e90-0000-7000-8000-000000000003", "kind": "erasure", "subject_id": "01923e01-2222-7000-8000-000000000002", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "requested_by": "tenant_admin", "requester_id": "01923e01-1111-7000-8000-000000000001", "status": "completed", "created_at": "2026-09-02T10:00:00.000Z", "updated_at": "2026-09-16T11:30:00.000Z", "deadline_at": "2026-09-19T10:00:00.000Z", "grace_ends_at": "2026-09-16T10:00:00.000Z", "completed_at": "2026-09-16T11:30:00.000Z",
         "result": { "entries_treated": 12, "rows_deleted": 6, "rows_reduced": 5, "blobs_deleted": 1, "identity_revoked": true, "ledger_entry_id": "01923e92-0000-7000-8000-000000000001", "audit_event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0c99" } }
     },
     {
       "case": "an-export-in-held-status-is-rejected",
       "valid": false,
       "why": "DR6: a hold suspends deletion and never access. An export cannot be held, and a resource claiming it has confused the two rights.",
-      "request": { "schema_version": 1, "id": "01923e90-0000-7000-8000-000000000001", "kind": "export", "subject_id": "01923e01-2222-7000-8000-000000000002", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "requested_by": "self", "requester_id": "01923e01-2222-7000-8000-000000000002", "status": "held", "created_at": "2026-09-02T10:00:00.000Z", "updated_at": "2026-09-02T10:00:00.000Z", "verified_at": "2026-09-02T09:58:00.000Z", "deadline_at": "2026-09-05T10:00:00.000Z",
+      "request": { "schema_version": 1, "id": "01923e90-0000-7000-8000-000000000001", "kind": "export", "subject_id": "01923e01-2222-7000-8000-000000000002", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "requested_by": "self", "requester_id": "01923e01-2222-7000-8000-000000000002", "status": "held", "created_at": "2026-09-02T10:00:00.000Z", "updated_at": "2026-09-02T10:00:00.000Z", "deadline_at": "2026-09-05T10:00:00.000Z",
         "hold": { "id": "01923e91-0000-7000-8000-000000000001", "placed_at": "2026-09-03T15:00:00.000Z" } }
     },
     {
       "case": "a-completed-erasure-without-its-result-is-rejected",
       "valid": false,
       "why": "DR7: completion is a claim, and the result is the evidence. A resource that says completed with no ledger entry and no audit event id is the erasure nobody can prove ran.",
-      "request": { "schema_version": 1, "id": "01923e90-0000-7000-8000-000000000003", "kind": "erasure", "subject_id": "01923e01-2222-7000-8000-000000000002", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "requested_by": "self", "requester_id": "01923e01-2222-7000-8000-000000000002", "status": "completed", "created_at": "2026-09-02T10:00:00.000Z", "updated_at": "2026-09-16T11:30:00.000Z", "verified_at": "2026-09-02T09:58:00.000Z", "deadline_at": "2026-09-19T10:00:00.000Z", "grace_ends_at": "2026-09-16T10:00:00.000Z", "completed_at": "2026-09-16T11:30:00.000Z" }
+      "request": { "schema_version": 1, "id": "01923e90-0000-7000-8000-000000000003", "kind": "erasure", "subject_id": "01923e01-2222-7000-8000-000000000002", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "requested_by": "self", "requester_id": "01923e01-2222-7000-8000-000000000002", "status": "completed", "created_at": "2026-09-02T10:00:00.000Z", "updated_at": "2026-09-16T11:30:00.000Z", "deadline_at": "2026-09-19T10:00:00.000Z", "grace_ends_at": "2026-09-16T10:00:00.000Z", "completed_at": "2026-09-16T11:30:00.000Z" }
     },
     {
       "case": "an-erasure-without-a-grace-end-is-rejected",
       "valid": false,
       "why": "DR4: the grace period is what makes an erasure cancellable, and a resource without grace_ends_at cannot say whether it still is.",
-      "request": { "schema_version": 1, "id": "01923e90-0000-7000-8000-000000000003", "kind": "erasure", "subject_id": "01923e01-2222-7000-8000-000000000002", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "requested_by": "self", "requester_id": "01923e01-2222-7000-8000-000000000002", "status": "pending", "created_at": "2026-09-02T10:00:00.000Z", "updated_at": "2026-09-02T10:00:00.000Z", "verified_at": "2026-09-02T09:58:00.000Z", "deadline_at": "2026-09-19T10:00:00.000Z" }
-    },
-    {
-      "case": "a-request-without-a-verification-instant-is-rejected",
-      "valid": false,
-      "why": "DR2: the verification step is a contract, and its evidence is the instant on the resource. A handler that checked auth_time and did not record it leaves nothing a reviewer can see.",
-      "request": { "schema_version": 1, "id": "01923e90-0000-7000-8000-000000000001", "kind": "export", "subject_id": "01923e01-2222-7000-8000-000000000002", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "requested_by": "self", "requester_id": "01923e01-2222-7000-8000-000000000002", "status": "pending", "created_at": "2026-09-02T10:00:00.000Z", "updated_at": "2026-09-02T10:00:00.000Z", "deadline_at": "2026-09-05T10:00:00.000Z" }
+      "request": { "schema_version": 1, "id": "01923e90-0000-7000-8000-000000000003", "kind": "erasure", "subject_id": "01923e01-2222-7000-8000-000000000002", "tenant_id": "01923e01-9999-7000-8000-00000000000f", "requested_by": "self", "requester_id": "01923e01-2222-7000-8000-000000000002", "status": "pending", "created_at": "2026-09-02T10:00:00.000Z", "updated_at": "2026-09-02T10:00:00.000Z", "deadline_at": "2026-09-19T10:00:00.000Z" }
     }
   ],
   "erasure": [
@@ -696,72 +690,65 @@
   ],
   "transitions": [
     {
-      "case": "an-erasure-is-created-when-authentication-is-fresh",
-      "why": "DR2: the step-up window is fifteen minutes from auth_time; sixty seconds is inside it.",
-      "given": { "kind": "erasure", "auth_age_seconds": 60, "open_request": false },
+      "case": "an-erasure-is-created",
+      "why": "DR2: an erasure is authorized by identity for the subject's own form, and by the permission for the administrator's.",
+      "given": { "kind": "erasure", "open_request": false },
       "action": "create",
       "expect": { "http": 201, "status": "pending" }
     },
     {
-      "case": "an-erasure-with-stale-authentication-is-refused",
-      "why": "DR2: an unattended session must not be able to destroy an account. The refusal is 403 with a stable type, and the client answers it by navigating to re-authenticate, never by retrying.",
-      "given": { "kind": "erasure", "auth_age_seconds": 3600, "open_request": false },
-      "action": "create",
-      "expect": { "http": 403, "problem": "step-up-required" }
-    },
-    {
-      "case": "an-export-is-created-without-step-up",
-      "why": "DR2: an export reveals to the subject what they may already read; the verification bar is the session. A stale auth_time does not refuse it.",
-      "given": { "kind": "export", "auth_age_seconds": 3600, "open_request": false },
+      "case": "an-export-is-created",
+      "why": "DR2: an export reveals to the subject what they may already read.",
+      "given": { "kind": "export", "open_request": false },
       "action": "create",
       "expect": { "http": 201, "status": "pending" }
     },
     {
       "case": "a-second-request-while-one-is-open-returns-the-open-one",
       "why": "DR2: one open request per subject per kind. The second creation is not an error and not a second job; it is the existing resource, answered 200 rather than 201 so the client can tell.",
-      "given": { "kind": "export", "auth_age_seconds": 60, "open_request": true },
+      "given": { "kind": "export", "open_request": true },
       "action": "create",
       "expect": { "http": 200, "status": "pending" }
     },
     {
       "case": "a-pending-erasure-is-cancelled-with-fresh-authentication",
       "why": "DR4: cancellation is the grace period's purpose, and it is verified like creation because cancelling someone else's erasure is as harmful as creating one.",
-      "given": { "kind": "erasure", "status": "pending", "auth_age_seconds": 60 },
+      "given": { "kind": "erasure", "status": "pending" },
       "action": "cancel",
       "expect": { "http": 200, "status": "cancelled" }
     },
     {
       "case": "a-running-erasure-cannot-be-cancelled",
       "why": "DR4: once the job holds the request the data is moving in batches, and a cancellation now would leave a state nobody declared. The refusal names the reason.",
-      "given": { "kind": "erasure", "status": "running", "auth_age_seconds": 60 },
+      "given": { "kind": "erasure", "status": "running" },
       "action": "cancel",
       "expect": { "http": 409, "problem": "erasure-not-cancellable" }
     },
     {
       "case": "a-held-erasure-can-still-be-cancelled",
       "why": "DR6: the hold suspends the erasure, not the subject's control of their own request. Withdrawing it is always theirs while nothing has run.",
-      "given": { "kind": "erasure", "status": "held", "auth_age_seconds": 60 },
+      "given": { "kind": "erasure", "status": "held" },
       "action": "cancel",
       "expect": { "http": 200, "status": "cancelled" }
     },
     {
       "case": "a-completed-export-is-streamed-through-the-service",
       "why": "DR3 and 026 BS5: the download route checks the requester and streams the package as an attachment. No URL to the store exists, on the resource or in the answer.",
-      "given": { "kind": "export", "status": "completed", "auth_age_seconds": 60, "past_available_until": false },
+      "given": { "kind": "export", "status": "completed", "past_available_until": false },
       "action": "download",
       "expect": { "http": 200 }
     },
     {
       "case": "an-export-past-its-window-is-gone",
       "why": "DR3: the package is a concentrated copy of personal data and is deleted after seven days; the route says gone rather than not found, because the request existed and the client should not retry.",
-      "given": { "kind": "export", "status": "completed", "auth_age_seconds": 60, "past_available_until": true },
+      "given": { "kind": "export", "status": "completed", "past_available_until": true },
       "action": "download",
       "expect": { "http": 410, "problem": "export-expired", "status": "expired" }
     },
     {
       "case": "an-export-not-yet-built-cannot-be-downloaded",
       "why": "DR3: the request resource is where a client waits; the download route is not a poll.",
-      "given": { "kind": "export", "status": "running", "auth_age_seconds": 60 },
+      "given": { "kind": "export", "status": "running" },
       "action": "download",
       "expect": { "http": 409, "problem": "export-not-ready" }
     },

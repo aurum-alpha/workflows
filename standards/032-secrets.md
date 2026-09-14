@@ -390,7 +390,6 @@ something this service trusts?
 |---|---|---|---|
 | Database connection string with a password | yes | `connection_string`, `env` | The password inside grants access; the whole string is declared and redacted, and the password component with it. |
 | Migration connection string | yes | `connection_string`, `env`, `migrate` only | A stronger role; a second credential by design (SD3). |
-| The proxy's identity-token signing key (060 AU2) | yes | `private_key`, `file` | Forges every identity the backend trusts. The backend holds the public key or a JWKS URL, which is configuration. |
 | Webhook signing secret, either direction (055 AM7, AM8) | yes | `secret`, `env` | Forges deliveries or verifies them. |
 | Session cookie signing key; field-level encryption key | yes | `signing_key` / `encryption_key`, `env`, `self` | Forges sessions; reads what it protects. |
 | A CA bundle, a TLS certificate, an OIDC client id | no | configuration | Public material. The private key beside a certificate and the client secret beside a client id are secrets. |

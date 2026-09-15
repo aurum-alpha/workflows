@@ -1,0 +1,271 @@
+{
+  "contract": "tenancy",
+  "schemaVersion": 1,
+  "description": "The resolution corpus for standards/060-auth.md AU8 and standards/092-tenant-hostnames.md TH1-TH3: the artifact that makes one active grant per session enforceable from one source across every implementation. An implementation loads 'scopeContainment', 'hosts', 'grants' and 'bindings', then answers every case in 'resolve', 'switch' and 'view' and reproduces each expected outcome, and refuses every case in 'rejections'. A session names a subject and, under host_names_tenant, the host the request arrived on. A policy names whether a subject holds more than one grant and whether the active one changes inside a session. Every case's expected outcome is the standard's, never an implementation's.",
+  "fixture": {
+    "scopeContainment": {
+      "description": "Two tenants and nothing beneath them; 'global' contains everything. The host filter runs containment one way: the host's tenant has to contain the grant's scope (TH1).",
+      "global": ["tenant:acme", "tenant:globex"],
+      "tenant:acme": [],
+      "tenant:globex": []
+    },
+    "hosts": {
+      "description": "What a host names, as the HostTenant port answers it. A tenant host names its tenant's scope. The default entry names 'default_entry': the platform's own host, which narrows nothing, so a global grant is a candidate there and a person holding grants in two tenants chooses (TH1). Any host absent from this map is unknown, and an unknown host names no tenant (TH3).",
+      "acme.example.test": "tenant:acme",
+      "globex.example.test": "tenant:globex",
+      "app.example.test": "default_entry"
+    },
+    "grants": [
+      { "subject": "usr_ana", "role": "viewer", "scope": "tenant:acme" },
+      { "subject": "usr_ben", "role": "approver", "scope": "tenant:acme" },
+      { "subject": "usr_ben", "role": "viewer", "scope": "tenant:globex" },
+      { "subject": "usr_cara", "role": "tenant_admin", "scope": "tenant:acme" },
+      { "subject": "usr_cara", "role": "auditor", "scope": "tenant:acme" },
+      { "subject": "usr_dan", "role": "platform_admin", "scope": "global" },
+      { "subject": "usr_eve", "role": "viewer", "scope": "tenant:acme" }
+    ],
+    "bindings": {
+      "description": "The active grant each login session has bound, keyed on the session id (AU8). usr_eve's binding names a grant she no longer holds: the row survived the revoke, which is the stale binding AU8 speaks to.",
+      "rows": [
+        { "session": "ses_ben_1", "subject": "usr_ben", "grant": { "role": "approver", "scope": "tenant:acme" } },
+        { "session": "ses_cara_1", "subject": "usr_cara", "grant": { "role": "auditor", "scope": "tenant:acme" } },
+        { "session": "ses_eve_stale", "subject": "usr_eve", "grant": { "role": "approver", "scope": "tenant:acme" } }
+      ]
+    }
+  },
+  "resolve": [
+    {
+      "id": "one-grant-resolves-active-without-a-choice",
+      "session": { "id": "ses_ana_1", "subject": "usr_ana" },
+      "tenancy": "single_host",
+      "policy": { "multipleGrants": true, "switchInSession": true },
+      "expect": { "outcome": "active", "active": { "role": "viewer", "scope": "tenant:acme" }, "binding": "written", "audit": ["auth.grant_activated"] },
+      "note": "a sole candidate is the session's grant, and binding it is the choice the person did not have to make; it is recorded as one (AU8, 080 AE3)"
+    },
+    {
+      "id": "one-grant-per-subject-never-binds",
+      "session": { "id": "ses_ana_2", "subject": "usr_ana" },
+      "tenancy": "single_host",
+      "policy": { "multipleGrants": false, "switchInSession": false },
+      "expect": { "outcome": "active", "active": { "role": "viewer", "scope": "tenant:acme" }, "binding": "none", "audit": [] },
+      "note": "where a subject holds at most one grant there is no choice, so there is no binding to write and no act to record (AU8)"
+    },
+    {
+      "id": "two-grants-and-no-binding-is-choose",
+      "session": { "id": "ses_cara_new", "subject": "usr_cara" },
+      "tenancy": "single_host",
+      "policy": { "multipleGrants": true, "switchInSession": true },
+      "expect": { "outcome": "choose", "choices": [ { "role": "tenant_admin", "scope": "tenant:acme" }, { "role": "auditor", "scope": "tenant:acme" } ], "binding": "none" },
+      "note": "not having chosen is an ordinary state and not a fault; the session acts in nothing until the person chooses (AU8)"
+    },
+    {
+      "id": "a-choosing-session-under-no-switch-still-chooses",
+      "session": { "id": "ses_cara_new", "subject": "usr_cara" },
+      "tenancy": "single_host",
+      "policy": { "multipleGrants": true, "switchInSession": false },
+      "expect": { "outcome": "choose", "choices": [ { "role": "tenant_admin", "scope": "tenant:acme" }, { "role": "auditor", "scope": "tenant:acme" } ], "binding": "none" },
+      "note": "'the session's first choice holds' presupposes one being made; a product that admits no change still admits the first choice (AU8)"
+    },
+    {
+      "id": "a-bound-grant-is-active",
+      "session": { "id": "ses_cara_1", "subject": "usr_cara" },
+      "tenancy": "single_host",
+      "policy": { "multipleGrants": true, "switchInSession": true },
+      "expect": { "outcome": "active", "active": { "role": "auditor", "scope": "tenant:acme" }, "binding": "kept", "audit": [] },
+      "note": "the binding is the answer; a second login by the same person is a second session with its own (AU8)"
+    },
+    {
+      "id": "a-stale-binding-under-no-switch-is-binding-lost",
+      "session": { "id": "ses_eve_stale", "subject": "usr_eve" },
+      "tenancy": "single_host",
+      "policy": { "multipleGrants": true, "switchInSession": false },
+      "expect": { "outcome": "none", "reason": "binding_lost", "binding": "kept" },
+      "note": "binding to another grant would be the change the product refuses, performed by the software rather than the person; the session ends (AU8)"
+    },
+    {
+      "id": "a-stale-binding-under-switch-is-dropped-and-resolution-runs-again",
+      "session": { "id": "ses_eve_stale", "subject": "usr_eve" },
+      "tenancy": "single_host",
+      "policy": { "multipleGrants": true, "switchInSession": true },
+      "expect": { "outcome": "active", "active": { "role": "viewer", "scope": "tenant:acme" }, "binding": "written", "audit": ["auth.grant_activated"] },
+      "note": "a revoked role stops working on the next request rather than at logout, and the one grant left binds as a sole candidate does (AU8)"
+    },
+    {
+      "id": "no-grant-is-no-grant",
+      "session": { "id": "ses_zed_1", "subject": "usr_zed" },
+      "tenancy": "single_host",
+      "policy": { "multipleGrants": true, "switchInSession": true },
+      "expect": { "outcome": "none", "reason": "no_grant", "binding": "none" },
+      "note": "AU6's refusal by another name: the provider admits the person and the application holds nothing for them"
+    },
+    {
+      "id": "a-global-grant-is-not-a-candidate-on-a-tenant-host",
+      "session": { "id": "ses_dan_acme", "subject": "usr_dan", "host": "acme.example.test" },
+      "tenancy": "host_names_tenant",
+      "policy": { "multipleGrants": true, "switchInSession": true },
+      "expect": { "outcome": "none", "reason": "no_grant", "binding": "none" },
+      "note": "containment runs one way for this question: the host's tenant has to contain the grant's scope, never the reverse. A standing global grant working on every tenant's host is the reach TH1 refuses"
+    },
+    {
+      "id": "a-global-grant-is-a-candidate-on-the-default-entry",
+      "session": { "id": "ses_dan_app", "subject": "usr_dan", "host": "app.example.test" },
+      "tenancy": "host_names_tenant",
+      "policy": { "multipleGrants": true, "switchInSession": true },
+      "expect": { "outcome": "active", "active": { "role": "platform_admin", "scope": "global" }, "binding": "written", "audit": ["auth.grant_activated"] },
+      "note": "it strands nobody: platform work happens on the platform's own surface, where no host has chosen a tenant (TH1)"
+    },
+    {
+      "id": "a-tenant-host-narrows-the-candidates",
+      "session": { "id": "ses_ben_acme", "subject": "usr_ben", "host": "acme.example.test" },
+      "tenancy": "host_names_tenant",
+      "policy": { "multipleGrants": true, "switchInSession": true },
+      "expect": { "outcome": "active", "active": { "role": "approver", "scope": "tenant:acme" }, "binding": "written", "audit": ["auth.grant_activated"] },
+      "note": "usr_ben holds grants in two tenants and arrived on one tenant's host; the host chose, the other membership is not consulted, and the one candidate binds (TH2, TH3)"
+    },
+    {
+      "id": "the-default-entry-narrows-nothing",
+      "session": { "id": "ses_ben_app", "subject": "usr_ben", "host": "app.example.test" },
+      "tenancy": "host_names_tenant",
+      "policy": { "multipleGrants": true, "switchInSession": true },
+      "expect": { "outcome": "choose", "choices": [ { "role": "approver", "scope": "tenant:acme" }, { "role": "viewer", "scope": "tenant:globex" } ], "binding": "none" },
+      "note": "on the default entry no host has chosen, so the product asks, and the session is still bound to exactly one (TH2)"
+    },
+    {
+      "id": "an-unknown-host-is-host-names-no-tenant",
+      "session": { "id": "ses_ben_nowhere", "subject": "usr_ben", "host": "nowhere.example.test" },
+      "tenancy": "host_names_tenant",
+      "policy": { "multipleGrants": true, "switchInSession": true },
+      "expect": { "outcome": "none", "reason": "host_names_no_tenant", "binding": "none" },
+      "note": "nothing exists at this address; the edge answers 404 before the application runs and the application answers the same where it is reached (TH3)"
+    },
+    {
+      "id": "a-host-that-disagrees-with-the-bound-grant-is-host-disagrees",
+      "session": { "id": "ses_ben_1", "subject": "usr_ben", "host": "globex.example.test" },
+      "tenancy": "host_names_tenant",
+      "policy": { "multipleGrants": true, "switchInSession": true },
+      "expect": { "outcome": "none", "reason": "host_disagrees", "binding": "kept", "audit": ["auth.access_denied"] },
+      "note": "the session is valid for its own tenant and is not ended; the request is the fault, and TH4 makes it nearly impossible, so its occurrence is a record worth keeping (TH3). It is not binding_lost: the grant is still held, and still not reachable from here"
+    }
+  ],
+  "switch": [
+    {
+      "id": "a-first-choice-binds",
+      "session": { "id": "ses_cara_new", "subject": "usr_cara" },
+      "tenancy": "single_host",
+      "policy": { "multipleGrants": true, "switchInSession": true },
+      "activate": { "role": "auditor", "scope": "tenant:acme" },
+      "expect": { "outcome": "bound", "binding": "written", "audit": ["auth.grant_activated"] },
+      "note": "the first binding and the change are one operation, because 080 AE3 gives both one action; the event's previous grant is absent, not empty (AU8)"
+    },
+    {
+      "id": "a-first-choice-is-admitted-where-switching-is-not",
+      "session": { "id": "ses_cara_new", "subject": "usr_cara" },
+      "tenancy": "single_host",
+      "policy": { "multipleGrants": true, "switchInSession": false },
+      "activate": { "role": "auditor", "scope": "tenant:acme" },
+      "expect": { "outcome": "bound", "binding": "written", "audit": ["auth.grant_activated"] },
+      "note": "switchInSession gates the change only; a session that has chosen nothing is able to choose, whatever the policy says about changing (AU8)"
+    },
+    {
+      "id": "a-change-is-switched",
+      "session": { "id": "ses_cara_1", "subject": "usr_cara" },
+      "tenancy": "single_host",
+      "policy": { "multipleGrants": true, "switchInSession": true },
+      "activate": { "role": "tenant_admin", "scope": "tenant:acme" },
+      "expect": { "outcome": "switched", "previous": { "role": "auditor", "scope": "tenant:acme" }, "binding": "written", "audit": ["auth.grant_activated"] },
+      "note": "the session's record is rebound and the event names the grant activated and the one it replaced (AU8)"
+    },
+    {
+      "id": "naming-the-active-grant-is-unchanged",
+      "session": { "id": "ses_cara_1", "subject": "usr_cara" },
+      "tenancy": "single_host",
+      "policy": { "multipleGrants": true, "switchInSession": true },
+      "activate": { "role": "auditor", "scope": "tenant:acme" },
+      "expect": { "outcome": "unchanged", "binding": "kept", "audit": [] },
+      "note": "idempotent by construction: naming the grant a session already acts in changes nothing and records nothing, which is why the endpoint needs no idempotency key (HA6)"
+    },
+    {
+      "id": "a-change-where-switching-is-not-admitted-is-switch-forbidden",
+      "session": { "id": "ses_cara_1", "subject": "usr_cara" },
+      "tenancy": "single_host",
+      "policy": { "multipleGrants": true, "switchInSession": false },
+      "activate": { "role": "tenant_admin", "scope": "tenant:acme" },
+      "expect": { "outcome": "switch_forbidden", "binding": "kept", "audit": [] },
+      "note": "the session's first choice holds and a change of capacity is a new login (AU8)"
+    },
+    {
+      "id": "a-grant-not-held-is-not-held",
+      "session": { "id": "ses_cara_1", "subject": "usr_cara" },
+      "tenancy": "single_host",
+      "policy": { "multipleGrants": true, "switchInSession": true },
+      "activate": { "role": "approver", "scope": "tenant:acme" },
+      "expect": { "outcome": "not_held", "binding": "kept", "audit": [] },
+      "note": "a request never chooses a scope or a role the subject does not hold (RB10)"
+    },
+    {
+      "id": "a-grant-the-host-does-not-reach-is-not-held",
+      "session": { "id": "ses_ben_acme", "subject": "usr_ben", "host": "acme.example.test" },
+      "tenancy": "host_names_tenant",
+      "policy": { "multipleGrants": true, "switchInSession": true },
+      "activate": { "role": "viewer", "scope": "tenant:globex" },
+      "expect": { "outcome": "not_held", "binding": "none", "audit": [] },
+      "note": "the same refusal as a grant never held, with no code of its own: a session never learns that its holder has a grant in another tenant (TH1)"
+    }
+  ],
+  "view": [
+    {
+      "id": "must-choose-is-true-when-choosing",
+      "session": { "id": "ses_cara_new", "subject": "usr_cara" },
+      "tenancy": "single_host",
+      "policy": { "multipleGrants": true, "switchInSession": true },
+      "expect": { "must_choose": true, "active": null, "options": [ { "role": "tenant_admin", "scope": "tenant:acme" }, { "role": "auditor", "scope": "tenant:acme" } ], "switch_in_session": true },
+      "note": "must_choose is the resolver's choose outcome and is not derived beside it (grants.schema.json)"
+    },
+    {
+      "id": "must-choose-is-false-when-active",
+      "session": { "id": "ses_cara_1", "subject": "usr_cara" },
+      "tenancy": "single_host",
+      "policy": { "multipleGrants": true, "switchInSession": true },
+      "expect": { "must_choose": false, "active": { "role": "auditor", "scope": "tenant:acme" }, "options": [ { "role": "tenant_admin", "scope": "tenant:acme" }, { "role": "auditor", "scope": "tenant:acme" } ], "switch_in_session": true },
+      "note": "the view names the active grant among its own options and carries no permission for any of them (AU8)"
+    },
+    {
+      "id": "must-choose-is-false-for-a-sole-grant",
+      "session": { "id": "ses_ana_1", "subject": "usr_ana" },
+      "tenancy": "single_host",
+      "policy": { "multipleGrants": true, "switchInSession": true },
+      "expect": { "must_choose": false, "active": { "role": "viewer", "scope": "tenant:acme" }, "options": [ { "role": "viewer", "scope": "tenant:acme" } ], "switch_in_session": true },
+      "note": "'this session has chosen nothing yet' and 'this session has nothing to choose' are different screens, and a client guessing between them shows a picker with one entry"
+    },
+    {
+      "id": "options-are-narrowed-by-the-host",
+      "session": { "id": "ses_ben_acme", "subject": "usr_ben", "host": "acme.example.test" },
+      "tenancy": "host_names_tenant",
+      "policy": { "multipleGrants": true, "switchInSession": true },
+      "expect": { "must_choose": false, "active": { "role": "approver", "scope": "tenant:acme" }, "options": [ { "role": "approver", "scope": "tenant:acme" } ], "switch_in_session": true },
+      "note": "the view is narrowed exactly as the resolution was, from the same list of grants, so the two cannot disagree (TH1)"
+    },
+    {
+      "id": "switch-in-session-reports-the-policy",
+      "session": { "id": "ses_cara_1", "subject": "usr_cara" },
+      "tenancy": "single_host",
+      "policy": { "multipleGrants": true, "switchInSession": false },
+      "expect": { "must_choose": false, "active": { "role": "auditor", "scope": "tenant:acme" }, "options": [ { "role": "tenant_admin", "scope": "tenant:acme" }, { "role": "auditor", "scope": "tenant:acme" } ], "switch_in_session": false },
+      "note": "a client reads switch_in_session before it renders a switcher, and never learns the policy any other way"
+    }
+  ],
+  "rejections": [
+    {
+      "id": "a-policy-admitting-a-switch-with-one-grant-per-subject-is-refused",
+      "stimulus": "declare a policy with multipleGrants false and switchInSession true",
+      "expect": { "refused": true },
+      "note": "there would be nothing to switch to; a contradiction is refused where the policy is declared, never discovered at the first switch (AU8)"
+    },
+    {
+      "id": "a-switch-under-one-grant-per-subject-does-not-exist",
+      "stimulus": "mount the activation route for a product whose policy has multipleGrants false",
+      "expect": { "refused": true },
+      "note": "the route is structurally absent rather than mounted and refusing: a subject with one grant has nothing to activate (AU8)"
+    }
+  ]
+}

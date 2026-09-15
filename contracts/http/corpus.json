@@ -163,6 +163,18 @@
       "stimulus": "page through a collection using only the returned next_cursor",
       "expect": { "every_item": "returned exactly once", "termination": "next_cursor null" },
       "note": "the property offset pagination cannot hold over a changing collection (HA4)"
+    },
+    {
+      "id": "request-id-is-minted-and-never-read-from-the-request",
+      "stimulus": "send a request carrying x-request-id: 019a0000-0000-7000-8000-000000000001 and read the id on the response and in the error envelope",
+      "expect": { "headers.x-request-id": "a fresh UUIDv7, never the one sent", "body.request_id": "the same fresh value" },
+      "note": "the receiving service mints request_id at its edge and never adopts one from a request header; an id the caller chose is an id two unrelated requests can share, and a log query keyed on it can be steered by whoever sent it (040 OC2)"
+    },
+    {
+      "id": "authenticated-api-answers-are-no-store",
+      "stimulus": "GET any authenticated API route, including /api/v1/me, and read Cache-Control",
+      "expect": { "headers.cache-control": "no-store" },
+      "note": "an authenticated API response is one person's data and never enters a shared cache (085, response headers)"
     }
   ]
 }

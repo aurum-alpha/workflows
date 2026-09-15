@@ -1,0 +1,145 @@
+{
+  "contract": "platform",
+  "schemaVersion": 1,
+  "description": "Every name standards/060-auth.md and standards/070-rbac.md give an implementation to carry, spelled once. Three implementations that each chose their own spelling for one refusal were three answers to one question; this file answers it once. A wire value is exact in every language. An identifier follows the language's own casing rule from the canonical spelling: Go exports PascalCase, TypeScript uses lowerCamel for members and PascalCase for types, PHP uses PascalCase for classes and lowerCamel for methods. Where a language's own convention forces a different name, the entry says so under 'except' with the reason, and nothing else is an exception. An implementation carries a name that is in this file, or the name is not carried.",
+  "packages": {
+    "description": "One package per concept, the same name in each language; the framework binding is named for its framework under auth/.",
+    "auth/token": { "go": "auth/token", "ts": "auth/token", "php": "Platform\\Auth\\Token" },
+    "auth/identity": { "go": "auth/identity", "ts": "auth/identity", "php": "Platform\\Auth\\Identity" },
+    "auth/me": { "go": "auth/me", "ts": "auth/me", "php": "Platform\\Auth\\Me" },
+    "auth/keycloak": { "go": "auth/keycloak", "ts": "auth/keycloak", "php": "Platform\\Auth\\Keycloak" },
+    "auth/authtest": { "go": "auth/authtest", "ts": "auth/authtest", "php": "Platform\\Auth\\Testing", "except": { "php": "Composer's autoload-dev convention names test support Testing" } },
+    "auth/binding": { "go": "auth/nethttp", "ts": "auth/express", "php": "Platform\\Auth\\CodeIgniter", "note": "the framework-free core a binding sits on, where a language has one, is Platform\\Auth\\Http in PHP and nothing separate elsewhere" },
+    "rbac": { "go": "rbac", "ts": "rbac", "php": "Platform\\Rbac" },
+    "tenancy": { "go": "tenancy", "ts": "tenancy", "php": "Platform\\Tenancy" }
+  },
+  "wire": {
+    "description": "Values that cross a boundary: a log line, an audit event, a response body, a configuration file. Exact in every language.",
+    "token_error_codes": {
+      "rule": "060 AU2. Every one is a 401. The code reaches the log and the audit event and never the response body.",
+      "values": ["no_token", "malformed", "algorithm", "token_type", "missing_claim", "issuer", "signature", "audience", "expired", "not_yet_valid", "jwks_unavailable"]
+    },
+    "denial_reasons": {
+      "rule": "070 RB8. A denied decision carries exactly one. undeclared_permission and invalid_scope are also errors, and the decision beside the error carries the reason.",
+      "values": ["no_active_grant", "invalid_scope", "scope_not_contained", "permission_not_held", "undeclared_permission", "no_permissions_requested"]
+    },
+    "role_origins": { "rule": "070 RB3.", "values": ["system", "tenant"] },
+    "scope": { "rule": "070 RB5.", "global": "global", "shape": "type:id" },
+    "tenancies": { "rule": "060 AU8. single_host is also the declaration of a product with no tenants.", "values": ["single_host", "host_names_tenant"] },
+    "resolution_outcomes": { "rule": "060 AU8.", "values": ["active", "choose", "none"] },
+    "no_grant_reasons": {
+      "rule": "060 AU8, 092 TH3. Carried on the outcome none, each with one answer.",
+      "values": {
+        "no_grant": { "status": 403, "session": "ends", "slug": "unknown-subject" },
+        "binding_lost": { "status": 403, "session": "ends", "slug": "unknown-subject" },
+        "host_disagrees": { "status": 403, "session": "kept", "slug": "tenant-mismatch", "audit": "auth.access_denied" },
+        "host_names_no_tenant": { "status": 404, "session": "kept", "slug": "tenant-not-found" }
+      }
+    },
+    "authentication_outcomes": {
+      "rule": "060 AU6, AU8, AU9. The status is the one an application route answers; the three /me routes answer choose with 200.",
+      "values": { "authenticated": null, "anonymous": null, "unauthenticated": 401, "choose": 409, "refused": "403, or 404 for host_names_no_tenant" }
+    },
+    "refusal_reasons": {
+      "rule": "060 AU6 gives two of its own; the other four are the no-grant reasons carried through unrenamed.",
+      "values": ["unknown_subject", "retired_user", "no_grant", "binding_lost", "host_disagrees", "host_names_no_tenant"]
+    },
+    "host_tenant_answers": {
+      "rule": "092 TH1, TH3. What a host names, as the HostTenant port answers it.",
+      "values": ["a tenant scope", "default_entry", "unknown"]
+    },
+    "switch_outcomes": {
+      "rule": "060 AU8.",
+      "values": { "bound": 200, "switched": 200, "unchanged": 200, "not_held": 403, "switch_forbidden": 404 }
+    },
+    "problem_slugs": {
+      "rule": "050 HA3 fixes the URI as https://errors.aurumalpha.dev/<service>/<slug>; 060 fixes these slugs.",
+      "values": {
+        "not-authenticated": 401,
+        "unknown-subject": 403,
+        "tenant-mismatch": 403,
+        "tenant-not-found": 404,
+        "grant-not-chosen": 409,
+        "grant-not-held": 403,
+        "switch-not-permitted": 404,
+        "malformed-body": 400,
+        "invalid-request": 422,
+        "internal-error": 500
+      }
+    },
+    "problem_extension_members": { "rule": "060, the artifacts. No other member.", "values": ["end_session", "outcome", "grant"] },
+    "audit_actions": {
+      "rule": "080 AE3. Shapes are audit/event.schema.json's.",
+      "values": ["auth.login", "auth.access_denied", "auth.grant_activated"]
+    },
+    "authorization_claims_never_read": { "rule": "060 AU2.", "values": ["roles", "groups", "realm_access", "resource_access", "permissions"] },
+    "routes": {
+      "rule": "060 AU6, AU8; 050 HA5 puts the version in the path.",
+      "values": { "GET /api/v1/me": "the client identity document", "GET /api/v1/me/grants": "the session grants view", "POST /api/v1/me/active": "activate a grant; absent where the policy holds one grant per subject" }
+    },
+    "anonymous_subject": { "rule": "060 AU9.", "value": "anonymous" }
+  },
+  "options": {
+    "description": "The dimensions a product declares in its Conventions and passes to the identity tier. The field name is the canonical spelling under the language's casing; the values are exact.",
+    "tenancy": { "values": ["single_host", "host_names_tenant"] },
+    "policy": { "members": { "multipleGrants": "boolean", "switchInSession": "boolean" }, "rule": "switchInSession without multipleGrants is refused where the policy is declared" },
+    "roleSources": { "values": ["system", "system_and_tenant"] },
+    "provisioning": { "values": ["admin_invites", "provider_is_source"] },
+    "invitationMail": { "values": ["provider", "app"] },
+    "anonymousRole": { "type": "a system role name, or absent" },
+    "hostTenant": { "type": "the HostTenant port; required under host_names_tenant, refused under single_host" },
+    "scopes": { "type": "the ScopeHierarchy; the flat hierarchy when absent" },
+    "defaultGrant": { "type": "a role and a scope; required under provider_is_source" },
+    "permissions": { "type": "the Registry" },
+    "systemRoles": { "type": "the SystemRoles" },
+    "verifier": { "type": "the Verifier; absent only in a no-provider deployment" },
+    "users": { "type": "the UserResolver" },
+    "grants": { "type": "the GrantStore" },
+    "bindings": { "type": "the BindingStore; required under multipleGrants, refused otherwise" },
+    "tenantRoles": { "type": "the RoleStore; required under system_and_tenant" },
+    "provisionUser": { "type": "the UserProvisioner; required under provider_is_source" },
+    "sessionEnder": { "type": "the SessionEnder" },
+    "sessions": { "type": "the SessionLog, or absent" },
+    "entitlements": { "type": "the EntitlementsProvider, or absent" },
+    "audit": { "type": "the AuditSink; the no-op when absent" },
+    "choosePath": { "type": "a client path, or absent" },
+    "now": { "type": "a clock", "except": { "php": "clock, because PSR-20 names the interface ClockInterface" } }
+  },
+  "ports": {
+    "description": "The interfaces a product implements over its own tables and its own provider. Operation names are the canonical spelling under the language's casing.",
+    "Verifier": ["verify"],
+    "UserResolver": ["findByRef"],
+    "UserProvisioner": ["provision"],
+    "SessionEnder": ["end"],
+    "SessionLog": ["firstSight"],
+    "EntitlementsProvider": ["entitlementsFor"],
+    "AuditSink": ["login", "accessDenied", "grantActivated"],
+    "GrantStore": ["grantsFor"],
+    "GrantWriter": ["insert", "delete"],
+    "RoleStore": ["rolesFor", "put", "delete"],
+    "BindingStore": ["get", "bind", "rebind", "forget"],
+    "HostTenant": ["tenantFor"],
+    "Provisioner": ["ensureIdentity", "grantAppAccess", "revokeAppAccess", "sendInvitation", "changeLoginEmail"]
+  },
+  "types": {
+    "description": "The named things a product's code touches. Canonical spelling; a language applies its casing and nothing else.",
+    "auth/token": ["Verifier", "TrustedIssuer", "VerifiedToken", "TokenError"],
+    "auth/identity": ["Authenticator", "Options", "Request", "Authentication", "Principal", "AnonymousPrincipal", "Identity", "User", "Reader"],
+    "auth/me": ["Document", "Renderer", "Entitlements"],
+    "auth/keycloak": ["Provisioner", "Onboarding"],
+    "rbac": ["Permission", "Registry", "Role", "SystemRoles", "Grant", "Scope", "ScopeHierarchy", "Policy", "Effective", "Decision", "Administrator", "RoleAdministrator", "Guard"],
+    "tenancy": ["Session", "Policy", "Resolver", "Resolution", "Binding", "GrantsHandler", "GrantsView", "SwitchHandler", "SwitchResult"],
+    "auth/binding": ["Routes"]
+  },
+  "operations": {
+    "description": "The operations 070 RB7 and 060 AU8 name, under the language's casing.",
+    "Effective": ["can", "canAny", "canAll", "decide", "decideAny", "decideAll", "permissions", "roles"],
+    "Guard": ["require", "requireAny", "requireAll"],
+    "Administrator": ["grant", "revoke"],
+    "RoleAdministrator": ["put", "delete", "rolesFor"],
+    "Resolver": ["resolve"],
+    "SwitchHandler": ["activate"],
+    "GrantsHandler": ["view"],
+    "Renderer": ["render"]
+  }
+}

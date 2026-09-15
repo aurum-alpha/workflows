@@ -123,6 +123,9 @@ branch on them.
 
 Two rules follow, and both are enforceable:
 
+- **A role's origin is `system` or `tenant`, spelled that way everywhere**: in
+  a stored role, in the corpus and in every implementation. A system role is
+  the one declared in code.
 - **A system role is not editable or deletable by a tenant**. It is the recovery
   floor, and a floor a tenant can remove is not one.
 - **A tenant-defined role is not permitted to take the name of a system role**.
@@ -335,6 +338,30 @@ The reason is what an application logs and what an administrator reads on a
 support call. It is never returned to an unauthorised caller. The
 [`050-http.md`](050-http.md) HA3 envelope that reaches the client says the
 request was refused, and the reason stays in the log.
+
+**A denial carries one of six reasons**, and every implementation names them
+the same way. An allowance carries the grant and the role that satisfied it.
+
+| Reason | The denial |
+|---|---|
+| `no_active_grant` | The session acts in no grant, so nothing can be held. |
+| `invalid_scope` | The scope asked about is not `global` and not `type:id`. |
+| `scope_not_contained` | The active grant's scope does not contain the scope asked about (RB5). |
+| `permission_not_held` | The active grant's role does not carry the permission. |
+| `undeclared_permission` | The permission is not in RB1's set. |
+| `no_permissions_requested` | `checkAny` or `checkAll` was asked about an empty list (RB7). |
+
+Two of them are also errors. RB1 makes a check against an undeclared
+permission an error rather than a denial. A scope that is not a scope is the
+same kind of mistake. So those two calls return an error, and the decision
+returned beside it carries the matching reason. A caller that reads only the
+error learns it asked a malformed question; a log that reads the decision
+learns which. Neither is a denial a person can be told about, because neither
+is about the person.
+
+The reasons are listed in the vocabulary contract with each language's
+spelling, and [`decisions.json`](../contracts/rbac/decisions.json) states the
+reason every denied check expects.
 
 ### RB9. A cached decision is keyed by everything the decision depends on
 

@@ -104,8 +104,19 @@ here.
 provider's JWKS. A parsed but unverified token is no check at all. Key
 rotation is AU1's. Presentation is
 [RFC 6750](https://www.rfc-editor.org/rfc/rfc6750.html)'s
-`Authorization: Bearer`; where the proxy puts the access token in another
-header, the repository names that header in its **Conventions**.
+`Authorization: Bearer`, and a verifier reads that header and no other. Where
+a relying party puts the token elsewhere, the product's own edge moves it into
+`Authorization` first, and the repository says so in its **Conventions**. A
+second header a verifier reads is a second thing to secure, and a token
+arriving in it is a missing token.
+
+**A refusal carries one of eleven codes**, and every verifier names them the
+same way. They are `no_token`, `malformed`, `algorithm`, `token_type`,
+`missing_claim`, `issuer`, `signature`, `audience`, `expired`,
+`not_yet_valid` and `jwks_unavailable`. Every one is a `401`. The code is for the log and the
+audit event and never for the response body. A caller who learns which check
+refused them learns how to pass it. The codes are listed in the vocabulary
+contract with each language's spelling.
 
 **A provider that issues only opaque access tokens is not admitted**. An
 opaque token carries nothing. The only way to read one is to ask the
@@ -624,7 +635,7 @@ that will derive a different one.
 | Outcome | Meaning | The answer |
 |---|---|---|
 | `active` | The session acts in one grant. | The request proceeds under that grant. |
-| `choose` | No grant is active, more than one is reachable, and this session is still permitted to choose. | `200` on the routes that serve a choosing session; a chooser in the client. |
+| `choose` | No grant is active, more than one is reachable, and this session is still permitted to choose. | `200` on the three routes that serve a choosing session, so the client can render the chooser; `409` with the problem slug `grant-not-chosen` on every other route, because an application route cannot be served to a session acting in no grant. |
 | `none` · `no_grant` | The subject holds no grant this host reaches. | AU6: `403`, and the session ends. |
 | `none` · `binding_lost` | The session's bound grant no longer stands, and the product admits no change of active grant. | `403`, and the session ends: binding to another grant would be the change the product refuses, performed by the software. Where the product admits the change, the stale binding is dropped and resolution runs again instead. |
 | `none` · `host_disagrees` | The host names one tenant and the session is bound to another (092 TH3). | `403`, the session is kept, and an `auth.access_denied` event is written: the session is valid for its own tenant and the request is the fault. |
@@ -823,6 +834,42 @@ settled question, drifting from the RFC the moment either moved.
 - **`corpus.json`**: validity cases for the client identity document, plus
   behavioural cases a live deployment must satisfy. Every claim about the
   token is a behavioural case, because nothing here describes its shape.
+- **`vocabulary.json`**: every name this document and
+  [`070-rbac.md`](070-rbac.md) give an implementation to carry. Outcomes,
+  reasons, error codes, problem slugs with their statuses, audit actions, the
+  option dimensions and their values, and the operations of each port. Where
+  a language's conventions differ, it carries one spelling per language. An
+  implementation carries a name that is in it, or the name is not carried.
+  Three implementations that each spelled one refusal their own way were
+  three answers to one question. This file answers it once.
+- **`resolution.json`**, under [`contracts/tenancy/`](../contracts/tenancy/).
+  A fixture of grants, bindings and a host map, then the cases AU8 fixes.
+  How a session resolves, how a switch is answered, and what the grants view
+  says, each with the outcome it expects. One corpus judges every
+  implementation of the resolver, which is why the resolver is a pure function
+  of its arguments.
+
+**The problem slugs are the vocabulary's**. HA3 fixes the type URI as
+`https://errors.aurumalpha.dev/<service>/<slug>` and leaves the slug to the
+service. The identity tier's slugs are one set across every implementation,
+because a client reads them.
+
+| Slug | Status | Carries |
+|---|---|---|
+| `not-authenticated` | `401` | |
+| `unknown-subject` | `403` | `end_session` |
+| `tenant-mismatch` | `403` | |
+| `tenant-not-found` | `404` | |
+| `grant-not-chosen` | `409` | |
+| `grant-not-held` | `403` | `outcome`, `grant` |
+| `switch-not-permitted` | `404` | `outcome`, `grant` |
+| `malformed-body` | `400` | |
+| `invalid-request` | `422` | `errors[]` |
+| `internal-error` | `500` | |
+
+A problem carries `end_session`, `outcome` and `grant` as its extension
+members, and no other. A stored binding that names another person is a data
+fault. It answers `internal-error`, never a refusal the caller is told about.
 
 ## Decisions
 

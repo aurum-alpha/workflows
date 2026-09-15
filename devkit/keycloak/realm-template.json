@@ -502,6 +502,120 @@
       ]
     },
     {
+      "id": "aa000010-0000-4000-8000-000000000010",
+      "username": "tenant-a-operator",
+      "email": "tenant-a-operator@__REPO__.test",
+      "firstName": "Tenant A",
+      "lastName": "Operator",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "devkit-local-only",
+          "temporary": false
+        }
+      ],
+      "clientRoles": {
+        "__REPO__": ["access"]
+      }
+    },
+    {
+      "id": "aa000011-0000-4000-8000-000000000011",
+      "username": "tenant-a-member",
+      "email": "tenant-a-member@__REPO__.test",
+      "firstName": "Tenant A",
+      "lastName": "Member",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "devkit-local-only",
+          "temporary": false
+        }
+      ],
+      "clientRoles": {
+        "__REPO__": ["access"]
+      }
+    },
+    {
+      "id": "aa000012-0000-4000-8000-000000000012",
+      "username": "tenant-b-operator",
+      "email": "tenant-b-operator@__REPO__.test",
+      "firstName": "Tenant B",
+      "lastName": "Operator",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "devkit-local-only",
+          "temporary": false
+        }
+      ],
+      "clientRoles": {
+        "__REPO__": ["access"]
+      }
+    },
+    {
+      "id": "aa000013-0000-4000-8000-000000000013",
+      "username": "tenant-b-member",
+      "email": "tenant-b-member@__REPO__.test",
+      "firstName": "Tenant B",
+      "lastName": "Member",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "devkit-local-only",
+          "temporary": false
+        }
+      ],
+      "clientRoles": {
+        "__REPO__": ["access"]
+      }
+    },
+    {
+      "id": "aa000014-0000-4000-8000-000000000014",
+      "username": "user-one",
+      "email": "user-one@__REPO__.test",
+      "firstName": "User",
+      "lastName": "One",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "devkit-local-only",
+          "temporary": false
+        }
+      ],
+      "clientRoles": {
+        "__REPO__": ["access"]
+      }
+    },
+    {
+      "id": "aa000015-0000-4000-8000-000000000015",
+      "username": "user-two",
+      "email": "user-two@__REPO__.test",
+      "firstName": "User",
+      "lastName": "Two",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "devkit-local-only",
+          "temporary": false
+        }
+      ],
+      "clientRoles": {
+        "__REPO__": ["access"]
+      }
+    },
+    {
       "username": "service-account-__REPO__-admin",
       "enabled": true,
       "emailVerified": true,

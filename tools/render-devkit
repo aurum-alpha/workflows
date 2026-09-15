@@ -134,13 +134,17 @@ def unsubstituted(text: str) -> list[str]:
 def read_record(target: pathlib.Path) -> dict:
     """Read and validate the product's devkit.json.
 
-    Four keys, and one optional. `repo` and `port_base` are what the
+    Four keys, and two optional. `repo` and `port_base` are what the
     substitution needs. `upstreams` names every service the gateway can reach
     and where it is. `routes` is the routing table: a path, the hop it goes to
     next, and where that hop forwards to when the hop is the authentication
     proxy. `tenant_hosts`, optional, lists the labels a product with tenant
     hostnames serves under .localhost; each becomes a redirect target the
     realm admits beside the apex (092 TH5), and nothing else changes.
+    `realm`, optional, is the one realm setting a product may move:
+    `{"registration": true}` lets people self-register at the provider, for a
+    product whose users are whoever signs up. Every other realm setting is the
+    devkit's, and the same in every product.
 
     Every problem is collected and reported at once, because a product writes
     this by hand and a checker that stops at the first mistake sends the
@@ -162,7 +166,7 @@ def read_record(target: pathlib.Path) -> dict:
 
     problems: list[str] = []
     for key in data:
-        if key not in ("repo", "port_base", "upstreams", "routes", "tenant_hosts"):
+        if key not in ("repo", "port_base", "upstreams", "routes", "tenant_hosts", "realm"):
             problems.append(f"unknown key {key!r}")
     if not isinstance(data.get("repo"), str) or not data.get("repo"):
         problems.append("repo must be the repository name")
@@ -171,6 +175,16 @@ def read_record(target: pathlib.Path) -> dict:
         problems.append("port_base must be the block base from ports.json")
     elif base % BLOCK:
         problems.append(f"port_base {base} is not a multiple of {BLOCK}")
+
+    realm = data.get("realm", {})
+    if not isinstance(realm, dict):
+        problems.append("realm must be an object")
+    else:
+        for key, value in realm.items():
+            if key != "registration":
+                problems.append(f"realm: unknown setting {key!r}; registration is the one a product may move")
+            elif not isinstance(value, bool):
+                problems.append("realm.registration must be true or false")
 
     hosts = data.get("tenant_hosts", [])
     if not isinstance(hosts, list) or not all(isinstance(h, str) for h in hosts):
@@ -297,6 +311,78 @@ def realm_hosts(text: str, record: dict) -> str:
     return text
 
 
+def realm_settings(text: str, record: dict) -> str:
+    """Apply the one realm setting a product may move.
+
+    The template has registration off, which is right for a product whose
+    users are invited (AU4). A product whose users are whoever signs up sets
+    `realm.registration` and the rendered realm has it on. Nothing else in the
+    realm is a product's to change, so nothing else is read.
+    """
+    if not record.get("realm", {}).get("registration", False):
+        return text
+    marker = '"registrationAllowed": false'
+    if marker not in text:
+        raise ValueError("realm-template.json: registrationAllowed is not where the renderer expects it")
+    return text.replace(marker, '"registrationAllowed": true', 1)
+
+
+def personas_text(realm_template: str) -> str:
+    """Join the realm's identities with keycloak/personas.json into one manifest.
+
+    The realm template says who each persona is at the provider: subject,
+    username, email, name, whether the identity is enabled and verified, and
+    whether it holds the access role. personas.json says what each one is in
+    the application. Neither file is the manifest on its own, and a persona
+    named in one and not the other is a refusal here rather than a seed script
+    that silently writes nothing for it.
+
+    The text carries __REPO__ where the sources do; the caller substitutes.
+    """
+    realm = json.loads(realm_template.replace("__REPO__", "REPO"))
+    meaning = json.loads((DEVKIT / "keycloak" / "personas.json").read_text(encoding="utf-8"))["personas"]
+    identities = [u for u in realm["users"] if not u.get("serviceAccountClientId")]
+    realm_names = {u["username"] for u in identities}
+    meaning_names = set(meaning)
+    if realm_names != meaning_names:
+        only_realm = sorted(realm_names - meaning_names)
+        only_meaning = sorted(meaning_names - realm_names)
+        raise ValueError(
+            "personas: realm-template.json and personas.json name different people; "
+            f"only in the realm: {only_realm}; only in personas.json: {only_meaning}"
+        )
+    out = []
+    for u in identities:
+        out.append({
+            "subject": u["id"],
+            "username": u["username"],
+            "email": u["email"].replace("REPO", "__REPO__"),
+            "name": f'{u["firstName"]} {u["lastName"]}',
+            "provider": {
+                "enabled": u.get("enabled", False),
+                "email_verified": u.get("emailVerified", False),
+                "holds_access": "access" in u.get("clientRoles", {}).get("REPO", []),
+            },
+            "application": meaning[u["username"]]["application"],
+            "exercises": meaning[u["username"]]["exercises"],
+        })
+    manifest = {
+        "$comment": (
+            "RENDERED BY tools/render-devkit FROM devkit/keycloak/realm-template.json AND "
+            "devkit/keycloak/personas.json; DO NOT EDIT. Every persona the local realm holds, "
+            "and what the application's seed writes for each. `provider` is the identity's state "
+            "at Keycloak. `application.user` is whether the application holds a row for it at all; "
+            "`application.grants` are {tenant, role_class}, tenant being a label the product maps to "
+            "its own tenant id or null for the global scope, role_class one of admin, operator, "
+            "member, which the product maps onto its own role names. Every persona shares one "
+            "password, which dev/tools/dev-token knows and devkit/README.md states; a manifest of "
+            "identities carries no credential."
+        ),
+        "personas": out,
+    }
+    return json.dumps(manifest, indent=2, ensure_ascii=False) + "\n"
+
+
 def template_locations(text: str) -> set[tuple[str, str]]:
     """The locations edge.conf already declares, so a product cannot redeclare one.
 
@@ -389,6 +475,12 @@ def render_all(target: pathlib.Path, record: dict) -> list[pathlib.Path]:
                                 routes_text(record["routes"], text))
         if source == "keycloak/realm-template.json":
             text = realm_hosts(text, record)
+            text = realm_settings(text, record)
+            manifest = render(personas_text(text), values)
+            manifest_path = OUT / "personas.json"
+            (target / manifest_path).parent.mkdir(parents=True, exist_ok=True)
+            (target / manifest_path).write_text(manifest, encoding="utf-8")
+            written.append(manifest_path)
         text = render(text, values)
         left = unsubstituted(text)
         if left:

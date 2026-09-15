@@ -1,0 +1,65 @@
+{
+  "$comment": "What each persona IS in the application, keyed by the username realm-template.json gives it. The realm says who the fifteen people are at the provider; this says what a product's seed writes for each of them, so 'tenant-a-admin' means the same rows in every product. tools/render-devkit joins the two into dev/personas.json and refuses a username named in one file and not the other. `user` is whether the application holds a row for the identity at all (AU6: the provider admitting a person and the application knowing them are different facts). `grants` are {tenant, role_class}: tenant is the symbolic label a product maps to its own tenant id, or null for the global scope; role_class is admin, operator or member, and a product maps each onto its own role names (070 RB3). A product without tenants reads only the global grants and ignores the rest.",
+  "personas": {
+    "platform-admin": {
+      "application": { "user": true, "grants": [ { "tenant": null, "role_class": "admin" } ] },
+      "exercises": "A grant that is global rather than inside one tenant. On a tenant host it is no candidate (TH1); on the default entry it is."
+    },
+    "tenant-a-admin": {
+      "application": { "user": true, "grants": [ { "tenant": "a", "role_class": "admin" } ] },
+      "exercises": "Administration inside one tenant."
+    },
+    "tenant-a-operator": {
+      "application": { "user": true, "grants": [ { "tenant": "a", "role_class": "operator" } ] },
+      "exercises": "The middle tier inside tenant A: more than a member, less than the administrator, so a product's role set has three rungs to check against."
+    },
+    "tenant-a-member": {
+      "application": { "user": true, "grants": [ { "tenant": "a", "role_class": "member" } ] },
+      "exercises": "The ordinary member of tenant A."
+    },
+    "tenant-b-admin": {
+      "application": { "user": true, "grants": [ { "tenant": "b", "role_class": "admin" } ] },
+      "exercises": "The same administration in a second tenant, so isolation has two sides."
+    },
+    "tenant-b-operator": {
+      "application": { "user": true, "grants": [ { "tenant": "b", "role_class": "operator" } ] },
+      "exercises": "Tenant B's middle tier, mirroring tenant A's."
+    },
+    "tenant-b-member": {
+      "application": { "user": true, "grants": [ { "tenant": "b", "role_class": "member" } ] },
+      "exercises": "The ordinary member of tenant B, so a member in one tenant can be shown reaching nothing in the other."
+    },
+    "two-tenant-member": {
+      "application": { "user": true, "grants": [ { "tenant": "a", "role_class": "member" }, { "tenant": "b", "role_class": "member" } ] },
+      "exercises": "AU8: one session acts in one tenant, and switching is an act on the session."
+    },
+    "single-tenant-member": {
+      "application": { "user": true, "grants": [ { "tenant": "a", "role_class": "member" } ] },
+      "exercises": "The ordinary case, where one grant is active without a choice."
+    },
+    "no-application-access": {
+      "application": { "user": false, "grants": [] },
+      "exercises": "AU6: the provider admits the identity, the application does not know it, and it is refused and logged out. Under provider_is_source this is the first-login case instead, and the application writes the user."
+    },
+    "deactivated-member": {
+      "application": { "user": true, "grants": [ { "tenant": "a", "role_class": "member" } ] },
+      "exercises": "A disabled identity, refused at the provider before any token exists."
+    },
+    "unverified-email-member": {
+      "application": { "user": true, "grants": [ { "tenant": "a", "role_class": "member" } ] },
+      "exercises": "An unverified address, refused at the login page and again at the proxy."
+    },
+    "no-provider-access": {
+      "application": { "user": false, "grants": [] },
+      "exercises": "AU4: an identity this application never granted access, refused by the provider's gate before any token exists."
+    },
+    "user-one": {
+      "application": { "user": true, "grants": [ { "tenant": null, "role_class": "member" } ] },
+      "exercises": "A plain account, for a product with no tenants: a member of the whole product."
+    },
+    "user-two": {
+      "application": { "user": true, "grants": [ { "tenant": null, "role_class": "member" } ] },
+      "exercises": "A second plain account, so a product with no tenants can show one person's data being another's to nobody."
+    }
+  }
+}

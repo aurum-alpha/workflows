@@ -55,6 +55,7 @@ several. The rendered gateway cannot tell the difference and does not try.
 | Key | What it says |
 |---|---|
 | `tenant_hosts` | Optional. The labels a product with tenant hostnames serves locally, each as `<label>.localhost`. The realm admits a login callback on each beside the apex, and nothing else changes: the edge already answers on any host, and the relying party derives its callback from the host the browser is on (092 TH5). A product with one host leaves it out |
+| `realm` | Optional, and one setting inside it: `{"registration": true}` lets people self-register at the provider, for a product whose users are whoever signs up rather than whoever was invited (AU4). Every other realm setting is the devkit's, the same in every product, and the renderer refuses any other key here |
 | `upstreams` | A name the routes use, and the `host:port` behind it. The name is the product's; `auth` is reserved, because the devkit is what supplies that service |
 | `next` | The hop this path goes to. Either `auth` or one of the product's upstreams |
 | `then` | Where the authentication proxy forwards once it is satisfied. Required when `next` is `auth`, and meaningless otherwise |
@@ -148,12 +149,18 @@ here, and not to the renderer, fails at the render rather than at the first
 
 | File | What it is |
 |---|---|
-| `keycloak/realm-template.json` | The realm import document: three clients, the access gate, and nine personas |
+| `keycloak/realm-template.json` | The realm import document: three clients, the access gate, and fifteen personas |
+| `keycloak/personas.json` | What each persona is in the application, keyed by username; joined with the realm into the rendered `dev/personas.json` |
 | `nginx/edge.conf` | The edge at offset +0, and the only routing table |
 | `oauth2-proxy/oauth2-proxy.cfg` | The relying party behind `auth_request` |
 | `compose/auth.compose.yaml` | The `edge`, `oauth2-proxy`, `keycloak`, `migrate` and `seed` services |
 | `compose/product.example.yaml` | The `db`, `server` and `client` services a product defines itself, and the `db` dependency it adds to the one-shots |
 | `tools/dev-token` | Mints a persona's access token through the direct-grant client, for a terminal or a test |
+
+One more file is rendered and has no template of its own: `dev/personas.json`,
+the manifest the renderer joins from the realm template and
+`keycloak/personas.json`. Subject, username, email, name, the identity's state
+at the provider, and what the application's seed writes for it.
 
 ## The three clients
 
@@ -222,28 +229,41 @@ idles out after 28800, and it ends absolutely at 604800. `duplicateEmailsAllowed
 is false and `verifyEmail` is true, because AU3 keys provisioning on an address
 that is unique and verified.
 
-## The nine personas
+## The fifteen personas
 
 Subject ids are fixed in the file. A test that logs in as a persona and asserts
 on a subject cannot have that subject change per machine. Every persona
 exercises exactly one refusal, or none, so a test that sees one knows which.
+The realm holds identities and nothing else; what each persona is in the
+application is `keycloak/personas.json`, and the two are rendered together
+into `dev/personas.json` so that `tenant-a-admin` means the same rows in every
+product. A persona named in one file and not the other refuses to render.
 
-| Persona | Subject | Holds `access` | What it exercises |
-|---|---|---|---|
-| `platform-admin` | `aa000001-…-000000000001` | yes | A grant that is global rather than inside one tenant |
-| `tenant-a-admin` | `aa000002-…-000000000002` | yes | Administration inside one tenant |
-| `tenant-b-admin` | `aa000003-…-000000000003` | yes | The same, in a second tenant, so isolation has two sides |
-| `two-tenant-member` | `aa000004-…-000000000004` | yes | AU8: one session acts in one tenant, and switching is an act on the session |
-| `single-tenant-member` | `aa000005-…-000000000005` | yes | The ordinary case, where one grant is active without a choice |
-| `no-application-access` | `aa000006-…-000000000006` | yes | AU6: the provider admits the identity, the application does not know it, and it is refused and logged out. Under provider-is-source this is the first-login case instead, and the application writes the user |
-| `deactivated-member` | `aa000007-…-000000000007` | yes | A disabled identity, refused at the provider |
-| `unverified-email-member` | `aa000008-…-000000000008` | yes | An unverified address, refused at the login page and again at the proxy |
-| `no-provider-access` | `aa000009-…-000000000009` | **no** | AU4: an identity this application never granted access, refused by the provider's gate before any token exists |
+| Persona | Subject | Holds `access` | In the application | What it exercises |
+|---|---|---|---|---|
+| `platform-admin` | `aa000001-…-000000000001` | yes | admin at global | A grant that is global rather than inside one tenant |
+| `tenant-a-admin` | `aa000002-…-000000000002` | yes | admin in tenant a | Administration inside one tenant |
+| `tenant-b-admin` | `aa000003-…-000000000003` | yes | admin in tenant b | The same, in a second tenant, so isolation has two sides |
+| `two-tenant-member` | `aa000004-…-000000000004` | yes | member in a and in b | AU8: one session acts in one tenant, and switching is an act on the session |
+| `single-tenant-member` | `aa000005-…-000000000005` | yes | member in a | The ordinary case, where one grant is active without a choice |
+| `no-application-access` | `aa000006-…-000000000006` | yes | no row | AU6: the provider admits the identity, the application does not know it, and it is refused and logged out. Under provider-is-source this is the first-login case instead, and the application writes the user |
+| `deactivated-member` | `aa000007-…-000000000007` | yes | member in a | A disabled identity, refused at the provider |
+| `unverified-email-member` | `aa000008-…-000000000008` | yes | member in a | An unverified address, refused at the login page and again at the proxy |
+| `no-provider-access` | `aa000009-…-000000000009` | **no** | no row | AU4: an identity this application never granted access, refused by the provider's gate before any token exists |
+| `tenant-a-operator` | `aa000010-…-000000000010` | yes | operator in a | The middle tier inside a tenant, so a product's role set has three rungs to check against |
+| `tenant-a-member` | `aa000011-…-000000000011` | yes | member in a | The ordinary member of tenant a |
+| `tenant-b-operator` | `aa000012-…-000000000012` | yes | operator in b | Tenant b's middle tier, mirroring a's |
+| `tenant-b-member` | `aa000013-…-000000000013` | yes | member in b | The ordinary member of tenant b, reaching nothing in a |
+| `user-one` | `aa000014-…-000000000014` | yes | member at global | A plain account, for a product with no tenants |
+| `user-two` | `aa000015-…-000000000015` | yes | member at global | A second plain account, so one person's data can be shown to be nobody else's |
 
 Personas 7 and 8 hold the role so that each trips its own refusal and not the
-gate's. The realm holds identities and nothing else. Which tenants a persona
-belongs to is application data, written by the `seed` one-shot against the
-product's own tables.
+gate's. `admin`, `operator` and `member` are role classes, and a product maps
+each onto its own role names (070 RB3); `a` and `b` are tenant labels a product
+maps onto its own tenant ids, and `global` is `global`. A product with no
+tenants reads the global grants and ignores the rest: its people are
+`user-one`, `user-two` and `platform-admin`, and the tenant personas are
+identities it never knows.
 
 ## Browser-facing against container-facing
 
@@ -382,8 +402,12 @@ services its routing table names, plus whatever database it has:
 
 The two one-shots run the product's own commands. `tools/migrate` applies the
 identity tables, and `tools/seed-personas` writes the application-side user and
-grant rows the realm's personas correspond to. Both are idempotent, both exit,
-and `docker compose up` runs them in order before anything serves.
+grant rows the realm's personas correspond to, reading `dev/personas.json` for
+which rows those are: a row for every persona whose `application.user` is true,
+and a grant for each entry of its `application.grants`, with the product's own
+role name for the role class and its own tenant id for the label. Both are
+idempotent, both exit, and `docker compose up` runs them in order before
+anything serves.
 
 **The one-shots depend on no database in the fragment.** The fragment does not
 know whether the product has one: a product on SQLite migrates a file. A

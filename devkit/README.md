@@ -311,16 +311,23 @@ today's realm.
 ## The edge
 
 `auth_request /oauth2/auth` guards every path whose hop is `auth`. The relying
-party answers the subrequest with the session's access token in the
-`X-Auth-Request-Access-Token` response header, which is what `set_xauthrequest`
-together with `pass_access_token` produces in `oauth2-proxy.cfg`.
-`auth_request_set $token $upstream_http_x_auth_request_access_token` reads it,
-and each guarded location sets `Authorization: Bearer $token` on the request it
-forwards. That is the one credential a backend receives (060 AU2), and it is
-RFC 9068's shape: the backend checks `typ`, issuer, audience, signature and
-expiry for itself. The relying party emits no ID token at all
-(`set_authorization_header` is false): an ID token asserts who authenticated to
-a client, and a backend refuses it on its `typ`.
+party answers the subrequest with both of the session's tokens: the access
+token in the `X-Auth-Request-Access-Token` response header (`set_xauthrequest`
+with `pass_access_token`) and the ID token as `Authorization: Bearer` on the
+response (`set_authorization_header`). Each guarded location reads both with
+`auth_request_set` and forwards both under the names 060 AU2 gives them:
+`Authorization: Bearer $access_token`, the credential, RFC 9068's shape, which
+the backend checks for `typ`, issuer, audience, signature and expiry; and
+`X-Forwarded-Id-Token: $id_token`, the provider's statement about the
+authentication event, which a backend refuses as a bearer on its `typ` and
+reads only where its Conventions say so. A map strips the `Bearer` scheme off
+the relying party's response header before the ID token is forwarded.
+
+**A named capture in an nginx regex is a variable, everywhere.** The map's
+capture is named `bare_id_token` and nothing else in the file shares the name.
+A capture called `token` silently overwrote the `$token` that
+`auth_request_set` had just filled with the access token, and every guarded
+route forwarded the ID token twice.
 
 **An inbound `Authorization` header never reaches a backend on a guarded
 route.** Every location that proxies through the tier sets the header

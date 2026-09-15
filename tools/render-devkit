@@ -314,8 +314,9 @@ def routes_text(routes: list[dict], template: str) -> str:
 
     A route whose next hop is the authentication proxy runs the auth_request
     subrequest, sets the Authorization header to the access token the proxy
-    returned as a bearer (060-auth.md AU2), and sends a page with no session
-    to the sign-in redirect.
+    returned as a bearer and X-Forwarded-Id-Token to the ID token beside it
+    (060-auth.md AU2), and sends a page with no session to the sign-in
+    redirect.
 
     A route handed straight to a service SETS NO Authorization HEADER AT ALL,
     so whatever the client sent arrives intact. That is the whole point: the
@@ -339,7 +340,8 @@ def routes_text(routes: list[dict], template: str) -> str:
         lines = [f"    location {'= ' if form == 'exact' else ''}{path} {{"]
         if guarded:
             lines += ["        auth_request     /oauth2/auth;",
-                      "        auth_request_set $token $upstream_http_x_auth_request_access_token;"]
+                      "        auth_request_set $access_token $upstream_http_x_auth_request_access_token;",
+                      "        auth_request_set $rp_authorization $upstream_http_authorization;"]
             if entry.get("no_session", "401") == "redirect":
                 lines.append("        error_page 401 = @sign_in;")
             lines.append("")
@@ -352,7 +354,8 @@ def routes_text(routes: list[dict], template: str) -> str:
                   "        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;",
                   "        proxy_set_header X-Forwarded-Proto $scheme;"]
         if guarded:
-            lines.append('        proxy_set_header Authorization     "Bearer $token";')
+            lines.append('        proxy_set_header Authorization     "Bearer $access_token";')
+            lines.append("        proxy_set_header X-Forwarded-Id-Token $id_token;")
         lines.append("    }")
         blocks.append("\n".join(lines) + "\n")
     return "\n".join(blocks) + "\n"

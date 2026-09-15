@@ -74,6 +74,11 @@ AUTH_HOP = "auth"
 UPSTREAM_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
 UPSTREAM_ADDRESS = re.compile(r"^[A-Za-z0-9.-]+:[0-9]{1,5}$")
 
+# One DNS label, as a tenant host is <label>.localhost. Browsers resolve every
+# *.localhost name to the loopback without a hosts-file entry, which is what
+# lets a product try its tenant hostnames with nothing installed.
+TENANT_LABEL = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
+
 # The offsets 016-local-development.md LD4 fixes. They live here rather than in
 # ports.json because ports.json allocates blocks and says so: "Offsets within a
 # block are fixed by the standard, not by this file."
@@ -119,10 +124,9 @@ def unsubstituted(text: str) -> list[str]:
     a product's dev/ tree verbatim, and the first thing to notice would be
     nginx refusing to start. Reported here instead.
 
-    The pattern requires the inside to be upper case, which is what keeps
-    __Host- out of it: that is RFC 6265bis's cookie-name prefix, not a
-    placeholder, and the real placeholder that follows it has already been
-    substituted by the time this runs.
+    The pattern requires the inside to be upper case, so a cookie-name prefix
+    such as RFC 6265bis's __Host-, should one ever appear in a template, is
+    not read as a placeholder.
     """
     return sorted(set(PLACEHOLDER.findall(text)))
 
@@ -130,10 +134,13 @@ def unsubstituted(text: str) -> list[str]:
 def read_record(target: pathlib.Path) -> dict:
     """Read and validate the product's devkit.json.
 
-    Four keys. `repo` and `port_base` are what the substitution needs.
-    `upstreams` names every service the gateway can reach and where it is.
-    `routes` is the routing table: a path, the hop it goes to next, and where
-    that hop forwards to when the hop is the authentication proxy.
+    Four keys, and one optional. `repo` and `port_base` are what the
+    substitution needs. `upstreams` names every service the gateway can reach
+    and where it is. `routes` is the routing table: a path, the hop it goes to
+    next, and where that hop forwards to when the hop is the authentication
+    proxy. `tenant_hosts`, optional, lists the labels a product with tenant
+    hostnames serves under .localhost; each becomes a redirect target the
+    realm admits beside the apex (092 TH5), and nothing else changes.
 
     Every problem is collected and reported at once, because a product writes
     this by hand and a checker that stops at the first mistake sends the
@@ -155,7 +162,7 @@ def read_record(target: pathlib.Path) -> dict:
 
     problems: list[str] = []
     for key in data:
-        if key not in ("repo", "port_base", "upstreams", "routes"):
+        if key not in ("repo", "port_base", "upstreams", "routes", "tenant_hosts"):
             problems.append(f"unknown key {key!r}")
     if not isinstance(data.get("repo"), str) or not data.get("repo"):
         problems.append("repo must be the repository name")
@@ -164,6 +171,17 @@ def read_record(target: pathlib.Path) -> dict:
         problems.append("port_base must be the block base from ports.json")
     elif base % BLOCK:
         problems.append(f"port_base {base} is not a multiple of {BLOCK}")
+
+    hosts = data.get("tenant_hosts", [])
+    if not isinstance(hosts, list) or not all(isinstance(h, str) for h in hosts):
+        problems.append("tenant_hosts must be a list of labels, each served as "
+                        "<label>.localhost")
+        hosts = []
+    for label in hosts:
+        if not TENANT_LABEL.match(label):
+            problems.append(f"tenant_hosts: {label!r} is not a hostname label")
+    if len(set(hosts)) != len(hosts):
+        problems.append("tenant_hosts: a label is listed twice")
 
     upstreams = data.get("upstreams")
     if not isinstance(upstreams, dict) or not upstreams:
@@ -247,6 +265,36 @@ def upstreams_text(upstreams: dict[str, str]) -> str:
         f"upstream {name} {{\n    server {address};\n}}\n\n"
         for name, address in upstreams.items()
     )
+
+
+def edge_hosts(record: dict) -> list[str]:
+    """Every host a browser reaches the edge on: the apex, then each tenant
+    host in the order the product listed them."""
+    return ["localhost"] + [f"{label}.localhost" for label in record.get("tenant_hosts", [])]
+
+
+def realm_hosts(text: str, record: dict) -> str:
+    """Fill the realm's three host lists from the hosts the edge answers on.
+
+    The template keeps them as one quoted token each, so the source stays
+    valid JSON for anything that reads it as JSON, and each token is replaced
+    by the comma-joined quoted values that belong in that position. The
+    relying party derives its callback from the request host, so every host
+    here is one a callback can arrive on, and only those (092 TH5).
+    """
+    port = record["port_base"] + OFFSETS["__PORT_EDGE__"]
+    origins = [f"http://{host}:{port}" for host in edge_hosts(record)]
+    values = {
+        '"__REDIRECT_URIS__"': ", ".join(json.dumps(f"{o}/oauth2/callback") for o in origins),
+        '"__WEB_ORIGINS__"': ", ".join(json.dumps(o) for o in origins),
+        # Keycloak's client attribute is one string, ## between entries.
+        '"__POST_LOGOUT_REDIRECT_URIS__"': json.dumps("##".join(f"{o}/*" for o in origins)),
+    }
+    for token, value in values.items():
+        if token not in text:
+            raise ValueError(f"keycloak/realm-template.json: {token} is missing")
+        text = text.replace(token, value)
+    return text
 
 
 def template_locations(text: str) -> set[tuple[str, str]]:
@@ -336,6 +384,8 @@ def render_all(target: pathlib.Path, record: dict) -> list[pathlib.Path]:
             text = text.replace("__UPSTREAMS__\n", upstreams)
             text = text.replace("    __ROUTES__\n",
                                 routes_text(record["routes"], text))
+        if source == "keycloak/realm-template.json":
+            text = realm_hosts(text, record)
         text = render(text, values)
         left = unsubstituted(text)
         if left:

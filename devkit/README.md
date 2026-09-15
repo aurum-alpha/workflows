@@ -153,7 +153,7 @@ here, and not to the renderer, fails at the render rather than at the first
 | `keycloak/personas.json` | What each persona is in the application, keyed by username; joined with the realm into the rendered `dev/personas.json` |
 | `nginx/edge.conf` | The edge at offset +0, and the only routing table |
 | `oauth2-proxy/oauth2-proxy.cfg` | The relying party behind `auth_request` |
-| `compose/auth.compose.yaml` | The `edge`, `oauth2-proxy`, `keycloak`, `migrate` and `seed` services |
+| `compose/auth.compose.yaml` | The `edge`, `oauth2-proxy`, `keycloak`, `mail`, `migrate` and `seed` services |
 | `compose/product.example.yaml` | The `db`, `server` and `client` services a product defines itself, and the `db` dependency it adds to the one-shots |
 | `tools/dev-token` | Mints a persona's access token through the direct-grant client, for a terminal or a test |
 
@@ -291,6 +291,26 @@ The compose fragment pins `KC_HOSTNAME` to the browser-facing name, so the
 provider stamps one issuer string whichever address it was reached by.
 `KC_HOSTNAME_BACKCHANNEL_DYNAMIC` keeps the container-facing URLs working
 against that same realm.
+
+**A backend has the same split, and its verifier is told both names.** The
+token's `iss` is the browser-facing string, compared byte for byte. The key
+set is fetched from the container-facing address,
+`http://keycloak:8080/realms/<repo>/protocol/openid-connect/certs`. Every
+platform module's `TrustedIssuer` takes the issuer and the JWKS URL as two
+values for this reason. A verifier that discovered the key set from `iss`
+would be asking `localhost` inside its own container. No proxy changes what
+that name means there.
+
+## Mail
+
+The realm verifies email and offers a password reset, and both send mail.
+`mail` is Mailpit. Every message the provider sends lands there, on SMTP at
+offset +10, and is readable on its UI at `localhost:<base+11>`. Nothing
+leaves the machine. Without it the provider answers a verification with a
+500, because sending failed, instead of the page that says to check a
+mailbox. That page is what `unverified-email-member` is for. Sign in as it,
+open the UI, follow the link, and the persona is a verified member in tenant
+a for the rest of that stack's life.
 
 ## The cookie
 

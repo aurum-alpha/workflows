@@ -72,7 +72,9 @@ replaced, with the access token the relying party obtained (060 AU2).
 is a route handed to a service that requires nothing on it. A share
 link and a webhook are handed straight over too, and both are authenticated,
 just not by this tier. The gateway's only question is which hop
-comes next.
+comes next. A product that wants a signed-out landing serves `/` that way:
+`/logout` returns home, and a home that requires a session would mint a new
+cookie against the still-alive provider session.
 
 **`devkit.json` is ingress configuration, and nothing else reads it.** Two
 things open the file: `tools/render-devkit`, which turns it into the four
@@ -422,11 +424,13 @@ SB7). They are routes like any other. A product split into services might
 serve them from somewhere other than its API, and this directory cannot know
 which.
 
-`/logout` is the RP-initiated logout of AU5 in one hop. It ends the proxy
-session and then sends the browser to the provider's end-session endpoint,
-naming the host the person was on as the place to return to. Ending only the
-first leaves the provider session alive, and the next sign-in click signs the
-person straight back in.
+`/logout` ends this application's proxy session and sends the person home on
+the host they were on. It does not call the provider's end-session endpoint.
+That session is shared by every application on the identity provider, and
+ending it here would sign them out of the others. A product that wants a
+logged-out screen must serve `/` without the auth hop: if home itself
+requires a session, the next request mints a new cookie and they are back
+in without asking. Sign in is `/oauth2/start`.
 
 The API is also published at offset +1, which is how a developer reaches it
 directly with a token. That path skips the edge by design. It is safe because

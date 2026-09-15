@@ -160,7 +160,9 @@ here, and not to the renderer, fails at the render rather than at the first
 One more file is rendered and has no template of its own: `dev/personas.json`,
 the manifest the renderer joins from the realm template and
 `keycloak/personas.json`. Subject, username, email, name, the identity's state
-at the provider, and what the application's seed writes for it.
+at the provider, and what the application's seed writes for it. It carries no
+password: every persona's is `devkit-local-only`, `dev/tools/dev-token` knows
+it, and a manifest of identities is not where a credential belongs.
 
 ## The three clients
 

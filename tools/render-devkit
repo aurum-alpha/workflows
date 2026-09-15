@@ -351,12 +351,8 @@ def personas_text(realm_template: str) -> str:
             "personas: realm-template.json and personas.json name different people; "
             f"only in the realm: {only_realm}; only in personas.json: {only_meaning}"
         )
-    password = None
     out = []
     for u in identities:
-        for c in u.get("credentials", []):
-            if c.get("type") == "password":
-                password = c["value"]
         out.append({
             "subject": u["id"],
             "username": u["username"],
@@ -378,10 +374,10 @@ def personas_text(realm_template: str) -> str:
             "at Keycloak. `application.user` is whether the application holds a row for it at all; "
             "`application.grants` are {tenant, role_class}, tenant being a label the product maps to "
             "its own tenant id or null for the global scope, role_class one of admin, operator, "
-            "member, which the product maps onto its own role names. `password` is every persona's, "
-            "for dev-token and for a browser; it is local development's and reaches no deployment."
+            "member, which the product maps onto its own role names. Every persona shares one "
+            "password, which dev/tools/dev-token knows and devkit/README.md states; a manifest of "
+            "identities carries no credential."
         ),
-        "password": password,
         "personas": out,
     }
     return json.dumps(manifest, indent=2, ensure_ascii=False) + "\n"

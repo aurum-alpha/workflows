@@ -110,6 +110,15 @@ a relying party puts the token elsewhere, the product's own edge moves it into
 second header a verifier reads is a second thing to secure, and a token
 arriving in it is a missing token.
 
+**The ID token crosses beside it, in `X-Forwarded-Id-Token`, and is never a
+credential.** The relying party holds both tokens for a session and forwards
+both. The access token is what a backend authenticates on. The ID token is
+what an ID token is: the provider's statement about the authentication event.
+A product reads it where it has a use for one, declared in its
+**Conventions**. Nothing in this standard reads it, and a backend refuses it as
+a bearer on its `typ` (RFC 9068 section 4). A backend that receives no ID
+token is fully authenticated; one that receives no access token is not.
+
 **A refusal carries one of eleven codes**, and every verifier names them the
 same way. They are `no_token`, `malformed`, `algorithm`, `token_type`,
 `missing_claim`, `issuer`, `signature`, `audience`, `expired`,

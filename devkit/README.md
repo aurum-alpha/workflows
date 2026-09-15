@@ -176,6 +176,27 @@ The devtools client exists because a functional test wants a token and not a
 login page. It is a local development client, and a rendered realm is never
 deployed anywhere. `dev/tools/dev-token <persona>` is the command that uses it.
 
+## Where the provider keeps its state
+
+Keycloak runs `start-dev --import-realm` with no `KC_DB`, so it stores the
+realm in its embedded development database inside the container. It does
+not use the product's Postgres, and the fragment does not give it one.
+
+That is deliberate for a development realm. The realm file is the source of
+truth: every persona, client and setting a stack needs is in
+`keycloak/realm.json`, and a recreated container imports it again and is
+whole. State a person creates at runtime is the exception, and it does not
+survive `docker compose down` followed by `up` with a recreated container: a
+verified email, a reset password, an edit in the admin console. That is a
+feature here, since nothing a test does to the provider outlives the stack.
+
+The fragment cannot point Keycloak at the product's database, because the
+fragment does not know whether the product has one. A product that wants
+runtime realm state to survive, or wants Keycloak on the same engine it runs
+on, sets `KC_DB`, `KC_DB_URL`, `KC_DB_USERNAME` and `KC_DB_PASSWORD` on the
+`keycloak` service in its own compose file, the way it sets the one-shots'
+`DATABASE_URL`, and adds `depends_on: db` there. No product does yet.
+
 ## What the realm file cannot say in itself
 
 JSON carries no comments, so the reasoning behind its settings lives here.

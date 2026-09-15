@@ -108,6 +108,28 @@ def upstream_hosts(config: str) -> list[str]:
     return names
 
 
+def parse_edge(mod, image: str, record: dict, tmp: pathlib.Path) -> tuple[int, str, str]:
+    """Render the record, run nginx -t, return (code, nginx output, edge text)."""
+    root = tmp / record.get("logout", "proxy")
+    root.mkdir()
+    mod.render_all(root, record)
+    wrapper = root / "nginx.conf"
+    wrapper.write_text(WRAPPER, encoding="utf-8")
+    edge = root / "dev" / "nginx" / "edge.conf"
+    text = edge.read_text(encoding="utf-8")
+    hosts = []
+    for name in upstream_hosts(text):
+        hosts += ["--add-host", f"{name}:127.0.0.1"]
+    result = subprocess.run(
+        ["docker", "run", "--rm", *hosts,
+         "-v", f"{edge}:/etc/nginx/conf.d/edge.conf:ro",
+         "-v", f"{wrapper}:/etc/nginx/nginx.conf:ro",
+         image, "nginx", "-t"],
+        capture_output=True, text=True)
+    output = (result.stdout + result.stderr).strip()
+    return result.returncode, output, text
+
+
 def main() -> int:
     try:
         image = edge_image()
@@ -134,38 +156,60 @@ def main() -> int:
         print(probe.stderr.strip(), file=sys.stderr)
         return 2
 
+    mod = renderer()
     with tempfile.TemporaryDirectory() as tmp:
-        root = pathlib.Path(tmp)
+        tmp_path = pathlib.Path(tmp)
         try:
-            renderer().render_all(root, RECORD)
-        except (ValueError, FileNotFoundError) as exc:
-            print(f"could not render: {exc}", file=sys.stderr)
-            return 2
+            bad = tmp_path / "bad"
+            bad.mkdir()
+            (bad / "devkit.json").write_text(
+                '{"repo":"x","port_base":2000,'
+                '"upstreams":{"app":"app:1"},'
+                '"routes":[{"prefix":"/","next":"app"}],'
+                '"logout":"everywhere"}',
+                encoding="utf-8")
+            mod.read_record(bad)
+        except ValueError as exc:
+            if "logout must be proxy or realm" not in str(exc):
+                print(f"logout refusal named the wrong thing: {exc}",
+                      file=sys.stderr)
+                return 1
+        else:
+            print("logout: everywhere was accepted; it must be refused",
+                  file=sys.stderr)
+            return 1
 
-        wrapper = root / "nginx.conf"
-        wrapper.write_text(WRAPPER, encoding="utf-8")
-        edge = root / "dev" / "nginx" / "edge.conf"
+        seen = {}
+        for mode in ("proxy", "realm"):
+            record = dict(RECORD)
+            record["logout"] = mode
+            try:
+                code, output, text = parse_edge(mod, image, record, tmp_path)
+            except (ValueError, FileNotFoundError) as exc:
+                print(f"could not render logout={mode}: {exc}", file=sys.stderr)
+                return 2
+            if code:
+                print(output)
+                print(f"\nFAIL: logout={mode} does not parse under {image}. "
+                      "Fix it here, before it is rendered into eight products.")
+                return 1
+            print(output)
+            seen[mode] = text
+            if mode == "proxy" and "id_token_hint" in text:
+                print("FAIL: logout=proxy must not call the provider "
+                      "end-session endpoint", file=sys.stderr)
+                return 1
+            if mode == "realm" and "id_token_hint" not in text:
+                print("FAIL: logout=realm must send id_token_hint so the "
+                      "provider does not show a confirmation page",
+                      file=sys.stderr)
+                return 1
+        if seen["proxy"] == seen["realm"]:
+            print("FAIL: logout=proxy and logout=realm rendered the same "
+                  "edge.conf; the key is not doing anything", file=sys.stderr)
+            return 1
 
-        hosts = []
-        for name in upstream_hosts(edge.read_text(encoding="utf-8")):
-            hosts += ["--add-host", f"{name}:127.0.0.1"]
-
-        result = subprocess.run(
-            ["docker", "run", "--rm", *hosts,
-             "-v", f"{edge}:/etc/nginx/conf.d/edge.conf:ro",
-             "-v", f"{wrapper}:/etc/nginx/nginx.conf:ro",
-             image, "nginx", "-t"],
-            capture_output=True, text=True)
-
-    output = (result.stdout + result.stderr).strip()
-    if result.returncode:
-        print(output)
-        print(f"\nFAIL: devkit/nginx/edge.conf does not parse under {image}. "
-              "Fix it here, before it is rendered into eight products.")
-        return 1
-
-    print(output)
-    print(f"\nPASS: devkit/nginx/edge.conf parses under {image}")
+    print(f"\nPASS: both logout modes parse under {image}")
     return 0
 
 

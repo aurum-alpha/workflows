@@ -1,0 +1,154 @@
+#!/usr/bin/env python3
+"""Assert that every corpus case a repository answers for is named by a test.
+
+The platform modules are three implementations of one standard, in three
+languages, and what keeps them one thing is the corpora under contracts/: a
+case has an id, and each module writes one test per id in its own language.
+Nothing shared the test code; the set of cases is what is shared. This checker
+is what makes "the same set of cases" a gate rather than a habit: a case id no
+test file names is a case the module does not execute, and it fails here.
+
+WHICH CORPORA. A module vendors more contracts than it answers for. A schema
+that $refs another contract needs that contract vendored too, so a module
+carries identifiers/ and observability/ for the sake of one $ref and has no
+business answering their cases. So the module says which corpora it answers
+for, in contracts/ANSWERS: one path per line, relative to contracts/, comments
+after #. The file is small, reviewable, and the one place the claim lives. A
+corpus the module vendors and does not list is not judged; a corpus it lists
+and does not vendor is a finding; a repository with no ANSWERS has not adopted
+the corpora and passes, the way one with no devkit.json passes the drift check.
+
+WHAT COUNTS AS NAMED. The id appears, as a literal string, in a file under the
+module's test tree: *_test.go for Go, *.test.ts and *.test.tsx for TypeScript,
+tests/**/*.php for PHP. A runner that loops over a corpus and calls t.Run on
+every id names none of them literally, and that is the point: the loop passes
+whatever it is handed and a case nobody read is still "covered". One test per
+id, naming the id, is the shape every module already uses for the cases it
+does answer.
+
+Run against a clone:  tools/check-corpus-coverage --root /workspace --repo NAME
+Exit:                 0 covered, 1 findings, 2 could not ask
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import pathlib
+import sys
+
+ANSWERS = pathlib.Path("contracts") / "ANSWERS"
+
+# The keys under which a corpus keeps its cases. A contract file with none of
+# these is a schema or a fixture and has no cases to cover.
+CASE_KEYS = ("checks", "rejections", "behaviour", "validity", "resolve", "switch", "view")
+
+# Where a module's tests live, by the manifest at its root. A repository with
+# more than one manifest (a multi-service one) is judged over all of them.
+TEST_GLOBS = {
+    "go.mod": ("**/*_test.go",),
+    "package.json": ("src/**/*.test.ts", "src/**/*.test.tsx", "test/**/*.ts", "tests/**/*.ts"),
+    "composer.json": ("tests/**/*.php",),
+}
+
+SKIP_DIRS = {"node_modules", "vendor", ".git", "dist", "coverage"}
+
+
+def case_ids(path: pathlib.Path) -> list[str]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    ids: list[str] = []
+    for key in CASE_KEYS:
+        for case in data.get(key, []) or []:
+            if isinstance(case, dict) and isinstance(case.get("id"), str):
+                ids.append(case["id"])
+    return ids
+
+
+def answers(repo_root: pathlib.Path) -> list[str] | None:
+    path = repo_root / ANSWERS
+    if not path.is_file():
+        return None
+    listed = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        entry = line.split("#", 1)[0].strip()
+        if entry:
+            listed.append(entry)
+    return listed
+
+
+def test_text(repo_root: pathlib.Path) -> str:
+    """Every test file's bytes, joined. Substring search over one string is
+    plenty at this size and keeps the rule to one sentence: the id appears."""
+    globs: list[str] = []
+    for manifest, patterns in TEST_GLOBS.items():
+        if any(p.name == manifest for p in repo_root.rglob(manifest)
+               if not SKIP_DIRS.intersection(p.relative_to(repo_root).parts)):
+            globs += patterns
+    chunks = []
+    for pattern in globs:
+        for f in sorted(repo_root.glob(pattern)):
+            if SKIP_DIRS.intersection(f.relative_to(repo_root).parts) or not f.is_file():
+                continue
+            chunks.append(f.read_text(encoding="utf-8", errors="replace"))
+    return "\n".join(chunks)
+
+
+def check_repo(repo_root: pathlib.Path, label: str) -> tuple[int, list[str]]:
+    listed = answers(repo_root)
+    if listed is None:
+        print(f"{label}: no {ANSWERS} — answers for no corpus, nothing to check")
+        return 0, []
+    if not listed:
+        return 0, [f"{label}: {ANSWERS} lists no corpus; delete the file or name one"]
+
+    findings: list[str] = []
+    text = test_text(repo_root)
+    if not text:
+        findings.append(f"{label}: no test files found under any of {sorted(TEST_GLOBS)}")
+    covered = 0
+    for entry in listed:
+        corpus = repo_root / "contracts" / entry
+        if not corpus.is_file():
+            findings.append(f"{label}: {ANSWERS} names {entry}, which is not vendored")
+            continue
+        ids = case_ids(corpus)
+        if not ids:
+            findings.append(f"{label}: {entry} carries no cases; a schema does not belong in {ANSWERS}")
+            continue
+        missing = [i for i in ids if i not in text]
+        covered += len(ids) - len(missing)
+        for i in missing:
+            findings.append(f"{label}: {entry} case {i!r} is named by no test")
+    return covered, findings
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--root", default="/workspace", type=pathlib.Path)
+    ap.add_argument("--repo", action="append", help="limit to specific repo(s)")
+    args = ap.parse_args()
+
+    repos = args.repo or sorted(p.name for p in args.root.iterdir() if p.is_dir())
+    covered = 0
+    findings: list[str] = []
+    for repo in repos:
+        c, f = check_repo(args.root / repo, repo)
+        covered += c
+        findings += f
+
+    for finding in findings:
+        print(finding)
+    if findings:
+        print(
+            f"\nFAIL: {len(findings)} finding(s). A corpus case no test names is a case the "
+            "module does not execute, and three modules that execute different sets are "
+            "three answers to one standard. Write the test, or take the corpus out of "
+            f"{ANSWERS} and say why in the pull request."
+        )
+        return 1
+    print(f"\nPASS: {covered} corpus case(s) are each named by a test")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

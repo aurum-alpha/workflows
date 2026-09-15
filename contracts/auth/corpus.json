@@ -1,7 +1,7 @@
 {
   "contract": "auth",
   "schemaVersion": 1,
-  "description": "Conformance corpus for standards/060-auth.md. 'validity': the value must validate (or fail) against the named schema root. The AU2 access token has no root here on purpose — its shape is RFC 9068's and this repository describes none of it, so every claim about the token is a live case under 'behaviour'. 'behaviour': black-box cases a live deployment must satisfy. An implementation passes the whole file or names the case it fails.",
+  "description": "Conformance corpus for standards/060-auth.md. 'validity': the value must validate (or fail) against the named schema root. The AU2 access token has no root here on purpose — its shape is RFC 9068's and this repository describes none of it, so every claim about the token is a live case under 'behaviour'. 'behaviour': black-box cases a live deployment must satisfy. An implementation passes the whole file or names the case it fails. Where a behaviour case names a 'code', a 'reason', a 'slug' or an 'audit' action, the value is the vocabulary's (contracts/platform/vocabulary.json) and an implementation reproduces it exactly.",
   "validity": [
     {
       "id": "me-minimal-ok",
@@ -124,9 +124,10 @@
       "stimulus": "present the provider's ID token for the same session as Authorization: Bearer",
       "expect": {
         "status_code": 401,
-        "side_effect": "no application state read or written"
+        "side_effect": "no application state read or written",
+        "code": "token_type"
       },
-      "note": "RFC 9068 section 4 makes the resource server reject a typ other than at+jwt. An ID token asserts who authenticated to a client and carries no audience for this backend, so accepting one would skip the audience check entirely (AU2)"
+      "note": "RFC 9068 section 4 makes the resource server reject a typ other than at+jwt. An ID token asserts who authenticated to a client and carries no audience for this backend, so accepting one would skip the audience check entirely (AU2). The refusal's code is token_type, one of the eleven AU2 names; it reaches the log and never the body"
     },
     {
       "id": "a-roles-claim-in-the-token-changes-no-decision",
@@ -195,6 +196,277 @@
         "equal": false
       },
       "note": "not schema-checkable, and the schema must not pretend otherwise: IP2 admits UUIDv7 as a public id format, so a bare UUID is legal and a subject that happens to be one is indistinguishable by shape. The property is real and the check has to compare two values, which only a live case can do (AU3, IP1)"
+    },
+    {
+      "id": "a-token-in-another-header-is-a-missing-token",
+      "stimulus": "send a valid access token in X-Forwarded-Access-Token and nothing in Authorization",
+      "expect": {
+        "status_code": 401,
+        "code": "no_token"
+      },
+      "note": "a verifier reads RFC 6750's Authorization header and no other; a second header a verifier reads is a second thing to secure (AU2)"
+    },
+    {
+      "id": "a-401-names-none-of-the-token-codes",
+      "stimulus": "present an expired token and read the problem body",
+      "expect": {
+        "status_code": 401,
+        "body": "carries no token error code in type, title or detail",
+        "log": "carries the code expired"
+      },
+      "note": "a caller who learns which check refused them learns how to pass it; the code is for the log and the audit event (AU2)"
+    },
+    {
+      "id": "an-anonymous-principal-is-a-role-at-global-under-single-host",
+      "stimulus": "declare an anonymous role, send no token, tenancy single_host",
+      "expect": {
+        "outcome": "anonymous",
+        "scope": "global",
+        "permissions": "the anonymous role's set"
+      },
+      "note": "an anonymous principal is a role at a scope, never an absence; the same check then runs on every route (AU9)"
+    },
+    {
+      "id": "an-anonymous-principal-is-a-role-at-the-tenant-under-host-names-tenant",
+      "stimulus": "declare an anonymous role, send no token, tenancy host_names_tenant, a host naming tenant:acme",
+      "expect": {
+        "outcome": "anonymous",
+        "scope": "tenant:acme"
+      },
+      "note": "the host chose the tenant before login (TH2), so the anonymous role is held there and nowhere else"
+    },
+    {
+      "id": "an-anonymous-principal-on-a-host-naming-no-tenant-holds-nothing",
+      "stimulus": "declare an anonymous role, send no token, tenancy host_names_tenant, the default entry",
+      "expect": {
+        "outcome": "anonymous",
+        "scope": null,
+        "permissions": []
+      },
+      "note": "the role is held nowhere, and serving it at some other scope would be the request choosing its scope (RB10)"
+    },
+    {
+      "id": "no-anonymous-role-makes-a-missing-token-401",
+      "stimulus": "declare no anonymous role and send no token",
+      "expect": {
+        "status_code": 401,
+        "code": "no_token"
+      },
+      "note": "whether a missing bearer is an answer is one product-wide fact, and this product said no (AU9)"
+    },
+    {
+      "id": "the-me-routes-refuse-an-anonymous-principal",
+      "stimulus": "declare an anonymous role and GET /api/v1/me, /api/v1/me/grants and POST /api/v1/me/active with no token",
+      "expect": {
+        "status_code": 401,
+        "slug": "not-authenticated"
+      },
+      "note": "the three routes answer for the session making the request, and an anonymous principal has none (AU6)"
+    },
+    {
+      "id": "a-no-provider-deployment-refuses-a-token-it-cannot-verify",
+      "stimulus": "declare an anonymous role and no verifier, then send a bearer",
+      "expect": {
+        "status_code": 401,
+        "code": "unverifiable_token"
+      },
+      "note": "an internal tool that is also a public package runs with no identity provider, and a token arriving where nothing verifies one is refused unread; it is the same code, never a second mode (AU9)"
+    },
+    {
+      "id": "a-partial-no-provider-configuration-is-one-finding",
+      "stimulus": "declare an anonymous role and no verifier, and supply a user store but no grant store",
+      "expect": {
+        "refused": true,
+        "finding": "anonymous_role"
+      },
+      "note": "the verifier, the users, the grants and the session ender go absent together or not at all; a partial set is one finding under the dimension that made them optional (AU9)"
+    },
+    {
+      "id": "provider-is-source-writes-the-user-on-first-login",
+      "stimulus": "under provider_is_source, authenticate as a verified identity the application has never seen",
+      "expect": {
+        "outcome": "authenticated",
+        "side_effect": "a user and an identity link are written, holding the declared default grant",
+        "audit": [
+          "auth.login"
+        ]
+      },
+      "note": "the application is not the source, so it learns of a person when they first arrive and changes nothing at the provider (AU4)"
+    },
+    {
+      "id": "provider-is-source-refuses-an-unverified-email",
+      "stimulus": "under provider_is_source, authenticate as an identity whose token carries email_verified false",
+      "expect": {
+        "status_code": 403,
+        "side_effect": "no user written"
+      },
+      "note": "an unverified address is a claim about a mailbox that belongs to somebody else (AU4)"
+    },
+    {
+      "id": "a-retired-user-is-refused-and-logged-out",
+      "stimulus": "authenticate as an identity whose local user is retired",
+      "expect": {
+        "status_code": 403,
+        "reason": "retired_user",
+        "slug": "unknown-subject",
+        "end_session": true,
+        "audit": [
+          "auth.access_denied"
+        ]
+      },
+      "note": "the same answer as an unknown subject, for the same reason: a 401 would sign the person straight back in, forever (AU6)"
+    },
+    {
+      "id": "the-provider-refuses-an-identity-without-the-access-role",
+      "stimulus": "log in at the provider as an identity to which grantAppAccess was never applied",
+      "expect": {
+        "refused_at": "the provider",
+        "token_issued": false
+      },
+      "note": "the provider enforces the gate grantAppAccess sets, at login; AU6 is the second gate behind it (AU4)"
+    },
+    {
+      "id": "a-revoke-that-finds-nothing-succeeds-and-says-so",
+      "stimulus": "call revokeAppAccess for an identity the provider holds no grant for",
+      "expect": {
+        "outcome": "success",
+        "held": false,
+        "side_effect": "the local record is retired"
+      },
+      "note": "defined by its goal state: the grant is not set, so the operation has succeeded, and the result says nothing was there (AU4)"
+    },
+    {
+      "id": "ensure-identity-says-whether-it-created-the-account",
+      "stimulus": "call ensureIdentity twice for one person",
+      "expect": {
+        "first": {
+          "created": true
+        },
+        "second": {
+          "created": false
+        }
+      },
+      "note": "a caller cannot honour 'never assumes ownership' without knowing, and an invitation is sent only where created is true (AU4)"
+    },
+    {
+      "id": "a-choosing-session-is-200-on-the-three-me-routes",
+      "stimulus": "authenticate as a subject holding two grants with no binding, then GET /api/v1/me, GET /api/v1/me/grants and POST /api/v1/me/active",
+      "expect": {
+        "status_code": 200,
+        "me": "permissions is [] and never absent",
+        "grants": "must_choose is true",
+        "active": "outcome is bound"
+      },
+      "note": "the routes that serve a choosing session serve it; a 409 there would break every session holding two grants (AU8)"
+    },
+    {
+      "id": "a-choosing-session-is-409-on-an-application-route",
+      "stimulus": "authenticate as a subject holding two grants with no binding, then GET an application route",
+      "expect": {
+        "status_code": 409,
+        "slug": "grant-not-chosen"
+      },
+      "note": "an application route cannot be served to a session acting in no grant (AU8)"
+    },
+    {
+      "id": "a-lost-binding-under-no-switch-is-403-and-logged-out",
+      "stimulus": "under switchInSession false, present a session bound to a grant its subject no longer holds",
+      "expect": {
+        "status_code": 403,
+        "reason": "binding_lost",
+        "slug": "unknown-subject",
+        "end_session": true
+      },
+      "note": "binding to another grant would be the change the product refuses, performed by the software (AU8)"
+    },
+    {
+      "id": "a-host-that-disagrees-with-the-session-is-403-and-keeps-the-session",
+      "stimulus": "under host_names_tenant, present on tenant B's host a session bound to a grant in tenant A",
+      "expect": {
+        "status_code": 403,
+        "reason": "host_disagrees",
+        "slug": "tenant-mismatch",
+        "end_session": false,
+        "audit": [
+          "auth.access_denied"
+        ]
+      },
+      "note": "the session is valid for its own tenant; the request is the fault, and its occurrence is a record worth keeping (TH3)"
+    },
+    {
+      "id": "a-host-naming-no-tenant-is-404",
+      "stimulus": "under host_names_tenant, present any session on a host the tenant map does not name",
+      "expect": {
+        "status_code": 404,
+        "reason": "host_names_no_tenant",
+        "slug": "tenant-not-found"
+      },
+      "note": "nothing exists at this address; a 403 would say something does (TH3)"
+    },
+    {
+      "id": "a-session-id-is-required-only-where-a-choice-exists",
+      "stimulus": "authenticate with a token carrying no sid, under multipleGrants false and then under multipleGrants true",
+      "expect": {
+        "first": {
+          "outcome": "authenticated"
+        },
+        "second": {
+          "refused": true,
+          "code": "missing_session_id"
+        }
+      },
+      "note": "the identifier earns its place only when a choice exists: activating a grant is an act on a session, so the application has to know which session is asking (AU8)"
+    },
+    {
+      "id": "login-is-recorded-once-per-session",
+      "stimulus": "authenticate twice with one session id, then once with another",
+      "expect": {
+        "audit": [
+          "auth.login",
+          "auth.login"
+        ]
+      },
+      "note": "the application first sees a login session on some request rather than at the login, which the proxy owns, so a session log records each session once (080 AE3)"
+    },
+    {
+      "id": "an-unread-switch-body-member-is-422",
+      "stimulus": "POST /api/v1/me/active with a body naming role, scope and subject",
+      "expect": {
+        "status_code": 422,
+        "slug": "invalid-request",
+        "errors": [
+          {
+            "field": "subject"
+          }
+        ]
+      },
+      "note": "a client that sends a subject believes it chooses one, and ignoring the member leaves that belief intact until something reads it (AU8, RB10)"
+    },
+    {
+      "id": "an-unparseable-switch-body-is-400",
+      "stimulus": "POST /api/v1/me/active with a body that is not JSON",
+      "expect": {
+        "status_code": 400,
+        "slug": "malformed-body"
+      },
+      "note": "a body that did not parse has no fields to name, and 422 would claim the content was understood (HA3)"
+    },
+    {
+      "id": "switch-refusals-carry-outcome-and-grant",
+      "stimulus": "POST /api/v1/me/active naming a grant not held, then naming a change under switchInSession false",
+      "expect": {
+        "first": {
+          "status_code": 403,
+          "slug": "grant-not-held",
+          "outcome": "not_held"
+        },
+        "second": {
+          "status_code": 404,
+          "slug": "switch-not-permitted",
+          "outcome": "switch_forbidden"
+        }
+      },
+      "note": "a status alone cannot say which refusal of an activation occurred, and HA3 admits no second envelope, so the problem carries the outcome and the grant as extension members"
     }
   ]
 }

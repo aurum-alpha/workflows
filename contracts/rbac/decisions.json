@@ -1,7 +1,7 @@
 {
   "contract": "rbac",
   "schemaVersion": 1,
-  "description": "The decision corpus for standards/070-rbac.md \u2014 the artifact that makes a polyglot authorization standard enforceable from one source. An implementation loads 'roles', 'scopeContainment' and 'grants', then evaluates every case in 'checks' and either reproduces each expected decision or names the case it failed. Every check states the 'activeGrant' it is made in: a session acts in exactly one grant and the effective permission set is that grant's role's set, so the active grant is an argument like the subject, the permission and the scope (RB5, RB6). No running service and no network: the corpus is data and check() is a pure function of its arguments, which is what RB7 requires and why it requires it.",
+  "description": "The decision corpus for standards/070-rbac.md \u2014 the artifact that makes a polyglot authorization standard enforceable from one source. An implementation loads 'roles', 'scopeContainment' and 'grants', then evaluates every case in 'checks' and either reproduces each expected decision or names the case it failed. Every check states the 'activeGrant' it is made in: a session acts in exactly one grant and the effective permission set is that grant's role's set, so the active grant is an argument like the subject, the permission and the scope (RB5, RB6). No running service and no network: the corpus is data and check() is a pure function of its arguments, which is what RB7 requires and why it requires it. A denied check states the 'denial' it expects, one of the six reasons RB8 names, and an implementation reproduces that too.",
   "fixture": {
     "permissions": [
       "invoice.read",
@@ -19,7 +19,7 @@
           "invoice.read",
           "report.read"
         ],
-        "origin": "code"
+        "origin": "system"
       },
       {
         "name": "approver",
@@ -27,7 +27,7 @@
           "invoice.read",
           "invoice.approve"
         ],
-        "origin": "code"
+        "origin": "system"
       },
       {
         "name": "tenant_admin",
@@ -40,7 +40,7 @@
           "report.read",
           "report.export"
         ],
-        "origin": "code"
+        "origin": "system"
       },
       {
         "name": "auditor",
@@ -48,7 +48,7 @@
           "report.read",
           "report.export"
         ],
-        "origin": "code"
+        "origin": "system"
       },
       {
         "name": "regional_auditor",
@@ -147,7 +147,8 @@
         "scope": "tenant:acme"
       },
       "expect": {
-        "allowed": false
+        "allowed": false,
+        "denial": "permission_not_held"
       },
       "note": "viewer does not carry it, and no grant means deny \u2014 never 'allow unless denied' (RB6)"
     },
@@ -183,7 +184,8 @@
         "scope": "tenant:acme"
       },
       "expect": {
-        "allowed": false
+        "allowed": false,
+        "denial": "scope_not_contained"
       },
       "note": "usr_ben acts in approver on one project only; a project grant does not reach the tenant. The inverse of the case above, and the one an implementation gets wrong by treating containment as symmetric"
     },
@@ -199,7 +201,8 @@
         "scope": "project:beta"
       },
       "expect": {
-        "allowed": false
+        "allowed": false,
+        "denial": "scope_not_contained"
       },
       "note": "alpha and beta share a tenant; a grant on one reaches neither the other nor their parent"
     },
@@ -215,7 +218,8 @@
         "scope": "tenant:globex"
       },
       "expect": {
-        "allowed": false
+        "allowed": false,
+        "denial": "scope_not_contained"
       },
       "note": "usr_cara acts in tenant_admin of acme and holds nothing at all in globex"
     },
@@ -231,7 +235,8 @@
         "scope": "tenant:globex"
       },
       "expect": {
-        "allowed": false
+        "allowed": false,
+        "denial": "scope_not_contained"
       },
       "before": {
         "subject": "usr_cara",
@@ -279,7 +284,8 @@
         "scope": "project:gamma"
       },
       "expect": {
-        "allowed": false
+        "allowed": false,
+        "denial": "permission_not_held"
       },
       "note": "global is a scope, not a superuser. auditor carries report permissions and nothing else, wherever it is held"
     },
@@ -315,7 +321,8 @@
         "scope": "tenant:acme"
       },
       "expect": {
-        "allowed": false
+        "allowed": false,
+        "denial": "permission_not_held"
       },
       "note": "THE ONE-ACTIVE-GRANT CASE, and the one that separates this model from an additive one. usr_eve holds viewer and approver at the same scope and is acting in viewer. Grants are never combined, so the effective permission set is viewer's set and approver's invoice.approve is not in it. An implementation that unions every grant that applies returns allowed here and fails (RB6)"
     },
@@ -363,7 +370,8 @@
         "scope": "tenant:acme"
       },
       "expect": {
-        "allowed": false
+        "allowed": false,
+        "denial": "permission_not_held"
       },
       "note": "neither viewer nor approver carries invoice.void, so the answer is deny whichever of the two usr_eve is acting in"
     },
@@ -396,7 +404,8 @@
         "scope": "tenant:acme"
       },
       "expect": {
-        "allowed": false
+        "allowed": false,
+        "denial": "no_active_grant"
       },
       "note": "a subject with no grants at all, and so no active grant to act in. Distinct from 060-auth.md AU6's unknown subject, which never reaches a check"
     },
@@ -470,7 +479,8 @@
         "scope": "tenant:acme"
       },
       "expect": {
-        "allowed": false
+        "allowed": false,
+        "denial": "permission_not_held"
       },
       "note": "usr_ana holds the first and not the second"
     },
@@ -497,6 +507,42 @@
         }
       },
       "note": "a codebase without checkAny and checkAll writes the loop by hand and gets it wrong somewhere, which is why RB7 declares both"
+    },
+    {
+      "id": "checkAny-with-an-empty-list-is-refused",
+      "operation": "checkAny",
+      "check": {
+        "subject": "usr_ana",
+        "activeGrant": {
+          "role": "viewer",
+          "scope": "tenant:acme"
+        },
+        "permissions": [],
+        "scope": "tenant:acme"
+      },
+      "expect": {
+        "allowed": false,
+        "denial": "no_permissions_requested"
+      },
+      "note": "an empty list is a call site that forgot to say what it was checking, and a guard that allows everything it is put in front of is not a guard (RB7)"
+    },
+    {
+      "id": "checkAll-with-an-empty-list-is-refused",
+      "operation": "checkAll",
+      "check": {
+        "subject": "usr_ana",
+        "activeGrant": {
+          "role": "viewer",
+          "scope": "tenant:acme"
+        },
+        "permissions": [],
+        "scope": "tenant:acme"
+      },
+      "expect": {
+        "allowed": false,
+        "denial": "no_permissions_requested"
+      },
+      "note": "every permission in an empty list is held, so the naive loop allows; the refusal is what the caller can see (RB7)"
     }
   ],
   "rejections": [
@@ -528,9 +574,10 @@
       "id": "check-against-an-undeclared-permission-errors",
       "stimulus": "call check() with 'invoice.frobnicate'",
       "expect": {
-        "error": true
+        "error": true,
+        "denial": "undeclared_permission"
       },
-      "note": "an error, not a denial. A denial is indistinguishable from a correct refusal and hides the typo forever (RB1)"
+      "note": "an error, not a denial. A denial is indistinguishable from a correct refusal and hides the typo forever (RB1). The decision returned beside the error carries the reason (RB8)"
     },
     {
       "id": "tenant-cannot-edit-or-delete-a-system-role",
@@ -563,6 +610,23 @@
         "refused": true
       },
       "note": "whether a subject holds more than one grant is a product choice declared in Conventions (RB5). Where the product declares one, the second grant is refused at write time rather than left for a session to choose between. A subject holding two grants in a product that admits one has no defined active grant, and the choice of capacity stops being the person's"
+    },
+    {
+      "id": "check-against-a-malformed-scope-errors",
+      "stimulus": "call check() with the scope 'acme' (neither global nor type:id)",
+      "expect": {
+        "error": true,
+        "denial": "invalid_scope"
+      },
+      "note": "a scope that is not a scope is the same mistake as an undeclared permission: an error about the call, never a denial about the person (RB5, RB8)"
+    },
+    {
+      "id": "a-scope-of-type-global-with-an-id-is-admitted",
+      "stimulus": "declare the scope 'global:acme' and grant a role at it",
+      "expect": {
+        "refused": false
+      },
+      "note": "'global:acme' is a scope of type 'global' and model.schema.json's pattern admits it; an implementation is never stricter than the schema, because a shape one module refuses and another accepts is the divergence one schema exists to prevent (RB5)"
     }
   ]
 }

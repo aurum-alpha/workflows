@@ -294,3 +294,17 @@ jobs:
           AURUM_CATALOG_ROOT: .aurum-catalog
         run: .aurum-catalog/tools/check-devkit-drift --root .ci-root --repo "$REPO"
         continue-on-error: ${{ inputs.warn_only }}
+
+      # The platform modules are three implementations of one standard, and
+      # what keeps them one thing is the corpora under contracts/: a case has
+      # an id and each module writes one test per id. A case no test names is
+      # a case the module does not execute. The module says which corpora it
+      # answers for in contracts/ANSWERS; a repository with no such file has
+      # adopted none and passes, the same way one with no devkit.json passes
+      # the step above.
+      - name: Every corpus case the repository answers for is named by a test
+        if: ${{ !cancelled() }}
+        env:
+          REPO: ${{ steps.repo.outputs.name }}
+        run: .aurum-catalog/tools/check-corpus-coverage --root .ci-root --repo "$REPO"
+        continue-on-error: ${{ inputs.warn_only }}

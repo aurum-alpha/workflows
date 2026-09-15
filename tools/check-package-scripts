@@ -227,8 +227,14 @@ def expected(pkg_dir: pathlib.Path, calls: list) -> dict[str, object]:
 
     if has_server:
         want["dev:server"] = DEV_SERVER
-        want["dev"] = DEV_ALL
         want["start"] = START
+
+    # `dev` orchestrates a client beside a server, so it is wanted only where
+    # one package holds both. A server alone, which is what a service under
+    # services/<name>/ is (010-ci), has `dev:server` and nothing to run beside
+    # it; a `dev` there would name a client that is not in the package.
+    if has_server and ("vite" in kinds or (pkg_dir / "vite.config.ts").is_file()):
+        want["dev"] = DEV_ALL
 
     if "tsc" in kinds:
         want["typecheck"] = TYPECHECK

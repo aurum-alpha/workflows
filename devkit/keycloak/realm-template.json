@@ -49,15 +49,11 @@
       "serviceAccountsEnabled": false,
       "frontchannelLogout": false,
       "fullScopeAllowed": false,
-      "redirectUris": [
-        "http://localhost:__PORT_EDGE__/oauth2/callback"
-      ],
-      "webOrigins": [
-        "http://localhost:__PORT_EDGE__"
-      ],
+      "redirectUris": ["__REDIRECT_URIS__"],
+      "webOrigins": ["__WEB_ORIGINS__"],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "http://localhost:__PORT_EDGE__/*",
+        "post.logout.redirect.uris": "__POST_LOGOUT_REDIRECT_URIS__",
         "access.token.header.type.rfc9068": "true"
       },
       "authenticationFlowBindingOverrides": {

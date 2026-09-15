@@ -54,6 +54,7 @@ several. The rendered gateway cannot tell the difference and does not try.
 
 | Key | What it says |
 |---|---|
+| `tenant_hosts` | Optional. The labels a product with tenant hostnames serves locally, each as `<label>.localhost`. The realm admits a login callback on each beside the apex, and nothing else changes: the edge already answers on any host, and the relying party derives its callback from the host the browser is on (092 TH5). A product with one host leaves it out |
 | `upstreams` | A name the routes use, and the `host:port` behind it. The name is the product's; `auth` is reserved, because the devkit is what supplies that service |
 | `next` | The hop this path goes to. Either `auth` or one of the product's upstreams |
 | `then` | Where the authentication proxy forwards once it is satisfied. Required when `next` is `auth`, and meaningless otherwise |
@@ -109,9 +110,12 @@ Every problem in the file is reported at once.
 | `__PORT_IDP_MGMT__` | base + 7, Keycloak's management and health port |
 | `__UPSTREAMS__` | The upstream blocks, from `upstreams` |
 | `__ROUTES__` | The locations, from `routes` |
+| `"__REDIRECT_URIS__"`, `"__WEB_ORIGINS__"`, `"__POST_LOGOUT_REDIRECT_URIS__"` | The realm's three host lists: the apex and each `tenant_hosts` entry, as callback URIs, origins and post-logout targets. Quoted in the template so the source stays valid JSON |
 
 The first six are textual substitution and nothing else, which is what lets a
-drift checker render the source again and compare bytes.
+drift checker render the source again and compare bytes. The rest are computed
+from the record by the one renderer, and the drift checker computes them the
+same way because it imports it.
 
 It writes `dev/keycloak/realm.json`, `dev/nginx/edge.conf`,
 `dev/oauth2-proxy/oauth2-proxy.cfg`, `dev/compose/auth.compose.yaml` and
@@ -268,15 +272,41 @@ against that same realm.
 
 ## The cookie
 
-`__Host-__REPO__-session`, with `HttpOnly`, `Secure`, `SameSite=Lax` and
-`Path=/`. `cookie_expire` is 604800 seconds, which is AU5's absolute maximum
-and the same number the application reports as the session's expiry.
-`cookie_refresh` sits inside the 300-second token lifespan, so the forwarded
-token is renewed behind an unchanged cookie.
+`__REPO__-session`, with `HttpOnly`, `SameSite=Lax` and `Path=/`.
+`cookie_expire` is 604800 seconds, which is AU5's absolute maximum and the
+same number the application reports as the session's expiry. `cookie_refresh`
+sits inside the 300-second token lifespan, so the forwarded token is renewed
+behind an unchanged cookie.
 
-**There is no `cookie_domain`.** Topology A is one origin, so the browser
-scopes the cookie to the host that set it. Setting a domain widens the cookie
-to every host under it. The `__Host-` prefix stops being available at all.
+**It is plain and not `Secure`, and that is local development speaking, not
+the standard.** 060 AU7 and 092 TH4 fix the production cookie as
+`__Host-<name>`, `Secure` and host-only. This stack is plain HTTP on
+`localhost` and `*.localhost`, where `Secure` protects nothing, and
+oauth2-proxy forces `https` onto every derived callback while the cookie is
+`Secure`, which nothing here serves. So the local cookie drops the attribute
+and the prefix that requires it. Nothing about it reaches a deployment: the
+production relying party is configured for its own hosts, and this file is
+never deployed.
+
+**There is no `cookie_domain`.** The browser scopes the cookie to the exact
+host that set it, so a session made on `northwind.localhost` is never
+presented to `contoso.localhost` or to the apex. That is TH4's host-only rule,
+and it holds here without the prefix.
+
+## Every host, one devkit
+
+A product with tenant hostnames (092) runs the same rendered tree as a product
+with one host. The edge's `server_name` is the catch-all, so it answers on
+`localhost` and on every `*.localhost` name a browser resolves. The sign-in
+redirect is relative, so a browser stays on the host it arrived on. The relying
+party has no fixed `redirect_url` and derives the callback from the request
+host, so a login begun on `northwind.localhost` lands its callback, and its
+cookie, on `northwind.localhost`. And `/logout` returns the person to
+`$http_host`. What a product with tenant hosts adds is the `tenant_hosts` list
+in `devkit.json`, which puts each host into the realm's redirect, origin and
+post-logout lists beside the apex, because the provider admits a callback only
+on a host it was told about. A product with one host declares none and renders
+today's realm.
 
 ## The edge
 
@@ -323,9 +353,10 @@ serve them from somewhere other than its API, and this directory cannot know
 which.
 
 `/logout` is the RP-initiated logout of AU5 in one hop. It ends the proxy
-session and then sends the browser to the provider's end-session endpoint.
-Ending only the first leaves the provider session alive, and the next sign-in
-click signs the person straight back in.
+session and then sends the browser to the provider's end-session endpoint,
+naming the host the person was on as the place to return to. Ending only the
+first leaves the provider session alive, and the next sign-in click signs the
+person straight back in.
 
 The API is also published at offset +1, which is how a developer reaches it
 directly with a token. That path skips the edge by design. It is safe because
@@ -369,9 +400,11 @@ tools/check-devkit-nginx
 
 **A change to the realm, the relying party or the edge is proved on the
 running stack, never by reading it.** Render into a scratch tree whose
-upstream echoes its request headers, `docker compose up`, and then: log a
-persona in through the edge and read the `Authorization` header the upstream
-received; decode the token and check `typ` is `at+jwt`, `aud` names the realm's
+upstream echoes its request headers, with two `tenant_hosts` declared,
+`docker compose up`, and then: log a persona in through the edge on the apex
+and on each tenant host (`curl --resolve <host>:<port>:127.0.0.1`), and read
+the `Authorization` header the upstream received and the host the cookie was
+set for; sign out on a tenant host and see the return land there; decode the token and check `typ` is `at+jwt`, `aud` names the realm's
 client and `sid` is present; mint the same persona through
 `dev/tools/dev-token`; log `no-provider-access` in and see the provider's
 refusal with no callback reached; mint `deactivated-member` and

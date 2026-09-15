@@ -8,6 +8,15 @@
   "loginWithEmailAllowed": true,
   "duplicateEmailsAllowed": false,
   "verifyEmail": true,
+  "smtpServer": {
+    "host": "mail",
+    "port": "1025",
+    "from": "no-reply@__REPO__.test",
+    "fromDisplayName": "__REPO__ (local development)",
+    "auth": "false",
+    "ssl": "false",
+    "starttls": "false"
+  },
   "resetPasswordAllowed": true,
   "editUsernameAllowed": false,
   "rememberMe": false,

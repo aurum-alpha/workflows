@@ -88,6 +88,8 @@ OFFSETS = {
     "__PORT_DB__": 2,
     "__PORT_IDP__": 6,
     "__PORT_IDP_MGMT__": 7,
+    "__PORT_MAIL_SMTP__": 10,
+    "__PORT_MAIL_UI__": 11,
 }
 
 BLOCK = 20

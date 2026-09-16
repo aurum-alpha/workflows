@@ -216,6 +216,12 @@ no file a person has to create first, and no command run in a particular order.
 Every provisioning step is idempotent. Each belongs to whichever service owns the
 thing provisioned.
 
+**`--wait` needs a long-running service to depend on each one-shot.**
+
+A one-shot that exits 0 fails `--wait` with no such edge.
+`server` depends on `seed` the way it depends on `migrate`.
+`tools/dev-init` runs `docker compose up --wait -d` and then prints the ports.
+
 **An environment file the repository does not contain fails the whole stack.**
 A compose file naming one fails before anything starts. Where local values are
 needed, they are committed as an example file.

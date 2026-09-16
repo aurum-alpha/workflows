@@ -40,10 +40,15 @@ services:
     volumes:
       - ../..:/app
       - server_deps:/app/node_modules
+    # seed is a one-shot. A long-running service must depend on it with
+    # service_completed_successfully, or `docker compose up --wait` exits 1
+    # when seed exits 0 (docker/compose#10596).
     depends_on:
       db:
         condition: service_healthy
       migrate:
+        condition: service_completed_successfully
+      seed:
         condition: service_completed_successfully
 
   client:

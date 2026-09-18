@@ -26,9 +26,11 @@ Rules, each naming what it can actually prove:
   A2  it answers all six required sections
   A3  it references the Aurum Alpha standard, or vendors a copy (client repos cannot
       reach aurum-alpha/workflows after handover, so a link is not always right)
-  A4  no unsupported rule tree exists
+  A4  no unsupported rule tree exists, .claude/rules/ included
   A5  CLAUDE.md opens by importing AGENTS.md
   A6  no file in the guidance surface states a count of findings or failures
+  A7  every nested AGENTS.md has a CLAUDE.md beside it that imports it
+  A8  no vendored tree carries agent guidance of its own
 
 A5 checks the ACT — does this file import the source — not the length. The rule
 phrased as "keep the pointer short" would have passed the broken version of
@@ -71,18 +73,33 @@ VENDORED = ("docs/agent-standard.md", "docs/AGENT_STANDARD.md")
 # A4. Paths belonging to no supported tool. Guidance nobody maintains that
 # agents may still read.
 #
-# `.claude/rules/` is deliberately absent: it is Claude Code's own path-scoped
-# mechanism, loading only when the agent touches matching files, and it is how a
-# repo keeps CLAUDE.md under the length where adherence falls off. It is a
-# supplement for a supported tool. A rule file there that restates AGENTS.md is
-# still a violation of the standard — but it is one no checker can see, so this
-# does not pretend to.
+# `.claude/rules/` is listed like the rest, and it is the one entry that belongs
+# to a supported tool. It is Claude Code's own path-scoped mechanism, and that is
+# the objection: a rule written there binds Claude Code and is invisible to
+# Cursor, so the next session breaks a rule it was never shown. The portable
+# answer is a nested AGENTS.md and CLAUDE.md pair in the subtree, which A7 proves,
+# and which loads for exactly the same files under either tool.
 #
 # Configuration is not guidance and is not listed: .mcp.json, .cursor/mcp.json,
 # .claude/settings.json, .cursor/plans. The rule governs prose telling an agent
 # how to work, and deleting someone's MCP server list on a technicality would
 # discredit the whole check.
+# The reason A4 gives, and the one entry that needs its own: `.claude/rules/`
+# does belong to a supported tool, so "no supported tool" would be wrong about it.
+FORBIDDEN_REASON = (
+    "belongs to no supported tool — guidance nobody maintains that agents may "
+    "still read"
+)
+FORBIDDEN_REASONS = {
+    ".claude/rules": (
+        "binds Claude Code alone — Cursor never reads it, so the next session "
+        "breaks a rule it was never shown. A subtree's AGENTS.md and CLAUDE.md "
+        "pair answers the same need and reaches both tools"
+    ),
+}
+
 FORBIDDEN = [
+    ".claude/rules",
     ".clinerules",
     ".cursor/rules",
     ".cursorrules",
@@ -122,12 +139,52 @@ DEFECT_COUNT = re.compile(
     re.I,
 )
 
-# The files an agent is handed. AGENTS.md is the source, CLAUDE.md the pointer,
-# and .claude/rules/ the one supplemented tree rule 1 admits.
+# A7 and A8. The format scopes guidance by the nearest AGENTS.md, so a subtree
+# carries its own. Two things follow that a checker can see.
+#
+# A nested AGENTS.md needs a CLAUDE.md beside it. Claude Code loads a directory's
+# CLAUDE.md when it reads a file there, and does not go looking for a nested
+# AGENTS.md; without the second file the subtree's rules bind one supported tool
+# and not the other. It is the same pair as the root, one level down, and A5's
+# reasoning about the import applies unchanged.
+#
+# A vendored dependency's AGENTS.md is a finding rather than a nested file. It is
+# another repository's instructions, naming a work queue, a gate and an approval
+# path that are not this repository's, and the nearest-file rule hands them to an
+# agent editing a copy that is not edited here at all. The vendoring tool drops
+# it the way it drops git metadata.
+IGNORED_DIRS = {".git", "node_modules", "dist", "build", ".next", ".venv", "coverage"}
+VENDOR_DIRS = {"vendor", "vendored", "vendor-platform", "third_party", "thirdparty"}
+
+
+def nested_sources(repo_dir: pathlib.Path) -> tuple[list[pathlib.Path], list[pathlib.Path]]:
+    """Every AGENTS.md below the root, split into this repo's and a dependency's."""
+    ours: list[pathlib.Path] = []
+    vendored: list[pathlib.Path] = []
+    for path in sorted(repo_dir.rglob(SOURCE)):
+        rel = path.relative_to(repo_dir)
+        if len(rel.parts) == 1:
+            continue
+        dirs = set(rel.parts[:-1])
+        if dirs & IGNORED_DIRS:
+            continue
+        (vendored if dirs & VENDOR_DIRS else ours).append(path)
+    return ours, vendored
+
+
+# The files an agent is handed: the root pair, and the pair in every subtree that
+# carries one.
 def guidance_files(repo_dir: pathlib.Path) -> list[pathlib.Path]:
     files = [repo_dir / SOURCE, repo_dir / POINTER]
-    files += sorted((repo_dir / ".claude" / "rules").glob("*.md"))
+    for path in nested_sources(repo_dir)[0]:
+        files += [path, path.parent / POINTER]
     return [p for p in files if p.is_file()]
+
+
+def imports_source(pointer: pathlib.Path) -> str | None:
+    """The offending first line, or None where the pointer imports the source."""
+    head = first_meaningful_line(pointer.read_text(encoding="utf-8", errors="replace"))
+    return None if head == IMPORT else head
 
 
 # The tree whose AGENTS.md IS the standard rather than a repo's answer to it.
@@ -207,10 +264,7 @@ def check(repo_dir: pathlib.Path) -> list[str]:
 
     for rel in FORBIDDEN:
         if (repo_dir / rel).exists():
-            findings.append(
-                f"[A4] {rel} belongs to no supported tool — guidance nobody "
-                "maintains that agents may still read"
-            )
+            findings.append(f"[A4] {rel} {FORBIDDEN_REASONS.get(rel, FORBIDDEN_REASON)}")
 
     pointer = repo_dir / POINTER
     if not pointer.is_file():
@@ -219,13 +273,42 @@ def check(repo_dir: pathlib.Path) -> list[str]:
             f"this repo's guidance does not reach it"
         )
     else:
-        head = first_meaningful_line(pointer.read_text(encoding="utf-8", errors="replace"))
-        if head != IMPORT:
+        head = imports_source(pointer)
+        if head is not None:
             findings.append(
                 f"[A5] {POINTER} opens with {head!r}, not {IMPORT!r} — only the "
                 "@ import expands the source into context; a markdown link "
                 "loads a file that tells the agent to read something it will not"
             )
+
+    nested, vendored = nested_sources(repo_dir)
+
+    for path in nested:
+        rel = path.relative_to(repo_dir)
+        sibling = path.parent / POINTER
+        if not sibling.is_file():
+            findings.append(
+                f"[A7] {rel} has no {POINTER} beside it — Claude Code loads a "
+                f"directory's {POINTER}, never a nested {SOURCE}, so this "
+                "subtree's guidance reaches one supported tool and not the other"
+            )
+            continue
+        head = imports_source(sibling)
+        if head is not None:
+            findings.append(
+                f"[A7] {sibling.relative_to(repo_dir)} opens with {head!r}, not "
+                f"{IMPORT!r} — the subtree pair is the root pair one level down, "
+                "and only the @ import expands the source into context"
+            )
+
+    for path in vendored:
+        findings.append(
+            f"[A8] {path.relative_to(repo_dir)} is a vendored dependency's own "
+            "guidance — it names a work queue, a gate and an approval path that "
+            "are not this repository's, and the nearest-file rule hands them to "
+            "an agent editing a copy that is not edited here. The vendoring tool "
+            "drops it the way it drops git metadata"
+        )
 
     for path in guidance_files(repo_dir):
         body = path.read_text(encoding="utf-8", errors="replace")

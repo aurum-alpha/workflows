@@ -13,6 +13,38 @@ standing as a lockfile. It gets one source of truth, versioned and reviewed.
 Each tool that arrives brings its own rules directory, and a second copy of
 the guidance drifts from the first without anything failing.
 
+## The format is AGENTS.md, and the format is not ours
+
+`AGENTS.md` is an open format, published at <https://agents.md/> and stewarded by
+the Agentic AI Foundation at the Linux Foundation. It is a README written for a
+coding agent rather than for a person. Writing to it is what makes a repository
+legible to an agent nobody here configured.
+
+The format fixes four things. Each one is a rule below rather than a preference:
+
+- **The filename and the location.** `AGENTS.md`, at the root of the repository.
+- **The syntax.** Markdown, with no required fields. An agent reads the headings
+  and the prose it finds.
+- **The scope.** A subtree carries its own `AGENTS.md`, and the file nearest the
+  edited code wins. A file further up still governs what the nearer one leaves
+  unsaid.
+- **The precedence.** An instruction typed into a session outranks every file. An
+  agent told to work another way says which rule it is setting aside, and still
+  stops where rule 5 stops it.
+
+**The six required sections below are ours.** The format asks for none of them.
+A conformant file here answers six questions the format never asked.
+
+**A tool that insists on its own filename gets a symbolic link, never a copy:**
+
+```sh
+ln -s AGENTS.md AGENT.md
+```
+
+A link cannot disagree with its target. A copy disagrees the first time one of
+the two is edited, and nothing goes red when it does. `CLAUDE.md` is the one file
+here that is not a link, and rule 1 says why.
+
 ## Adoption, and what happens at handover
 
 Every repository has an `AGENTS.md` at its root. It is short. It answers the six
@@ -60,7 +92,9 @@ absence.
 
 ### 1. One source of agent guidance
 
-`AGENTS.md` at the repository root is the source. There is no second copy.
+`AGENTS.md` at the repository root is the source. There is no second copy of
+it. A subtree carries its own where it needs one, holding what is local to that
+subtree and nothing that already stands above it.
 
 **Two agent tools are supported: Cursor and Claude Code.** That is a closed set,
 and it is the reason this rule is enforceable at all. Every tool admitted brings
@@ -92,14 +126,44 @@ Parallel rule trees are not created: no `.clinerules/`, `.kiro/steering/`,
 tree for a tool nobody runs is guidance nobody maintains, and agents can still
 read it.
 
-`.claude/rules/` is the one exception, and it is not a loophole. It is Claude
-Code's own path-scoped mechanism: files carrying `paths:` frontmatter that load
-only when the agent touches matching code. It exists for two reasons. Guidance
-that belongs to one subsystem does not belong in every session's context, and
-adherence falls off past roughly 200 lines in `CLAUDE.md`. It is a **supplement
-for a supported tool, never a second copy of `AGENTS.md`**. A rule file
-restating what `AGENTS.md` already says is the failure this section exists to
-stop, arriving through the one door left open.
+**Path-scoped rules for one tool are not created.** `.claude/rules/` is Claude
+Code's own mechanism, and a rule written there binds Claude Code alone. Cursor
+never reads it, so the next session breaks a rule it was never shown. The pair below
+answers the same need and reaches both tools.
+
+**Guidance belonging to one subtree lives in that subtree, as another
+`AGENTS.md`.** That is the format's own mechanism, and it does two things at
+once. A rule about one package reaches an agent working in that package, and it
+stays out of every other session's context. Context is the reason it matters:
+adherence falls off past roughly 200 lines in one file.
+
+A nested `AGENTS.md` carries the same pair the root carries, for the same reason:
+
+```text
+src/server/api/AGENTS.md    the guidance
+src/server/api/CLAUDE.md    one line, @AGENTS.md
+```
+
+Claude Code loads a directory's `CLAUDE.md` when it reads a file in that
+directory. It does not go looking for a nested `AGENTS.md`. Without the second
+file the guidance binds one supported tool and not the other.
+
+**A nested file carries only what is local.** That is the root file's own
+relationship to this document, one level down. A paragraph true of the whole
+repository belongs at the root. A paragraph true of another repository belongs
+here.
+
+**A rule reaching several sibling trees sits where its subject sits.** The root's
+table then records what else it governs. Three copies under three directories is
+the failure rule 1 exists to stop. The root file is read in every session, so one
+line there reaches an agent working in any of them.
+
+**Vendoring a dependency's source drops its agent guidance.** A copied
+`AGENTS.md` is another repository's instructions. The nearest-file rule hands
+them to an agent editing the copy. They name a work queue, a gate and an approval
+path that are not this repository's. The copy is not edited here at all: a
+correction moves the pin and re-copies. The tool that vendors the tree excludes
+those files the way it excludes git metadata.
 
 *A tool-specific configuration file is not guidance and is out of scope: an MCP
 server list, a model selection, an editor setting. The rule governs prose that
@@ -267,13 +331,16 @@ the vendored copy.
 ## Enforcement
 
 `tools/check-agent-docs` is the gate, running from `job-ci-conformance.yml`
-alongside the other checkers. It proves six facts:
+alongside the other checkers. It proves eight facts:
 
-- `AGENTS.md` exists.
+- `AGENTS.md` exists at the root.
 - The six sections are present.
 - The Aurum Alpha standard is referenced or vendored.
-- No unsupported rule tree exists.
+- No unsupported rule tree exists, `.claude/rules/` included.
 - `CLAUDE.md` opens by importing `AGENTS.md`.
+- Every nested `AGENTS.md` has a `CLAUDE.md` beside it that imports it, so a
+  subtree's guidance reaches both supported tools.
+- No vendored tree carries agent guidance of its own.
 - No file in the guidance surface states a count of findings, errors,
   warnings or failures. The check reads a number standing immediately before
   a countable defect noun; a backlog described without a figure passes.

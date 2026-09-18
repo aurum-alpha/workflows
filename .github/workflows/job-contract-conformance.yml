@@ -1,0 +1,46 @@
+# aurum-job: capability=contract-conformance language=- role=policy
+name: contract-conformance
+
+# Runs the static halves of the auth and RBAC corpora against the calling
+# repository. The validity half of auth/corpus.json is schema-decided and
+# needs no service. The behaviour half needs a live stack and is skipped.
+# decisions.json is checked as a fixture a runner can load; each platform
+# module still executes check() itself. A repository that vendors neither
+# corpus passes.
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: Override the runner (Principle 4 escape hatch).
+        type: string
+        required: false
+        default: ""
+
+jobs:
+  contract-conformance:
+    runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-26.04' }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout the repo under test
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Checkout the catalog for the checker
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: aurum-alpha/workflows
+          path: .aurum-catalog
+          persist-credentials: false
+
+      - name: Install jsonschema
+        run: pip install --user jsonschema
+
+      - name: Run the auth and RBAC corpora
+        run: |
+          if [ -x tools/check-contract-conformance ]; then
+            tools/check-contract-conformance --root .
+          else
+            .aurum-catalog/tools/check-contract-conformance --root .
+          fi

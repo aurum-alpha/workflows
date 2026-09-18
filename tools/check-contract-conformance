@@ -1,0 +1,184 @@
+#!/usr/bin/env python3
+"""Run the static halves of the auth and RBAC corpora.
+
+The validity half of contracts/auth/corpus.json is schema-decided: each case
+validates against me.schema.json and must reach the stated verdict. The token
+has no validity case (RFC 9068). The behaviour half needs a live stack and
+is skipped here.
+
+contracts/rbac/decisions.json is data for check(). This checker cannot run
+check() — that is each platform module's own test. It proves the fixture is
+loadable and every check has an id, a check{subject, scope, activeGrant} and
+a non-empty expect{}, so a truncated copy fails here rather than silently
+covering a different set.
+
+A repository with neither corpus passes, the way one with no ANSWERS passes
+check-corpus-coverage.
+
+Run:  tools/check-contract-conformance [--root DIR] [--contracts DIR]
+Exit: 0 covered or nothing to run, 1 findings, 2 could not ask
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import pathlib
+import sys
+
+SCHEMA_IDS = {
+    "me": "https://contracts.aurumalpha.dev/auth/me.schema.json",
+}
+
+CHECK_INNER = ("subject", "scope", "activeGrant")
+
+
+def load_json(path: pathlib.Path) -> object:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def find_contracts(root: pathlib.Path, explicit: pathlib.Path | None) -> pathlib.Path | None:
+    if explicit is not None:
+        return explicit
+    candidate = root / "contracts"
+    if (candidate / "auth" / "corpus.json").is_file() or (
+        candidate / "rbac" / "decisions.json"
+    ).is_file():
+        return candidate
+    return None
+
+
+def registry_for(contracts: pathlib.Path):
+    from referencing import Registry, Resource
+
+    registry = Registry()
+    for schema_path in contracts.rglob("*.schema.json"):
+        schema = load_json(schema_path)
+        if not isinstance(schema, dict):
+            continue
+        sid = schema.get("$id")
+        if isinstance(sid, str) and sid:
+            registry = registry.with_resource(sid, Resource.from_contents(schema))
+    return registry
+
+
+def run_auth_validity(contracts: pathlib.Path, registry) -> list[str]:
+    from jsonschema import Draft202012Validator
+
+    corpus_path = contracts / "auth" / "corpus.json"
+    if not corpus_path.is_file():
+        return []
+    corpus = load_json(corpus_path)
+    if not isinstance(corpus, dict):
+        return [f"{corpus_path}: corpus is not an object"]
+    findings: list[str] = []
+    for case in corpus.get("validity") or []:
+        if not isinstance(case, dict):
+            findings.append(f"{corpus_path}: a validity case is not an object")
+            continue
+        case_id = case.get("id", "<missing id>")
+        def_name = case.get("def")
+        schema_id = SCHEMA_IDS.get(def_name) if isinstance(def_name, str) else None
+        if schema_id is None:
+            findings.append(f"{case_id}: unknown validity def {def_name!r}")
+            continue
+        try:
+            schema = registry[schema_id].contents
+        except Exception as exc:  # noqa: BLE001 — report and continue
+            findings.append(f"{case_id}: schema {schema_id} not in the vendored tree ({exc})")
+            continue
+        validator = Draft202012Validator(schema, registry=registry)
+        errors = sorted(validator.iter_errors(case.get("value")), key=lambda e: e.path)
+        ok = not errors
+        expected = case.get("valid")
+        if expected is True and not ok:
+            first = errors[0]
+            findings.append(f"{case_id}: expected valid, got {first.message}")
+        elif expected is False and ok:
+            findings.append(f"{case_id}: expected invalid, document validated")
+        elif expected not in (True, False):
+            findings.append(f"{case_id}: validity case is missing a boolean 'valid'")
+    return findings
+
+
+def run_rbac_structure(contracts: pathlib.Path) -> list[str]:
+    path = contracts / "rbac" / "decisions.json"
+    if not path.is_file():
+        return []
+    data = load_json(path)
+    if not isinstance(data, dict):
+        return [f"{path}: decisions corpus is not an object"]
+    findings: list[str] = []
+    fixture = data.get("fixture")
+    if not isinstance(fixture, dict):
+        findings.append(f"{path}: fixture is missing")
+        return findings
+    for key in ("permissions", "roles", "grants"):
+        if key not in fixture:
+            findings.append(f"{path}: fixture.{key} is missing")
+    checks = data.get("checks")
+    if not isinstance(checks, list) or not checks:
+        findings.append(f"{path}: checks[] is missing or empty")
+        return findings
+    seen: set[str] = set()
+    for case in checks:
+        if not isinstance(case, dict):
+            findings.append(f"{path}: a check is not an object")
+            continue
+        case_id = case.get("id")
+        if not isinstance(case_id, str) or not case_id:
+            findings.append(f"{path}: a check has an empty id")
+            continue
+        if case_id in seen:
+            findings.append(f"{path}: duplicate check id {case_id}")
+        seen.add(case_id)
+        inner = case.get("check")
+        if not isinstance(inner, dict):
+            findings.append(f"{path}: check {case_id} is missing check{{}}")
+            continue
+        missing = [k for k in CHECK_INNER if k not in inner]
+        if missing:
+            findings.append(f"{path}: check {case_id} missing {', '.join(missing)}")
+        expect = case.get("expect")
+        if not isinstance(expect, dict) or not expect:
+            findings.append(f"{path}: check {case_id} missing expect{{}}")
+    rejections = data.get("rejections")
+    if isinstance(rejections, list):
+        for case in rejections:
+            if not isinstance(case, dict) or not isinstance(case.get("id"), str):
+                findings.append(f"{path}: a rejection is missing an id")
+    return findings
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", type=pathlib.Path, default=pathlib.Path("."))
+    parser.add_argument("--contracts", type=pathlib.Path, default=None)
+    args = parser.parse_args()
+    root = args.root.resolve()
+    contracts = find_contracts(root, args.contracts.resolve() if args.contracts else None)
+    if contracts is None:
+        print("no auth or RBAC corpus in this repository; nothing to run")
+        return 0
+    try:
+        from jsonschema import Draft202012Validator  # noqa: F401
+        from referencing import Registry  # noqa: F401
+    except ImportError:
+        print(
+            "jsonschema is required to run the auth validity half "
+            "(pip install jsonschema)",
+            file=sys.stderr,
+        )
+        return 2
+    registry = registry_for(contracts)
+    findings = run_auth_validity(contracts, registry) + run_rbac_structure(contracts)
+    if not findings:
+        print(f"ok  auth validity and RBAC fixture under {contracts}")
+        return 0
+    for finding in findings:
+        print(f"fail  {finding}", file=sys.stderr)
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

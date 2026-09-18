@@ -111,6 +111,9 @@ jobs:
       - name: Check the shared version-stamp block agrees across jobs
         run: tools/check-version-stamp-shared
 
+  contract-conformance:
+    uses: ./.github/workflows/job-contract-conformance.yml
+
   version-gate:
     uses: ./.github/workflows/job-version-gate.yml
     permissions:
@@ -242,7 +245,7 @@ jobs:
     # failed while the rollup went green would hand `release` an empty
     # `version_changed`, and the release that did not happen would be
     # reported as fine (rule D6).
-    needs: [lint, conformance, version-gate, version-read]
+    needs: [lint, conformance, contract-conformance, version-gate, version-read]
     if: always()
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
     steps:

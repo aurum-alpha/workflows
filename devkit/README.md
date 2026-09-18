@@ -464,6 +464,12 @@ role name for the role class and its own tenant id for the label. Both are
 idempotent, both exit, and `docker compose up` runs them in order before
 anything serves.
 
+**A long-running service must depend on each one-shot.**
+`server` depends on `migrate` and `seed` with `service_completed_successfully`.
+`--wait` fails a one-shot nobody depends on, even on exit 0.
+`tools/dev-init` then never prints the ports.
+`product.example.yaml` shows the edges.
+
 **The one-shots depend on no database in the fragment.** The fragment does not
 know whether the product has one: a product on SQLite migrates a file. A
 product with a `db` service adds `depends_on: db` to `migrate` and `seed` in

@@ -34,8 +34,18 @@ jobs:
           path: .aurum-catalog
           persist-credentials: false
 
+      # The runner image has python3 and no pip. `python3 -m pip` is
+      # "No module named pip" here, the same finding job-ci-conformance
+      # already records. setup-python brings its own interpreter with pip.
+      - name: A Python with pip
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+
       - name: Install jsonschema
-        run: pip install --user jsonschema
+        run: |
+          python -m pip install --quiet --disable-pip-version-check jsonschema
+          python -c 'import jsonschema; print("jsonschema", jsonschema.__version__)'
 
       - name: Run the auth and RBAC corpora
         run: |

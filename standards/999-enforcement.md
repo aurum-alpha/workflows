@@ -143,11 +143,16 @@ tell those apart. Whether a long retention is earned stays a review question,
 and so does whether the deliverable needs a release instead.
 
 ¹⁰ Gated in every repository whose `ci.yml` calls `job-contract-conformance`.
-The job runs the static halves: auth corpus validity against `me.schema.json`,
-and that `rbac/decisions.json` is a fixture a runner can load. Each platform
-module still executes `check()` itself. The behaviour half of the auth corpus
-runs only where a repository has a live stack, and decides nothing where it
-does not. A repository that vendors neither corpus passes.
+The job runs the static halves. Auth corpus validity against `me.schema.json`.
+That `rbac/decisions.json` is a fixture a runner can load. That
+`billing/entitlements.json` is a fixture a runner can load, with the catalog
+valid against its schema.
+
+Each platform module still executes `check()` itself. Each product that
+answers for billing still executes `entitlementsFor()` itself. The behaviour
+half of the auth corpus runs only where a repository has a live stack, and
+decides nothing where it does not. A repository that vendors none of the
+three corpora passes.
 
 ## Developer commands standard
 
@@ -563,13 +568,14 @@ Rules from [`075-billing.md`](075-billing.md).
 
 | # | Rule | Enforced by | Status |
 |---|---|---|---|
-| BL1 | The catalog is a file in the repository, and the provider is provisioned from it | **schema-decided** for the file, plus two corpus rejections the schema cannot express: a plan missing a declared metric, a plan listing an undeclared capability (proposed `check-billing-catalog`, static over one committed file). That the provider was provisioned from it and not edited by hand is BL6's finding; a price typed into content is a review question | **review only** |
+| BL1 | The catalog is a file in the repository, and the provider is provisioned from it | **schema-decided** for the file. The corpus fixture is validated against `catalog.schema.json` by `job-contract-conformance`, which also checks the two cross-references the schema cannot express: a plan missing a declared metric, a plan listing an undeclared capability. A product catalog is the same two checks over that product's committed file (proposed `check-billing-catalog`). That the provider was provisioned from it and not edited by hand is BL6's finding; a price typed into content is a review question | **review only** |
 | BL2 | The subscription is a projection of an append-only ledger | the closed sets and the single `pending_change` are **schema-decided**; the fold is **decided by the corpus**: the plan before the last upgrade, the pending downgrade, the last and first day of a cancelled period, the superseded cancellation, two of them verified detectors. The `INSERT`/`SELECT`-only grant is AE6's proposed grant check applied to a second table | **review only** |
 | BL3 | An entitlement is one of four kinds, and nothing is per user | ids are **static and decidable**: every declared id matches `^[a-z][a-z0-9_]*$` and intersects neither the permission set nor the flag declaration (extends RB2's proposed `check-permission-names`); a per-user entitlement is a schema rejection; no-ceiling-is-not-zero and a quota at its ceiling are corpus cases. That a term is genuinely unchecked is a review question | **review only** |
-| BL4 | The check is a pure function, run in a fixed order, and its decision carries a reason | **decided entirely by the decision corpus**: twenty-eight cases across seven operations. **One corpus case is a verified detector for the cache rule**: the same capability inside and then outside a grace period with no row between, which a cache keyed on the ledger alone answers twice. The problem shape is schema-decided against `problem.schema.json` and the extension def. Purity and the request-path order resist a checker, because a gate reading source for either is the PC4 violation, and stay review questions | **review only** |
+| BL4 | The check is a pure function, run in a fixed order, and its decision carries a reason | **decided entirely by the decision corpus**: twenty-eight cases across seven operations, loaded by `job-contract-conformance`. **One corpus case is a verified detector for the cache rule**: the same capability inside and then outside a grace period with no row between, which a cache keyed on the ledger alone answers twice. The problem shape is schema-decided against `problem.schema.json` and the extension def. Purity and the request-path order resist a checker, because a gate reading source for either is the PC4 violation, and stay review questions | **review only** |
 | BL5 | One provider adapter, chosen by configuration | the startup line names the adapter (`job-image-starts`, proposed) and the credential half is WK8's per-image fact. Whether domain code imports the SDK is a fact about source and resists a checker at its own level; that no card field posts to our server is a review question on every payment route | **review only** |
 | BL6 | Provider events arrive as webhooks and are reconciled by a job | the endpoint order is 055's corpus; the duplicate-event rejection is a corpus case; the job's declaration is JB3's schema and its staleness JB8's alert. That a disagreement became a finding and not a quiet row is a review question on the job's body | **review only** |
 | BL7 | Plan changes are made in the product, under stated policies | the timings and the over-quota rule are **corpus-decided**: the pending downgrade before and after its effective time, the exceeded quota after it. A dashboard change is BL6's finding. That a route deletes nothing to fit a plan is a review question | **review only** |
 | BL8 | A trial is a subscription state with an end date | the trial-contributes-the-full-plan and expired-trial-is-suspended cases are in the corpus; the job's declaration is JB3's schema; the Conventions declaration is a grep. That the notification category exists is NF5's row | **review only** |
 | BL9 | Sign-up creates the tenant, its first administrator and its subscription in one transaction | resists a checker honestly: one transaction is a property of a code path, and a gate proving it would read source. The observable half (a tenant row with no subscription row) is a proposed schema invariant under SD10 (a foreign key the migration carries) | **review only** |
 | BL10 | Money events are audit events, and billing history is exportable | the event-per-row is AE8's transaction test and AE5's proposed floor check over the `subscription.*` permissions; the inventory entries are DR1's schema. That the retention basis is genuine is a review question | **review only** |
+| — | One corpus judges every implementation of `entitlementsFor` | `job-contract-conformance` running [`../contracts/billing/entitlements.json`](../contracts/billing/entitlements.json). Static, and it needs no service: the catalog, the ledger, the checks and the rejections. **It decides the one thing nothing else can, that an implementation in one language and an implementation in another return the same decision**, because both read this file rather than each other. Each product still executes the function itself | gated¹⁰ |

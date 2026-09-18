@@ -1,12 +1,13 @@
 # aurum-job: capability=contract-conformance language=- role=policy
 name: contract-conformance
 
-# Runs the static halves of the auth and RBAC corpora against the calling
-# repository. The validity half of auth/corpus.json is schema-decided and
-# needs no service. The behaviour half needs a live stack and is skipped.
-# decisions.json is checked as a fixture a runner can load; each platform
-# module still executes check() itself. A repository that vendors neither
-# corpus passes.
+# Runs the static halves of the auth, RBAC and billing corpora against the
+# calling repository. The validity half of auth/corpus.json is schema-decided
+# and needs no service. The behaviour half needs a live stack and is skipped.
+# decisions.json and entitlements.json are checked as fixtures a runner can
+# load; each platform module still executes check() itself, and each product
+# that answers for billing still executes entitlementsFor() itself. A
+# repository that vendors none of the three corpora passes.
 
 on:
   workflow_call:
@@ -47,7 +48,7 @@ jobs:
           python -m pip install --quiet --disable-pip-version-check jsonschema
           python -c 'import jsonschema; print("jsonschema", jsonschema.__version__)'
 
-      - name: Run the auth and RBAC corpora
+      - name: Run the auth, RBAC and billing corpora
         run: |
           if [ -x tools/check-contract-conformance ]; then
             tools/check-contract-conformance --root .

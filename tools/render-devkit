@@ -71,6 +71,9 @@ OUT = pathlib.Path("dev")
 # `auth` is the one hop name the devkit owns, because the devkit is what
 # supplies that service. Every other name belongs to the product.
 AUTH_HOP = "auth"
+LOGOUT_PROXY = "proxy"
+LOGOUT_REALM = "realm"
+LOGOUT_MODES = (LOGOUT_PROXY, LOGOUT_REALM)
 UPSTREAM_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
 UPSTREAM_ADDRESS = re.compile(r"^[A-Za-z0-9.-]+:[0-9]{1,5}$")
 
@@ -136,7 +139,7 @@ def unsubstituted(text: str) -> list[str]:
 def read_record(target: pathlib.Path) -> dict:
     """Read and validate the product's devkit.json.
 
-    Four keys, and two optional. `repo` and `port_base` are what the
+    Four required keys, and three optional. `repo` and `port_base` are what the
     substitution needs. `upstreams` names every service the gateway can reach
     and where it is. `routes` is the routing table: a path, the hop it goes to
     next, and where that hop forwards to when the hop is the authentication
@@ -146,7 +149,9 @@ def read_record(target: pathlib.Path) -> dict:
     `realm`, optional, is the one realm setting a product may move:
     `{"registration": true}` lets people self-register at the provider, for a
     product whose users are whoever signs up. Every other realm setting is the
-    devkit's, and the same in every product.
+    devkit's, and the same in every product. `logout`, optional, is `proxy`
+    (the default) or `realm`: whether /logout ends only this application's
+    session, or the provider's as well.
 
     Every problem is collected and reported at once, because a product writes
     this by hand and a checker that stops at the first mistake sends the
@@ -168,7 +173,7 @@ def read_record(target: pathlib.Path) -> dict:
 
     problems: list[str] = []
     for key in data:
-        if key not in ("repo", "port_base", "upstreams", "routes", "tenant_hosts", "realm"):
+        if key not in ("repo", "port_base", "upstreams", "routes", "tenant_hosts", "realm", "logout"):
             problems.append(f"unknown key {key!r}")
     if not isinstance(data.get("repo"), str) or not data.get("repo"):
         problems.append("repo must be the repository name")
@@ -187,6 +192,12 @@ def read_record(target: pathlib.Path) -> dict:
                 problems.append(f"realm: unknown setting {key!r}; registration is the one a product may move")
             elif not isinstance(value, bool):
                 problems.append("realm.registration must be true or false")
+
+    if "logout" in data:
+        if data["logout"] not in LOGOUT_MODES:
+            problems.append("logout must be proxy or realm")
+    else:
+        data["logout"] = LOGOUT_PROXY
 
     hosts = data.get("tenant_hosts", [])
     if not isinstance(hosts, list) or not all(isinstance(h, str) for h in hosts):
@@ -449,6 +460,67 @@ def routes_text(routes: list[dict], template: str) -> str:
     return "\n".join(blocks) + "\n"
 
 
+def whitelist_domains(record: dict) -> str:
+    """The oauth2-proxy rd allowlist.
+
+    Every mode admits the edge. realm also admits the identity provider, so
+    the end-session URL is a legal redirect after the proxy cookie dies.
+    """
+    items = ['"localhost:__PORT_EDGE__"', '".localhost:__PORT_EDGE__"']
+    if record.get("logout", LOGOUT_PROXY) == LOGOUT_REALM:
+        items.append('"localhost:__PORT_IDP__"')
+    return ", ".join(items)
+
+
+def logout_text(record: dict) -> str:
+    """The nginx logout locations, from the logout key.
+
+    proxy (the default) destroys this application's session and sends the
+    person home. realm then sends the browser to the provider's end-session
+    endpoint with id_token_hint, so the provider does not show a confirmation
+    page. `return` cannot live in the same location as that auth_request: it
+    runs in the rewrite phase, before the subrequest, so the hint would be
+    empty and the confirmation page would come back.
+    """
+    if record.get("logout", LOGOUT_PROXY) != LOGOUT_REALM:
+        return (
+            "    # Logout (AU5): destroy this application's proxy session and send the\n"
+            "    # person home. The provider session is left alone: it is shared by every\n"
+            "    # application on this identity provider, and an end-session request would\n"
+            "    # sign them out of all of them. Home must not itself require a session,\n"
+            "    # or the next hop mints a new cookie and they are back in without asking.\n"
+            "    location = /logout {\n"
+            "        return 302 /oauth2/sign_out?rd=$scheme://$http_host/;\n"
+            "    }\n"
+        )
+    rd = (
+        "http%3A%2F%2Flocalhost%3A__PORT_IDP__%2Frealms%2F__REPO__"
+        "%2Fprotocol%2Fopenid-connect%2Flogout%3Fclient_id%3D__REPO__"
+        "%26id_token_hint%3D$id_token"
+        "%26post_logout_redirect_uri%3Dhttp%3A%2F%2F$http_host%2F"
+    )
+    return (
+        "    # Logout (AU5): this product asked to end the provider session too.\n"
+        "    # The person clicks one Log out. The proxy cookie dies, then the\n"
+        "    # browser is sent to the provider's end-session endpoint with\n"
+        "    # id_token_hint, so there is no confirmation page. `return` cannot\n"
+        "    # live in this location: it runs in the rewrite phase, before\n"
+        "    # auth_request, so the hint would always be empty.\n"
+        "    location = /logout {\n"
+        "        auth_request     /oauth2/auth;\n"
+        "        auth_request_set $rp_authorization $upstream_http_authorization;\n"
+        "        error_page 401 = @already_signed_out;\n"
+        "        try_files /this-uri-does-not-exist @do_logout;\n"
+        "    }\n"
+        "    location @already_signed_out {\n"
+        "        return 302 /;\n"
+        "    }\n"
+        "    location @do_logout {\n"
+        f"        return 302 /oauth2/sign_out?rd={rd};\n"
+        "    }\n"
+    )
+
+
 def render_all(target: pathlib.Path, record: dict) -> list[pathlib.Path]:
     """Write every rendered file, and return the dev-relative paths written.
 
@@ -469,12 +541,18 @@ def render_all(target: pathlib.Path, record: dict) -> list[pathlib.Path]:
             raise FileNotFoundError(f"devkit source not found at {src}")
         text = src.read_text(encoding="utf-8")
         if source == "nginx/edge.conf":
-            for token in ("__UPSTREAMS__", "__ROUTES__"):
+            for token in ("__UPSTREAMS__", "__ROUTES__", "__LOGOUT__"):
                 if token not in text:
                     raise ValueError(f"{source}: {token} is missing")
             text = text.replace("__UPSTREAMS__\n", upstreams)
+            text = text.replace("    __LOGOUT__\n", logout_text(record))
             text = text.replace("    __ROUTES__\n",
                                 routes_text(record["routes"], text))
+        if source == "oauth2-proxy/oauth2-proxy.cfg":
+            if "__WHITELIST_DOMAINS__" not in text:
+                raise ValueError(f"{source}: __WHITELIST_DOMAINS__ is missing")
+            text = text.replace("__WHITELIST_DOMAINS__",
+                                whitelist_domains(record))
         if source == "keycloak/realm-template.json":
             text = realm_hosts(text, record)
             text = realm_settings(text, record)

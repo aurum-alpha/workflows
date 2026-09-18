@@ -56,6 +56,7 @@ several. The rendered gateway cannot tell the difference and does not try.
 |---|---|
 | `tenant_hosts` | Optional. The labels a product with tenant hostnames serves locally, each as `<label>.localhost`. The realm admits a login callback on each beside the apex, and nothing else changes: the edge already answers on any host, and the relying party derives its callback from the host the browser is on (092 TH5). A product with one host leaves it out |
 | `realm` | Optional, and one setting inside it: `{"registration": true}` lets people self-register at the provider, for a product whose users are whoever signs up rather than whoever was invited (AU4). Every other realm setting is the devkit's, the same in every product, and the renderer refuses any other key here |
+| `logout` | Optional. `proxy` (the default) ends this application's session and leaves the provider's. `realm` also calls the provider's end-session endpoint, with `id_token_hint` so there is no confirmation page. Use `realm` when this product is the only application on the realm, or when logout here should sign the person out everywhere |
 | `upstreams` | A name the routes use, and the `host:port` behind it. The name is the product's; `auth` is reserved, because the devkit is what supplies that service |
 | `next` | The hop this path goes to. Either `auth` or one of the product's upstreams |
 | `then` | Where the authentication proxy forwards once it is satisfied. Required when `next` is `auth`, and meaningless otherwise |
@@ -72,7 +73,9 @@ replaced, with the access token the relying party obtained (060 AU2).
 is a route handed to a service that requires nothing on it. A share
 link and a webhook are handed straight over too, and both are authenticated,
 just not by this tier. The gateway's only question is which hop
-comes next.
+comes next. A product that wants a signed-out landing serves `/` that way:
+`/logout` returns home, and a home that requires a session would mint a new
+cookie against the still-alive provider session.
 
 **`devkit.json` is ingress configuration, and nothing else reads it.** Two
 things open the file: `tools/render-devkit`, which turns it into the four
@@ -96,6 +99,7 @@ The renderer refuses each of these and names the entry:
 - an upstream nothing routes to
 - an address that is not `host:port`
 - a port block that is not a multiple of twenty
+- a `logout` that is not `proxy` or `realm`
 
 Every problem in the file is reported at once.
 
@@ -111,6 +115,8 @@ Every problem in the file is reported at once.
 | `__PORT_IDP_MGMT__` | base + 7, Keycloak's management and health port |
 | `__UPSTREAMS__` | The upstream blocks, from `upstreams` |
 | `__ROUTES__` | The locations, from `routes` |
+| `__LOGOUT__` | The logout locations, from `logout` (`proxy` or `realm`) |
+| `__WHITELIST_DOMAINS__` | The relying party's `rd` allowlist: the edge, and the identity provider when `logout` is `realm` |
 | `"__REDIRECT_URIS__"`, `"__WEB_ORIGINS__"`, `"__POST_LOGOUT_REDIRECT_URIS__"` | The realm's three host lists: the apex and each `tenant_hosts` entry, as callback URIs, origins and post-logout targets. Quoted in the template so the source stays valid JSON |
 
 The first six are textual substitution and nothing else, which is what lets a
@@ -422,11 +428,17 @@ SB7). They are routes like any other. A product split into services might
 serve them from somewhere other than its API, and this directory cannot know
 which.
 
-`/logout` is the RP-initiated logout of AU5 in one hop. It ends the proxy
-session and then sends the browser to the provider's end-session endpoint,
-naming the host the person was on as the place to return to. Ending only the
-first leaves the provider session alive, and the next sign-in click signs the
-person straight back in.
+`/logout` ends this application's proxy session and sends the person home on
+the host they were on. The default does not call the provider's end-session
+endpoint. That session is shared by every application on the identity
+provider, and ending it here would sign them out of the others. A product
+that is the only application on the realm, or that wants one logout to end
+every session there, sets `"logout": "realm"`. The in-app control is still
+one Log out: the hop carries `id_token_hint`, so the provider does not show
+a confirmation page. A product that wants a logged-out screen under the
+default must serve `/` without the auth hop: if home itself requires a
+session, the next request mints a new cookie and they are back in without
+asking. Sign in is `/oauth2/start`.
 
 The API is also published at offset +1, which is how a developer reaches it
 directly with a token. That path skips the edge by design. It is safe because

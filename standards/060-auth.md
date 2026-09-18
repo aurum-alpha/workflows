@@ -360,9 +360,25 @@ changes it where their organisation administers it.
   disabled identity stops working within one refresh cycle even where
   back-channel logout is unsupported or broken. That bounds the damage without depending on a
   mechanism that might not fire.
-- **Logout is RP-initiated**: destroy the local session *and* call the provider's
-  end-session endpoint. Skipping the second means the user clicks login and is
-  silently signed straight back in. That reads as the logout button not working.
+- **Logout ends the relying-party session, not the provider's.** The proxy
+  cookie is this application's session (AU1, AU7). Destroying it is logout.
+  The provider session is the person's sign-in at the identity provider, and
+  it is shared by every application that uses that provider. An end-session
+  request ends the realm SSO, not one client's scope, so calling it here
+  would sign them out of the others. Signing out of a site that uses Google
+  does not sign them out of Google, and the same holds here.
+- **One logout can end the provider session too.** A product that is the
+  only application on that realm calls the end-session endpoint. So does
+  one that wants logout here to sign the person out everywhere. The
+  request carries `id_token_hint`, so the provider does not show a
+  confirmation page. The person still clicks one Log out. That product
+  says so in its Conventions.
+- **A path that requires a session cannot be where logout returns**, when
+  the provider session is left alive. The next request would mint a new
+  proxy session against a still-alive provider session. The person would
+  land back in the application without asking. Products that want a
+  logged-out screen serve it without the auth hop; Sign in starts
+  `/oauth2/start`.
 
 A repository needing tighter numbers sets them in its **Conventions** and says
 why. Looser than the above needs the same, and a harder argument.

@@ -1,0 +1,56 @@
+# aurum-job: capability=contract-conformance language=- role=policy
+name: contract-conformance
+
+# Runs the static halves of the auth and RBAC corpora against the calling
+# repository. The validity half of auth/corpus.json is schema-decided and
+# needs no service. The behaviour half needs a live stack and is skipped.
+# decisions.json is checked as a fixture a runner can load; each platform
+# module still executes check() itself. A repository that vendors neither
+# corpus passes.
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: Override the runner (Principle 4 escape hatch).
+        type: string
+        required: false
+        default: ""
+
+jobs:
+  contract-conformance:
+    runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-26.04' }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout the repo under test
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Checkout the catalog for the checker
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: aurum-alpha/workflows
+          path: .aurum-catalog
+          persist-credentials: false
+
+      # The runner image has python3 and no pip. `python3 -m pip` is
+      # "No module named pip" here, the same finding job-ci-conformance
+      # already records. setup-python brings its own interpreter with pip.
+      - name: A Python with pip
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+
+      - name: Install jsonschema
+        run: |
+          python -m pip install --quiet --disable-pip-version-check jsonschema
+          python -c 'import jsonschema; print("jsonschema", jsonschema.__version__)'
+
+      - name: Run the auth and RBAC corpora
+        run: |
+          if [ -x tools/check-contract-conformance ]; then
+            tools/check-contract-conformance --root .
+          else
+            .aurum-catalog/tools/check-contract-conformance --root .
+          fi

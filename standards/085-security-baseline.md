@@ -194,8 +194,13 @@ bounded by nothing until this rule.
 | Route class | Keyed by | Default |
 |---|---|---|
 | Unauthenticated, any | client address | 60 requests per minute |
+| `POST /api/client-errors` (090 WC5) | client address | 1 request per second |
 | Authentication: login, credential reset, token and code endpoints | client address, and separately the account identifier presented | 10 per minute per address; 5 per minute per identifier |
 | Health and readiness (030 SC1) | exempt from the per-address limit for the platform's probes | — |
+
+The error-report intake is a named class in the table. It is not a product
+**Conventions** tightening. The process that answers the route applies it.
+A gateway that hands the path straight through applies none.
 
 The defaults are a floor a product tightens in its **Conventions**, and never
 loosens without a reason stated there. The per-identifier limit is what turns
@@ -234,6 +239,11 @@ reason. Anything larger is a blob under
 is bounded (32 levels), and the query string is bounded (8 KiB). A request
 over any bound is refused with `413` or `414` in the same envelope before the
 body is parsed. The parse is the attack surface the bounds protect.
+
+An endpoint can lower the bound. `POST /api/client-errors` is 16 KiB
+([`090-web-client.md`](090-web-client.md) WC5). An error report is a short
+document. A 1 MiB post on an unauthenticated write is the attack the lower
+bound stops.
 
 ### SB7. `SECURITY.md` and `security.txt` state the channel, the commitment and the scope
 

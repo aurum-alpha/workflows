@@ -428,6 +428,10 @@ SB7). They are routes like any other. A product split into services might
 serve them from somewhere other than its API, and this directory cannot know
 which.
 
+WC5's intake stays unauthenticated. The process that answers it applies the
+guards. This edge does not. A path handed straight through carries no limit
+here.
+
 `/logout` ends this application's proxy session and sends the person home on
 the host they were on. The default does not call the provider's end-session
 endpoint. That session is shared by every application on the identity

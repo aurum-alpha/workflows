@@ -247,6 +247,29 @@ service standard applies to log lines:
   data**. An error reporter is a pipe to a third party, and a report is
   written from the one context that holds everything the user typed.
 
+**The intake is pinned.** The client posts the report to
+`POST /api/client-errors` on the origin that served the bundle. The path is
+fixed so a login page and a signed-in product post to the same place. The
+route takes no credential. A crash on the login page has no session. The
+report must still arrive.
+
+**The process that answers the route applies four guards.** A gateway that
+hands the path straight through applies none. SB5 puts the limit at the edge
+where the edge can do it, and in the server otherwise. This path is the
+otherwise.
+
+- **One request per second per client address.** SB5's unauthenticated floor
+  is 60 requests per minute. This route keeps that average and a burst of
+  one. A crash loop would otherwise spend the minute's budget in one burst.
+- **The body is at most 16 KiB.** SB6's default JSON bound is 1 MiB. An
+  error report is a short document. A 1 MiB post on an unauthenticated write
+  is the attack this bound stops.
+- **A body that is not the WC5 shape is refused.** The schema is closed. An
+  unknown field is the leak WC5 exists to stop. A report that does not
+  validate is not stored.
+- **A limit refusal is HA7's `429` with `Retry-After`.** The body is the RFC
+  9457 envelope of 050 HA3.
+
 Whether a client emits telemetry beyond error reports is a repository's
 choice, stated in its **Conventions**. Where one runs full browser RUM and
 wants a single trace across the page and the backend, it is permitted to send
@@ -266,4 +289,19 @@ Per PC3, under [`contracts/web-client/`](../contracts/web-client/):
   the identifiers contract for its timestamp and the observability contract
   for the request id.
 - **`corpus.json`**: validity cases for both shapes, plus behavioural cases
-  a live client and its server must satisfy.
+  a live client and its server must satisfy. The intake cases are the
+  unauthenticated POST, the 16 KiB bound, the closed-schema refusal, and
+  HA7's `429` with `Retry-After`.
+
+## Decisions
+
+- **Authenticating the error-report intake.** A session would stop a
+  login-page crash from reporting. The route stays unauthenticated. The four
+  guards bound it.
+- **The unauthenticated SB5 floor of 60 requests per minute, as-is.** Sixty
+  per minute is the same average as one per second. A crash loop spends the
+  minute in one burst. One request per second is the burst this write needs.
+- **A rate limit on the gateway for this path.** SB5 prefers the edge where
+  the edge can. A path handed straight through carries no limit at the
+  gateway. The route already lives in the process that answers it. A prefix
+  limit on the gateway would also bind health probes.

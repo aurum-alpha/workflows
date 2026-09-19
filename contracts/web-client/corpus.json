@@ -375,6 +375,43 @@
         "rendered_date": "2025-12-31"
       },
       "note": "the calendar day an instant falls on depends on the zone; rendering the UTC date directly is off by one for a predictable fraction of users every day (WC4)"
+    },
+    {
+      "id": "client-errors-is-unauthenticated",
+      "stimulus": "POST /api/client-errors with a valid error-report body and no session cookie",
+      "expect": {
+        "status": "not 401"
+      },
+      "note": "a crash on the login page has no session, and the report must still arrive (WC5)"
+    },
+    {
+      "id": "client-errors-body-is-capped-at-16-kib",
+      "stimulus": "POST /api/client-errors with a body larger than 16 KiB",
+      "expect": {
+        "status": 413,
+        "content_type": "application/problem+json"
+      },
+      "note": "SB6's default JSON bound is 1 MiB; an unauthenticated write at that size is the attack this route's bound stops (WC5)"
+    },
+    {
+      "id": "client-errors-refuses-a-body-that-is-not-the-shape",
+      "stimulus": "POST /api/client-errors with JSON that is not a valid error-report (unknown field, or an api_error without request_id)",
+      "expect": {
+        "status": 422,
+        "content_type": "application/problem+json",
+        "stored": false
+      },
+      "note": "fail closed: a report that does not validate is not stored. The closed property set is what stops a reporter shipping the user's form (WC5)"
+    },
+    {
+      "id": "client-errors-limit-is-ha7",
+      "stimulus": "POST /api/client-errors twice in one second from the same client address, each with a valid error-report body",
+      "expect": {
+        "second_status": 429,
+        "headers.retry-after": "present",
+        "body": "validates against problem.schema.json"
+      },
+      "note": "one request per second per client address, same average as SB5's 60/min floor, burst of one; the refusal is HA7's (WC5)"
     }
   ]
 }

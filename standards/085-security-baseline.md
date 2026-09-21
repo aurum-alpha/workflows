@@ -196,7 +196,12 @@ bounded by nothing until this rule.
 | Unauthenticated, any | client address | 60 requests per minute |
 | `POST /api/client-errors` (090 WC5) | client address | 1 request per second |
 | Authentication: login, credential reset, token and code endpoints | client address, and separately the account identifier presented | 10 per minute per address; 5 per minute per identifier |
-| Health and readiness (030 SC1) | exempt from the per-address limit for the platform's probes | — |
+| `/healthz` and `/readyz` (030 SC1) | exempt on the probe listener; not published on the public origin | — |
+
+`/healthz` and `/readyz` are process probes under
+[`030-service.md`](030-service.md) SC1. The public product origin does not
+publish them. The row's exemption is for the probe listener, which a
+platform probe hits with no session.
 
 The error-report intake is a named class in the table. It is not a product
 **Conventions** tightening. The process that answers the route applies it.

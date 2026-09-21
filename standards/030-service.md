@@ -30,6 +30,18 @@ respond `application/json` in the shape
 [`contracts/service/health.schema.json`](../contracts/service/health.schema.json)
 defines. `/healthz` returns `200` whenever the process is alive.
 
+Both paths are process probes. The orchestrator, the load balancer and
+`job-image-starts` hit them on the process listener. They stay
+unauthenticated so a probe can reach them with no session. Leaving the
+probe unauthenticated is not publication on the public product hostname.
+
+The public product hostname does not forward either path. The JSON names
+the build and each dependency, and that body is not an internet-public
+response. [`085-security-baseline.md`](085-security-baseline.md) governs
+what a public origin exposes. `GET /config.json`,
+`GET /.well-known/security.txt` and `POST /api/client-errors` are the
+paths that origin answers before anyone is known.
+
 **Every readiness check declares whether the service can serve without it**.
 That declaration is what makes `/readyz` answer its own question instead of
 an easier one:
@@ -174,17 +186,13 @@ Every service, at startup, emits **one log line carrying its service name,
 version, commit SHA and build timestamp**. It reports the same values in
 the `/healthz` body. Two places on purpose. The log line is unconditional
 and is what CI reads, so the assertion does not depend on how a repository
-exposes an endpoint. The endpoint is what a human hits at three in the
-morning.
+exposes an endpoint. An operator reads that body on the process listener.
 
-Exposing a commit SHA on an unauthenticated endpoint is a deliberate, small
-disclosure. It tells an unauthenticated reader exactly which published
-vulnerabilities to try. It is accepted here because incident response needs
-it more than an attacker does. The alternative, provenance only in logs,
-puts it behind exactly the access an incident responder might be waiting
-on. Where a repository's threat model disagrees,
-[`085-security-baseline.md`](085-security-baseline.md) governs endpoint
-exposure, and the startup log line still satisfies this rule.
+The commit on an unauthenticated probe names the build that is running.
+A probe or an operator on the process network reads it. The public
+product hostname does not serve the body.
+[`085-security-baseline.md`](085-security-baseline.md) governs exposure,
+and the startup log line still satisfies this rule.
 
 ### SC6. Start fast, degrade rather than block, and never crashloop
 
@@ -264,3 +272,18 @@ Per PC3, under [`contracts/service/`](../contracts/service/):
   a live implementation must satisfy. Readiness `503`s when a dependency
   fails; startup fails naming every missing variable; `SIGTERM` flips
   readiness before draining.
+
+## Decisions
+
+- **Publishing `/healthz` and `/readyz` on the public product hostname.**
+  The body names the commit and each dependency. An internet client learns
+  which build to attack and which checks the process runs. The probes stay
+  on the process listener (SC1, SC5).
+- **A public page that only says the process is up.** `github.com/healthz`
+  is 58 bytes and reads "Service ready". GitHub publishes no kube-style
+  `/readyz`. A public page answers a different question from the process
+  probe. This standard requires no such page.
+- **Provenance only in the startup log.** The log line is what CI reads.
+  An operator on the process listener still needs the body. Dropping it
+  from `/healthz` hides the build from the request a probe already makes
+  (SC5).

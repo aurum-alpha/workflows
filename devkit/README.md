@@ -30,7 +30,9 @@ every service the gateway can reach, and where each path goes.
     "client": "client:5173"
   },
   "routes": [
-    { "exact":  "/healthz", "next": "app" },
+    { "exact":  "/config.json", "next": "app" },
+    { "exact":  "/.well-known/security.txt", "next": "app" },
+    { "exact":  "/api/client-errors", "next": "app" },
     { "prefix": "/hooks/",  "next": "app" },
     { "prefix": "/api/",    "next": "auth", "then": "app" },
     { "prefix": "/",        "next": "auth", "then": "client", "no_session": "redirect" }
@@ -417,16 +419,23 @@ That repetition is load-bearing. nginx drops every inherited `proxy_set_header`
 inside a location that declares one of its own. A block written once at server
 level would therefore vanish from exactly the locations that matter.
 
-Five paths are the ones every product's table carries, each defined by a
-standard as answerable before anyone is known. `/healthz` and `/readyz`
-([`standards/030-service.md`](../standards/030-service.md) SC1),
-`/config.json` and `/api/client-errors`
-([`standards/090-web-client.md`](../standards/090-web-client.md) WC2 and WC5),
-and `/.well-known/security.txt`
-([`standards/085-security-baseline.md`](../standards/085-security-baseline.md)
-SB7). They are routes like any other. A product split into services might
-serve them from somewhere other than its API, and this directory cannot know
-which.
+Three paths stay on the public product origin and are answerable before
+anyone is known. `GET /config.json` is
+[`standards/090-web-client.md`](../standards/090-web-client.md) WC2.
+`GET /.well-known/security.txt` is
+[`standards/085-security-baseline.md`](../standards/085-security-baseline.md)
+SB7. `POST /api/client-errors` is
+[`standards/090-web-client.md`](../standards/090-web-client.md) WC5. They
+are routes like any other. A product split into services might serve them
+from somewhere other than its API, and this directory cannot know which.
+
+`/healthz` and `/readyz` are process probes
+([`standards/030-service.md`](../standards/030-service.md) SC1). The
+orchestrator, the load balancer and `job-image-starts` hit them on the
+process listener. They stay unauthenticated there so a probe can reach
+them. The public product hostname does not forward them. The JSON names
+the build and each dependency, and that body is not an internet-public
+response.
 
 WC5's intake stays unauthenticated. The process that answers it applies the
 guards. This edge does not. A path handed straight through carries no limit

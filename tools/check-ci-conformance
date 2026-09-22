@@ -36,9 +36,11 @@ principle needed enforcing:
                           needs. Distinct from D1: a job can sit correctly
                           downstream of the build and still be absent from the
                           rollup, and then its failure stops nothing
-  WD  workdir is a shape       a JS shared job's workdir input is `.` or
-                          `client` and nothing else. It distinguishes two real
-                          repo shapes; it is not a per-repo path setting
+  WD  workdir is a real path  a shared job's workdir input is relative, stays
+                          inside the repo, and holds the manifest that job's
+                          language reads: package.json for a JS or TS job,
+                          composer.json for a PHP one, read off the callee's
+                          `language=` declaration
   D8  needs.<id> resolves    every ${{ needs.X.* }} expression names a job that
                           exists and that this job declares in needs:. A rename
                           that updates job ids and needs: lists still leaves
@@ -955,11 +957,27 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
             # version standardisation either.
             #
             # What replaces it is the check the allowlist was standing in for.
-            # A workdir is wrong when it does not point at a pnpm project, and
-            # the tree is right here, so say so HERE rather than let the job
-            # discover it on a runner six steps in. Relative, inside the repo,
-            # and holding a package.json.
-            if re.search(r"/job-(build|bundle|lint|test-unit|typecheck)-", uses) or "job-image-docker" in uses:
+            # A workdir is wrong when it does not point at a project of the
+            # callee's language, and the tree is right here, so say so HERE
+            # rather than let the job discover it on a runner six steps in.
+            # Relative, inside the repo, and holding the manifest that language
+            # reads. Which manifest is read off the callee's `language=`
+            # declaration, never off the job id: the PHP family takes the same
+            # `workdir` input the JS jobs take, and a rule that assumed
+            # package.json failed platform-reference's PHP service for holding
+            # a composer.json instead.
+            d_wd = catalog_declaration(uses)
+            wd_lang = d_wd["language"] if isinstance(d_wd, dict) else None
+            if wd_lang == "php":
+                manifest, version_file = "composer.json", ".php-version"
+            else:
+                manifest, version_file = "package.json", ".node-version"
+            takes_workdir = (
+                wd_lang == "php"
+                or re.search(r"/job-(build|bundle|lint|test-unit|typecheck)-", uses)
+                or "job-image-docker" in uses
+            )
+            if takes_workdir:
                 m = re.search(r"^      workdir:\s*(\S+)\s*$", props.get("__with_raw__", ""), re.M)
                 if m:
                     wd = m.group(1).strip("\"'")
@@ -968,10 +986,10 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
                     elif wd.startswith("/") or ".." in pathlib.PurePosixPath(wd).parts:
                         bad("WD", f"'{job}' passes workdir: {wd} — it must be relative to "
                                   "the repo root and must not escape it")
-                    elif not (repo / wd / "package.json").is_file():
+                    elif not (repo / wd / manifest).is_file():
                         bad("WD", f"'{job}' passes workdir: {wd}, which holds no "
-                                  "package.json — the input names the directory holding "
-                                  "package.json and .node-version")
+                                  f"{manifest} — the input names the directory holding "
+                                  f"{manifest} and {version_file}")
 
             # --- D8: needs.<id> expressions resolve ------------------------
             # A rename moves job ids and needs: lists; ${{ needs.X.outputs.Y }}

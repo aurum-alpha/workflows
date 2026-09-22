@@ -1,0 +1,81 @@
+#!/bin/sh
+# Host prerequisites for private aurum-alpha modules.
+#
+# A product's tools/repo-setup names the modes that product needs:
+#
+#   go        GOPRIVATE includes github.com/aurum-alpha/*
+#   npm       ~/.npmrc sends @aurum-alpha to GitHub Packages
+#   composer  Composer github-oauth, when composer is on PATH
+#
+# npm and composer read NODE_AUTH_TOKEN. The token needs repo and
+# read:packages scope, and it is exported from the shell startup file so a
+# later terminal still has it. GOPRIVATE is written with go env -w, which
+# persists for the user account.
+set -eu
+
+usage() {
+  echo "usage: private-module-host go|npm|composer" >&2
+  exit 2
+}
+
+require_token() {
+  startup=0
+  for f in "$HOME/.zshrc" "$HOME/.zprofile"; do
+    if [ -f "$f" ] && grep -q '^export NODE_AUTH_TOKEN=' "$f"; then
+      startup=1
+    fi
+  done
+  if [ -n "${NODE_AUTH_TOKEN:-}" ] && [ "$startup" -eq 1 ]; then
+    return 0
+  fi
+  echo "error: NODE_AUTH_TOKEN must be exported from ~/.zshrc or ~/.zprofile." >&2
+  echo "The token needs repo and read:packages scope:" >&2
+  echo "  echo 'export NODE_AUTH_TOKEN=ghp_…' >> ~/.zshrc" >&2
+  exit 1
+}
+
+ensure_go() {
+  if ! command -v go >/dev/null 2>&1; then
+    echo "error: go is not on PATH." >&2
+    exit 1
+  fi
+  prefix='github.com/aurum-alpha/*'
+  current=$(go env GOPRIVATE)
+  if printf '%s\n' "$current" | tr ',' '\n' | grep -Fxq "$prefix"; then
+    return 0
+  fi
+  if [ -z "$current" ]; then
+    go env -w "GOPRIVATE=${prefix}"
+  else
+    go env -w "GOPRIVATE=${current},${prefix}"
+  fi
+  echo "GOPRIVATE includes ${prefix}"
+}
+
+ensure_npm() {
+  require_token
+  npmrc=${HOME}/.npmrc
+  touch "$npmrc"
+  tmp=$(mktemp)
+  grep -v -e '^@aurum-alpha:registry=' -e '^//npm.pkg.github.com/:_authToken=' "$npmrc" >"$tmp" || true
+  printf '%s\n%s\n' \
+    '@aurum-alpha:registry=https://npm.pkg.github.com' \
+    '//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}' >>"$tmp"
+  mv "$tmp" "$npmrc"
+}
+
+ensure_composer() {
+  require_token
+  if ! command -v composer >/dev/null 2>&1; then
+    return 0
+  fi
+  composer config --global github-oauth.github.com "$NODE_AUTH_TOKEN"
+}
+
+[ $# -eq 1 ] || usage
+case "$1" in
+  go) ensure_go ;;
+  npm) ensure_npm ;;
+  composer) ensure_composer ;;
+  *) usage ;;
+esac

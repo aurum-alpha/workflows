@@ -87,6 +87,26 @@ jobs:
       # and the ones with a function in trace[0] are the calls it actually
       # reached. Module-level findings mean "you require this, you do not call
       # it", which is not a reason to fail a build.
+      - name: Private module credentials
+        env:
+          AURUM_READ_TOKEN: ${{ secrets.AURUM_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Present only where this repository installs a private
+          # aurum-alpha module. Absent, the job is unchanged.
+          # The insteadOf lives in this job's temp dir: a persistent
+          # runner must not keep the token in ~/.gitconfig.
+          if [ -z "${AURUM_READ_TOKEN}" ]; then
+            exit 0
+          fi
+          cfg="${RUNNER_TEMP}/private-modules.gitconfig"
+          git config --file "$cfg" \
+            url."https://x-access-token:${AURUM_READ_TOKEN}@github.com/".insteadOf \
+            "https://github.com/"
+          {
+            echo "GIT_CONFIG_GLOBAL=${cfg}"
+            echo "GOPRIVATE=github.com/aurum-alpha/*"
+          } >> "$GITHUB_ENV"
       - name: govulncheck
         working-directory: ${{ inputs.workdir }}
         env:

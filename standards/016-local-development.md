@@ -220,7 +220,7 @@ thing provisioned.
 
 A one-shot that exits 0 fails `--wait` with no such edge.
 `server` depends on `seed` the way it depends on `migrate`.
-`tools/dev-init` runs `docker compose up --wait -d` and then prints the ports.
+`tools/dev-init` runs `tools/repo-setup`, then `docker compose up --wait -d`, then prints the ports. `tools/repo-setup` is that repository's host prerequisites and names only what that repository needs. Private Go, npm, and Composer credentials are applied by `workflows/tools/private-module-host`, which `tools/repo-setup` calls. The docker invocation is the same in every repository.
 
 **An environment file the repository does not contain fails the whole stack.**
 A compose file naming one fails before anything starts. Where local values are

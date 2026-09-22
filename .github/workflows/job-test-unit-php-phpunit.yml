@@ -1,0 +1,195 @@
+# aurum-job: capability=test-unit language=php role=gate
+# Portfolio capability: test-unit, PHP, phpunit (CI_STANDARD Principle 12 —
+# one way per capability). Single-job reusable workflow: the caller owns the
+# job id and needs: wiring; this file owns the entire job body. Callers pass
+# secrets: inherit; vars.RUNNER resolves in the caller's context.
+#
+# One way: `composer test:unit`, with the JUnit report and the Clover
+# coverage file named on the command line, published as artifacts for
+# job-coverage-upload. The script is the seam on purpose, and it is the one
+# place this family runs a composer script rather than the tool. Which
+# testsuite is "unit", and what a framework needs in its environment before a
+# test can boot, are the repository's own (015-commands DC2, DC3); phpunit run
+# bare would run every suite in phpunit.xml, the integration ones included,
+# against a database this job does not stand up. The telemetry flags are
+# handed through `--` and are this job's, which is the exception DC2 declares
+# for test:unit: the script reproduces the verdict, the job adds the reports.
+#
+# Coverage comes from pcov rather than xdebug: line coverage is all the
+# collector reads, and pcov collects it at a fraction of the cost.
+name: job-test-unit-php-phpunit
+
+on:
+  workflow_call:
+    inputs:
+      workdir:
+        description: >-
+          Directory holding composer.json, composer.lock and .php-version,
+          relative to the repo root. `.` for a repo whose PHP project is the
+          repo; `services/php` is the other common shape, one service inside a
+          multi-language tree. Any relative path inside the root is accepted:
+          the catalog standardises the toolchain, not the tree. It must contain
+          a composer.json and a .php-version; the job fails naming the path if
+          not.
+        type: string
+        default: "."
+      extensions:
+        description: >-
+          PHP extensions to install, as setup-php's `extensions` input takes
+          them (`intl, pdo_pgsql`). setup-php's own defaults are always
+          present; name here what composer.json's `ext-*` requirements and the
+          tools need beyond them. An extension a tool needs and the package
+          does not — composer-require-checker wants bcmath — is named here
+          rather than in composer.json, which would claim the package needs
+          an extension it never calls.
+        type: string
+        default: ""
+      runner:
+        description: >-
+          Override runs-on. Leave empty for the standard default, which resolves
+          vars.RUNNER. Set a literal label only where that one job has a reason to
+          bypass the standard runner, and say the reason in a comment beside it
+          (CI_STANDARD Principle 4).
+        type: string
+        default: ""
+
+jobs:
+  test-unit:
+    runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-26.04' }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      # Composer wants a version for the root package and has nothing to read
+      # one from: actions/checkout leaves a shallow detached HEAD, and neither
+      # an application nor a library keeps a `version` field in composer.json
+      # (Principle 16 — the repo is versioned, the manifest is not). Left
+      # alone it guesses `1.0.0` and says so in every job. `dev-main` states
+      # the true thing: an unreleased development tree. Nothing resolves
+      # against the root version when installing from a lockfile.
+      COMPOSER_ROOT_VERSION: dev-main
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The workdir is DEFAULTED, not restricted, for the reason the JS jobs
+      # give: what the catalog standardises is the runner — one PHP, one
+      # Composer, one set of steps in one order — and none of that depends on
+      # where the code sits. What is checked is that the path is safe and
+      # real, and it names the path so a typo fails here rather than inside
+      # composer.
+      - name: Validate workdir
+        env:
+          WD: ${{ inputs.workdir }}
+        run: |
+          set -euo pipefail
+          case "$WD" in
+            "") echo "::error::workdir is empty; use '.' for the repo root."
+                exit 1 ;;
+            /*) echo "::error::workdir must be relative to the repo root;" \
+                     "got '$WD'."; exit 1 ;;
+            ..|../*|*/../*|*/..)
+                echo "::error::workdir must not escape the repo root;" \
+                     "got '$WD'."; exit 1 ;;
+          esac
+          for required in composer.json .php-version; do
+            if [ ! -f "$WD/$required" ]; then
+              echo "::error::no $required at workdir '$WD'. The workdir names" \
+                   "the directory holding composer.json and .php-version," \
+                   "relative to the repo root."
+              exit 1
+            fi
+          done
+      # .php-version is the one source of truth for the PHP a unit targets
+      # (Principle 1), and setup-php reads it directly. Composer is pinned the
+      # same way where a repo carries .composer-version; a repo that does not
+      # takes the current Composer 2, which is setup-php's own default.
+      - name: Resolve the Composer pin
+        id: composer
+        shell: bash
+        env:
+          WD: ${{ inputs.workdir }}
+        run: |
+          set -euo pipefail
+          if [ -f "$WD/.composer-version" ]; then
+            pin="$(tr -d ' \t\r\nv' < "$WD/.composer-version")"
+            echo "tool=composer:${pin}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tool=composer:v2" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: shivammathur/setup-php@accd6127cb78bee3e8082180cb391013d204ef9f # v2.37.0
+        with:
+          php-version-file: ${{ inputs.workdir }}/.php-version
+          extensions: ${{ inputs.extensions }}
+          tools: ${{ steps.composer.outputs.tool }}
+          coverage: pcov
+      # Composer's DOWNLOAD cache — package archives, not the installed tree.
+      # A cache in the Principle 21 sense: a miss costs time and nothing else,
+      # because the install below runs either way. The dev tree does not ship,
+      # so no job hands vendor/ to another; each installs its own.
+      - name: Get Composer cache directory
+        id: composer-cache-dir
+        shell: bash
+        working-directory: ${{ inputs.workdir }}
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.composer-cache-dir.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles(format('{0}/composer.lock', inputs.workdir)) }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
+      - name: Install dependencies
+        working-directory: ${{ inputs.workdir }}
+        run: composer install --no-interaction --no-progress --prefer-dist
+      - name: Unit tests
+        working-directory: ${{ inputs.workdir }}
+        run: |
+          set -euo pipefail
+          mkdir -p coverage
+          composer test:unit -- \
+            --log-junit test-report.junit.xml \
+            --coverage-clover coverage/php-unit.xml
+      # Artifact names are a namespace shared by every job in the caller's run,
+      # and a called workflow cannot see the caller's job id (github.job reads
+      # `test-unit`, the id inside this file). workdir is the only thing that
+      # distinguishes two callers of this job, so it is the key.
+      #
+      # !cancelled(), because the test-results upload below runs on a failed
+      # run and reads this output. Without it a failing unit skips this step,
+      # renders the artifact name as a bare `testresults-php-`, and two failing
+      # units in one repo then collide on that name.
+      - name: Name this unit's artifacts
+        id: key
+        if: ${{ !cancelled() }}
+        shell: bash
+        env:
+          WD: ${{ inputs.workdir }}
+        run: |
+          set -euo pipefail
+          key="${WD//\//-}"
+          key="${key//./root}"
+          echo "key=${key}" >> "$GITHUB_OUTPUT"
+
+      # Handed to job-coverage-upload rather than sent to Codecov from here, so
+      # this job answers only "do the tests pass" and a Codecov outage cannot
+      # skip the caller's image-build. See job-coverage-upload.yml.
+      #
+      # Inherits success() deliberately: a failed unit publishes no coverage.
+      - name: Publish coverage for the upload job
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-php-${{ steps.key.outputs.key }}
+          path: ${{ inputs.workdir }}/coverage/php-unit.xml
+          if-no-files-found: error
+          retention-days: 1
+
+      # !cancelled(), unlike coverage: a failed run IS the test-analytics
+      # signal, and it is the run Codecov most wants to see. phpunit writes the
+      # JUnit report whether the tests pass or fail, so a missing file means
+      # the job died before the test step, which is worth failing on.
+      - name: Publish test results for the upload job
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: testresults-php-${{ steps.key.outputs.key }}
+          path: ${{ inputs.workdir }}/test-report.junit.xml
+          if-no-files-found: error
+          retention-days: 1

@@ -1,0 +1,181 @@
+# aurum-job: capability=composer language=php role=root
+# Portfolio capability: composer, PHP (CI_STANDARD Principle 12 — one way
+# per capability). Single-job reusable workflow: the caller owns the job id
+# and needs: wiring; this file owns the entire job body. Callers pass
+# secrets: inherit; vars.RUNNER resolves in the caller's context.
+#
+# The PHP counterpart of job-go-mod: it comes first, compiles nothing, and
+# makes three claims about the dependency tree that no gate below it makes.
+# .php-version, the runtime and composer.json's `require.php` name one PHP,
+# so a bump is a one-file diff that cannot half-apply. composer.json and
+# composer.lock agree, and `--strict` makes a warning a failure. And the
+# lockfile installs — through a path repository where a module is vendored,
+# with no credential — which is the claim a clean clone rests on.
+#
+# `vendor/` is not handed on. For a library it is a cache and every gate
+# installs its own (Principle 21); for an application the tree that ships is
+# the one the repo's own build job installs with --no-dev, from the same
+# lockfile this job proved.
+#
+# Named for composer and not for a framework (Principle 20): the dependency
+# manager is the same under CodeIgniter, Laravel or nothing at all.
+name: job-php-composer
+
+on:
+  workflow_call:
+    inputs:
+      workdir:
+        description: >-
+          Directory holding composer.json, composer.lock and .php-version,
+          relative to the repo root. `.` for a repo whose PHP project is the
+          repo; `services/php` is the other common shape, one service inside a
+          multi-language tree. Any relative path inside the root is accepted:
+          the catalog standardises the toolchain, not the tree. It must contain
+          a composer.json and a .php-version; the job fails naming the path if
+          not.
+        type: string
+        default: "."
+      extensions:
+        description: >-
+          PHP extensions to install, as setup-php's `extensions` input takes
+          them (`intl, pdo_pgsql`). setup-php's own defaults are always
+          present; name here what composer.json's `ext-*` requirements and the
+          tools need beyond them. An extension a tool needs and the package
+          does not — composer-require-checker wants bcmath — is named here
+          rather than in composer.json, which would claim the package needs
+          an extension it never calls.
+        type: string
+        default: ""
+      runner:
+        description: >-
+          Override runs-on. Leave empty for the standard default, which resolves
+          vars.RUNNER. Set a literal label only where that one job has a reason to
+          bypass the standard runner, and say the reason in a comment beside it
+          (CI_STANDARD Principle 4).
+        type: string
+        default: ""
+
+jobs:
+  composer:
+    runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-26.04' }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      # Composer wants a version for the root package and has nothing to read
+      # one from: actions/checkout leaves a shallow detached HEAD, and neither
+      # an application nor a library keeps a `version` field in composer.json
+      # (Principle 16 — the repo is versioned, the manifest is not). Left
+      # alone it guesses `1.0.0` and says so in every job. `dev-main` states
+      # the true thing: an unreleased development tree. Nothing resolves
+      # against the root version when installing from a lockfile.
+      COMPOSER_ROOT_VERSION: dev-main
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The workdir is DEFAULTED, not restricted, for the reason the JS jobs
+      # give: what the catalog standardises is the runner — one PHP, one
+      # Composer, one set of steps in one order — and none of that depends on
+      # where the code sits. What is checked is that the path is safe and
+      # real, and it names the path so a typo fails here rather than inside
+      # composer.
+      - name: Validate workdir
+        env:
+          WD: ${{ inputs.workdir }}
+        run: |
+          set -euo pipefail
+          case "$WD" in
+            "") echo "::error::workdir is empty; use '.' for the repo root."
+                exit 1 ;;
+            /*) echo "::error::workdir must be relative to the repo root;" \
+                     "got '$WD'."; exit 1 ;;
+            ..|../*|*/../*|*/..)
+                echo "::error::workdir must not escape the repo root;" \
+                     "got '$WD'."; exit 1 ;;
+          esac
+          for required in composer.json .php-version; do
+            if [ ! -f "$WD/$required" ]; then
+              echo "::error::no $required at workdir '$WD'. The workdir names" \
+                   "the directory holding composer.json and .php-version," \
+                   "relative to the repo root."
+              exit 1
+            fi
+          done
+      # .php-version is the one source of truth for the PHP a unit targets
+      # (Principle 1), and setup-php reads it directly. Composer is pinned the
+      # same way where a repo carries .composer-version; a repo that does not
+      # takes the current Composer 2, which is setup-php's own default.
+      - name: Resolve the Composer pin
+        id: composer
+        shell: bash
+        env:
+          WD: ${{ inputs.workdir }}
+        run: |
+          set -euo pipefail
+          if [ -f "$WD/.composer-version" ]; then
+            pin="$(tr -d ' \t\r\nv' < "$WD/.composer-version")"
+            echo "tool=composer:${pin}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tool=composer:v2" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: shivammathur/setup-php@accd6127cb78bee3e8082180cb391013d204ef9f # v2.37.0
+        with:
+          php-version-file: ${{ inputs.workdir }}/.php-version
+          extensions: ${{ inputs.extensions }}
+          tools: ${{ steps.composer.outputs.tool }}
+          coverage: none
+      # Composer's DOWNLOAD cache — package archives, not the installed tree.
+      # A cache in the Principle 21 sense: a miss costs time and nothing else,
+      # because the install below runs either way. The dev tree does not ship,
+      # so no job hands vendor/ to another; each installs its own.
+      - name: Get Composer cache directory
+        id: composer-cache-dir
+        shell: bash
+        working-directory: ${{ inputs.workdir }}
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.composer-cache-dir.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles(format('{0}/composer.lock', inputs.workdir)) }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
+      - name: Install dependencies
+        working-directory: ${{ inputs.workdir }}
+        run: composer install --no-interaction --no-progress --prefer-dist
+      - name: The runtime is the version .php-version names
+        shell: bash
+        working-directory: ${{ inputs.workdir }}
+        run: |
+          set -euo pipefail
+          required="$(tr -d ' \t\r\n' < .php-version)"
+          current="$(php -r 'echo PHP_VERSION;')"
+          # .php-version may pin major.minor or the full patch level; the
+          # runtime has to be that version or a patch of it, never a neighbour.
+          case "$current" in
+            "$required"|"$required".*)
+              echo "PHP ${current} matches .php-version (${required})" ;;
+            *)
+              echo "::error::PHP version mismatch: .php-version says ${required}," \
+                   "the job provides ${current}."
+              exit 1 ;;
+          esac
+      - name: composer.json admits that version
+        shell: bash
+        working-directory: ${{ inputs.workdir }}
+        run: |
+          set -euo pipefail
+          php -r '
+            $constraint = json_decode(file_get_contents("composer.json"), true)["require"]["php"] ?? "";
+            $wanted = trim(file_get_contents(".php-version"));
+            if (!str_contains($constraint, $wanted)) {
+              fwrite(STDERR, "::error::require.php is {$constraint}, which does not name {$wanted}\n");
+              exit(1);
+            }
+            echo "require.php {$constraint} admits {$wanted}\n";
+          '
+      # --no-check-all skips "exact version constraints should be avoided".
+      # The fleet pins every dependency on purpose, and that warning is the
+      # policy rather than a defect; everything else --strict promotes to a
+      # failure still fails.
+      - name: composer.json and composer.lock agree
+        working-directory: ${{ inputs.workdir }}
+        run: composer validate --strict --no-check-all

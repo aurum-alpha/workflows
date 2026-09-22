@@ -478,6 +478,11 @@ jobs:
           target: ${{ inputs.target }}
           platforms: ${{ inputs.platforms }}
           build-args: ${{ inputs.build_args }}
+          # Private module installs mount this as id=aurum_read_token. The org
+          # read token can clone platform-go and platform-php. An npm install
+          # still authenticates with github.token when that secret is absent.
+          secrets: |
+            aurum_read_token=${{ secrets.AURUM_READ_TOKEN != '' && secrets.AURUM_READ_TOKEN || github.token }}
           labels: ${{ steps.meta.outputs.labels }}
           outputs: type=image,name=${{ steps.name.outputs.image }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha

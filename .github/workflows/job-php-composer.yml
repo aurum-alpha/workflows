@@ -158,20 +158,24 @@ jobs:
                    "the job provides ${current}."
               exit 1 ;;
           esac
+      # The PHP arrives on stdin through a quoted heredoc rather than as a
+      # single-quoted `php -r` argument: the dollar signs are PHP's, and
+      # shellcheck reads a single-quoted string as shell that forgot to expand.
       - name: composer.json admits that version
         shell: bash
         working-directory: ${{ inputs.workdir }}
         run: |
           set -euo pipefail
-          php -r '
-            $constraint = json_decode(file_get_contents("composer.json"), true)["require"]["php"] ?? "";
-            $wanted = trim(file_get_contents(".php-version"));
-            if (!str_contains($constraint, $wanted)) {
+          php <<'PHP'
+          <?php
+          $constraint = json_decode(file_get_contents("composer.json"), true)["require"]["php"] ?? "";
+          $wanted = trim(file_get_contents(".php-version"));
+          if (!str_contains($constraint, $wanted)) {
               fwrite(STDERR, "::error::require.php is {$constraint}, which does not name {$wanted}\n");
               exit(1);
-            }
-            echo "require.php {$constraint} admits {$wanted}\n";
-          '
+          }
+          echo "require.php {$constraint} admits {$wanted}\n";
+          PHP
       # --no-check-all skips "exact version constraints should be avoided".
       # The fleet pins every dependency on purpose, and that warning is the
       # policy rather than a defect; everything else --strict promotes to a

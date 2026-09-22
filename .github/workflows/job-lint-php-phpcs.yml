@@ -127,6 +127,23 @@ jobs:
           extensions: ${{ inputs.extensions }}
           tools: ${{ steps.composer.outputs.tool }}
           coverage: none
+      # The same step the Go jobs carry (Principle 11), in Composer's form.
+      # GITHUB_TOKEN can read this repository and nothing else, so a product
+      # requiring a private platform module over Composer VCS needs the org
+      # read token to clone it. Present, it becomes COMPOSER_AUTH for the
+      # rest of the job; absent, the job is unchanged. COMPOSER_AUTH also
+      # takes precedence over the github-oauth entry setup-php writes from
+      # GITHUB_TOKEN, so on a job with the secret Composer speaks to GitHub
+      # as the read token throughout.
+      - name: Private module credentials
+        env:
+          AURUM_READ_TOKEN: ${{ secrets.AURUM_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${AURUM_READ_TOKEN}" ]; then
+            exit 0
+          fi
+          printf 'COMPOSER_AUTH={"github-oauth":{"github.com":"%s"}}\n' "$AURUM_READ_TOKEN" >> "$GITHUB_ENV"
       # Composer's DOWNLOAD cache — package archives, not the installed tree.
       # A cache in the Principle 21 sense: a miss costs time and nothing else,
       # because the install below runs either way. The dev tree does not ship,

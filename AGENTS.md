@@ -295,6 +295,15 @@ that nearly duplicates the first gives a codebase two answers to one question.
 That is the same failure this whole standards repository exists to prevent, at
 a smaller scale.
 
+**An error another product would also raise belongs in the platform log
+package.** Add it in `platform-go`, `platform-ts` and `platform-php` together.
+One wire `type` lives in `contracts/platform/vocabulary.json`. Add that type
+the first time any product needs it. A type stays in one product only when a
+second product would not log that failure.
+
+A token refusal keeps its existing name. A denial reason keeps its existing
+name. A Keycloak code keeps its existing name.
+
 ### 7. Agent guidance carries no mutable state
 
 `AGENTS.md` says how to work in a repository. It never says what that

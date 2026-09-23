@@ -384,6 +384,41 @@
       },
       "valid": true,
       "note": "'internal error' is admissible as a class when the line answers what exactly went wrong (SC2)"
+    },
+    {
+      "id": "logline-error-with-location-ok",
+      "def": "logLine",
+      "value": {
+        "ts": "2026-08-31T14:07:02.417Z",
+        "level": "error",
+        "msg": "mysql connect timeout",
+        "service": "billing",
+        "error": {
+          "type": "timeout",
+          "message": "connect timed out",
+          "file": "store/mysql.go",
+          "line": 42
+        }
+      },
+      "valid": true,
+      "note": "file and line are the frame where the error was constructed, when the runtime recorded one (SC2)"
+    },
+    {
+      "id": "logline-rejects-line-without-file",
+      "def": "logLine",
+      "value": {
+        "ts": "2026-08-31T14:07:02.417Z",
+        "level": "error",
+        "msg": "mysql connect timeout",
+        "service": "billing",
+        "error": {
+          "type": "timeout",
+          "message": "connect timed out",
+          "line": 42
+        }
+      },
+      "valid": false,
+      "note": "a line number without the file is not a location"
     }
   ],
   "lifecycle": [

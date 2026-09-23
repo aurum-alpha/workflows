@@ -95,6 +95,11 @@ BUILD_SERVER = (
     "--outfile=dist/index.js"
 )
 
+# job-build-ts-lib.yml      : pnpm exec tsc -b tsconfig.build.json
+# A library is not a Vite client, so it cannot take `build` — that name is
+# the client's. `build:lib` is the same shape as `build:server`.
+BUILD_LIB = "tsc -b tsconfig.build.json"
+
 # job-typecheck-ts-tsc.yml  : pnpm exec tsc -b --noEmit
 TYPECHECK = "tsc -b --noEmit"
 
@@ -175,6 +180,7 @@ VIA_PACKAGE_MANAGER = re.compile(r"(^|&&\s*|\|\|\s*|;\s*)(pnpm|npm|npx|yarn)\s")
 JOBS = {
     "vite": "job-build-js-vite.yml",
     "esbuild": "job-build-js-esbuild.yml",
+    "tslib": "job-build-ts-lib.yml",
     "oxlint": "job-lint-js-oxlint.yml",
     "prettier": "job-fmt-js-prettier.yml",
     "tsc": "job-typecheck-ts-tsc.yml",
@@ -224,6 +230,9 @@ def expected(pkg_dir: pathlib.Path, calls: list) -> dict[str, object]:
 
     if "esbuild" in kinds:
         want["build:server"] = BUILD_SERVER
+
+    if "tslib" in kinds:
+        want["build:lib"] = BUILD_LIB
 
     if has_server:
         want["dev:server"] = DEV_SERVER
@@ -284,6 +293,7 @@ CANONICAL = {
     "dev:server": "it needs a Node server",
     "build": "it needs a vite build job",
     "build:server": "it needs an esbuild job",
+    "build:lib": "it needs a TypeScript library build job",
     "start": "it needs a Node server",
     "typecheck": "it needs a tsc job",
     "test:watch": "it needs a vitest job",

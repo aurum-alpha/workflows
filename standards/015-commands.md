@@ -52,10 +52,11 @@ of a number the job never compares against a threshold.
 
 ### DC3 — the repository's shape decides which commands exist
 
-It is not a fixed list applied to everything. A package that builds a client has
-`build`. One that bundles a server has `build:server`. One with a Node server
-has `start`, `dev:server` and an orchestrating `dev`. One with drizzle has
-`db:push`. A package with none of those has none of them, and that is a pass.
+It is not a fixed list applied to everything. A package that builds a client
+has `build`, a server has `build:server`, and a TypeScript library has
+`build:lib`. One with a Node server has `start`, `dev:server` and an
+orchestrating `dev`. One with drizzle has `db:push`. A package with none of
+those has none of them, and that is a pass.
 
 **The rule runs both ways.** A canonical command present while its condition is
 false is as wrong as one missing. A gate that only ever adds cannot see a
@@ -108,6 +109,7 @@ tool. The document then keeps working when the tool's flags move.
 | `dev:server` | `NODE_ENV=development tsx watch server/index.ts` | the package has a Node server |
 | `build` | `vite build` | `job-build-js-vite` |
 | `build:server` | `esbuild server/index.ts --platform=node --bundle --packages=external --format=esm --define:process.env.NODE_ENV='"production"' --outfile=dist/index.js` | `job-build-js-esbuild` |
+| `build:lib` | `tsc -b tsconfig.build.json` | `job-build-ts-lib` |
 | `start` | `NODE_ENV=production node dist/index.js` | the package has a Node server |
 | `typecheck` | `tsc -b --noEmit` | `job-typecheck-ts-tsc` |
 | `lint` / `lint:<target>` | `oxlint <dir> --type-aware --deny-warnings` | `job-lint-js-oxlint`, one per call |

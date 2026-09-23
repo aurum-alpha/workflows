@@ -634,7 +634,8 @@
           "manage-users",
           "view-users",
           "query-users",
-          "view-clients"
+          "view-clients",
+          "query-clients"
         ]
       }
     }

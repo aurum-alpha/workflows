@@ -126,6 +126,12 @@ is a terminal `fatal` that precedes an exit (SC6). Nothing downstream will
 ever query it, and a human is reading raw stdout, so `msg` carries the whole
 diagnosis in plain words.
 
+Where the runtime recorded the frame that constructed the error, the `error`
+object also carries `file` and `line` as a pair. That is the frame of the
+error, not the line that logged it. A runtime that did not record a frame
+omits both. A path is relative to the module root when the emitter was given
+that prefix. A home directory does not become part of the line.
+
 **Specific is never an excuse to leak**. Name the configuration key, never
 its value. Reference a record by its public id, never its contents. Name the
 field that failed validation, not the personal data. Redaction is

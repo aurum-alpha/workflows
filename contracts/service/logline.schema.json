@@ -59,11 +59,35 @@
         "cause": {
           "type": "string",
           "description": "Where this failure wrapped another, the cause it wrapped. The chain is preserved rather than replaced, because the outermost error is rarely the actionable one."
+        },
+        "file": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Source file where the error was constructed, relative to the module root when the runtime path contains the prefix the emitter was given. Omitted when the runtime did not record a frame. Paired with line."
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "1-based line in file. Omitted together with file when the runtime did not record a frame."
         }
       },
       "required": [
         "type",
         "message"
+      ],
+      "allOf": [
+        {
+          "description": "file and line are one frame. A line number without a file, or a file without a line, is not a location.",
+          "if": {
+            "anyOf": [
+              { "required": ["file"] },
+              { "required": ["line"] }
+            ]
+          },
+          "then": {
+            "required": ["file", "line"]
+          }
+        }
       ]
     }
   },

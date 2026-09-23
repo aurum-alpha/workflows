@@ -47,6 +47,15 @@
       "go": "tenancy",
       "ts": "tenancy",
       "php": "Platform\\Tenancy"
+    },
+    "log": {
+      "go": "log",
+      "ts": "log",
+      "php": "Platform\\Log",
+      "except": {
+        "go": "Callers alias the import. The path is log and the standard library already owns that name."
+      },
+      "note": "Go's binding is slog.Handler. The Express binding is log/express. PHP implements Psr\\Log\\LoggerInterface, and a CodeIgniter app points Services::logger at that implementation. There is no CodeIgniter\\Log\\LoggerInterface in 4.7."
     }
   },
   "wire": {
@@ -229,6 +238,19 @@
     "anonymous_subject": {
       "rule": "060 AU9.",
       "value": "anonymous"
+    },
+    "log_error_types": {
+      "rule": "030 SC2. The starter set the log package exports, the same wire string in every language. Not a closed set of every error.type a service may emit: a failure a second product would not raise stays in that product. An error another product would raise is added here, in all three languages, the first time any product needs it. Token refusals, denial reasons, and the Keycloak codes stay the names they already have.",
+      "values": [
+        "timeout",
+        "unavailable",
+        "misconfigured",
+        "cancelled",
+        "not_found",
+        "conflict",
+        "invalid_input",
+        "rate_limited"
+      ]
     }
   },
   "options": {

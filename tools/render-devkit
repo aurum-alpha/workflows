@@ -324,6 +324,50 @@ def realm_hosts(text: str, record: dict) -> str:
     return text
 
 
+# The admin service account's realm-management roles. AU4's grantAppAccess
+# looks the application client up with GET /clients?clientId=, and Keycloak
+# treats that as a query. view-clients without query-clients answers 200
+# with an empty list, so invite fails after ensureIdentity succeeded.
+ADMIN_REALM_ROLES = frozenset({
+    "manage-users",
+    "view-users",
+    "query-users",
+    "view-clients",
+    "query-clients",
+})
+
+
+def refuse_if_admin_roles_missing(text: str) -> None:
+    """Refuse a realm whose admin service account cannot grant app access."""
+    try:
+        realm = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"keycloak/realm-template.json: {exc}") from exc
+    held: set[str] | None = None
+    for user in realm.get("users", []):
+        if user.get("serviceAccountClientId") == "__REPO__-admin":
+            roles = user.get("clientRoles", {}).get("realm-management", [])
+            if not isinstance(roles, list) or any(not isinstance(r, str) for r in roles):
+                raise ValueError(
+                    "keycloak/realm-template.json: the admin service account's "
+                    "realm-management roles must be a list of names"
+                )
+            held = set(roles)
+            break
+    if held is None:
+        raise ValueError(
+            "keycloak/realm-template.json: no service account for __REPO__-admin"
+        )
+    missing = sorted(ADMIN_REALM_ROLES - held)
+    if missing:
+        raise ValueError(
+            "keycloak/realm-template.json: the admin service account is missing "
+            f"realm-management role(s) {', '.join(missing)}; grantAppAccess "
+            "looks up the application client with GET /clients?clientId= and "
+            "Keycloak treats that as a query"
+        )
+
+
 def realm_settings(text: str, record: dict) -> str:
     """Apply the one realm setting a product may move.
 
@@ -554,6 +598,7 @@ def render_all(target: pathlib.Path, record: dict) -> list[pathlib.Path]:
             text = text.replace("__WHITELIST_DOMAINS__",
                                 whitelist_domains(record))
         if source == "keycloak/realm-template.json":
+            refuse_if_admin_roles_missing(text)
             text = realm_hosts(text, record)
             text = realm_settings(text, record)
             manifest = render(personas_text(text), values)

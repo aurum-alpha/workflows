@@ -234,9 +234,13 @@ token only where the client's scope admits it. So `__REPO__-admin` keeps the
 `roles` scope and has `fullScopeAllowed` true, and the other two clients have
 neither. Its token reaches Keycloak's admin API and nothing else, so the roles
 in it govern the provider's control plane and never reach the application.
-The roles are the four the control plane needs: `manage-users`, `view-users`
-and `query-users` for the identity and its mappings, and `view-clients` to
-resolve the application's client and read the access role.
+The roles are the five the control plane needs: `manage-users`, `view-users`
+and `query-users` for the identity and its mappings, `view-clients` to
+read the access role, and `query-clients` to resolve the application's
+client. `grantAppAccess` looks the client up with `GET /clients?clientId=`,
+and Keycloak treats that as a query: `view-clients` without `query-clients`
+answers 200 with an empty list, which the adapter reports as the
+application not being registered.
 
 **The provider enforces the access gate at login** (060 AU4). `__REPO__`
 declares one client role, `access`, which is what `grantAppAccess` sets and

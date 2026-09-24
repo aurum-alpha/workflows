@@ -326,7 +326,6 @@
   ],
   "devDependencies": {
     "@replit/vite-plugin-shadcn-theme-json": "0.0.4",
-    "@types/connect-pg-simple": "7.0.3",
     "@types/memoizee": "0.4.12",
     "@types/multer": "2.1.0",
     "@types/node": "26.3.0",

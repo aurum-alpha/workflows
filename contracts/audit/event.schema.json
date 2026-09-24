@@ -104,7 +104,7 @@
     },
     "actor": {
       "$ref": "#/$defs/principal",
-      "description": "AE2. WHO DID IT. Separate from target and not optional: the portfolio's one pre-existing audit table fused the two into a single user_id and consequently cannot answer who granted anyone access."
+      "description": "AE2. WHO DID IT. Separate from target and not optional: fusing the two into a single user_id cannot answer who granted anyone access."
     },
     "target": {
       "$ref": "#/$defs/principal",

@@ -78,7 +78,7 @@
       },
       "reachableScripts": { "migrate": "drizzle-kit push", "db:push": "drizzle-kit push", "start": "node server.js" },
       "expect": { "findings": [ { "kind": "push-reachable", "subject": "migrate" }, { "kind": "push-reachable", "subject": "db:push" } ] },
-      "why": "SD2. Two answers to one question inside one tree, and the script named migrate is the wrong one. This is the shape found in the portfolio, not a hypothetical."
+      "why": "SD2. Two answers to one question inside one tree, and the script named migrate is the wrong one. A push reachable under that name is the finding."
     },
     {
       "case": "an-unguarded-create-table-is-a-finding",

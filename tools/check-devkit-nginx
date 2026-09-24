@@ -12,6 +12,10 @@ result. It imports tools/render-devkit rather than substituting placeholders
 itself, for the reason that file gives: two renderers drift, and then the
 checker certifies the drift.
 
+It also pins both oauth2-proxy cookie profiles: local is
+`<repo>-session` without Secure, prod is `__Host-<repo>_session` with
+Secure, and neither sets cookie_domain.
+
 THE NGINX IS THE ONE THE STACK RUNS, read from the compose fragment rather
 than pinned here. Validating against whatever nginx happens to be installed
 would prove something about that nginx; validating against the image the
@@ -130,6 +134,61 @@ def parse_edge(mod, image: str, record: dict, tmp: pathlib.Path) -> tuple[int, s
     return result.returncode, output, text
 
 
+SHARED_COOKIE = (
+    'cookie_httponly = true',
+    'cookie_samesite = "lax"',
+    'cookie_path = "/"',
+    'cookie_expire = "604800s"',
+    'cookie_refresh = "240s"',
+)
+
+
+def pin_cookie_profiles(mod, record: dict) -> bool:
+    """Both cookie profiles are pinned, and they are not the same cfg."""
+    repo = record["repo"]
+    want = {
+        "local": {
+            "name": f'cookie_name = "{repo}-session"',
+            "secure": "cookie_secure = false",
+        },
+        "prod": {
+            "name": f'cookie_name = "__Host-{repo}_session"',
+            "secure": "cookie_secure = true",
+        },
+    }
+    rendered = {}
+    for profile, lines in want.items():
+        try:
+            text = mod.render_oauth2_proxy(record, profile)
+        except (ValueError, FileNotFoundError) as exc:
+            print(f"could not render cookie profile {profile}: {exc}",
+                  file=sys.stderr)
+            return False
+        rendered[profile] = text
+        missing = [line for line in (lines["name"], lines["secure"], *SHARED_COOKIE)
+                   if line not in text]
+        if missing:
+            print(f"FAIL: profile {profile} is missing {missing}",
+                  file=sys.stderr)
+            return False
+        if "cookie_domain =" in text:
+            print(f"FAIL: profile {profile} sets cookie_domain",
+                  file=sys.stderr)
+            return False
+        print(f"cookie profile {profile}: {lines['name']}; {lines['secure']}")
+    if rendered["local"] == rendered["prod"]:
+        print("FAIL: local and prod rendered the same oauth2-proxy.cfg",
+              file=sys.stderr)
+        return False
+    # dev/ is local. A sole-candidate bind of prod into dev/ would
+    # redden every product at once.
+    if want["prod"]["name"] in rendered["local"]:
+        print("FAIL: local profile uses the production cookie name",
+              file=sys.stderr)
+        return False
+    return True
+
+
 def main() -> int:
     try:
         image = edge_image()
@@ -209,7 +268,11 @@ def main() -> int:
                   "edge.conf; the key is not doing anything", file=sys.stderr)
             return 1
 
-    print(f"\nPASS: both logout modes parse under {image}")
+        if not pin_cookie_profiles(mod, RECORD):
+            return 1
+
+    print(f"\nPASS: both logout modes parse under {image}; "
+          "both cookie profiles are pinned")
     return 0
 
 

@@ -109,7 +109,7 @@
       "expect": {
         "status_code": 401
       },
-      "note": "without this check the portfolio's services are interchangeable to an attacker holding any one token. The audience is the one backend's resource indicator, which is what makes the case decidable (RFC 9700 section 2.3, AU2)"
+      "note": "without this check a token minted for one backend is accepted by another. The audience is the one backend's resource indicator, which is what makes the case decidable (RFC 9700 section 2.3, AU2)"
     },
     {
       "id": "a-token-with-no-audience-is-refused",

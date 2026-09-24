@@ -329,7 +329,7 @@
         "type": {
           "type": "string",
           "pattern": "^https://errors\\.aurumalpha\\.dev/[a-z][a-z0-9-]*/entitlement-required$",
-          "description": "HA3: the portfolio form, with the service's own segment."
+          "description": "HA3: the problem type URI, with the service's own segment."
         },
         "title": {
           "type": "string",

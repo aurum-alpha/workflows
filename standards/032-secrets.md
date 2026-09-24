@@ -51,10 +51,13 @@ the platform's mechanism, on the other side of the variable.
 
 ### SE2. Every secret is declared, and the declaration is the source of truth
 
-**A service carries a declaration of every secret any of its processes reads,
-in the repository beside its deployables, validated against
+**A service carries a declaration of every secret any of its processes reads.
+It is one file per service, `secret-declaration.json`, at the root of the
+directory that holds the service, validated against
 [`secret-declaration.schema.json`](../contracts/secrets/secret-declaration.schema.json)**.
-It is the secret half of the configuration declaration SC3's gate reads:
+In a repository holding one service, that root is the repository root. The
+file lists the secret half of the variables a process reads (030 SC3), and
+marks each as a secret:
 
 | Field | Values | What it decides |
 |---|---|---|
@@ -72,10 +75,38 @@ It is the secret half of the configuration declaration SC3's gate reads:
 
 Four things follow mechanically. An undeclared secret in a process's
 environment is a finding, because nothing tested reads it. A declared secret
-absent at start blocks serving (SE1). The declared values are what the
-redactor recognises (SE5). The declared images are what the image set is
-checked against (SE6). The declaration is a committed file, so it carries no
-value, and its property set is closed so a `value` field cannot be added.
+absent at start blocks serving, because the code reads it as a required
+variable (SE1, SC3). The declared values are what the redactor recognises
+(SE5). The declared images are what the image set is checked against (SE6).
+The declaration is a committed file, so it carries no value, and its property
+set is closed so a `value` field cannot be added.
+
+**The declaration is documentation with a schema, never configuration.** A
+person reads it and a gate reads it. No process of the service opens it, in
+any image, at start or after. Deleting it changes nothing a running process
+does. What goes red is the gate that reads it.
+
+A process learns its secrets as it learns all its configuration: named
+variables read from its environment, per
+[factor III](https://12factor.net/config) and SE1. The store the platform
+runs renders those variables (SE10), whichever store that is. The declaration
+is not that store's input, and it is not the mapping SE10 names. Code names
+the variables it reads, and the declaration records that list for people and
+gates.
+
+What reads it, and why:
+
+- **A reviewer.** The file answers two review questions. Does each image
+  need each secret (SE6)? Are a static secret's owner and age right (SE7)?
+- **The schema gate.** It validates the file against the schema on every
+  change that touches it.
+- **The diff gates.** They compare `.env.example` (SE9), the mapping (SE10)
+  and each image's environment to the file's names. A name on one side and
+  not the other is a finding.
+- **The freshness check.** It compares the store's rotation dates to each
+  static secret's `max_age_days` (SE7).
+- **An operator.** A rotation (SE7), and the rotation of every secret at
+  handover (SE8), work from this list.
 
 ### SE3. A secret's name states its subject and its kind
 
@@ -142,8 +173,9 @@ redacts at the boundary, per
 [`redaction.json`](../contracts/secrets/redaction.json), in three layers of
 descending authority:
 
-1. **By declared value**. At start the emitter is given the value of every
-   declared secret (SE2). Any occurrence of one, in any string at any depth
+1. **By declared value**. At start the process hands the emitter the value
+   of every secret variable its code reads, which is the declared set (SE2).
+   Any occurrence of one, in any string at any depth
    of the object about to be emitted, becomes `[redacted:<NAME>]`. That
    covers a message, a nested error, a stack, an argument vector, and a
    query string. So a reader learns which secret reached a log line without
@@ -405,3 +437,20 @@ Per PC3, under [`contracts/secrets/`](../contracts/secrets/):
   field-name list.
 - **`corpus.json`**: six parts, `names`, `declarations`, `redaction`,
   `forbidden_locations`, `rotation` and `leak_response`.
+
+## Decisions
+
+- **`secrets.json` as the file's name.** Shorter, and it is what a reader, a
+  scanner and an ignore rule take for a file of values. The name says what
+  the file is, a declaration, and pairs with the schema that judges it (SE2).
+- **The file under a deployment directory, beside the mapping.** The mapping
+  is one per environment and the declaration is one per service. A directory
+  of deployment manifests is where a reader expects references to values, and
+  this file is not deployment configuration (SE2).
+- **A process reading the declaration at start.** That makes a committed
+  file a runtime input, which is configuration outside the environment
+  (factor III). It also gives a process a second list of what it reads,
+  beside its own code, and two lists drift. A flag declaration
+  ([`038-feature-flags.md`](038-feature-flags.md) FF2) is built into the
+  image because the process evaluates flags by name from it. A process
+  evaluates no secret. It reads a variable its code names (SE2).

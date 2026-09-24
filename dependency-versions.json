@@ -322,10 +322,16 @@
     "",
     "So a candidate needs two things, not one: every declaring unit at the same",
     "exact version, AND at least one of them actually importing it. The first is",
-    "cheap to measure and the second is what the surveys kept getting wrong."
+    "cheap to measure and the second is what the surveys kept getting wrong.",
+    "",
+    "@tailwindcss/typography is 0.5.20 (workflows#288). Five units load it from",
+    "their Tailwind config, all on the Tailwind 3 engine. flight-watch runs",
+    "Tailwind 4 and does not declare it. The plugin is build-time, so the",
+    "asserted section is devDependencies."
   ],
   "devDependencies": {
     "@replit/vite-plugin-shadcn-theme-json": "0.0.4",
+    "@tailwindcss/typography": "0.5.20",
     "@types/memoizee": "0.4.12",
     "@types/multer": "2.1.0",
     "@types/node": "26.3.0",

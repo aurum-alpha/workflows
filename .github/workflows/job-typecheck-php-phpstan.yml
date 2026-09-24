@@ -120,6 +120,13 @@ jobs:
           else
             echo "tool=composer:v2" >> "$GITHUB_OUTPUT"
           fi
+      # setup-php's PHP build is linked against libsodium.so.23. The runner
+      # image does not ship that library, so php cannot start, `composer
+      # config cache-files-dir` prints nothing, and actions/cache then fails
+      # because path is empty. This is the system library, not an extension
+      # the package requires.
+      - name: Install libsodium
+        run: sudo apt-get update && sudo apt-get install -y libsodium23
       - uses: shivammathur/setup-php@accd6127cb78bee3e8082180cb391013d204ef9f # v2.37.0
         with:
           php-version-file: ${{ inputs.workdir }}/.php-version

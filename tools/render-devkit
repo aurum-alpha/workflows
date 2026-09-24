@@ -33,7 +33,13 @@ tell the difference and does not try.
 Python 3 and its standard library only.
 
 Render:  tools/render-devkit --target /path/to/repo
-         (reads /path/to/repo/devkit.json)
+         (reads /path/to/repo/devkit.json; cookie profile is local)
+
+         tools/render-devkit --target /path/to/repo --profile prod
+         (production cookie cfg on stdout; the product dev/ tree is not written)
+
+         tools/render-devkit --target /path/to/repo --profile prod --dest PATH
+         (same cfg at PATH, which must not be under dev/)
 
 Exit:    0 rendered, 2 could not
 """
@@ -74,6 +80,14 @@ AUTH_HOP = "auth"
 LOGOUT_PROXY = "proxy"
 LOGOUT_REALM = "realm"
 LOGOUT_MODES = (LOGOUT_PROXY, LOGOUT_REALM)
+
+# Two cookie profiles, one template. Production is the default a deploy uses
+# (060 AU7 topology A). Local is the HTTP exception (016 LD9). --target
+# writes local into dev/. --profile prod emits the production cookie and
+# never writes dev/.
+COOKIE_PROFILES = ("local", "prod")
+DEFAULT_COOKIE_PROFILE = "local"
+COOKIE_PLACEHOLDER = "__COOKIE__"
 UPSTREAM_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
 UPSTREAM_ADDRESS = re.compile(r"^[A-Za-z0-9.-]+:[0-9]{1,5}$")
 
@@ -504,6 +518,46 @@ def routes_text(routes: list[dict], template: str) -> str:
     return "\n".join(blocks) + "\n"
 
 
+def cookie_overlay(profile: str) -> str:
+    """The cookie note, name, secret and Secure line for one profile.
+
+    cookie.local.cfg and cookie.prod.cfg are the two inputs. The rest of
+    oauth2-proxy.cfg is shared. Local keeps today's dev/ bytes: no __Host-,
+    cookie_secure false. Prod is topology A: __Host-<repo>_session, Secure.
+    """
+    if profile not in COOKIE_PROFILES:
+        raise ValueError(f"profile must be {' or '.join(COOKIE_PROFILES)}")
+    path = DEVKIT / "oauth2-proxy" / f"cookie.{profile}.cfg"
+    if not path.is_file():
+        raise FileNotFoundError(f"devkit source not found at {path}")
+    return path.read_text(encoding="utf-8").rstrip("\n")
+
+
+def apply_oauth2_proxy(text: str, record: dict, profile: str) -> str:
+    """Fill the relying-party cfg: whitelist, then the cookie profile."""
+    source = "oauth2-proxy/oauth2-proxy.cfg"
+    if "__WHITELIST_DOMAINS__" not in text:
+        raise ValueError(f"{source}: __WHITELIST_DOMAINS__ is missing")
+    if COOKIE_PLACEHOLDER not in text:
+        raise ValueError(f"{source}: {COOKIE_PLACEHOLDER} is missing")
+    text = text.replace("__WHITELIST_DOMAINS__", whitelist_domains(record))
+    return text.replace(COOKIE_PLACEHOLDER, cookie_overlay(profile))
+
+
+def render_oauth2_proxy(record: dict, profile: str) -> str:
+    """Render oauth2-proxy.cfg for one cookie profile, without writing dev/."""
+    src = DEVKIT / "oauth2-proxy" / "oauth2-proxy.cfg"
+    if not src.is_file():
+        raise FileNotFoundError(f"devkit source not found at {src}")
+    text = apply_oauth2_proxy(src.read_text(encoding="utf-8"), record, profile)
+    values = substitutions(record["repo"], record["port_base"])
+    text = render(text, values)
+    left = unsubstituted(text)
+    if left:
+        raise ValueError(f"oauth2-proxy/oauth2-proxy.cfg: unknown placeholder(s) {', '.join(left)}")
+    return text
+
+
 def whitelist_domains(record: dict) -> str:
     """The oauth2-proxy rd allowlist.
 
@@ -565,7 +619,8 @@ def logout_text(record: dict) -> str:
     )
 
 
-def render_all(target: pathlib.Path, record: dict) -> list[pathlib.Path]:
+def render_all(target: pathlib.Path, record: dict,
+               profile: str = DEFAULT_COOKIE_PROFILE) -> list[pathlib.Path]:
     """Write every rendered file, and return the dev-relative paths written.
 
     check-devkit-drift imports and calls this rather than carrying a second
@@ -575,6 +630,10 @@ def render_all(target: pathlib.Path, record: dict) -> list[pathlib.Path]:
     The record is passed in rather than read here, because the drift checker
     renders into a scratch tree while reading the record from the clone it is
     judging.
+
+    profile is the cookie profile. The product dev/ tree is always the local
+    stack, so the default is local. Production is emitted by
+    render_oauth2_proxy, not here.
     """
     values = substitutions(record["repo"], record["port_base"])
     upstreams = upstreams_text(record["upstreams"])
@@ -593,10 +652,7 @@ def render_all(target: pathlib.Path, record: dict) -> list[pathlib.Path]:
             text = text.replace("    __ROUTES__\n",
                                 routes_text(record["routes"], text))
         if source == "oauth2-proxy/oauth2-proxy.cfg":
-            if "__WHITELIST_DOMAINS__" not in text:
-                raise ValueError(f"{source}: __WHITELIST_DOMAINS__ is missing")
-            text = text.replace("__WHITELIST_DOMAINS__",
-                                whitelist_domains(record))
+            text = apply_oauth2_proxy(text, record, profile)
         if source == "keycloak/realm-template.json":
             refuse_if_admin_roles_missing(text)
             text = realm_hosts(text, record)
@@ -622,18 +678,56 @@ def render_all(target: pathlib.Path, record: dict) -> list[pathlib.Path]:
     return written
 
 
+def dest_is_under_dev(path: pathlib.Path, target: pathlib.Path) -> bool:
+    """True when PATH is inside the product dev/ tree.
+
+    --profile prod must not write there. That tree is the local stack, and
+    check-devkit-drift would then expect production cookies in it.
+    """
+    dest_dir = (target / OUT).resolve()
+    try:
+        path.resolve().relative_to(dest_dir)
+    except ValueError:
+        return False
+    return True
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--target", required=True, type=pathlib.Path,
                     help="the repository to render into, which carries devkit.json")
+    ap.add_argument("--profile", choices=COOKIE_PROFILES,
+                    default=DEFAULT_COOKIE_PROFILE,
+                    help="cookie profile: local writes the dev/ tree; prod writes the relying-party cfg only")
+    ap.add_argument("--dest", type=pathlib.Path,
+                    help="with --profile prod, write the cfg here; default is stdout")
     args = ap.parse_args()
 
     try:
         record = read_record(args.target)
-        written = render_all(args.target, record)
+        if args.profile == "prod":
+            if args.dest is not None and dest_is_under_dev(args.dest, args.target):
+                raise ValueError(
+                    "--dest must not be under the product dev/ tree: that "
+                    "tree is the local stack and is never deployed"
+                )
+            text = render_oauth2_proxy(record, "prod")
+        else:
+            if args.dest is not None:
+                raise ValueError("--dest belongs to --profile prod")
+            written = render_all(args.target, record, profile="local")
     except (ValueError, FileNotFoundError) as exc:
         print(exc, file=sys.stderr)
         return 2
+
+    if args.profile == "prod":
+        if args.dest is None:
+            sys.stdout.write(text)
+        else:
+            args.dest.parent.mkdir(parents=True, exist_ok=True)
+            args.dest.write_text(text, encoding="utf-8")
+            print(f"rendered {args.dest} (profile prod)")
+        return 0
 
     for relative in written:
         print(f"rendered {relative}")

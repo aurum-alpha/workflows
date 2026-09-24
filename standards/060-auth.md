@@ -453,6 +453,25 @@ registered claim names rather than inventing parallel spellings.
 Everything the browser touches shares an origin. The cookie carries the
 `__Host-` prefix and CORS never enters the picture.
 
+The production cookie is the default a deploy uses.
+
+| Setting | Value |
+|---|---|
+| `cookie_name` | `__Host-<repository>_session` |
+| `cookie_secure` | `true` |
+| `cookie_httponly` | `true` |
+| `cookie_samesite` | `lax` |
+| `cookie_path` | `/` |
+| `cookie_domain` | absent |
+| `cookie_expire` | `604800s` |
+| `cookie_refresh` | `240s` |
+
+Local HTTP is the named exception.
+That profile drops `__Host-` and `Secure`.
+The name is `<repository>-session`.
+Every other setting is the same.
+[`016-local-development.md`](016-local-development.md) LD9 is that exception.
+
 ```mermaid
 flowchart LR
     B["Browser"] -->|"__Host- cookie"| E["app.example.com<br/>RP proxy"]

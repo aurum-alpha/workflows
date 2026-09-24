@@ -235,3 +235,27 @@ value in the compose file, never code that guesses.
 **The whole repository is mounted, not a chosen list of directories.** A list
 goes stale the first time somebody adds a directory. The symptom is a file the
 container cannot see, which reads as a caching problem.
+
+### LD9. The local session cookie drops `__Host-` and `Secure`
+
+The [authentication standard](060-auth.md) AU7 names two cookie profiles.
+Production is the default a deploy uses.
+Local is the exception, because this stack is plain HTTP.
+
+The production cookie is `__Host-<repository>_session`.
+It is `Secure`, `HttpOnly`, and `SameSite=Lax`.
+Its path is `/`.
+It carries no `Domain=`.
+`cookie_expire` is 604800 seconds.
+`cookie_refresh` is 240 seconds.
+
+The local cookie is `<repository>-session`.
+It drops `__Host-` and `Secure`.
+Safari refuses a `__Host-` cookie on HTTP localhost.
+oauth2-proxy rewrites every derived callback to `https` while the cookie is `Secure`.
+Nothing here serves HTTPS.
+
+`tools/render-devkit --target` writes the local profile into `dev/`.
+`dev/` is never deployed.
+`--profile prod` emits the production cookie.
+It writes to stdout, or to a path that is not `dev/`.

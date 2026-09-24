@@ -44,7 +44,13 @@ Render it, and re-render it after any change:
 
 ```sh
 tools/render-devkit --target ../credit-watch
+tools/render-devkit --target ../credit-watch --profile prod
+tools/render-devkit --target ../credit-watch --profile prod --dest /tmp/oauth2-proxy.cfg
 ```
+
+`--target` writes the local cookie profile into `dev/`. `--profile prod`
+emits the production cookie. It writes to stdout, or to `--dest`. `--dest`
+must not be under `dev/`.
 
 ### The routing table is the whole of the product's routing
 
@@ -119,6 +125,7 @@ Every problem in the file is reported at once.
 | `__ROUTES__` | The locations, from `routes` |
 | `__LOGOUT__` | The logout locations, from `logout` (`proxy` or `realm`) |
 | `__WHITELIST_DOMAINS__` | The relying party's `rd` allowlist: the edge, and the identity provider when `logout` is `realm` |
+| `__COOKIE__` | The cookie overlay: `cookie.local.cfg` or `cookie.prod.cfg`. `--target` splices local |
 | `"__REDIRECT_URIS__"`, `"__WEB_ORIGINS__"`, `"__POST_LOGOUT_REDIRECT_URIS__"` | The realm's three host lists: the apex and each `tenant_hosts` entry, as callback URIs, origins and post-logout targets. Quoted in the template so the source stays valid JSON |
 
 The first six are textual substitution and nothing else, which is what lets a
@@ -160,7 +167,9 @@ here, and not to the renderer, fails at the render rather than at the first
 | `keycloak/realm-template.json` | The realm import document: three clients, the access gate, and fifteen personas |
 | `keycloak/personas.json` | What each persona is in the application, keyed by username; joined with the realm into the rendered `dev/personas.json` |
 | `nginx/edge.conf` | The edge at offset +0, and the only routing table |
-| `oauth2-proxy/oauth2-proxy.cfg` | The relying party behind `auth_request` |
+| `oauth2-proxy/oauth2-proxy.cfg` | The relying party behind `auth_request`. Cookie name and `Secure` come from the profile overlay |
+| `oauth2-proxy/cookie.local.cfg` | Local overlay: `<repository>-session`, `cookie_secure = false` |
+| `oauth2-proxy/cookie.prod.cfg` | Production overlay: `__Host-<repository>_session`, `cookie_secure = true` |
 | `compose/auth.compose.yaml` | The `edge`, `oauth2-proxy`, `keycloak`, `mail`, `migrate` and `seed` services |
 | `compose/product.example.yaml` | The `db`, `server` and `client` services a product defines itself, and the `db` dependency it adds to the one-shots |
 | `tools/dev-token` | Mints a persona's access token through the direct-grant client, for a terminal or a test |
@@ -347,21 +356,29 @@ a for the rest of that stack's life.
 
 ## The cookie
 
-`__REPO__-session`, with `HttpOnly`, `SameSite=Lax` and `Path=/`.
-`cookie_expire` is 604800 seconds, which is AU5's absolute maximum and the
-same number the application reports as the session's expiry. `cookie_refresh`
-sits inside the 300-second token lifespan, so the forwarded token is renewed
-behind an unchanged cookie.
+Two overlays, one shared template. Production is the default a deploy uses.
+Local is the exception, because this stack is plain HTTP.
 
-**It is plain and not `Secure`, and that is local development speaking, not
-the standard.** 060 AU7 and 092 TH4 fix the production cookie as
-`__Host-<name>`, `Secure` and host-only. This stack is plain HTTP on
-`localhost` and `*.localhost`, where `Secure` protects nothing, and
-oauth2-proxy forces `https` onto every derived callback while the cookie is
-`Secure`, which nothing here serves. So the local cookie drops the attribute
-and the prefix that requires it. Nothing about it reaches a deployment: the
-production relying party is configured for its own hosts, and this file is
-never deployed.
+| | Production | Local |
+|---|---|---|
+| `cookie_name` | `__Host-<repository>_session` | `<repository>-session` |
+| `cookie_secure` | `true` | `false` |
+| `cookie_httponly` | `true` | `true` |
+| `cookie_samesite` | `lax` | `lax` |
+| `cookie_path` | `/` | `/` |
+| `cookie_domain` | absent | absent |
+| `cookie_expire` | `604800s` | `604800s` |
+| `cookie_refresh` | `240s` | `240s` |
+
+`cookie_expire` is AU5's absolute maximum. `cookie_refresh` sits inside the
+300-second token lifespan, so the forwarded token is renewed behind an
+unchanged cookie.
+
+`--target` writes local into `dev/`. `dev/` is never deployed.
+`--profile prod` emits the production cookie to stdout, or to `--dest`.
+Safari refuses `__Host-` on HTTP localhost. oauth2-proxy rewrites every
+derived callback to `https` while the cookie is `Secure`. Nothing here
+serves HTTPS.
 
 **There is no `cookie_domain`.** The browser scopes the cookie to the exact
 host that set it, so a session made on `northwind.localhost` is never

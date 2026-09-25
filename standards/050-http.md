@@ -113,6 +113,24 @@ it exists, it is committed, and **it matches the running service**. A
 description that has drifted from its implementation is worse than none,
 because clients are generated from it.
 
+#### A library describes the endpoints it defines
+
+A library that defines endpoints and serves none on its own still carries
+an OpenAPI fragment for them. The fragment is the base definition of those
+endpoints. It is committed in that library, beside the implementation.
+
+A service that mounts the endpoints copies the fragment into its own
+document. It rewrites the path prefix to the prefix it mounts. It rewrites
+the server URL to the address it serves. It omits an operation it does not
+mount. The service document is what matches the running service. The
+fragment is what every copy starts from.
+
+The identity routes are
+[`contracts/auth/identity.openapi.yaml`](../contracts/auth/identity.openapi.yaml).
+The paths there are `/api/v1/me`, `/api/v1/me/grants` and
+`/api/v1/me/active`. Bodies `$ref` the auth and http schemas rather than
+restating them.
+
 ### HA3. Errors are RFC 9457 problem+json, profiled
 
 Every error response, every one, from every endpoint, is

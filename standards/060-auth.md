@@ -875,6 +875,15 @@ settled question, drifting from the RFC the moment either moved.
   carries no permission for any grant. What a grant can do is the `me`
   document's answer for the active one. Listing the others' would put a union
   on screen.
+- **`activation.schema.json`**: the request and the 200 body of
+  `POST /api/v1/me/active`. The request names a role and a scope. The subject
+  is the session's and is not a member. The 200 names `bound`, `switched` or
+  `unchanged`.
+- **`identity.openapi.yaml`**: the three identity routes, in OpenAPI 3.1.
+  Response bodies `$ref` the schemas in this directory and the problem
+  envelope. The library that implements the routes vendors this file. A
+  service that mounts the routes copies it and rewrites the path prefix
+  ([`050-http.md`](050-http.md) HA2).
 - **`corpus.json`**: validity cases for the client identity document, plus
   behavioural cases a live deployment must satisfy. Every claim about the
   token is a behavioural case, because nothing here describes its shape.

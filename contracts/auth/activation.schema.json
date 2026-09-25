@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/auth/activation.schema.json",
+  "title": "Aurum Alpha session grant activation",
+  "description": "The request and the 200 body of POST /api/v1/me/active. Governed by standards/060-auth.md AU8 and standards/070-rbac.md RB10. The request names a role and a scope and nothing else: the subject is the authenticated session's, and a member the operation does not read is refused rather than ignored. The 200 names which of the three acts occurred. bound, switched and unchanged are the only outcomes on this body; not_held and switch_forbidden travel on the problem envelope. There is no schema_version: this body is not a document a client caches across releases the way the identity document is.",
+  "$defs": {
+    "request": {
+      "type": "object",
+      "description": "Which grant this session is asking to act in. role and scope only.",
+      "properties": {
+        "role": {
+          "$ref": "https://contracts.aurumalpha.dev/rbac/model.schema.json#/$defs/grant/properties/role"
+        },
+        "scope": {
+          "$ref": "https://contracts.aurumalpha.dev/rbac/model.schema.json#/$defs/scope"
+        }
+      },
+      "required": ["role", "scope"],
+      "additionalProperties": false
+    },
+    "result": {
+      "type": "object",
+      "description": "What the activation did. previous is present on switched and absent on bound and unchanged: absent and a grant are the two states.",
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "enum": ["bound", "switched", "unchanged"]
+        },
+        "grant": {
+          "$ref": "https://contracts.aurumalpha.dev/rbac/model.schema.json#/$defs/grant",
+          "description": "The grant the session acts in now, including when the outcome is unchanged."
+        },
+        "previous": {
+          "$ref": "https://contracts.aurumalpha.dev/rbac/model.schema.json#/$defs/grant",
+          "description": "The grant the session acted in before. Present only when outcome is switched."
+        }
+      },
+      "required": ["outcome", "grant"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": { "outcome": { "const": "switched" } },
+            "required": ["outcome"]
+          },
+          "then": { "required": ["previous"] }
+        },
+        {
+          "if": {
+            "properties": { "outcome": { "enum": ["bound", "unchanged"] } },
+            "required": ["outcome"]
+          },
+          "then": { "not": { "required": ["previous"] } }
+        }
+      ]
+    }
+  }
+}

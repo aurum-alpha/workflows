@@ -1,23 +1,46 @@
 #!/usr/bin/env python3
-"""Prove the contracts this repository owns still parse.
+"""Prove the contracts a repository carries parse, run the schema-decided half
+of every corpus, and check the repository files the schemas name.
 
 Every *.schema.json under contracts/ is a legal JSON Schema for the dialect
 its $schema names, its $id matches its path, and every $ref resolves to a
 file in the tree (and to the JSON pointer, when one is named). A typo in a
 $ref, an $id that does not match its path, or a schema that is not a schema
-fails here rather than in whichever repository vendors the file next.
+fails here rather than in whichever repository vendors the file next. Every
+other JSON file under contracts/ must parse, and a case id inside a corpus
+file is unique, because the modules drive cases by id.
 
-The static halves of the auth, RBAC and billing corpora still run: the
-validity half of auth/corpus.json is schema-decided; decisions.json and
-entitlements.json are fixtures a runner can load. Each platform module still
-executes check() itself, and each product that answers for billing still
-executes entitlementsFor() itself.
+A corpus under contracts/<capability>/corpus.json says what judges each of its
+parts in a top-level `judged_by` map: the case key that holds the instance,
+the schema that judges it (or the case key that names one, and the table that
+resolves it), and the runner checks the schema cannot express. This tool reads
+that map for every corpus it finds, validates each instance against the named
+schema, applies the named checks, and compares the verdict with the case's
+`valid`. A part the map does not name is judged by running an implementation,
+which is each product's own suite (PC4) and check-corpus-coverage's business.
 
-Every other JSON file under contracts/ must parse, and case ids inside a
-corpus file must be unique. A duplicated id defeats the modules that drive
-cases by id.
+An instance written as {"$fixture": "<name>"} is the corpus's shared
+fixture of that name, under `fixture` or `fixtures`, and is judged in place.
 
-A repository with no contracts/ passes, the way one with no ANSWERS passes
+A case flagged `schemaCannotCatch` documents a verdict the schema alone does
+not reach. Where such a case is invalid, a named runner check must reject it;
+where the schema itself rejects it the flag is stale, and that is a finding.
+A check a corpus names and this tool does not implement is a finding too: the
+contract would be claiming a gate that does not exist.
+
+Two corpora are fixtures for a function this tool cannot run. contracts/rbac/
+decisions.json is data for check() and contracts/billing/entitlements.json for
+entitlementsFor(); each platform module and product runs those itself. This
+tool proves each fixture is loadable and every case is well-formed, and that
+every declared permission in the RBAC fixture is `resource.action` (070 RB2),
+so a truncated copy fails here rather than silently covering a different set.
+
+A schema that judges a file a repository carries says so in an
+`x-repository-file` annotation: the file's name, where it lives, and whether
+the file is one instance or an array of them. Every file by that name in the
+repository under test is validated. A repository with none passes.
+
+A repository that vendors no corpus passes, the way one with no ANSWERS passes
 check-corpus-coverage.
 
 --self-test runs the checker against tools/testdata/contract-conformance,
@@ -26,47 +49,32 @@ is what fails if the $ref walk stops walking.
 
 Run:  tools/check-contract-conformance [--root DIR] [--contracts DIR]
       tools/check-contract-conformance --self-test
-Exit: 0 covered or nothing to run, 1 findings, 2 could not ask
+Exit: 0 judged or nothing to run, 1 findings, 2 could not ask
 """
 
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
+import os
 import pathlib
+import re
 import sys
+from dataclasses import dataclass, field
+
+SKIP_DIRS = {"node_modules", "vendor", ".git", "dist", "coverage", ".aurum-catalog", ".ci-root"}
 
 HERE = pathlib.Path(__file__).resolve().parent
 SELF_TEST = HERE / "testdata" / "contract-conformance"
-
 ID_PREFIX = "https://contracts.aurumalpha.dev/"
 DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema"
-
-# The keys under which a corpus keeps its cases. Same set
-# check-corpus-coverage reads, so a rename there is a rename here.
-CASE_KEYS = (
-    "checks",
-    "rejections",
-    "behaviour",
-    "validity",
-    "resolve",
-    "switch",
-    "view",
-)
-
-SCHEMA_IDS = {
-    "me": "https://contracts.aurumalpha.dev/auth/me.schema.json",
-}
-
-CATALOG_SCHEMA_ID = "https://contracts.aurumalpha.dev/billing/catalog.schema.json"
-SUBSCRIPTION_SCHEMA_ID = (
-    "https://contracts.aurumalpha.dev/billing/subscription.schema.json"
-)
+CASE_NAME_KEYS = ("id", "case")
 
 CHECK_INNER = ("subject", "scope", "activeGrant")
 
-BILLING_FIXTURE = ("now", "catalog", "subscriptions", "ledger", "overrides")
-BILLING_OPS = {
+ENTITLEMENTS_FIXTURE = ("now", "catalog", "subscriptions", "ledger", "overrides")
+ENTITLEMENTS_OPS = {
     "entitled": ("capability",),
     "quotaFor": ("metric",),
     "allowanceFor": ("metric",),
@@ -75,10 +83,40 @@ BILLING_OPS = {
     "withinAllowance": ("metric", "used"),
     "entitlementsFor": (),
 }
+CATALOG_SCHEMA_ID = "https://contracts.aurumalpha.dev/billing/catalog.schema.json"
+SUBSCRIPTION_SCHEMA_ID = "https://contracts.aurumalpha.dev/billing/subscription.schema.json"
+ADMISSION_SCHEMA_ID = "https://contracts.aurumalpha.dev/json-document-storage/admission.schema.json"
+
+PERMISSION = re.compile(r"^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$")
+ACCESS_GRANTING = {"password", "api_key", "token", "connection_string"}
+DURATION = re.compile(
+    r"^P(?:(?P<y>\d+)Y)?(?:(?P<mo>\d+)M)?(?:(?P<w>\d+)W)?(?:(?P<d>\d+)D)?"
+    r"(?:T(?:(?P<h>\d+)H)?(?:(?P<mi>\d+)M)?(?:(?P<s>\d+(?:\.\d+)?)S)?)?$"
+)
 
 
 def load_json(path: pathlib.Path) -> object:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def seconds(duration: object) -> float | None:
+    """An ISO 8601 duration as seconds, with a month as 30 days and a year as
+    365, which is enough to order the durations a declaration carries."""
+    if not isinstance(duration, str):
+        return None
+    m = DURATION.match(duration)
+    if not m or duration == "P":
+        return None
+    g = {k: float(v) for k, v in m.groupdict().items() if v is not None}
+    return (
+        g.get("y", 0) * 365 * 86400
+        + g.get("mo", 0) * 30 * 86400
+        + g.get("w", 0) * 7 * 86400
+        + g.get("d", 0) * 86400
+        + g.get("h", 0) * 3600
+        + g.get("mi", 0) * 60
+        + g.get("s", 0)
+    )
 
 
 def find_contracts(root: pathlib.Path, explicit: pathlib.Path | None) -> pathlib.Path | None:
@@ -88,10 +126,9 @@ def find_contracts(root: pathlib.Path, explicit: pathlib.Path | None) -> pathlib
     if not candidate.is_dir():
         return None
     if (
-        (candidate / "auth" / "corpus.json").is_file()
-        or (candidate / "rbac" / "decisions.json").is_file()
-        or (candidate / "billing" / "entitlements.json").is_file()
+        any(candidate.glob("*/corpus.json"))
         or any(candidate.rglob("*.schema.json"))
+        or any((candidate / rel).is_file() for rel in ("rbac/decisions.json", "billing/entitlements.json"))
     ):
         return candidate
     return None
@@ -235,17 +272,19 @@ def resolve_ref(
     return []
 
 
-def case_id(case: object) -> str | None:
+def case_name(case: object) -> str | None:
     if not isinstance(case, dict):
         return None
-    for key in ("id", "case"):
-        value = case.get(key)
+    for name_key in CASE_NAME_KEYS:
+        value = case.get(name_key)
         if isinstance(value, str) and value:
             return value
     return None
 
 
 def run_corpus_ids(contracts: pathlib.Path) -> list[str]:
+    """Every JSON file that is not a schema parses to an object, and a case
+    name is unique within its file, whatever part it sits in."""
     findings: list[str] = []
     for path in sorted(contracts.rglob("*.json")):
         if path.name.endswith(".schema.json"):
@@ -260,12 +299,11 @@ def run_corpus_ids(contracts: pathlib.Path) -> list[str]:
             findings.append(f"{rel}: is not a JSON object")
             continue
         seen: set[str] = set()
-        for key in CASE_KEYS:
-            cases = data.get(key)
+        for cases in data.values():
             if not isinstance(cases, list):
                 continue
             for case in cases:
-                cid = case_id(case)
+                cid = case_name(case)
                 if cid is None:
                     continue
                 if cid in seen:
@@ -278,68 +316,433 @@ def registry_for(contracts: pathlib.Path):
     from referencing import Registry, Resource
 
     registry = Registry()
-    for schema_path in contracts.rglob("*.schema.json"):
+    schemas: dict[str, dict] = {}
+    for schema_path in sorted(contracts.rglob("*.schema.json")):
         schema = load_json(schema_path)
         if not isinstance(schema, dict):
             continue
         sid = schema.get("$id")
         if isinstance(sid, str) and sid:
             registry = registry.with_resource(sid, Resource.from_contents(schema))
-    return registry
+            schemas[sid] = schema
+    return registry, schemas
 
 
-def schema_errors(registry, schema_id: str, value, def_name: str | None = None) -> list[str]:
+def schema_errors(registry, ref: str, value) -> list[str]:
+    """Validate `value` against a schema id, with an optional JSON pointer."""
     from jsonschema import Draft202012Validator
 
     try:
-        schema = (
-            {"$ref": f"{schema_id}#/$defs/{def_name}"}
-            if def_name
-            else registry[schema_id].contents
-        )
+        validator = Draft202012Validator({"$ref": ref}, registry=registry)
+        return [e.message for e in sorted(validator.iter_errors(value), key=lambda e: list(e.path))]
     except Exception as exc:  # noqa: BLE001 — report and continue
-        return [f"schema {schema_id} not in the vendored tree ({exc})"]
-    validator = Draft202012Validator(schema, registry=registry)
-    return [e.message for e in sorted(validator.iter_errors(value), key=lambda e: e.path)]
+        return [f"schema {ref} could not be resolved ({exc})"]
 
 
-def run_auth_validity(contracts: pathlib.Path, registry) -> list[str]:
-    from jsonschema import Draft202012Validator
+# ---------------------------------------------------------------------------
+# Runner checks. Each takes the context, the case and the instance, and
+# reports every reason it rejects the instance through ctx.reject(). A check
+# with an expectation of its own beside the verdict (the calendar findings)
+# reports through ctx.direct(). Checks return nothing: a finding is built from
+# what the context collected, never from a check's return value.
 
-    corpus_path = contracts / "auth" / "corpus.json"
-    if not corpus_path.is_file():
-        return []
-    corpus = load_json(corpus_path)
-    if not isinstance(corpus, dict):
-        return [f"{corpus_path}: corpus is not an object"]
-    findings: list[str] = []
-    for case in corpus.get("validity") or []:
-        if not isinstance(case, dict):
-            findings.append(f"{corpus_path}: a validity case is not an object")
+
+@dataclass
+class Context:
+    contracts: pathlib.Path
+    registry: object
+    schemas: dict
+    capability: str
+    part: str
+    corpus: dict
+    findings: list[str] = field(default_factory=list)
+    rejections: list[str] = field(default_factory=list)
+    cache: dict = field(default_factory=dict)
+
+    def reject(self, reason: str) -> None:
+        self.rejections.append(reason)
+
+    def direct(self, message: str) -> None:
+        self.findings.append(f"{self.capability}.{self.part}: {message}")
+
+    def profiles(self) -> dict:
+        if "profiles" not in self.cache:
+            path = self.contracts / "json-document-storage" / "storage-profiles.json"
+            data = load_json(path) if path.is_file() else {}
+            self.cache["profiles"] = data.get("engines", {}) if isinstance(data, dict) else {}
+        return self.cache["profiles"]
+
+
+def recovery_arithmetic(ctx: Context, case: dict, decl) -> None:
+    if not isinstance(decl, dict):
+        return
+    horizon = seconds(decl.get("erasure_horizon"))
+    for store in decl.get("stores") or []:
+        if not isinstance(store, dict):
             continue
-        case_id = case.get("id", "<missing id>")
-        def_name = case.get("def")
-        schema_id = SCHEMA_IDS.get(def_name) if isinstance(def_name, str) else None
-        if schema_id is None:
-            findings.append(f"{case_id}: unknown validity def {def_name!r}")
+        name = store.get("name", "<store>")
+        ret = store.get("retention") if isinstance(store.get("retention"), dict) else {}
+        drill = store.get("drill") if isinstance(store.get("drill"), dict) else {}
+        floor, ceiling = seconds(ret.get("floor")), seconds(ret.get("ceiling"))
+        cadence, stale = seconds(drill.get("cadence")), seconds(drill.get("stale_after"))
+        if floor is not None and ceiling is not None and floor > ceiling:
+            ctx.reject(f"{name}: retention.floor > retention.ceiling")
+        if ceiling is not None and horizon is not None and ceiling > horizon:
+            ctx.reject(f"{name}: retention.ceiling > erasure_horizon")
+        if cadence is not None and floor is not None and cadence > floor:
+            ctx.reject(f"{name}: drill.cadence > retention.floor")
+        if cadence is not None and stale is not None and cadence > stale:
+            ctx.reject(f"{name}: drill.cadence > drill.stale_after")
+
+
+def reference_segments_agree_with_row(ctx: Context, case: dict, ref) -> None:
+    """026 BS3, BS10: the object path's final segment is the id, and where the
+    row is tenant-scoped its first segment is the tenant."""
+    if not isinstance(ref, dict) or not isinstance(ref.get("key"), str):
+        return
+    segments = ref["key"].split("/")
+    if segments[-1] != str(ref.get("id")):
+        ctx.reject("the final path segment is not the id")
+    tenant = ref.get("tenant_id")
+    if tenant is not None and segments[0] != str(tenant):
+        ctx.reject("the first path segment is not tenant_id")
+
+
+def _declaration_entries(decl) -> list[dict]:
+    entries = decl.get("secrets") if isinstance(decl, dict) else None
+    return [s if isinstance(s, dict) else {} for s in (entries if isinstance(entries, list) else [])]
+
+
+def declaration_names_unique(ctx: Context, case: dict, decl) -> None:
+    """A finding names positions in the declaration and never repeats what the
+    declaration says, so a CI log carries no part of it."""
+    first_at: dict[object, int] = {}
+    for i, s in enumerate(_declaration_entries(decl)):
+        name = s.get("name")
+        if name in first_at:
+            ctx.reject(f"secrets[{i}] repeats the name of secrets[{first_at[name]}]")
+        else:
+            first_at[name] = i
+
+
+def backing_service_granted_once(ctx: Context, case: dict, decl) -> None:
+    holders: dict[object, list[int]] = {}
+    for i, s in enumerate(_declaration_entries(decl)):
+        if s.get("kind") not in ACCESS_GRANTING or "migrate" in (s.get("images") or []):
+            continue
+        holders.setdefault(s.get("backing_service"), []).append(i)
+    for at in holders.values():
+        if len(at) > 1:
+            positions = ", ".join(str(i) for i in at)
+            ctx.reject(f"secrets[{positions}] are {len(at)} access-granting entries to one backing service")
+
+
+def _declared(case: dict) -> list[dict]:
+    return [d for d in (case.get("declared") or []) if isinstance(d, dict)]
+
+
+def leak_event_targets_the_declaration(ctx: Context, case: dict, event) -> None:
+    target = event.get("target") if isinstance(event, dict) and isinstance(event.get("target"), dict) else {}
+    if target.get("type") != "secret":
+        ctx.reject("target.type is not secret")
+        return
+    for d in _declared(case):
+        if d.get("id") == target.get("id") and d.get("name") == target.get("display"):
+            return
+    ctx.reject("target does not name a declared entry by id and name")
+
+
+def leak_event_action_is_a_permission(ctx: Context, case: dict, event) -> None:
+    action = event.get("action") if isinstance(event, dict) else None
+    if not isinstance(action, str) or not PERMISSION.match(action):
+        ctx.reject("action is not resource.verb")
+    elif action.startswith("auth."):
+        ctx.reject("action is in the reserved auth namespace")
+
+
+def leak_event_carries_no_declared_value(ctx: Context, case: dict, event) -> None:
+    blob = json.dumps(event)
+    for i, d in enumerate(_declared(case)):
+        if d.get("value") and str(d["value"]) in blob:
+            ctx.reject(f"the event carries the value of declared[{i}]")
+
+
+def admission_engine_profile_admits_role(ctx: Context, case: dict, adm) -> None:
+    if not isinstance(adm, dict):
+        return
+    profile = ctx.profiles().get(adm.get("engine"))
+    if not isinstance(profile, dict):
+        return
+    roles = profile.get("admitted_roles") or []
+    if adm.get("role") not in roles:
+        ctx.reject(f"the {adm.get('engine')} profile admits roles {roles}, not {adm.get('role')}")
+
+
+def admission_current_version_has_schema(ctx: Context, case: dict, adm) -> None:
+    for coll in (adm.get("collections") or []) if isinstance(adm, dict) else []:
+        if not isinstance(coll, dict):
+            continue
+        version = coll.get("current_schema_version")
+        if str(version) not in (coll.get("schemas") or {}):
+            ctx.reject(f"{coll.get('name')}: current_schema_version {version} has no schema")
+
+
+def admission_runtime_and_declaration_variables_differ(ctx: Context, case: dict, adm) -> None:
+    pair = adm.get("credentials") if isinstance(adm, dict) and isinstance(adm.get("credentials"), dict) else {}
+    if pair.get("runtime") is not None and pair.get("runtime") == pair.get("declaration"):
+        ctx.reject("the runtime and declaration variables are one variable")
+
+
+def admission_scoped_index_leads_with_isolation(ctx: Context, case: dict, adm) -> None:
+    for coll in (adm.get("collections") or []) if isinstance(adm, dict) else []:
+        if not isinstance(coll, dict) or not coll.get("scoped"):
+            continue
+        levels = coll.get("isolation_levels") or []
+        if not levels:
+            continue
+        lead = f"{levels[0]}_id"
+        for index in coll.get("indexes") or []:
+            fields = index.get("fields") if isinstance(index, dict) else None
+            first = fields[0].get("field") if fields and isinstance(fields[0], dict) else None
+            if first != lead:
+                ctx.reject(f"{coll.get('name')}: index {index.get('name')} leads with {first}, not {lead}")
+
+
+def envelope_scoped_carries_tenant(ctx: Context, case: dict, doc) -> None:
+    coll = case.get("collection") if isinstance(case.get("collection"), dict) else {}
+    if coll.get("scoped") and isinstance(doc, dict) and "tenant_id" not in doc:
+        ctx.reject("a scoped collection's document carries no tenant_id")
+
+
+def envelope_within_ceiling(ctx: Context, case: dict, doc) -> None:
+    coll = case.get("collection") if isinstance(case.get("collection"), dict) else {}
+    ceiling = coll.get("max_document_bytes")
+    size = case.get("bytes")
+    if not isinstance(size, int):
+        size = len(json.dumps(doc, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
+    if isinstance(ceiling, int) and size > ceiling:
+        ctx.reject(f"{size} bytes exceeds the collection's ceiling of {ceiling}")
+
+
+def acceptance_calendar(ctx: Context, case: dict, inst) -> None:
+    """SB2's calendar half. It has its own expectation, `findings`, and never
+    changes the schema verdict."""
+    today_s = case.get("today")
+    if not isinstance(today_s, str):
+        return
+    today = dt.date.fromisoformat(today_s)
+    entries = [inst] if "entry" in case else (inst.get("acceptances") or [] if isinstance(inst, dict) else [])
+    found: set[str] = set()
+    for entry in entries:
+        if not isinstance(entry, dict):
             continue
         try:
-            schema = registry[schema_id].contents
-        except Exception as exc:  # noqa: BLE001 — report and continue
-            findings.append(f"{case_id}: schema {schema_id} not in the vendored tree ({exc})")
+            expires = dt.date.fromisoformat(entry["expires"]) if isinstance(entry.get("expires"), str) else None
+            accepted = dt.date.fromisoformat(entry["accepted_on"]) if isinstance(entry.get("accepted_on"), str) else None
+        except ValueError:
             continue
-        validator = Draft202012Validator(schema, registry=registry)
-        errors = sorted(validator.iter_errors(case.get("value")), key=lambda e: e.path)
-        ok = not errors
-        expected = case.get("valid")
-        if expected is True and not ok:
-            first = errors[0]
-            findings.append(f"{case_id}: expected valid, got {first.message}")
-        elif expected is False and ok:
-            findings.append(f"{case_id}: expected invalid, document validated")
-        elif expected not in (True, False):
-            findings.append(f"{case_id}: validity case is missing a boolean 'valid'")
-    return findings
+        if expires is not None and expires < today:
+            found.add("acceptance.expired")
+        if expires is not None and accepted is not None and (expires - accepted).days > 90:
+            found.add("acceptance.window_exceeds_90_days")
+    expected = case.get("findings")
+    if isinstance(expected, list) and sorted(found) != sorted(expected):
+        ctx.direct(f"{case.get('case')}: calendar findings {sorted(found)} differ from expected {sorted(expected)}")
+
+
+def error_message_adds_to_msg(ctx: Context, case: dict, line) -> None:
+    """030 SC2: a class is not a diagnosis. The one mechanical half of that
+    judgment is an error message that repeats the line's msg and adds
+    nothing to it."""
+    if not isinstance(line, dict) or not isinstance(line.get("error"), dict):
+        return
+    msg = str(line.get("msg", "")).strip().lower()
+    message = str(line["error"].get("message", "")).strip().lower()
+    if msg and message == msg:
+        ctx.reject("error.message repeats msg and adds no reason")
+
+
+def engine_enum_equals_profile_engines(ctx: Context) -> None:
+    schema = ctx.schemas.get(ADMISSION_SCHEMA_ID) or {}
+    enum = sorted(((schema.get("properties") or {}).get("engine") or {}).get("enum") or [])
+    profiled = sorted(engine for engine in ctx.profiles())
+    if enum and profiled and enum != profiled:
+        ctx.direct(f"admission.schema.json engine enum {enum} differs from the engines storage-profiles.json profiles {profiled}")
+
+
+CHECKS = {
+    "recovery_arithmetic": recovery_arithmetic,
+    "reference_key_agrees_with_row": reference_segments_agree_with_row,
+    "secret_names_unique": declaration_names_unique,
+    "one_credential_per_backing_service": backing_service_granted_once,
+    "leak_event_targets_the_declaration": leak_event_targets_the_declaration,
+    "leak_event_action_is_a_permission": leak_event_action_is_a_permission,
+    "leak_event_carries_no_declared_value": leak_event_carries_no_declared_value,
+    "admission_engine_profile_admits_role": admission_engine_profile_admits_role,
+    "admission_current_version_has_schema": admission_current_version_has_schema,
+    "admission_credentials_differ": admission_runtime_and_declaration_variables_differ,
+    "admission_scoped_index_leads_with_isolation": admission_scoped_index_leads_with_isolation,
+    "envelope_scoped_carries_tenant": envelope_scoped_carries_tenant,
+    "envelope_within_ceiling": envelope_within_ceiling,
+    "acceptance_calendar": acceptance_calendar,
+    "error_message_adds_to_msg": error_message_adds_to_msg,
+}
+PART_CHECKS = {
+    "engine_enum_equals_profile_keys": engine_enum_equals_profile_engines,
+}
+
+
+# ---------------------------------------------------------------------------
+# The generic runner.
+
+
+def resolve_fixture(corpus: dict, instance) -> tuple[object, str | None]:
+    """{"$fixture": name} -> the corpus's fixture of that name, or an error."""
+    if not (isinstance(instance, dict) and set(instance) == {"$fixture"}):
+        return instance, None
+    name = instance["$fixture"]
+    for table_name in ("fixture", "fixtures"):
+        table = corpus.get(table_name)
+        if isinstance(table, dict) and name in table:
+            return table[name], None
+    return None, f"names fixture {name!r}, which the corpus does not carry"
+
+
+def instance_of(rule: dict, case: dict) -> tuple[object, str | None, bool]:
+    """(instance, schema ref, present). `instances` maps alternative case keys
+    to schema refs; `instance` names one key and the schema comes from `schema`
+    or from the case's own `schema_from` key through `schemas`."""
+    alternatives = rule.get("instances")
+    if isinstance(alternatives, dict):
+        for field_name, ref in alternatives.items():
+            if field_name in case:
+                return case[field_name], ref, True
+        return None, None, False
+    field_name = rule.get("instance")
+    if not isinstance(field_name, str) or field_name not in case:
+        return None, None, False
+    ref = rule.get("schema")
+    named = rule.get("schema_from")
+    if isinstance(named, str):
+        table = rule.get("schemas") or {}
+        ref = table.get(case.get(named))
+    return case[field_name], ref, True
+
+
+def judge_corpus(ctx_base: dict, capability: str, corpus_path: pathlib.Path) -> tuple[list[str], int, int, list[str]]:
+    corpus = load_json(corpus_path)
+    if not isinstance(corpus, dict):
+        return [f"{corpus_path}: corpus is not an object"], 0, 0, []
+    rules = corpus.get("judged_by")
+    if not isinstance(rules, dict):
+        return [], 0, 0, []
+    findings: list[str] = []
+    judged = skipped = 0
+    parts: list[str] = []
+    for part, rule in rules.items():
+        if part == "description" or not isinstance(rule, dict):
+            continue
+        ctx = Context(corpus=corpus, capability=capability, part=part, **ctx_base)
+        cases = corpus.get(part)
+        if not isinstance(cases, list):
+            findings.append(f"{capability}: judged_by names part {part!r}, which the corpus does not carry")
+            continue
+        parts.append(part)
+        checks = []
+        for name in rule.get("checks") or []:
+            if name in CHECKS:
+                checks.append(CHECKS[name])
+            else:
+                findings.append(f"{capability}.{part}: names runner check {name!r}, which this tool does not implement")
+        for name in rule.get("part_checks") or []:
+            if name in PART_CHECKS:
+                PART_CHECKS[name](ctx)
+            else:
+                findings.append(f"{capability}.{part}: names part check {name!r}, which this tool does not implement")
+        for case in cases:
+            if not isinstance(case, dict):
+                findings.append(f"{capability}.{part}: a case is not an object")
+                continue
+            case_id = case.get("case") or case.get("id") or "<unnamed case>"
+            instance, ref, present = instance_of(rule, case)
+            if not present:
+                skipped += 1
+                continue
+            if not isinstance(ref, str):
+                findings.append(f"{capability}.{part}: {case_id}: no schema resolves for this case")
+                continue
+            instance, problem = resolve_fixture(corpus, instance)
+            if problem:
+                findings.append(f"{capability}.{part}: {case_id}: {problem}")
+                continue
+            expected = case.get("valid")
+            if expected not in (True, False):
+                findings.append(f"{capability}.{part}: {case_id}: missing a boolean 'valid'")
+                continue
+            errors = schema_errors(ctx.registry, ref, instance)
+            ctx.rejections = []
+            for check in checks:
+                check(ctx, case, instance)
+            reasons = list(ctx.rejections)
+            actual = not errors and not reasons
+            if case.get("schemaCannotCatch") and errors:
+                findings.append(f"{capability}.{part}: {case_id}: flagged schemaCannotCatch, and the schema rejects it: {errors[0]}")
+            if actual != expected:
+                detail = errors[0] if errors else (reasons[0] if reasons else "the schema and every check accept it")
+                findings.append(f"{capability}.{part}: {case_id}: expected {'valid' if expected else 'invalid'}, got {detail}")
+            judged += 1
+        findings.extend(ctx.findings)
+    return findings, judged, skipped, parts
+
+
+# ---------------------------------------------------------------------------
+# Repository files the schemas name.
+
+
+def repository_files(root: pathlib.Path, contracts: pathlib.Path, registry, schemas: dict) -> tuple[list[str], int]:
+    wanted: dict[str, tuple[str, dict]] = {}
+    for sid, schema in schemas.items():
+        note = schema.get("x-repository-file")
+        if isinstance(note, dict) and isinstance(note.get("name"), str):
+            wanted[note["name"]] = (sid, note)
+    if not wanted:
+        return [], 0
+    findings: list[str] = []
+    count = 0
+    contracts_resolved = contracts.resolve()
+    for dirpath, dirnames, filenames in os.walk(root):
+        here = pathlib.Path(dirpath)
+        dirnames[:] = sorted(
+            d for d in dirnames
+            if d not in SKIP_DIRS and (here / d).resolve() != contracts_resolved
+        )
+        for name in filenames:
+            if name not in wanted:
+                continue
+            sid, note = wanted[name]
+            path = here / name
+            try:
+                data = load_json(path)
+            except (OSError, ValueError) as exc:
+                findings.append(f"{path}: cannot be read as JSON ({exc})")
+                continue
+            count += 1
+            rel = path.relative_to(root)
+            if note.get("instance") == "array":
+                if not isinstance(data, list):
+                    findings.append(f"{rel}: expected an array of instances")
+                    continue
+                for i, item in enumerate(data):
+                    for message in schema_errors(registry, sid, item):
+                        findings.append(f"{rel}[{i}]: {message}")
+            else:
+                for message in schema_errors(registry, sid, data):
+                    findings.append(f"{rel}: {message}")
+    return findings, count
+
+
+# ---------------------------------------------------------------------------
+# The two fixtures.
 
 
 def run_rbac_structure(contracts: pathlib.Path) -> list[str]:
@@ -354,9 +757,12 @@ def run_rbac_structure(contracts: pathlib.Path) -> list[str]:
     if not isinstance(fixture, dict):
         findings.append(f"{path}: fixture is missing")
         return findings
-    for key in ("permissions", "roles", "grants"):
-        if key not in fixture:
-            findings.append(f"{path}: fixture.{key} is missing")
+    for member in ("permissions", "roles", "grants"):
+        if member not in fixture:
+            findings.append(f"{path}: fixture.{member} is missing")
+    for permission in fixture.get("permissions") or []:
+        if not isinstance(permission, str) or not PERMISSION.match(permission):
+            findings.append(f"{path}: fixture permission {permission!r} is not resource.action (070 RB2)")
     checks = data.get("checks")
     if not isinstance(checks, list) or not checks:
         findings.append(f"{path}: checks[] is missing or empty")
@@ -393,17 +799,9 @@ def run_rbac_structure(contracts: pathlib.Path) -> list[str]:
 
 def catalog_integrity(catalog: dict, path: pathlib.Path) -> list[str]:
     findings: list[str] = []
-    caps = [
-        c["id"]
-        for c in catalog.get("capabilities") or []
-        if isinstance(c, dict) and isinstance(c.get("id"), str)
-    ]
+    caps = [c["id"] for c in catalog.get("capabilities") or [] if isinstance(c, dict) and isinstance(c.get("id"), str)]
     metrics = [m for m in catalog.get("metrics") or [] if isinstance(m, dict)]
-    settings = [
-        s["id"]
-        for s in catalog.get("settings") or []
-        if isinstance(s, dict) and isinstance(s.get("id"), str)
-    ]
+    settings = [s["id"] for s in catalog.get("settings") or [] if isinstance(s, dict) and isinstance(s.get("id"), str)]
     ids = caps + [m["id"] for m in metrics if isinstance(m.get("id"), str)] + settings
     seen: set[str] = set()
     for entitlement_id in ids:
@@ -411,9 +809,7 @@ def catalog_integrity(catalog: dict, path: pathlib.Path) -> list[str]:
             findings.append(f"{path}: duplicate entitlement id {entitlement_id}")
         seen.add(entitlement_id)
     quota_ids = [m["id"] for m in metrics if m.get("kind") == "quota" and isinstance(m.get("id"), str)]
-    allowance_ids = [
-        m["id"] for m in metrics if m.get("kind") == "allowance" and isinstance(m.get("id"), str)
-    ]
+    allowance_ids = [m["id"] for m in metrics if m.get("kind") == "allowance" and isinstance(m.get("id"), str)]
     cap_set = set(caps)
     for plan in catalog.get("plans") or []:
         if not isinstance(plan, dict):
@@ -421,9 +817,7 @@ def catalog_integrity(catalog: dict, path: pathlib.Path) -> list[str]:
         plan_id = plan.get("id", "<missing>")
         for capability in plan.get("capabilities") or []:
             if capability not in cap_set:
-                findings.append(
-                    f"{path}: plan {plan_id} lists undeclared capability {capability}"
-                )
+                findings.append(f"{path}: plan {plan_id} lists undeclared capability {capability}")
         quotas = plan.get("quotas") if isinstance(plan.get("quotas"), dict) else {}
         for metric_id in quota_ids:
             if metric_id not in quotas:
@@ -431,29 +825,25 @@ def catalog_integrity(catalog: dict, path: pathlib.Path) -> list[str]:
         allowances = plan.get("allowances") if isinstance(plan.get("allowances"), dict) else {}
         for metric_id in allowance_ids:
             if metric_id not in allowances:
-                findings.append(
-                    f"{path}: plan {plan_id} missing declared allowance {metric_id}"
-                )
+                findings.append(f"{path}: plan {plan_id} missing declared allowance {metric_id}")
         plan_settings = plan.get("settings") if isinstance(plan.get("settings"), dict) else {}
         for setting_id in settings:
             if setting_id not in plan_settings:
-                findings.append(
-                    f"{path}: plan {plan_id} missing declared setting {setting_id}"
-                )
+                findings.append(f"{path}: plan {plan_id} missing declared setting {setting_id}")
     return findings
 
 
-def billing_check_shape(path: pathlib.Path, label: str, case: dict) -> list[str]:
+def entitlements_check_shape(path: pathlib.Path, label: str, case: dict) -> list[str]:
     findings: list[str] = []
     operation = case.get("operation")
-    if operation not in BILLING_OPS:
+    if operation not in ENTITLEMENTS_OPS:
         findings.append(f"{path}: {label} has unknown operation {operation!r}")
         return findings
     inner = case.get("check")
     if not isinstance(inner, dict):
         findings.append(f"{path}: {label} is missing check{{}}")
         return findings
-    required = ("tenant",) + BILLING_OPS[operation]
+    required = ("tenant",) + ENTITLEMENTS_OPS[operation]
     missing = [k for k in required if k not in inner]
     if missing:
         findings.append(f"{path}: {label} missing {', '.join(missing)}")
@@ -463,7 +853,7 @@ def billing_check_shape(path: pathlib.Path, label: str, case: dict) -> list[str]
     return findings
 
 
-def run_billing_structure(contracts: pathlib.Path, registry) -> list[str]:
+def run_entitlements_fixture(contracts: pathlib.Path, registry) -> list[str]:
     path = contracts / "billing" / "entitlements.json"
     if not path.is_file():
         return []
@@ -475,23 +865,18 @@ def run_billing_structure(contracts: pathlib.Path, registry) -> list[str]:
     if not isinstance(fixture, dict):
         findings.append(f"{path}: fixture is missing")
         return findings
-    for key in BILLING_FIXTURE:
-        if key not in fixture:
-            findings.append(f"{path}: fixture.{key} is missing")
+    for member in ENTITLEMENTS_FIXTURE:
+        if member not in fixture:
+            findings.append(f"{path}: fixture.{member} is missing")
     catalog = fixture.get("catalog")
     if isinstance(catalog, dict):
         for message in schema_errors(registry, CATALOG_SCHEMA_ID, catalog):
             findings.append(f"{path}: fixture.catalog: {message}")
         findings.extend(catalog_integrity(catalog, path))
-    for i, row in enumerate(fixture.get("subscriptions") or []):
-        for message in schema_errors(registry, SUBSCRIPTION_SCHEMA_ID, row, "subscription"):
-            findings.append(f"{path}: fixture.subscriptions[{i}]: {message}")
-    for i, row in enumerate(fixture.get("ledger") or []):
-        for message in schema_errors(registry, SUBSCRIPTION_SCHEMA_ID, row, "ledgerRow"):
-            findings.append(f"{path}: fixture.ledger[{i}]: {message}")
-    for i, row in enumerate(fixture.get("overrides") or []):
-        for message in schema_errors(registry, SUBSCRIPTION_SCHEMA_ID, row, "override"):
-            findings.append(f"{path}: fixture.overrides[{i}]: {message}")
+    for label, def_name in (("subscriptions", "subscription"), ("ledger", "ledgerRow"), ("overrides", "override")):
+        for i, row in enumerate(fixture.get(label) or []):
+            for message in schema_errors(registry, f"{SUBSCRIPTION_SCHEMA_ID}#/$defs/{def_name}", row):
+                findings.append(f"{path}: fixture.{label}[{i}]: {message}")
     checks = data.get("checks")
     if not isinstance(checks, list) or not checks:
         findings.append(f"{path}: checks[] is missing or empty")
@@ -508,13 +893,13 @@ def run_billing_structure(contracts: pathlib.Path, registry) -> list[str]:
         if case_id in seen:
             findings.append(f"{path}: duplicate check id {case_id}")
         seen.add(case_id)
-        findings.extend(billing_check_shape(path, f"check {case_id}", case))
+        findings.extend(entitlements_check_shape(path, f"check {case_id}", case))
         before = case.get("before")
         if before is not None:
             if not isinstance(before, dict):
                 findings.append(f"{path}: check {case_id} before is not an object")
             else:
-                findings.extend(billing_check_shape(path, f"check {case_id} before", before))
+                findings.extend(entitlements_check_shape(path, f"check {case_id} before", before))
     rejections = data.get("rejections")
     if isinstance(rejections, list):
         for case in rejections:
@@ -522,34 +907,60 @@ def run_billing_structure(contracts: pathlib.Path, registry) -> list[str]:
                 findings.append(f"{path}: a rejection is missing an id")
                 continue
             expect = case.get("expect")
-            if not isinstance(expect, dict) or not (
-                expect.get("refused") is True or expect.get("error") is True
-            ):
-                findings.append(
-                    f"{path}: rejection {case['id']} missing expect.refused or expect.error"
-                )
+            if not isinstance(expect, dict) or not (expect.get("refused") is True or expect.get("error") is True):
+                findings.append(f"{path}: rejection {case['id']} missing expect.refused or expect.error")
     elif rejections is not None:
         findings.append(f"{path}: rejections is not a list")
     return findings
 
 
-def run_all(contracts: pathlib.Path) -> list[str]:
-    try:
-        from jsonschema import Draft202012Validator  # noqa: F401
-        from referencing import Registry  # noqa: F401
-    except ImportError:
-        raise SystemExit(
-            "jsonschema is required to run the contract checker "
-            "(pip install jsonschema)"
-        )
-    registry = registry_for(contracts)
-    return (
-        run_schemas(contracts)
-        + run_corpus_ids(contracts)
-        + run_auth_validity(contracts, registry)
-        + run_rbac_structure(contracts)
-        + run_billing_structure(contracts, registry)
-    )
+# ---------------------------------------------------------------------------
+
+
+def judge_all(contracts: pathlib.Path, registry, schemas: dict) -> tuple[list[str], list[str], int]:
+    """Every corpus's schema-decided half. Returns findings, one report line
+    per corpus, and the number of cases judged."""
+    ctx_base = {"contracts": contracts, "registry": registry, "schemas": schemas}
+    findings: list[str] = []
+    lines: list[str] = []
+    total = 0
+    for corpus_path in sorted(contracts.glob("*/corpus.json")):
+        capability = corpus_path.parent.name
+        corpus_findings, judged, skipped, parts = judge_corpus(ctx_base, capability, corpus_path)
+        findings.extend(corpus_findings)
+        total += judged
+        if parts:
+            note = f", {skipped} case(s) without an instance skipped" if skipped else ""
+            lines.append(f"  {'fail' if corpus_findings else 'ok  '} {capability}: {judged} cases judged across {', '.join(parts)}{note}")
+    return findings, lines, total
+
+
+def run_all(contracts: pathlib.Path, root: pathlib.Path | None = None) -> tuple[list[str], str]:
+    """Everything the checker proves about one contracts tree, and the ok line."""
+    registry, schemas = registry_for(contracts)
+    findings = run_schemas(contracts) + run_corpus_ids(contracts)
+    judged_findings, lines, total = judge_all(contracts, registry, schemas)
+    findings.extend(judged_findings)
+    for line in lines:
+        print(line)
+    fixtures = []
+    if (contracts / "rbac" / "decisions.json").is_file():
+        findings.extend(run_rbac_structure(contracts))
+        fixtures.append("rbac/decisions.json")
+    if (contracts / "billing" / "entitlements.json").is_file():
+        findings.extend(run_entitlements_fixture(contracts, registry))
+        fixtures.append("billing/entitlements.json")
+    files = 0
+    if root is not None:
+        file_findings, files = repository_files(root, contracts, registry, schemas)
+        findings.extend(file_findings)
+    schema_n = sum(1 for _ in contracts.rglob("*.schema.json"))
+    summary = f"ok  {schema_n} schema(s) parse and resolve; {total} schema-decided cases under {contracts}"
+    if fixtures:
+        summary += f"; fixtures {' and '.join(fixtures)} loadable"
+    if root is not None:
+        summary += f"; {files} repository file(s) validated"
+    return findings, summary
 
 
 def report(findings: list[str], ok_line: str) -> int:
@@ -572,31 +983,31 @@ def self_test() -> int:
 
     failures: list[str] = []
 
-    ok = run_all(contracts_of("ok"))
+    ok, _ = run_all(contracts_of("ok"))
     if ok:
         failures.append("ok fixture was refused:\n  " + "\n  ".join(ok))
 
-    broken = run_all(contracts_of("broken-ref"))
+    broken, _ = run_all(contracts_of("broken-ref"))
     if not any("missing.schema.json" in finding for finding in broken):
         failures.append(
             "broken-ref fixture did not name the missing file "
             f"(got {broken or ['no findings']})"
         )
 
-    pointer = run_all(contracts_of("broken-pointer"))
+    pointer, _ = run_all(contracts_of("broken-pointer"))
     if not any("pointer does not resolve" in finding for finding in pointer):
         failures.append(
             "broken-pointer fixture did not refuse the missing $def "
             f"(got {pointer or ['no findings']})"
         )
 
-    wrong = run_all(contracts_of("wrong-id"))
+    wrong, _ = run_all(contracts_of("wrong-id"))
     if not any("$id is" in finding and "expected" in finding for finding in wrong):
         failures.append(
             f"wrong-id fixture did not refuse the mismatched $id (got {wrong or ['no findings']})"
         )
 
-    dups = run_all(contracts_of("duplicate-id"))
+    dups, _ = run_all(contracts_of("duplicate-id"))
     if not any("duplicate case id" in finding for finding in dups):
         failures.append(
             "duplicate-id fixture did not refuse the repeated id "
@@ -612,7 +1023,7 @@ def self_test() -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--root", type=pathlib.Path, default=pathlib.Path("."))
     parser.add_argument("--contracts", type=pathlib.Path, default=None)
     parser.add_argument(
@@ -621,6 +1032,12 @@ def main() -> int:
         help="run against tools/testdata/contract-conformance and expect the known findings",
     )
     args = parser.parse_args()
+    try:
+        from jsonschema import Draft202012Validator  # noqa: F401
+        from referencing import Registry  # noqa: F401
+    except ImportError:
+        print("jsonschema is required to run the contract checker (pip install jsonschema)", file=sys.stderr)
+        return 2
     if args.self_test:
         return self_test()
     root = args.root.resolve()
@@ -628,25 +1045,8 @@ def main() -> int:
     if contracts is None:
         print("no contracts in this repository; nothing to run")
         return 0
-    try:
-        findings = run_all(contracts)
-    except SystemExit as exc:
-        print(exc, file=sys.stderr)
-        return 2
-    schema_n = sum(1 for _ in contracts.rglob("*.schema.json"))
-    ran = [
-        name
-        for name, rel in (
-            ("auth", "auth/corpus.json"),
-            ("RBAC", "rbac/decisions.json"),
-            ("billing", "billing/entitlements.json"),
-        )
-        if (contracts / rel).is_file()
-    ]
-    parts = [f"{schema_n} schema{'s' if schema_n != 1 else ''}"]
-    if ran:
-        parts.append(" and ".join(ran) + " corpora")
-    return report(findings, f"ok  {' + '.join(parts)} under {contracts}")
+    findings, summary = run_all(contracts, root)
+    return report(findings, summary)
 
 
 if __name__ == "__main__":

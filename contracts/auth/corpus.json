@@ -2,6 +2,16 @@
   "contract": "auth",
   "schemaVersion": 1,
   "description": "Conformance corpus for standards/060-auth.md. 'validity': the value must validate (or fail) against the named schema root. The AU2 access token has no root here on purpose — its shape is RFC 9068's and this repository describes none of it, so every claim about the token is a live case under 'behaviour'. 'behaviour': black-box cases a live deployment must satisfy. An implementation passes the whole file or names the case it fails. Where a behaviour case names a 'code', a 'reason', a 'slug' or an 'audit' action, the value is the vocabulary's (contracts/platform/vocabulary.json) and an implementation reproduces it exactly.",
+  "judged_by": {
+    "description": "What judges each part below, as data, so one runner can read it: the case key holding the instance, the schema (or the case key naming one and the table that resolves it), and the runner checks the schema cannot express. A part absent here is judged by running an implementation and is a product suite's. A case flagged schemaCannotCatch documents a verdict the schema alone does not reach.",
+    "validity": {
+      "instance": "value",
+      "schema_from": "def",
+      "schemas": {
+        "me": "https://contracts.aurumalpha.dev/auth/me.schema.json"
+      }
+    }
+  },
   "validity": [
     {
       "id": "me-minimal-ok",

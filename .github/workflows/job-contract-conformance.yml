@@ -1,17 +1,19 @@
 # aurum-job: capability=contract-conformance language=- role=policy
 name: contract-conformance
 
-# Proves every *.schema.json under contracts/ parses as the dialect it
-# names, its $id matches its path, and every $ref resolves to a file in
-# the tree. Then runs the static halves of the auth, RBAC and billing
-# corpora against the calling repository. The validity half of
-# auth/corpus.json is schema-decided and needs no service. The behaviour
-# half needs a live stack and is skipped. decisions.json and
-# entitlements.json are checked as fixtures a runner can load; each
-# platform module still executes check() itself, and each product that
-# answers for billing still executes entitlementsFor() itself. A
-# repository that vendors none of these passes. --self-test is the
-# catalog's own proof that a broken $ref is a finding.
+# Proves every *.schema.json under contracts/ parses as the dialect it names,
+# its $id matches its path, and every $ref resolves to a file in the tree.
+# Then runs the schema-decided half of every corpus the calling repository
+# vendors, as each corpus's judged_by map states it: instances validated against the
+# named schema, the runner checks the corpus names applied, and the verdict
+# compared with the case's own. It proves decisions.json and entitlements.json
+# are fixtures a runner can load; each platform module still executes check()
+# itself, and each product that answers for billing still executes
+# entitlementsFor() itself. It validates every repository file a schema names
+# in x-repository-file. A part judged by running an implementation needs a
+# live stack and is the product suite's. A repository that vendors no
+# contract passes. --self-test is the catalog's own proof that a broken $ref
+# is a finding.
 
 on:
   workflow_call:
@@ -52,7 +54,7 @@ jobs:
           python -m pip install --quiet --disable-pip-version-check jsonschema
           python -c 'import jsonschema; print("jsonschema", jsonschema.__version__)'
 
-      - name: Every owned schema parses, and the corpora still load
+      - name: Run every corpus's schema-decided half
         run: |
           if [ -x tools/check-contract-conformance ]; then
             checker=tools/check-contract-conformance

@@ -2,6 +2,19 @@
   "contract": "notifications",
   "schemaVersion": 1,
   "description": "The conformance corpus for standards/058-notifications.md. Four parts. 'records' is judged by the schema each case names (notification, preference, channel-address, category-declaration): accepted or rejected, a rejection naming its rule. 'decide' is judged by running notify.decide (NF2, NF5, NF6, NF7, NF9, NF10): given the fixture declaration, an event, recipients by fixture name with their addresses and preferences, any existing records and the instant, the implementation must produce exactly the stated rows - recipient, channel, status, reason, not_before, address_id - and exactly the stated number of notification.requested messages; rows are compared sorted by recipient_id, channel, address_id. One case is a detector: 'a-preference-cannot-suppress-the-security-floor' fails an implementation that consults preferences before checking whether the category is the floor, and that implementation passes every other decide case. 'unsubscribe' is judged two ways: header sets against the RFC 8058 and RFC 3834 profile of NF5, and requests against the one-click endpoint's behaviour, where 'a-get-on-the-unsubscribe-link-changes-nothing' is a second detector - an implementation that withdraws consent on GET passes every other unsubscribe case and fails that one. 'render_authorization' is judged by rendering (NF9): given a template's field permissions and the permissions the recipient holds in the subject's scope, the payload the implementation may produce, or that it produces nothing.",
+  "judged_by": {
+    "description": "What judges each part below, as data, so one runner can read it: the case key holding the instance, the schema (or the case key naming one and the table that resolves it), and the runner checks the schema cannot express. A part absent here is judged by running an implementation and is a product suite's. A case flagged schemaCannotCatch documents a verdict the schema alone does not reach.",
+    "records": {
+      "instance": "record",
+      "schema_from": "schema",
+      "schemas": {
+        "notification": "https://contracts.aurumalpha.dev/notifications/notification.schema.json",
+        "preference": "https://contracts.aurumalpha.dev/notifications/preference.schema.json",
+        "channel-address": "https://contracts.aurumalpha.dev/notifications/preference.schema.json#/$defs/channelAddress",
+        "category-declaration": "https://contracts.aurumalpha.dev/notifications/category-declaration.schema.json"
+      }
+    }
+  },
   "fixtures": {
     "declaration": {
       "schema_version": 1,

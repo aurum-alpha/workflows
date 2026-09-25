@@ -18,6 +18,11 @@ corpus the module vendors and does not list is not judged; a corpus it lists
 and does not vendor is a finding; a repository with no ANSWERS has not adopted
 the corpora and passes, the way one with no devkit.json passes the drift check.
 
+WHICH CASES. Every top-level array of case objects in a listed corpus is a
+part, and every case in it counts, whatever the part is called and whether
+the case carries its name under `id` or `case`. The behaviour half a schema
+cannot decide is exactly what this checker exists for, so no part is exempt.
+
 WHAT COUNTS AS NAMED. The id appears, as a literal string, in a file under the
 module's test tree: *_test.go for Go, *.test.ts and *.test.tsx for TypeScript,
 tests/**/*.php for PHP. A runner that loops over a corpus and calls t.Run on
@@ -39,9 +44,10 @@ import sys
 
 ANSWERS = pathlib.Path("contracts") / "ANSWERS"
 
-# The keys under which a corpus keeps its cases. A contract file with none of
-# these is a schema or a fixture and has no cases to cover.
-CASE_KEYS = ("checks", "rejections", "behaviour", "validity", "resolve", "switch", "view")
+# A part is any top-level array of case objects; a case names itself under
+# `id` or `case`. A contract file with no such array is a schema or a fixture
+# and has no cases to cover. `judged_by` is a map and is not a part.
+CASE_NAME_KEYS = ("id", "case")
 
 # Where a module's tests live, by the manifest at its root. A repository with
 # more than one manifest (a multi-service one) is judged over all of them.
@@ -57,10 +63,17 @@ SKIP_DIRS = {"node_modules", "vendor", ".git", "dist", "coverage"}
 def case_ids(path: pathlib.Path) -> list[str]:
     data = json.loads(path.read_text(encoding="utf-8"))
     ids: list[str] = []
-    for key in CASE_KEYS:
-        for case in data.get(key, []) or []:
-            if isinstance(case, dict) and isinstance(case.get("id"), str):
-                ids.append(case["id"])
+    if not isinstance(data, dict):
+        return ids
+    for cases in data.values():
+        if not isinstance(cases, list):
+            continue
+        for case in cases:
+            if not isinstance(case, dict):
+                continue
+            name = next((case[k] for k in CASE_NAME_KEYS if isinstance(case.get(k), str)), None)
+            if name is not None:
+                ids.append(name)
     return ids
 
 

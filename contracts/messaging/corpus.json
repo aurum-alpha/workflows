@@ -2,6 +2,13 @@
   "contract": "messaging",
   "schemaVersion": 1,
   "description": "The conformance corpus for standards/055-messaging.md. Three parts. 'validity' is judged by envelope.schema.json alone. 'delivery' is judged by running a consumer: deliver the sequence in order and count the distinct effects an idempotent consumer produces (AM3); a delivery may carry 'fails' to model a handler failure followed by redelivery. 'signing' is judged by computing: given the secret, id, timestamp and exact body bytes, the webhook-signature value an implementation must produce, and deliveries it must reject (AM7, AM8). Signature values here were computed with HMAC-SHA256 over id + '.' + timestamp + '.' + body, keyed by the base64-decoded secret, per Standard Webhooks.",
+  "judged_by": {
+    "description": "What judges each part below, as data, so one runner can read it: the case key holding the instance, the schema (or the case key naming one and the table that resolves it), and the runner checks the schema cannot express. A part absent here is judged by running an implementation and is a product suite's. A case flagged schemaCannotCatch documents a verdict the schema alone does not reach.",
+    "validity": {
+      "instance": "event",
+      "schema": "https://contracts.aurumalpha.dev/messaging/envelope.schema.json"
+    }
+  },
   "validity": [
     {
       "case": "a-complete-envelope-is-accepted",

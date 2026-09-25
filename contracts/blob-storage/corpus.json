@@ -1,5 +1,23 @@
 {
   "description": "The conformance corpus for standards/026-blob-storage.md. Five parts. 'keys' is judged by key.schema.json alone, against #/$defs/key. 'references' is judged by object-reference.schema.json plus two equalities the schema cannot express and an implementation must: the key's final segment equals id, and where tenant_id is present the key's first segment equals it (BS3, BS10). 'policies' is judged by upload-policy.schema.json alone. 'uploads' is judged by running uploads through a server to a storage: each case carries the entity's policy and a sequence of steps at stated seconds - an upload is one request carrying the declaration and the bytes, and the server writes the bytes to the store itself - and an implementation must produce the stated result for every step that carries 'expect' and the stated end state (BS6, BS7, BS8). 'reads' is judged by asking a server for an object by id given a row, a request context and a policy: the implementation serves the bytes with the stated status, content type and Content-Disposition, or refuses for the stated reason (BS5, BS7, BS10). Every served case expects the bytes in the response body with status 200 or 206; an implementation that answers a redirect, a location, or any URL to the store fails every served case, because no such URL may exist (BS4, BS5). Two cases are detectors: 'a-declared-type-that-disagrees-with-the-bytes-is-rejected' fails an implementation that records the client's declared content type without sniffing the bytes, or that sniffs and silently overwrites the declaration; 'a-scan-pending-object-is-refused' fails an implementation that treats scanning as advisory and serves an object before its verdict.",
+  "judged_by": {
+    "description": "What judges each part below, as data, so one runner can read it: the case key holding the instance, the schema (or the case key naming one and the table that resolves it), and the runner checks the schema cannot express. A part absent here is judged by running an implementation and is a product suite's. A case flagged schemaCannotCatch documents a verdict the schema alone does not reach.",
+    "keys": {
+      "instance": "key",
+      "schema": "https://contracts.aurumalpha.dev/blob-storage/key.schema.json#/$defs/key"
+    },
+    "references": {
+      "instance": "reference",
+      "schema": "https://contracts.aurumalpha.dev/blob-storage/object-reference.schema.json",
+      "checks": [
+        "reference_key_agrees_with_row"
+      ]
+    },
+    "policies": {
+      "instance": "policy",
+      "schema": "https://contracts.aurumalpha.dev/blob-storage/upload-policy.schema.json"
+    }
+  },
   "keys": [
     {
       "case": "a-tenant-scoped-key-with-a-uuidv7-tenant-is-accepted",
@@ -255,7 +273,7 @@
       }
     },
     {
-      "case": "a-wildcard-content-type-is-rejected",
+      "case": "a-wildcard-content-type-on-a-reference-is-rejected",
       "valid": false,
       "why": "BS6: the content type on a reference is one verified media type. A wildcard is a policy shorthand and never a fact about an object.",
       "reference": {
@@ -399,7 +417,7 @@
       }
     },
     {
-      "case": "a-wildcard-content-type-is-rejected",
+      "case": "a-wildcard-in-the-admitted-types-is-rejected",
       "valid": false,
       "why": "BS6: the admitted set is closed and enumerated. image/* admits image/svg+xml, which carries script, and whatever image type a browser learns next.",
       "policy": {

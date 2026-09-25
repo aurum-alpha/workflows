@@ -2,6 +2,23 @@
   "contract": "identifiers",
   "schemaVersion": 1,
   "description": "Conformance corpus for standards/020-identifiers.md. 'validity': the value must validate (or fail) against the named $def in primitives.schema.json. 'canonical': the implementation parses 'input' as the named kind and must emit exactly 'emit'. An implementation passes the whole file or names the case it fails.",
+  "judged_by": {
+    "description": "What judges each part below, as data, so one runner can read it: the case key holding the instance, the schema (or the case key naming one and the table that resolves it), and the runner checks the schema cannot express. A part absent here is judged by running an implementation and is a product suite's. A case flagged schemaCannotCatch documents a verdict the schema alone does not reach.",
+    "validity": {
+      "instance": "value",
+      "schema_from": "def",
+      "schemas": {
+        "date": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/date",
+        "money": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/money",
+        "nanoid": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/nanoid",
+        "prefixedHandle": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/prefixedHandle",
+        "publicId": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/publicId",
+        "timestamp": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp",
+        "timestampInput": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestampInput",
+        "uuidv7": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/uuidv7"
+      }
+    }
+  },
   "validity": [
     { "id": "uuidv7-ok", "def": "uuidv7", "value": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99", "valid": true },
     { "id": "uuidv7-rejects-v4", "def": "uuidv7", "value": "9b2edf3e-3b5a-4f0e-8f1d-2a6c4b8d9e0f", "valid": false, "note": "version nibble is 4 — UUIDv4 is not admitted under the uuidv7 def (IP2)" },

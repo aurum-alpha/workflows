@@ -2,6 +2,17 @@
   "contract": "web-client",
   "schemaVersion": 1,
   "description": "Conformance corpus for standards/090-web-client.md. 'validity': the value must validate (or fail) against the named schema root \u2014 'runtime-config' or 'error-report'. 'behaviour': black-box cases a live client and its serving process must satisfy; the harness drives the stimulus and asserts 'expect'. An implementation passes the whole file or names the case it fails. The runtime-config cases are at schema version 3: field names say what each field is, surface_class tells one contract which estate surface it serves (091 WE1), and the document is fetched from /config.json.",
+  "judged_by": {
+    "description": "What judges each part below, as data, so one runner can read it: the case key holding the instance, the schema (or the case key naming one and the table that resolves it), and the runner checks the schema cannot express. A part absent here is judged by running an implementation and is a product suite's. A case flagged schemaCannotCatch documents a verdict the schema alone does not reach.",
+    "validity": {
+      "instance": "value",
+      "schema_from": "def",
+      "schemas": {
+        "error-report": "https://contracts.aurumalpha.dev/web-client/error-report.schema.json",
+        "runtime-config": "https://contracts.aurumalpha.dev/web-client/runtime-config.schema.json"
+      }
+    }
+  },
   "validity": [
     {
       "id": "config-minimal-ok",

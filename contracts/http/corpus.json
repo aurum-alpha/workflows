@@ -2,6 +2,17 @@
   "contract": "http",
   "schemaVersion": 1,
   "description": "Conformance corpus for standards/050-http.md. 'validity': the value must validate (or fail) against the named $def — 'problem' for problem.schema.json's root, or a $def name in pagination.schema.json. 'behaviour': black-box cases a live service must satisfy; the harness drives the stimulus and asserts 'expect'. An implementation passes the whole file or names the case it fails.",
+  "judged_by": {
+    "description": "What judges each part below, as data, so one runner can read it: the case key holding the instance, the schema (or the case key naming one and the table that resolves it), and the runner checks the schema cannot express. A part absent here is judged by running an implementation and is a product suite's. A case flagged schemaCannotCatch documents a verdict the schema alone does not reach.",
+    "validity": {
+      "instance": "value",
+      "schema_from": "def",
+      "schemas": {
+        "problem": "https://contracts.aurumalpha.dev/http/problem.schema.json",
+        "collection": "https://contracts.aurumalpha.dev/http/pagination.schema.json#/$defs/collection"
+      }
+    }
+  },
   "validity": [
     {
       "id": "problem-minimal-ok",

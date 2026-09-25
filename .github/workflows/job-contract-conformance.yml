@@ -1,13 +1,17 @@
 # aurum-job: capability=contract-conformance language=- role=policy
 name: contract-conformance
 
-# Runs the static halves of the auth, RBAC and billing corpora against the
-# calling repository. The validity half of auth/corpus.json is schema-decided
-# and needs no service. The behaviour half needs a live stack and is skipped.
-# decisions.json and entitlements.json are checked as fixtures a runner can
-# load; each platform module still executes check() itself, and each product
-# that answers for billing still executes entitlementsFor() itself. A
-# repository that vendors none of the three corpora passes.
+# Proves every *.schema.json under contracts/ parses as the dialect it
+# names, its $id matches its path, and every $ref resolves to a file in
+# the tree. Then runs the static halves of the auth, RBAC and billing
+# corpora against the calling repository. The validity half of
+# auth/corpus.json is schema-decided and needs no service. The behaviour
+# half needs a live stack and is skipped. decisions.json and
+# entitlements.json are checked as fixtures a runner can load; each
+# platform module still executes check() itself, and each product that
+# answers for billing still executes entitlementsFor() itself. A
+# repository that vendors none of these passes. --self-test is the
+# catalog's own proof that a broken $ref is a finding.
 
 on:
   workflow_call:
@@ -48,10 +52,12 @@ jobs:
           python -m pip install --quiet --disable-pip-version-check jsonschema
           python -c 'import jsonschema; print("jsonschema", jsonschema.__version__)'
 
-      - name: Run the auth, RBAC and billing corpora
+      - name: Every owned schema parses, and the corpora still load
         run: |
           if [ -x tools/check-contract-conformance ]; then
-            tools/check-contract-conformance --root .
+            checker=tools/check-contract-conformance
           else
-            .aurum-catalog/tools/check-contract-conformance --root .
+            checker=.aurum-catalog/tools/check-contract-conformance
           fi
+          "$checker" --root .
+          "$checker" --self-test

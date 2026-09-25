@@ -19,12 +19,5 @@
 # repeated here. Print width stays 80, tab width 2, arrow parens always,
 # because those are the defaults and there is no argument with them.
 #
-# semi: false, singleQuote: true is the style the three hand-built
-# TypeScript codebases already use - client-manager (0 semicolon-terminated
-# lines, 338 single-quoted imports, 0 double), gha-runner-controller and
-# gofast. The seven repos that disagree are the Replit-generated ones, whose
-# semicolons and double quotes are a code generator's default rather than a
-# decision anyone made. Where the standard has an opinion and a generator has a
-# habit, the opinion wins.
 semi: false
 singleQuote: true

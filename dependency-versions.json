@@ -267,12 +267,11 @@
     "runtime dependency and out of scope by the rule above, so the types wait",
     "on a decision about the express major rather than pre-empting it.",
     "",
-    "WAVE 11 IS THE FIRST WHERE PLACEMENT WAS THE ONLY BLOCKER, and it adds three.",
-    "@types/memoizee 0.4.12 (two units), @replit/vite-plugin-shadcn-theme-json",
-    "0.0.4 (two units) and @types/multer 2.1.0 (two units) were each already at one",
+    "WAVE 11 IS THE FIRST WHERE PLACEMENT WAS THE ONLY BLOCKER, and it adds two.",
+    "@types/memoizee 0.4.12 (two units) and @types/multer 2.1.0 (two units) were each already at one",
     "exact version in every unit that declares them. Not one of them needed a",
     "version to change. What kept them out of this file was which SECTION of",
-    "package.json they sat in: all three were in `dependencies`, and the checker",
+    "package.json they sat in: both were in `dependencies`, and the checker",
     "reports a wrong section as a misplacement rather than an absence, so a package",
     "with a perfect version still fails.",
     "",
@@ -325,7 +324,6 @@
     "plugin is build-time, so the asserted section is devDependencies."
   ],
   "devDependencies": {
-    "@replit/vite-plugin-shadcn-theme-json": "0.0.4",
     "@tailwindcss/typography": "0.5.20",
     "@tailwindcss/vite": "4.3.3",
     "@types/memoizee": "0.4.12",

@@ -1,29 +1,31 @@
 #!/usr/bin/env python3
-"""Run the static halves of the auth, RBAC and billing corpora.
+"""Prove the contracts this repository owns still parse.
 
-The validity half of contracts/auth/corpus.json is schema-decided: each case
-validates against me.schema.json and must reach the stated verdict. The token
-has no validity case (RFC 9068). The behaviour half needs a live stack and
-is skipped here.
+Every *.schema.json under contracts/ is a legal JSON Schema for the dialect
+its $schema names, its $id matches its path, and every $ref resolves to a
+file in the tree (and to the JSON pointer, when one is named). A typo in a
+$ref, an $id that does not match its path, or a schema that is not a schema
+fails here rather than in whichever repository vendors the file next.
 
-contracts/rbac/decisions.json is data for check(). This checker cannot run
-check() — that is each platform module's own test. It proves the fixture is
-loadable and every check has an id, a check{subject, scope, activeGrant} and
-a non-empty expect{}, so a truncated copy fails here rather than silently
-covering a different set.
+The static halves of the auth, RBAC and billing corpora still run: the
+validity half of auth/corpus.json is schema-decided; decisions.json and
+entitlements.json are fixtures a runner can load. Each platform module still
+executes check() itself, and each product that answers for billing still
+executes entitlementsFor() itself.
 
-contracts/billing/entitlements.json is the same shape for
-entitlementsFor() (075 BL4). This checker cannot run the function — that is
-each product's own test. It proves the fixture is loadable, the catalog
-validates, and every check has an id, an operation, a check{tenant, …} and a
-non-empty expect{}. The two catalog cross-references the schema cannot
-express (a plan missing a declared metric, a plan listing an undeclared
-capability) are checked on this fixture so a broken corpus fails here.
+Every other JSON file under contracts/ must parse, and case ids inside a
+corpus file must be unique. A duplicated id defeats the modules that drive
+cases by id.
 
-A repository with none of the three corpora passes, the way one with no
-ANSWERS passes check-corpus-coverage.
+A repository with no contracts/ passes, the way one with no ANSWERS passes
+check-corpus-coverage.
+
+--self-test runs the checker against tools/testdata/contract-conformance,
+including a schema whose $ref names a file that is not there. That fixture
+is what fails if the $ref walk stops walking.
 
 Run:  tools/check-contract-conformance [--root DIR] [--contracts DIR]
+      tools/check-contract-conformance --self-test
 Exit: 0 covered or nothing to run, 1 findings, 2 could not ask
 """
 
@@ -33,6 +35,24 @@ import argparse
 import json
 import pathlib
 import sys
+
+HERE = pathlib.Path(__file__).resolve().parent
+SELF_TEST = HERE / "testdata" / "contract-conformance"
+
+ID_PREFIX = "https://contracts.aurumalpha.dev/"
+DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema"
+
+# The keys under which a corpus keeps its cases. Same set
+# check-corpus-coverage reads, so a rename there is a rename here.
+CASE_KEYS = (
+    "checks",
+    "rejections",
+    "behaviour",
+    "validity",
+    "resolve",
+    "switch",
+    "view",
+)
 
 SCHEMA_IDS = {
     "me": "https://contracts.aurumalpha.dev/auth/me.schema.json",
@@ -65,13 +85,193 @@ def find_contracts(root: pathlib.Path, explicit: pathlib.Path | None) -> pathlib
     if explicit is not None:
         return explicit
     candidate = root / "contracts"
+    if not candidate.is_dir():
+        return None
     if (
         (candidate / "auth" / "corpus.json").is_file()
         or (candidate / "rbac" / "decisions.json").is_file()
         or (candidate / "billing" / "entitlements.json").is_file()
+        or any(candidate.rglob("*.schema.json"))
     ):
         return candidate
     return None
+
+
+def rel_to(contracts: pathlib.Path, path: pathlib.Path) -> str:
+    return path.relative_to(contracts).as_posix()
+
+
+def walk_refs(node: object) -> list[str]:
+    found: list[str] = []
+    if isinstance(node, dict):
+        ref = node.get("$ref")
+        if isinstance(ref, str) and ref:
+            found.append(ref)
+        for value in node.values():
+            found.extend(walk_refs(value))
+    elif isinstance(node, list):
+        for value in node:
+            found.extend(walk_refs(value))
+    return found
+
+
+def resolve_pointer(document: object, pointer: str) -> object:
+    """RFC 6901. Raises ValueError when the pointer does not resolve."""
+    if pointer in ("", "#"):
+        return document
+    if pointer.startswith("#"):
+        pointer = pointer[1:]
+    if not pointer:
+        return document
+    if not pointer.startswith("/"):
+        raise ValueError(f"pointer {pointer!r} is not a JSON pointer")
+    node: object = document
+    for raw in pointer[1:].split("/"):
+        key = raw.replace("~1", "/").replace("~0", "~")
+        if isinstance(node, dict):
+            if key not in node:
+                raise ValueError(f"missing {key!r}")
+            node = node[key]
+        elif isinstance(node, list):
+            try:
+                node = node[int(key)]
+            except (ValueError, IndexError) as exc:
+                raise ValueError(f"index {key!r} is not in the array") from exc
+        else:
+            raise ValueError(f"cannot walk {key!r} through a {type(node).__name__}")
+    return node
+
+
+def load_schema(path: pathlib.Path) -> dict | str:
+    try:
+        data = load_json(path)
+    except json.JSONDecodeError as exc:
+        return f"is not valid JSON ({exc.msg} at line {exc.lineno})"
+    if not isinstance(data, dict):
+        return "is not a JSON object"
+    return data
+
+
+def run_schemas(contracts: pathlib.Path) -> list[str]:
+    from jsonschema import Draft202012Validator
+
+    findings: list[str] = []
+    loaded: dict[pathlib.Path, dict] = {}
+    for path in sorted(contracts.rglob("*.schema.json")):
+        rel = rel_to(contracts, path)
+        data = load_schema(path)
+        if isinstance(data, str):
+            findings.append(f"{rel}: {data}")
+            continue
+        loaded[path] = data
+        schema_uri = data.get("$schema")
+        if schema_uri != DRAFT_2020_12:
+            findings.append(
+                f"{rel}: $schema is {schema_uri!r}, expected {DRAFT_2020_12}"
+            )
+        expected_id = ID_PREFIX + rel
+        sid = data.get("$id")
+        if not isinstance(sid, str) or not sid:
+            findings.append(f"{rel}: missing $id (expected {expected_id})")
+        elif sid != expected_id:
+            findings.append(f"{rel}: $id is {sid!r}, expected {expected_id}")
+        try:
+            Draft202012Validator.check_schema(data)
+        except Exception as exc:  # noqa: BLE001 — report and continue
+            findings.append(f"{rel}: not a legal JSON Schema ({exc})")
+    for path, data in loaded.items():
+        rel = rel_to(contracts, path)
+        for ref in walk_refs(data):
+            findings.extend(resolve_ref(contracts, path, rel, ref, loaded))
+    return findings
+
+
+def resolve_ref(
+    contracts: pathlib.Path,
+    source: pathlib.Path,
+    rel: str,
+    ref: str,
+    loaded: dict[pathlib.Path, dict],
+) -> list[str]:
+    uri, hash_sign, pointer = ref.partition("#")
+    fragment = f"#{pointer}" if hash_sign else ""
+    if not uri:
+        target = source
+        target_doc = loaded.get(source)
+        if target_doc is None:
+            return [f"{rel}: $ref {ref!r} is in a file that did not parse"]
+    elif uri.startswith(ID_PREFIX):
+        target = contracts / uri[len(ID_PREFIX) :]
+        if not target.is_file():
+            return [f"{rel}: $ref {ref!r} names no file under contracts/"]
+        target_doc = loaded.get(target)
+        if target_doc is None:
+            loaded_doc = load_schema(target)
+            if isinstance(loaded_doc, str):
+                return [f"{rel}: $ref {ref!r} target {loaded_doc}"]
+            target_doc = loaded_doc
+    elif uri.startswith("https://") or uri.startswith("http://"):
+        return [f"{rel}: $ref {ref!r} is not a contracts.aurumalpha.dev URI"]
+    else:
+        target = (source.parent / uri).resolve()
+        try:
+            target.relative_to(contracts.resolve())
+        except ValueError:
+            return [f"{rel}: $ref {ref!r} walks outside contracts/"]
+        if not target.is_file():
+            return [f"{rel}: $ref {ref!r} names no file under contracts/"]
+        target_doc = loaded.get(target)
+        if target_doc is None:
+            loaded_doc = load_schema(target)
+            if isinstance(loaded_doc, str):
+                return [f"{rel}: $ref {ref!r} target {loaded_doc}"]
+            target_doc = loaded_doc
+    if not fragment:
+        return []
+    try:
+        resolve_pointer(target_doc, fragment)
+    except ValueError as exc:
+        return [f"{rel}: $ref {ref!r} pointer does not resolve ({exc})"]
+    return []
+
+
+def case_id(case: object) -> str | None:
+    if not isinstance(case, dict):
+        return None
+    for key in ("id", "case"):
+        value = case.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
+def run_corpus_ids(contracts: pathlib.Path) -> list[str]:
+    findings: list[str] = []
+    for path in sorted(contracts.rglob("*.json")):
+        if path.name.endswith(".schema.json"):
+            continue
+        rel = rel_to(contracts, path)
+        try:
+            data = load_json(path)
+        except json.JSONDecodeError as exc:
+            findings.append(f"{rel}: is not valid JSON ({exc.msg} at line {exc.lineno})")
+            continue
+        if not isinstance(data, dict):
+            findings.append(f"{rel}: is not a JSON object")
+            continue
+        seen: set[str] = set()
+        for key in CASE_KEYS:
+            cases = data.get(key)
+            if not isinstance(cases, list):
+                continue
+            for case in cases:
+                cid = case_id(case)
+                if cid is None:
+                    continue
+                if cid in seen:
+                    findings.append(f"{rel}: duplicate case id {cid}")
+                seen.add(cid)
+    return findings
 
 
 def registry_for(contracts: pathlib.Path):
@@ -333,47 +533,120 @@ def run_billing_structure(contracts: pathlib.Path, registry) -> list[str]:
     return findings
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=pathlib.Path, default=pathlib.Path("."))
-    parser.add_argument("--contracts", type=pathlib.Path, default=None)
-    args = parser.parse_args()
-    root = args.root.resolve()
-    contracts = find_contracts(root, args.contracts.resolve() if args.contracts else None)
-    if contracts is None:
-        print("no auth, RBAC or billing corpus in this repository; nothing to run")
-        return 0
+def run_all(contracts: pathlib.Path) -> list[str]:
     try:
         from jsonschema import Draft202012Validator  # noqa: F401
         from referencing import Registry  # noqa: F401
     except ImportError:
-        print(
-            "jsonschema is required to run the auth validity half "
-            "(pip install jsonschema)",
-            file=sys.stderr,
+        raise SystemExit(
+            "jsonschema is required to run the contract checker "
+            "(pip install jsonschema)"
         )
-        return 2
     registry = registry_for(contracts)
-    findings = (
-        run_auth_validity(contracts, registry)
+    return (
+        run_schemas(contracts)
+        + run_corpus_ids(contracts)
+        + run_auth_validity(contracts, registry)
         + run_rbac_structure(contracts)
         + run_billing_structure(contracts, registry)
     )
+
+
+def report(findings: list[str], ok_line: str) -> int:
     if not findings:
-        ran = [
-            name
-            for name, rel in (
-                ("auth", "auth/corpus.json"),
-                ("RBAC", "rbac/decisions.json"),
-                ("billing", "billing/entitlements.json"),
-            )
-            if (contracts / rel).is_file()
-        ]
-        print(f"ok  {' and '.join(ran)} corpora under {contracts}")
+        print(ok_line)
         return 0
     for finding in findings:
         print(f"fail  {finding}", file=sys.stderr)
     return 1
+
+
+def self_test() -> int:
+    """The fixtures under testdata/ are the proof the $ref walk still walks."""
+    if not SELF_TEST.is_dir():
+        print(f"self-test fixtures missing at {SELF_TEST}", file=sys.stderr)
+        return 2
+
+    def contracts_of(name: str) -> pathlib.Path:
+        return SELF_TEST / name / "contracts"
+
+    failures: list[str] = []
+
+    ok = run_all(contracts_of("ok"))
+    if ok:
+        failures.append("ok fixture was refused:\n  " + "\n  ".join(ok))
+
+    broken = run_all(contracts_of("broken-ref"))
+    if not any("missing.schema.json" in finding for finding in broken):
+        failures.append(
+            "broken-ref fixture did not name the missing file "
+            f"(got {broken or ['no findings']})"
+        )
+
+    pointer = run_all(contracts_of("broken-pointer"))
+    if not any("pointer does not resolve" in finding for finding in pointer):
+        failures.append(
+            "broken-pointer fixture did not refuse the missing $def "
+            f"(got {pointer or ['no findings']})"
+        )
+
+    wrong = run_all(contracts_of("wrong-id"))
+    if not any("$id is" in finding and "expected" in finding for finding in wrong):
+        failures.append(
+            f"wrong-id fixture did not refuse the mismatched $id (got {wrong or ['no findings']})"
+        )
+
+    dups = run_all(contracts_of("duplicate-id"))
+    if not any("duplicate case id" in finding for finding in dups):
+        failures.append(
+            "duplicate-id fixture did not refuse the repeated id "
+            f"(got {dups or ['no findings']})"
+        )
+
+    if failures:
+        for failure in failures:
+            print(f"fail  {failure}", file=sys.stderr)
+        return 1
+    print(f"ok  self-test fixtures under {SELF_TEST}")
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", type=pathlib.Path, default=pathlib.Path("."))
+    parser.add_argument("--contracts", type=pathlib.Path, default=None)
+    parser.add_argument(
+        "--self-test",
+        action="store_true",
+        help="run against tools/testdata/contract-conformance and expect the known findings",
+    )
+    args = parser.parse_args()
+    if args.self_test:
+        return self_test()
+    root = args.root.resolve()
+    contracts = find_contracts(root, args.contracts.resolve() if args.contracts else None)
+    if contracts is None:
+        print("no contracts in this repository; nothing to run")
+        return 0
+    try:
+        findings = run_all(contracts)
+    except SystemExit as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    schema_n = sum(1 for _ in contracts.rglob("*.schema.json"))
+    ran = [
+        name
+        for name, rel in (
+            ("auth", "auth/corpus.json"),
+            ("RBAC", "rbac/decisions.json"),
+            ("billing", "billing/entitlements.json"),
+        )
+        if (contracts / rel).is_file()
+    ]
+    parts = [f"{schema_n} schema{'s' if schema_n != 1 else ''}"]
+    if ran:
+        parts.append(" and ".join(ran) + " corpora")
+    return report(findings, f"ok  {' + '.join(parts)} under {contracts}")
 
 
 if __name__ == "__main__":

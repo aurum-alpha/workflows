@@ -2,6 +2,11 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.aurumalpha.dev/notifications/category-declaration.schema.json",
   "title": "Aurum Alpha notification category declaration",
+  "x-repository-file": {
+    "name": "category-declaration.json",
+    "home": "The root of the directory that holds the service; the repository root where a repository holds one service (000 PC7).",
+    "instance": "document"
+  },
   "description": "standards/058-notifications.md NF5, NF6 and NF10: the declaration a repository commits beside its notification code, naming every category it sends, the class of each, the channels it goes on in order of preference, the default consent per channel, and the collapse window and retention. notify.decide reads it; a notification for an undeclared category is not produced. The conditional rules are the ones prose states and a reviewer would otherwise carry in their head: security is declared (the floor cannot be sent otherwise) and is transactional; marketing is optional and opt-in on every channel; a transactional category's channels carry no opt-out default. schemaVersion 1 - evolves additively per PC6.",
   "type": "object",
   "$defs": {

@@ -198,6 +198,11 @@ with the bytes, and the server writes the bytes to the store itself**. A
 client never writes to the store, for the same reason it never reads from
 it. There is nothing to write to that a client can reach.
 
+The upload policy is `upload-policy.json` at the service's root
+([`000-platform.md`](000-platform.md) PC7), validated against
+[`upload-policy.schema.json`](../contracts/blob-storage/upload-policy.schema.json).
+It carries the per-service scoping and lifetime and one entry per entity.
+
 1. **Before the first byte of the body**. The server runs the create check
    under 070 and reads the entity's entry in the upload policy. It refuses a
    type outside the admitted set or a declared size above `max_size_bytes`

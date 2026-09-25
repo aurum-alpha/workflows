@@ -53,8 +53,9 @@ below says which engine each test usually leads to:
 | `scale` | The collection's volume or write rate measurably degrades the transactional rows it sits beside, and the documents relate to nothing but their owner. The declaration states the number. | primary (an archive) |
 | `derivedness` | The data is a projection of many rows into one read-optimised shape, rebuilt from them, read far more than written, and the projection's cost is what the column cannot amortise. | derived (a read model) |
 
-The admission is a file in the repository beside the service, validated
-against the schema, and the rest of this document binds to it. It states
+The admission is `document-store-admission.json` at the service's root
+([`000-platform.md`](000-platform.md) PC7), validated against the schema, and
+the rest of this document binds to it. It states
 role, engine, collections with their schemas and indexes, rebuild job, backup
 posture. **A document store with no admission is not admitted**, in the sense
 057 JB3 gives an undeclared job. A store nobody declared is a store nobody

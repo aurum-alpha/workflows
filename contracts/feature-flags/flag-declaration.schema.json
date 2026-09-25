@@ -2,6 +2,11 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.aurumalpha.dev/feature-flags/flag-declaration.schema.json",
   "title": "Aurum Alpha feature flag declaration",
+  "x-repository-file": {
+    "name": "flag-declaration.json",
+    "home": "The root of the directory that holds the service; the repository root where a repository holds one service (000 PC7).",
+    "instance": "array"
+  },
   "description": "standards/038-feature-flags.md FF2: one flag's declaration, committed beside the code that evaluates it and built into the image. The repository's declaration file is a list of these; a name appears once. The provider holds values; this holds existence and lifetime. Conditional rules the prose states and a reviewer would otherwise remember: release and experiment flags carry expires and removal and never review_by (FF3); operational flags carry review_by and never expires (FF3); an experiment carries two or more variants (FF10); a boolean flag's default is false (FF4). The 180-day ceiling on expires after created, and the 365-day ceiling on review_by ahead of the reading date, (FF3) are date computations the expiry corpus part decides, not this schema. schemaVersion 1 — evolves additively per PC6.",
   "type": "object",
   "$defs": {

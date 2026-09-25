@@ -2,6 +2,11 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.aurumalpha.dev/data-subject-rights/inventory.schema.json",
   "title": "Aurum Alpha personal-data inventory",
+  "x-repository-file": {
+    "name": "data-inventory.json",
+    "home": "The root of the directory that holds the service; the repository root where a repository holds one service (000 PC7).",
+    "instance": "document"
+  },
   "description": "standards/082-data-subject-rights.md DR1: the declaration, committed in the repository beside the schema, of every store that holds data about a person. One entry per (store, subject column); a store with two columns naming people carries two entries, each with its own treatment, because erasure targets a subject and not a row. The export job and the erasure job are functions of this file and of nothing else, which is why a store holding personal data with no entry is a finding rather than an oversight. The conditional rules below are DR5's treatment vocabulary made mechanical: a retained entry names its legal basis and what survives; an anonymised entry names what survives, as an allowlist; a deleted entry names neither; an entry declared free of personal data says why and can be exported by nothing. schema_version 1 - evolves additively per PC6.",
   "type": "object",
   "$defs": {

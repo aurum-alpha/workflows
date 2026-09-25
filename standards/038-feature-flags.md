@@ -42,10 +42,12 @@ none. An evaluation never throws, per the specification.
 ### FF2. Every flag is declared in the repository, and the declaration says what exists
 
 **A flag exists because a declaration for it is committed beside the code
-that evaluates it**. The declaration is validated against
-[`flag-declaration.schema.json`](../contracts/feature-flags/flag-declaration.schema.json)
-and built into the image with the code (010, BUILD ONCE). So the set of flags
-a release can evaluate is a fact about the release.
+that evaluates it**. The declarations are one file, `flag-declaration.json`
+at the service's root ([`000-platform.md`](000-platform.md) PC7). It is an
+array, each entry validated against
+[`flag-declaration.schema.json`](../contracts/feature-flags/flag-declaration.schema.json),
+and it is built into the image with the code (010, BUILD ONCE). So the set of
+flags a release can evaluate is a fact about the release.
 
 | Field | Values | What it decides |
 |---|---|---|

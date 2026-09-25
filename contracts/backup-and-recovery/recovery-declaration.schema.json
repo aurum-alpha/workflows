@@ -2,6 +2,11 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.aurumalpha.dev/backup-and-recovery/recovery-declaration.schema.json",
   "title": "Aurum Alpha recovery declaration",
+  "x-repository-file": {
+    "name": "recovery-declaration.json",
+    "home": "The root of the directory that holds the service; the repository root where a repository holds one service (000 PC7).",
+    "instance": "document"
+  },
   "description": "standards/028-backup-and-recovery.md BR1: the file a service keeps in its repository declaring, for every stateful backing service it owns, its recovery objectives, the mechanism that copies it, where and how long the copy is kept, how restorability is drilled, and how a derived store is rebuilt. Read by the platform to configure the engine's mechanism and the retention lifecycle, by the drill (BR4) to know what to restore and assert, and by the deployment to know whether the drill is fresh. A store with no declaration is a store with no backup. The conditional rules below are the ones prose states and a reviewer would otherwise remember: a primary store carries objectives, a mechanism admitted for its kind, encryption, a failure domain, retention, a drill and a verification list that includes readiness; a derived store carries a rebuild and none of those; a cache is always derived; a relational store's mechanism is point-in-time recovery. Four arithmetic relations JSON Schema cannot express are stated in corpus.json and checked by the runner: retention.floor <= retention.ceiling, retention.ceiling <= erasure_horizon, drill.cadence <= retention.floor, drill.cadence <= drill.stale_after. Durations are ISO 8601. schemaVersion 1 - evolves additively per PC6.",
   "type": "object",
   "$defs": {

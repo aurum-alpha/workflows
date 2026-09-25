@@ -2,6 +2,11 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.aurumalpha.dev/jobs/declaration.schema.json",
   "title": "Aurum Alpha job declaration",
+  "x-repository-file": {
+    "name": "job-declaration.json",
+    "home": "The job's own directory, beside its code (057 JB3; 000 PC7).",
+    "instance": "document"
+  },
   "description": "standards/057-jobs.md JB3: the declaration a job carries beside its code. Read by the worker to construct the input and enforce the class, rendered at deployment into the runner's native form (035 WK6), and read by the alerting (JB8). A job with no declaration does not run. The conditional rules below are the ones prose states and a reviewer would otherwise have to remember: a periodic job has a schedule and a staleness threshold; an at_most_once job names who resolves its unknowns; a per-event job's input is an event and every other job's is an args schema; only a once_ever or on_demand job may block; a run_late missed policy carries a window. Durations are ISO 8601; the schedule is a five-field POSIX cron expression evaluated in UTC.",
   "type": "object",
   "$defs": {

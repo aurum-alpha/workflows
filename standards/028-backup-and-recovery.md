@@ -24,8 +24,8 @@ and nothing in the restore procedure knows it happened.
 **A service declares four things for every stateful server it attaches. They
 are how much of that store it is allowed to lose, and how long it is allowed
 to be without it. They are how the copy is taken and kept, and how the copy
-is proven restorable. The declaration is a file in the repository beside the
-service, validated against
+is proven restorable. The declaration is `recovery-declaration.json` at the
+service's root ([`000-platform.md`](000-platform.md) PC7), validated against
 [`recovery-declaration.schema.json`](../contracts/backup-and-recovery/recovery-declaration.schema.json)**.
 A store with no declaration is a store with no backup, and review treats it
 as one. The question is not *is this backed up*, which a checkbox answers,

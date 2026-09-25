@@ -1,0 +1,6 @@
+{
+  "validity": [
+    { "id": "one", "valid": true },
+    { "id": "two", "valid": false }
+  ]
+}

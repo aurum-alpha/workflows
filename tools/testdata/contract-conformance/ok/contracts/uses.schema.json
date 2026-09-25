@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aurumalpha.dev/uses.schema.json",
+  "type": "object",
+  "properties": {
+    "token": {
+      "$ref": "https://contracts.aurumalpha.dev/base.schema.json#/$defs/token"
+    }
+  }
+}

@@ -206,24 +206,36 @@ def reference_key_agrees_with_row(ctx: Context, case: dict, ref) -> list[str]:
     return reasons
 
 
+def _declared_secrets(decl) -> list[dict]:
+    entries = decl.get("secrets") if isinstance(decl, dict) else None
+    return [s if isinstance(s, dict) else {} for s in (entries if isinstance(entries, list) else [])]
+
+
 def secret_names_unique(ctx: Context, case: dict, decl) -> list[str]:
-    names = [s.get("name") for s in (decl.get("secrets") or []) if isinstance(s, dict)] if isinstance(decl, dict) else []
-    dupes = sorted({n for n in names if names.count(n) > 1})
-    return [f"name declared twice: {n}" for n in dupes]
+    """A finding names positions in the declaration and never repeats what the
+    declaration says, so a CI log carries no part of it."""
+    first_at: dict[object, int] = {}
+    reasons: list[str] = []
+    for i, s in enumerate(_declared_secrets(decl)):
+        name = s.get("name")
+        if name in first_at:
+            reasons.append(f"secrets[{i}] repeats the name of secrets[{first_at[name]}]")
+        else:
+            first_at[name] = i
+    return reasons
 
 
 def one_credential_per_backing_service(ctx: Context, case: dict, decl) -> list[str]:
-    if not isinstance(decl, dict):
-        return []
-    count: dict[str, int] = {}
-    for s in decl.get("secrets") or []:
-        if not isinstance(s, dict) or s.get("kind") not in ACCESS_GRANTING:
+    holders: dict[object, list[int]] = {}
+    for i, s in enumerate(_declared_secrets(decl)):
+        if s.get("kind") not in ACCESS_GRANTING or "migrate" in (s.get("images") or []):
             continue
-        if "migrate" in (s.get("images") or []):
-            continue
-        service = s.get("backing_service")
-        count[service] = count.get(service, 0) + 1
-    return [f"backing service {svc} has {n} access-granting credentials" for svc, n in sorted(count.items()) if n > 1]
+        holders.setdefault(s.get("backing_service"), []).append(i)
+    return [
+        f"secrets[{', '.join(str(i) for i in at)}] are {len(at)} access-granting credentials to one backing service"
+        for at in holders.values()
+        if len(at) > 1
+    ]
 
 
 def _declared(case: dict) -> list[dict]:

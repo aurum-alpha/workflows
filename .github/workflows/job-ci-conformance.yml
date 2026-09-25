@@ -12,9 +12,9 @@ name: ci-conformance
 # two renames without anything noticing. A check that only runs when someone
 # remembers to run it is not a gate.
 #
-# check-catalog-loops and check-version-stamp-shared are deliberately absent:
-# they inspect this repo's own shared jobs, so they belong in this repo's CI and
-# nowhere else.
+# check-catalog-loops, check-version-stamp-shared and check-go-module-version
+# are deliberately absent: they inspect this repo's own shared jobs, so they
+# belong in this repo's CI and nowhere else.
 #
 # The list is described rather than counted on purpose. It used to say "the four
 # caller-side checkers" and "the fifth checker", which meant adding one made two

@@ -111,6 +111,12 @@ jobs:
       - name: Check the shared version-stamp block agrees across jobs
         run: tools/check-version-stamp-shared
 
+      # Same reason as the stamp check: the decision is copied into two jobs
+      # because a reusable workflow runs in the caller's checkout. A copy that
+      # drifts tags a Go release the go command cannot fetch.
+      - name: Check the Go module-major block
+        run: tools/check-go-module-version
+
   contract-conformance:
     uses: ./.github/workflows/job-contract-conformance.yml
 

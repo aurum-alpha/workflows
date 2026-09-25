@@ -73,6 +73,7 @@ can disagree eventually will.
 | — | Only a version change mints the tag and the GitHub release | `job-version-release` | gated³ |
 | — | Only a version change mints a `v<version>` image tag or package version | — | **review only** |
 | — | A version or artifact name built for a package manager obeys that manager's semantics | — | **review only** |
+| — | A Go release's major matches the module path suffix | `job-version-gate`, `job-go-build`, `tools/check-go-module-version` | gated¹¹ |
 | — | Caller permissions cover shared jobs | `check-caller-permissions` | gated¹ |
 | — | Overrides use pnpm's key alone, not npm's or yarn's | `check-overrides` | gated¹ |
 | — | Every override carries a reason, and no reason outlives its override | `check-overrides` | gated¹ |
@@ -150,6 +151,13 @@ a runner can load, with the billing catalog valid against its schema. It
 validates every repository file a schema names in `x-repository-file`. A
 part judged by running an implementation is the product suite's, and
 `check-corpus-coverage` holds that set.
+
+¹¹ `job-go-build` rejects a module path Go would reject, on every build, and
+rejects a release commit whose version major and module path disagree.
+`job-version-gate` rejects that release pull request when `go.mod` is at the
+repository root. `tools/check-go-module-version` runs in this repository and
+holds the two copies of the decision to one text. A module that is not at
+the repository root is judged by the build job in its own directory.
 
 Each platform module still executes `check()` itself. Each product that
 answers for billing still executes `entitlementsFor()` itself. The behaviour

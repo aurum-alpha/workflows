@@ -558,9 +558,9 @@ def run_rbac_structure(contracts: pathlib.Path) -> list[str]:
     if not isinstance(fixture, dict):
         findings.append(f"{path}: fixture is missing")
         return findings
-    for key in ("permissions", "roles", "grants"):
-        if key not in fixture:
-            findings.append(f"{path}: fixture.{key} is missing")
+    for member in ("permissions", "roles", "grants"):
+        if member not in fixture:
+            findings.append(f"{path}: fixture.{member} is missing")
     for permission in fixture.get("permissions") or []:
         if not isinstance(permission, str) or not PERMISSION.match(permission):
             findings.append(f"{path}: fixture permission {permission!r} is not resource.action (070 RB2)")
@@ -666,9 +666,9 @@ def run_billing_structure(contracts: pathlib.Path, registry) -> list[str]:
     if not isinstance(fixture, dict):
         findings.append(f"{path}: fixture is missing")
         return findings
-    for key in BILLING_FIXTURE:
-        if key not in fixture:
-            findings.append(f"{path}: fixture.{key} is missing")
+    for member in BILLING_FIXTURE:
+        if member not in fixture:
+            findings.append(f"{path}: fixture.{member} is missing")
     catalog = fixture.get("catalog")
     if isinstance(catalog, dict):
         for message in schema_errors(registry, CATALOG_SCHEMA_ID, catalog):

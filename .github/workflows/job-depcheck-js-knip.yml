@@ -16,8 +16,7 @@
 # for code that never called it.
 #
 # knip rather than depcheck: it understands vite/vitest config and dynamic
-# imports, which this portfolio needs because the Replit plugins are reached
-# through conditional dynamic imports in the dev-only branch of vite.config.ts.
+# imports.
 # Trialled against credit-watch before being proposed, where it reproduced the
 # entire hand-built finding with no configuration, and added the `ws` pair the
 # hand survey had missed.
@@ -79,7 +78,7 @@ on:
           "Refine entry pattern (no matches)" hint, so carrying the defaults
           into a repo they do not fit buys nothing and prints noise.
 
-          The default suits the eight units on the Replit-derived layout and
+          The default suits the eight units on the shared client/server layout and
           the two client-only ones. Set it where the tree differs, and say at
           the call site what the entries are.
 

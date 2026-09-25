@@ -54,8 +54,8 @@ SKIP_DIRS = {"node_modules", "vendor", ".git", "dist", "coverage", ".aurum-catal
 
 CHECK_INNER = ("subject", "scope", "activeGrant")
 
-BILLING_FIXTURE = ("now", "catalog", "subscriptions", "ledger", "overrides")
-BILLING_OPS = {
+ENTITLEMENTS_FIXTURE = ("now", "catalog", "subscriptions", "ledger", "overrides")
+ENTITLEMENTS_OPS = {
     "entitled": ("capability",),
     "quotaFor": ("metric",),
     "allowanceFor": ("metric",),
@@ -634,17 +634,17 @@ def catalog_integrity(catalog: dict, path: pathlib.Path) -> list[str]:
     return findings
 
 
-def billing_check_shape(path: pathlib.Path, label: str, case: dict) -> list[str]:
+def entitlements_check_shape(path: pathlib.Path, label: str, case: dict) -> list[str]:
     findings: list[str] = []
     operation = case.get("operation")
-    if operation not in BILLING_OPS:
+    if operation not in ENTITLEMENTS_OPS:
         findings.append(f"{path}: {label} has unknown operation {operation!r}")
         return findings
     inner = case.get("check")
     if not isinstance(inner, dict):
         findings.append(f"{path}: {label} is missing check{{}}")
         return findings
-    required = ("tenant",) + BILLING_OPS[operation]
+    required = ("tenant",) + ENTITLEMENTS_OPS[operation]
     missing = [k for k in required if k not in inner]
     if missing:
         findings.append(f"{path}: {label} missing {', '.join(missing)}")
@@ -654,7 +654,7 @@ def billing_check_shape(path: pathlib.Path, label: str, case: dict) -> list[str]
     return findings
 
 
-def run_billing_structure(contracts: pathlib.Path, registry) -> list[str]:
+def run_entitlements_fixture(contracts: pathlib.Path, registry) -> list[str]:
     path = contracts / "billing" / "entitlements.json"
     if not path.is_file():
         return []
@@ -666,7 +666,7 @@ def run_billing_structure(contracts: pathlib.Path, registry) -> list[str]:
     if not isinstance(fixture, dict):
         findings.append(f"{path}: fixture is missing")
         return findings
-    for member in BILLING_FIXTURE:
+    for member in ENTITLEMENTS_FIXTURE:
         if member not in fixture:
             findings.append(f"{path}: fixture.{member} is missing")
     catalog = fixture.get("catalog")
@@ -694,13 +694,13 @@ def run_billing_structure(contracts: pathlib.Path, registry) -> list[str]:
         if case_id in seen:
             findings.append(f"{path}: duplicate check id {case_id}")
         seen.add(case_id)
-        findings.extend(billing_check_shape(path, f"check {case_id}", case))
+        findings.extend(entitlements_check_shape(path, f"check {case_id}", case))
         before = case.get("before")
         if before is not None:
             if not isinstance(before, dict):
                 findings.append(f"{path}: check {case_id} before is not an object")
             else:
-                findings.extend(billing_check_shape(path, f"check {case_id} before", before))
+                findings.extend(entitlements_check_shape(path, f"check {case_id} before", before))
     rejections = data.get("rejections")
     if isinstance(rejections, list):
         for case in rejections:
@@ -752,7 +752,7 @@ def main() -> int:
         findings.extend(run_rbac_structure(contracts))
         fixtures.append("rbac/decisions.json")
     if (contracts / "billing" / "entitlements.json").is_file():
-        findings.extend(run_billing_structure(contracts, registry))
+        findings.extend(run_entitlements_fixture(contracts, registry))
         fixtures.append("billing/entitlements.json")
     file_findings, files = repository_files(root, contracts, registry, schemas)
     findings.extend(file_findings)

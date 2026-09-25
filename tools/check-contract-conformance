@@ -141,10 +141,11 @@ def schema_errors(registry, ref: str, value) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# Runner checks. Each takes the context, the case and the instance and returns
-# the reasons it rejects the instance, or []. A check that has an expectation
-# of its own beside the verdict (the calendar findings) reports through
-# ctx.direct().
+# Runner checks. Each takes the context, the case and the instance, and
+# reports every reason it rejects the instance through ctx.reject(). A check
+# with an expectation of its own beside the verdict (the calendar findings)
+# reports through ctx.direct(). Checks return nothing: a finding is built from
+# what the context collected, never from a check's return value.
 
 
 @dataclass
@@ -156,7 +157,11 @@ class Context:
     part: str
     corpus: dict
     findings: list[str] = field(default_factory=list)
+    rejections: list[str] = field(default_factory=list)
     cache: dict = field(default_factory=dict)
+
+    def reject(self, reason: str) -> None:
+        self.rejections.append(reason)
 
     def direct(self, message: str) -> None:
         self.findings.append(f"{self.capability}.{self.part}: {message}")
@@ -169,10 +174,9 @@ class Context:
         return self.cache["profiles"]
 
 
-def recovery_arithmetic(ctx: Context, case: dict, decl) -> list[str]:
-    reasons: list[str] = []
+def recovery_arithmetic(ctx: Context, case: dict, decl) -> None:
     if not isinstance(decl, dict):
-        return reasons
+        return
     horizon = seconds(decl.get("erasure_horizon"))
     for store in decl.get("stores") or []:
         if not isinstance(store, dict):
@@ -183,27 +187,26 @@ def recovery_arithmetic(ctx: Context, case: dict, decl) -> list[str]:
         floor, ceiling = seconds(ret.get("floor")), seconds(ret.get("ceiling"))
         cadence, stale = seconds(drill.get("cadence")), seconds(drill.get("stale_after"))
         if floor is not None and ceiling is not None and floor > ceiling:
-            reasons.append(f"{name}: retention.floor > retention.ceiling")
+            ctx.reject(f"{name}: retention.floor > retention.ceiling")
         if ceiling is not None and horizon is not None and ceiling > horizon:
-            reasons.append(f"{name}: retention.ceiling > erasure_horizon")
+            ctx.reject(f"{name}: retention.ceiling > erasure_horizon")
         if cadence is not None and floor is not None and cadence > floor:
-            reasons.append(f"{name}: drill.cadence > retention.floor")
+            ctx.reject(f"{name}: drill.cadence > retention.floor")
         if cadence is not None and stale is not None and cadence > stale:
-            reasons.append(f"{name}: drill.cadence > drill.stale_after")
-    return reasons
+            ctx.reject(f"{name}: drill.cadence > drill.stale_after")
 
 
-def reference_key_agrees_with_row(ctx: Context, case: dict, ref) -> list[str]:
+def reference_segments_agree_with_row(ctx: Context, case: dict, ref) -> None:
+    """026 BS3, BS10: the object path's final segment is the id, and where the
+    row is tenant-scoped its first segment is the tenant."""
     if not isinstance(ref, dict) or not isinstance(ref.get("key"), str):
-        return []
+        return
     segments = ref["key"].split("/")
-    reasons: list[str] = []
     if segments[-1] != str(ref.get("id")):
-        reasons.append("the key's final segment is not the id")
+        ctx.reject("the final path segment is not the id")
     tenant = ref.get("tenant_id")
     if tenant is not None and segments[0] != str(tenant):
-        reasons.append("the key's first segment is not tenant_id")
-    return reasons
+        ctx.reject("the first path segment is not tenant_id")
 
 
 def _declaration_entries(decl) -> list[dict]:
@@ -211,91 +214,87 @@ def _declaration_entries(decl) -> list[dict]:
     return [s if isinstance(s, dict) else {} for s in (entries if isinstance(entries, list) else [])]
 
 
-def declaration_names_unique(ctx: Context, case: dict, decl) -> list[str]:
+def declaration_names_unique(ctx: Context, case: dict, decl) -> None:
     """A finding names positions in the declaration and never repeats what the
     declaration says, so a CI log carries no part of it."""
     first_at: dict[object, int] = {}
-    reasons: list[str] = []
     for i, s in enumerate(_declaration_entries(decl)):
         name = s.get("name")
         if name in first_at:
-            reasons.append(f"secrets[{i}] repeats the name of secrets[{first_at[name]}]")
+            ctx.reject(f"secrets[{i}] repeats the name of secrets[{first_at[name]}]")
         else:
             first_at[name] = i
-    return reasons
 
 
-def backing_service_granted_once(ctx: Context, case: dict, decl) -> list[str]:
+def backing_service_granted_once(ctx: Context, case: dict, decl) -> None:
     holders: dict[object, list[int]] = {}
     for i, s in enumerate(_declaration_entries(decl)):
         if s.get("kind") not in ACCESS_GRANTING or "migrate" in (s.get("images") or []):
             continue
         holders.setdefault(s.get("backing_service"), []).append(i)
-    return [
-        f"secrets[{', '.join(str(i) for i in at)}] are {len(at)} access-granting credentials to one backing service"
-        for at in holders.values()
-        if len(at) > 1
-    ]
+    for at in holders.values():
+        if len(at) > 1:
+            positions = ", ".join(str(i) for i in at)
+            ctx.reject(f"secrets[{positions}] are {len(at)} access-granting entries to one backing service")
 
 
 def _declared(case: dict) -> list[dict]:
     return [d for d in (case.get("declared") or []) if isinstance(d, dict)]
 
 
-def leak_event_targets_the_declaration(ctx: Context, case: dict, event) -> list[str]:
+def leak_event_targets_the_declaration(ctx: Context, case: dict, event) -> None:
     target = event.get("target") if isinstance(event, dict) and isinstance(event.get("target"), dict) else {}
     if target.get("type") != "secret":
-        return ["target.type is not secret"]
+        ctx.reject("target.type is not secret")
+        return
     for d in _declared(case):
         if d.get("id") == target.get("id") and d.get("name") == target.get("display"):
-            return []
-    return ["target does not name a declared secret by id and name"]
+            return
+    ctx.reject("target does not name a declared entry by id and name")
 
 
-def leak_event_action_is_a_permission(ctx: Context, case: dict, event) -> list[str]:
+def leak_event_action_is_a_permission(ctx: Context, case: dict, event) -> None:
     action = event.get("action") if isinstance(event, dict) else None
     if not isinstance(action, str) or not PERMISSION.match(action):
-        return ["action is not resource.verb"]
-    if action.startswith("auth."):
-        return ["action is in the reserved auth namespace"]
-    return []
+        ctx.reject("action is not resource.verb")
+    elif action.startswith("auth."):
+        ctx.reject("action is in the reserved auth namespace")
 
 
-def leak_event_carries_no_declared_value(ctx: Context, case: dict, event) -> list[str]:
+def leak_event_carries_no_declared_value(ctx: Context, case: dict, event) -> None:
     blob = json.dumps(event)
-    return [f"the event carries the value of {d.get('name')}" for d in _declared(case) if d.get("value") and str(d["value"]) in blob]
+    for i, d in enumerate(_declared(case)):
+        if d.get("value") and str(d["value"]) in blob:
+            ctx.reject(f"the event carries the value of declared[{i}]")
 
 
-def admission_engine_profile_admits_role(ctx: Context, case: dict, adm) -> list[str]:
+def admission_engine_profile_admits_role(ctx: Context, case: dict, adm) -> None:
     if not isinstance(adm, dict):
-        return []
+        return
     profile = ctx.profiles().get(adm.get("engine"))
     if not isinstance(profile, dict):
-        return []
+        return
     roles = profile.get("admitted_roles") or []
-    return [] if adm.get("role") in roles else [f"the {adm.get('engine')} profile admits roles {roles}, not {adm.get('role')}"]
+    if adm.get("role") not in roles:
+        ctx.reject(f"the {adm.get('engine')} profile admits roles {roles}, not {adm.get('role')}")
 
 
-def admission_current_version_has_schema(ctx: Context, case: dict, adm) -> list[str]:
-    reasons: list[str] = []
+def admission_current_version_has_schema(ctx: Context, case: dict, adm) -> None:
     for coll in (adm.get("collections") or []) if isinstance(adm, dict) else []:
         if not isinstance(coll, dict):
             continue
         version = coll.get("current_schema_version")
         if str(version) not in (coll.get("schemas") or {}):
-            reasons.append(f"{coll.get('name')}: current_schema_version {version} has no schema")
-    return reasons
+            ctx.reject(f"{coll.get('name')}: current_schema_version {version} has no schema")
 
 
-def admission_runtime_and_declaration_variables_differ(ctx: Context, case: dict, adm) -> list[str]:
-    creds = adm.get("credentials") if isinstance(adm, dict) and isinstance(adm.get("credentials"), dict) else {}
-    if creds.get("runtime") is not None and creds.get("runtime") == creds.get("declaration"):
-        return ["runtime and declaration credentials are one credential"]
-    return []
+def admission_runtime_and_declaration_variables_differ(ctx: Context, case: dict, adm) -> None:
+    pair = adm.get("credentials") if isinstance(adm, dict) and isinstance(adm.get("credentials"), dict) else {}
+    if pair.get("runtime") is not None and pair.get("runtime") == pair.get("declaration"):
+        ctx.reject("the runtime and declaration variables are one variable")
 
 
-def admission_scoped_index_leads_with_isolation(ctx: Context, case: dict, adm) -> list[str]:
-    reasons: list[str] = []
+def admission_scoped_index_leads_with_isolation(ctx: Context, case: dict, adm) -> None:
     for coll in (adm.get("collections") or []) if isinstance(adm, dict) else []:
         if not isinstance(coll, dict) or not coll.get("scoped"):
             continue
@@ -307,34 +306,31 @@ def admission_scoped_index_leads_with_isolation(ctx: Context, case: dict, adm) -
             fields = index.get("fields") if isinstance(index, dict) else None
             first = fields[0].get("field") if fields and isinstance(fields[0], dict) else None
             if first != lead:
-                reasons.append(f"{coll.get('name')}: index {index.get('name')} leads with {first}, not {lead}")
-    return reasons
+                ctx.reject(f"{coll.get('name')}: index {index.get('name')} leads with {first}, not {lead}")
 
 
-def envelope_scoped_carries_tenant(ctx: Context, case: dict, doc) -> list[str]:
+def envelope_scoped_carries_tenant(ctx: Context, case: dict, doc) -> None:
     coll = case.get("collection") if isinstance(case.get("collection"), dict) else {}
     if coll.get("scoped") and isinstance(doc, dict) and "tenant_id" not in doc:
-        return ["a scoped collection's document carries no tenant_id"]
-    return []
+        ctx.reject("a scoped collection's document carries no tenant_id")
 
 
-def envelope_within_ceiling(ctx: Context, case: dict, doc) -> list[str]:
+def envelope_within_ceiling(ctx: Context, case: dict, doc) -> None:
     coll = case.get("collection") if isinstance(case.get("collection"), dict) else {}
     ceiling = coll.get("max_document_bytes")
     size = case.get("bytes")
     if not isinstance(size, int):
         size = len(json.dumps(doc, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
     if isinstance(ceiling, int) and size > ceiling:
-        return [f"{size} bytes exceeds the collection's ceiling of {ceiling}"]
-    return []
+        ctx.reject(f"{size} bytes exceeds the collection's ceiling of {ceiling}")
 
 
-def acceptance_calendar(ctx: Context, case: dict, inst) -> list[str]:
+def acceptance_calendar(ctx: Context, case: dict, inst) -> None:
     """SB2's calendar half. It has its own expectation, `findings`, and never
     changes the schema verdict."""
     today_s = case.get("today")
     if not isinstance(today_s, str):
-        return []
+        return
     today = dt.date.fromisoformat(today_s)
     entries = [inst] if "entry" in case else (inst.get("acceptances") or [] if isinstance(inst, dict) else [])
     found: set[str] = set()
@@ -353,34 +349,31 @@ def acceptance_calendar(ctx: Context, case: dict, inst) -> list[str]:
     expected = case.get("findings")
     if isinstance(expected, list) and sorted(found) != sorted(expected):
         ctx.direct(f"{case.get('case')}: calendar findings {sorted(found)} differ from expected {sorted(expected)}")
-    return []
 
 
-def error_message_adds_to_msg(ctx: Context, case: dict, line) -> list[str]:
+def error_message_adds_to_msg(ctx: Context, case: dict, line) -> None:
     """030 SC2: a class is not a diagnosis. The one mechanical half of that
     judgment is an error message that repeats the line's msg and adds
     nothing to it."""
     if not isinstance(line, dict) or not isinstance(line.get("error"), dict):
-        return []
+        return
     msg = str(line.get("msg", "")).strip().lower()
     message = str(line["error"].get("message", "")).strip().lower()
     if msg and message == msg:
-        return ["error.message repeats msg and adds no reason"]
-    return []
+        ctx.reject("error.message repeats msg and adds no reason")
 
 
-def engine_enum_equals_profile_keys(ctx: Context) -> list[str]:
+def engine_enum_equals_profile_engines(ctx: Context) -> None:
     schema = ctx.schemas.get(ADMISSION_SCHEMA_ID) or {}
     enum = sorted(((schema.get("properties") or {}).get("engine") or {}).get("enum") or [])
-    keys = sorted(ctx.profiles().keys())
-    if enum and keys and enum != keys:
-        return [f"admission.schema.json engine enum {enum} differs from storage-profiles.json keys {keys}"]
-    return []
+    profiled = sorted(engine for engine in ctx.profiles())
+    if enum and profiled and enum != profiled:
+        ctx.direct(f"admission.schema.json engine enum {enum} differs from the engines storage-profiles.json profiles {profiled}")
 
 
 CHECKS = {
     "recovery_arithmetic": recovery_arithmetic,
-    "reference_key_agrees_with_row": reference_key_agrees_with_row,
+    "reference_key_agrees_with_row": reference_segments_agree_with_row,
     "secret_names_unique": declaration_names_unique,
     "one_credential_per_backing_service": backing_service_granted_once,
     "leak_event_targets_the_declaration": leak_event_targets_the_declaration,
@@ -396,7 +389,7 @@ CHECKS = {
     "error_message_adds_to_msg": error_message_adds_to_msg,
 }
 PART_CHECKS = {
-    "engine_enum_equals_profile_keys": engine_enum_equals_profile_keys,
+    "engine_enum_equals_profile_keys": engine_enum_equals_profile_engines,
 }
 
 
@@ -409,8 +402,8 @@ def resolve_fixture(corpus: dict, instance) -> tuple[object, str | None]:
     if not (isinstance(instance, dict) and set(instance) == {"$fixture"}):
         return instance, None
     name = instance["$fixture"]
-    for key in ("fixture", "fixtures"):
-        table = corpus.get(key)
+    for table_name in ("fixture", "fixtures"):
+        table = corpus.get(table_name)
         if isinstance(table, dict) and name in table:
             return table[name], None
     return None, f"names fixture {name!r}, which the corpus does not carry"
@@ -422,19 +415,19 @@ def instance_of(rule: dict, case: dict) -> tuple[object, str | None, bool]:
     or from the case's own `schema_from` key through `schemas`."""
     alternatives = rule.get("instances")
     if isinstance(alternatives, dict):
-        for key, ref in alternatives.items():
-            if key in case:
-                return case[key], ref, True
+        for field_name, ref in alternatives.items():
+            if field_name in case:
+                return case[field_name], ref, True
         return None, None, False
-    key = rule.get("instance")
-    if not isinstance(key, str) or key not in case:
+    field_name = rule.get("instance")
+    if not isinstance(field_name, str) or field_name not in case:
         return None, None, False
     ref = rule.get("schema")
     named = rule.get("schema_from")
     if isinstance(named, str):
         table = rule.get("schemas") or {}
         ref = table.get(case.get(named))
-    return case[key], ref, True
+    return case[field_name], ref, True
 
 
 def judge_corpus(ctx_base: dict, capability: str, corpus_path: pathlib.Path) -> tuple[list[str], int, int, list[str]]:
@@ -464,7 +457,7 @@ def judge_corpus(ctx_base: dict, capability: str, corpus_path: pathlib.Path) -> 
                 findings.append(f"{capability}.{part}: names runner check {name!r}, which this tool does not implement")
         for name in rule.get("part_checks") or []:
             if name in PART_CHECKS:
-                findings.extend(f"{capability}.{part}: {m}" for m in PART_CHECKS[name](ctx))
+                PART_CHECKS[name](ctx)
             else:
                 findings.append(f"{capability}.{part}: names part check {name!r}, which this tool does not implement")
         for case in cases:
@@ -488,9 +481,10 @@ def judge_corpus(ctx_base: dict, capability: str, corpus_path: pathlib.Path) -> 
                 findings.append(f"{capability}.{part}: {case_id}: missing a boolean 'valid'")
                 continue
             errors = schema_errors(ctx.registry, ref, instance)
-            reasons: list[str] = []
+            ctx.rejections = []
             for check in checks:
-                reasons.extend(check(ctx, case, instance))
+                check(ctx, case, instance)
+            reasons = list(ctx.rejections)
             actual = not errors and not reasons
             if case.get("schemaCannotCatch") and errors:
                 findings.append(f"{capability}.{part}: {case_id}: flagged schemaCannotCatch, and the schema rejects it: {errors[0]}")

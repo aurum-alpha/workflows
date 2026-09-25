@@ -2,6 +2,11 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.aurumalpha.dev/blob-storage/upload-policy.schema.json",
   "title": "Aurum Alpha upload policy",
+  "x-repository-file": {
+    "name": "upload-policy.json",
+    "home": "The root of the directory that holds the service; the repository root where a repository holds one service (000 PC7).",
+    "instance": "document"
+  },
   "description": "standards/026-blob-storage.md BS6: the declaration a service carries in its repository stating, per entity that owns objects, what may be uploaded - the admitted content types, the size ceiling, whether the object is scanned before it is served, how it is served - and, per service, how long an unfinished upload may stay pending and above what size the server writes in parts. The server reads it before the first byte of every upload and again at the end of the body; a reviewer reads it to see the service's exposure in one file. An entity with no entry accepts no uploads. Two rules prose states are decidable here and are: an object other people download is scanned (BS7), and inline is declared only over types a browser renders without executing (BS5). Nothing in this policy names a URL, a lifetime for one, or a bucket: no URL to an object exists (BS4, BS5). schema_version 1 - evolves additively per PC6.",
   "type": "object",
   "$defs": {

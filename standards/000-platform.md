@@ -124,6 +124,39 @@ deprecation window: how long implementations must accept the old version
 while emitting the new. A body of specifications without a change discipline
 re-creates the drift problem one level up.
 
+### PC7. A declaration a repository carries has one name and one home
+
+Several standards require a repository to carry a declaration, validated
+against a schema under `contracts/`. Each such declaration has one file name,
+fixed by the standard that owns it, and one home. The home is the root of the
+directory that holds the service. In a repository holding one service, that
+root is the repository root. A standard that places a declaration elsewhere
+says so in its rule, and its schema says so too.
+
+The schema that judges the declaration states both in an `x-repository-file`
+annotation. The annotation names the file, its home, and whether the file is
+one instance or an array of them. `job-contract-conformance` reads that annotation to find and
+validate the file in a repository. A file with no fixed name is a file no
+gate can find. A reader cannot tell a repository that lacks one from a
+repository that keeps it elsewhere.
+
+| Declaration | File | Owning rule |
+|---|---|---|
+| Upload policy | `upload-policy.json` | [`026-blob-storage.md`](026-blob-storage.md) BS6 |
+| Document-store admission | `document-store-admission.json` | [`027-json-document-storage.md`](027-json-document-storage.md) DS1 |
+| Recovery declaration | `recovery-declaration.json` | [`028-backup-and-recovery.md`](028-backup-and-recovery.md) BR1 |
+| Secret declaration | `secret-declaration.json` | [`032-secrets.md`](032-secrets.md) SE2 |
+| Flag declaration | `flag-declaration.json`, an array | [`038-feature-flags.md`](038-feature-flags.md) FF2 |
+| Job declaration | `job-declaration.json`, beside each job | [`057-jobs.md`](057-jobs.md) JB3 |
+| Category declaration | `category-declaration.json` | [`058-notifications.md`](058-notifications.md) NF5 |
+| Data inventory | `data-inventory.json` | [`082-data-subject-rights.md`](082-data-subject-rights.md) DR1 |
+
+A declaration is named for what it is, and it pairs with the schema that
+judges it. So a reader and a scanner do not take it for a file of values.
+Where a schema's own name is too generic to stand alone, the file carries the
+noun its standard uses. `SECURITY.md`, `security.txt` and `devkit.json` keep
+the names their own conventions fix.
+
 ## Terms
 
 The words the standards share, defined once. A standard uses these words in

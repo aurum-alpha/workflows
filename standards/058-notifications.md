@@ -160,10 +160,11 @@ for not sending it. *Optional* is everything else; *marketing* is optional
 by definition and opt-in. A flat list of topics, with no class, lets a
 preference mute the reset email.
 
-**Categories are declared** in
-[`category-declaration.schema.json`](../contracts/notifications/category-declaration.schema.json)
-beside the code: class, channels in order, default consent per channel,
-collapse window, retention. `security` is reserved for the floor, required
+**Categories are declared** in `category-declaration.json` at the service's
+root ([`000-platform.md`](000-platform.md) PC7), validated against
+[`category-declaration.schema.json`](../contracts/notifications/category-declaration.schema.json):
+class, channels in order, default consent per channel, collapse window,
+retention. `security` is reserved for the floor, required
 and transactional. `marketing` is reserved, optional and false by default on
 every channel. An undeclared category is refused, for 070 RB1's reason. The
 closed set is what makes the settings screen, the unsubscribe page and

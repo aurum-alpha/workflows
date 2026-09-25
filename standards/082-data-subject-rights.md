@@ -16,8 +16,9 @@ treatments, grace and proof around it.
 
 ### DR1. The data inventory is the precondition, and it is a declaration
 
-**Every store that holds data about a person is declared, in the repository
-beside the schema, against
+**Every store that holds data about a person is declared in
+`data-inventory.json` at the service's root
+([`000-platform.md`](000-platform.md) PC7), against
 [`inventory.schema.json`](../contracts/data-subject-rights/inventory.schema.json)**.
 There is one inventory per service, because 025 SD13 gives each service its
 own stores and none can declare another's. An entry names the store and its

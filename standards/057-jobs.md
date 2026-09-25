@@ -113,9 +113,10 @@ again after it has succeeded.
 
 ### JB3. Every job declares its class beside its code
 
-A job carries a declaration, validated against
-[`declaration.schema.json`](../contracts/jobs/declaration.schema.json), in
-the repository next to the job. The worker reads it to construct the input
+A job carries a declaration, `job-declaration.json` in the job's own
+directory ([`000-platform.md`](000-platform.md) PC7), validated against
+[`declaration.schema.json`](../contracts/jobs/declaration.schema.json). The
+worker reads it to construct the input
 and enforce the class. It is rendered at deployment into whatever runs
 one-shots (035 WK6), and read by the alerting. **A job with no declaration
 does not run**: the worker refuses to load it, which is the mechanical half

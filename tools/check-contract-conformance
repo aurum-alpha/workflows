@@ -206,17 +206,17 @@ def reference_key_agrees_with_row(ctx: Context, case: dict, ref) -> list[str]:
     return reasons
 
 
-def _declared_secrets(decl) -> list[dict]:
+def _declaration_entries(decl) -> list[dict]:
     entries = decl.get("secrets") if isinstance(decl, dict) else None
     return [s if isinstance(s, dict) else {} for s in (entries if isinstance(entries, list) else [])]
 
 
-def secret_names_unique(ctx: Context, case: dict, decl) -> list[str]:
+def declaration_names_unique(ctx: Context, case: dict, decl) -> list[str]:
     """A finding names positions in the declaration and never repeats what the
     declaration says, so a CI log carries no part of it."""
     first_at: dict[object, int] = {}
     reasons: list[str] = []
-    for i, s in enumerate(_declared_secrets(decl)):
+    for i, s in enumerate(_declaration_entries(decl)):
         name = s.get("name")
         if name in first_at:
             reasons.append(f"secrets[{i}] repeats the name of secrets[{first_at[name]}]")
@@ -225,9 +225,9 @@ def secret_names_unique(ctx: Context, case: dict, decl) -> list[str]:
     return reasons
 
 
-def one_credential_per_backing_service(ctx: Context, case: dict, decl) -> list[str]:
+def backing_service_granted_once(ctx: Context, case: dict, decl) -> list[str]:
     holders: dict[object, list[int]] = {}
-    for i, s in enumerate(_declared_secrets(decl)):
+    for i, s in enumerate(_declaration_entries(decl)):
         if s.get("kind") not in ACCESS_GRANTING or "migrate" in (s.get("images") or []):
             continue
         holders.setdefault(s.get("backing_service"), []).append(i)
@@ -287,7 +287,7 @@ def admission_current_version_has_schema(ctx: Context, case: dict, adm) -> list[
     return reasons
 
 
-def admission_credentials_differ(ctx: Context, case: dict, adm) -> list[str]:
+def admission_runtime_and_declaration_variables_differ(ctx: Context, case: dict, adm) -> list[str]:
     creds = adm.get("credentials") if isinstance(adm, dict) and isinstance(adm.get("credentials"), dict) else {}
     if creds.get("runtime") is not None and creds.get("runtime") == creds.get("declaration"):
         return ["runtime and declaration credentials are one credential"]
@@ -381,14 +381,14 @@ def engine_enum_equals_profile_keys(ctx: Context) -> list[str]:
 CHECKS = {
     "recovery_arithmetic": recovery_arithmetic,
     "reference_key_agrees_with_row": reference_key_agrees_with_row,
-    "secret_names_unique": secret_names_unique,
-    "one_credential_per_backing_service": one_credential_per_backing_service,
+    "secret_names_unique": declaration_names_unique,
+    "one_credential_per_backing_service": backing_service_granted_once,
     "leak_event_targets_the_declaration": leak_event_targets_the_declaration,
     "leak_event_action_is_a_permission": leak_event_action_is_a_permission,
     "leak_event_carries_no_declared_value": leak_event_carries_no_declared_value,
     "admission_engine_profile_admits_role": admission_engine_profile_admits_role,
     "admission_current_version_has_schema": admission_current_version_has_schema,
-    "admission_credentials_differ": admission_credentials_differ,
+    "admission_credentials_differ": admission_runtime_and_declaration_variables_differ,
     "admission_scoped_index_leads_with_isolation": admission_scoped_index_leads_with_isolation,
     "envelope_scoped_carries_tenant": envelope_scoped_carries_tenant,
     "envelope_within_ceiling": envelope_within_ceiling,

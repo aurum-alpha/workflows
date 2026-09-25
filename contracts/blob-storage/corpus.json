@@ -273,7 +273,7 @@
       }
     },
     {
-      "case": "a-wildcard-content-type-is-rejected",
+      "case": "a-wildcard-content-type-on-a-reference-is-rejected",
       "valid": false,
       "why": "BS6: the content type on a reference is one verified media type. A wildcard is a policy shorthand and never a fact about an object.",
       "reference": {
@@ -417,7 +417,7 @@
       }
     },
     {
-      "case": "a-wildcard-content-type-is-rejected",
+      "case": "a-wildcard-in-the-admitted-types-is-rejected",
       "valid": false,
       "why": "BS6: the admitted set is closed and enumerated. image/* admits image/svg+xml, which carries script, and whatever image type a browser learns next.",
       "policy": {

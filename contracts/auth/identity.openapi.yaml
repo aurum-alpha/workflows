@@ -1,0 +1,324 @@
+openapi: 3.1.0
+info:
+  title: Aurum Alpha identity routes
+  version: "1"
+  summary: The client identity document, the session grants view, and grant activation.
+  description: |
+    The three routes of standards/060-auth.md AU6 and AU8, as the platform
+    bindings implement them. This fragment is the base definition. A service
+    that mounts the routes copies it into its own OpenAPI document, rewrites
+    the path prefix to the prefix it mounts, and sets servers to the address
+    it serves. It omits an operation it does not mount.
+
+    The paths here are the default prefix, api/v1. A session that must still
+    choose a grant is answered 200 on every operation in this fragment. The
+    409 grant-not-chosen class is for an application route, and these
+    operations never emit it.
+
+    A method other than the one named for a path answers 405, with Allow and
+    application/problem+json whose type is about:blank.
+jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
+tags:
+  - name: identity
+    description: The session making the request. These operations are never anonymous.
+security:
+  - bearerAuth: []
+paths:
+  /api/v1/me:
+    get:
+      tags: [identity]
+      operationId: getMe
+      summary: The client identity document.
+      description: |
+        Who is signed in and what the active grant may do. Permissions in
+        the document are advisory. A session acting in no grant receives
+        the same document with an empty permission list.
+      parameters:
+        - $ref: "#/components/parameters/ForwardedIdToken"
+      responses:
+        "200":
+          description: The client identity document.
+          headers: &responseHeaders
+            X-Request-Id:
+              $ref: "#/components/headers/X-Request-Id"
+            Cache-Control:
+              $ref: "#/components/headers/Cache-Control"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/X-Content-Type-Options"
+          content:
+            application/json:
+              schema:
+                $ref: me.schema.json
+        "401":
+          $ref: "#/components/responses/NotAuthenticated"
+        "403":
+          $ref: "#/components/responses/SessionRefused"
+        "404":
+          $ref: "#/components/responses/TenantNotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/me/grants:
+    get:
+      tags: [identity]
+      operationId: getGrants
+      summary: What this session may act as.
+      description: |
+        The grants view for the picker and the switcher. Options are
+        narrowed to what this host admits. must_choose is carried on the
+        document and is not inferred from the other members.
+      parameters:
+        - $ref: "#/components/parameters/ForwardedIdToken"
+      responses:
+        "200":
+          description: The session grants view.
+          headers: *responseHeaders
+          content:
+            application/json:
+              schema:
+                $ref: grants.schema.json
+        "401":
+          $ref: "#/components/responses/NotAuthenticated"
+        "403":
+          $ref: "#/components/responses/SessionRefused"
+        "404":
+          $ref: "#/components/responses/TenantNotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/me/active:
+    post:
+      tags: [identity]
+      operationId: activateGrant
+      summary: Name the grant this session acts in.
+      description: |
+        The session's first choice, a later change, or a repeat of the
+        grant it already acts in. The operation is idempotent in its
+        arguments. Naming the current grant changes nothing, records
+        nothing, and returns unchanged. It takes no Idempotency-Key.
+
+        A product that admits one grant per subject does not mount this
+        operation, and the copy of this fragment in that service omits it.
+        Where a change of grant is refused, the first choice is still
+        served and a later change answers 404 switch-not-permitted.
+
+        The body is at most 4096 bytes. A body that is not one JSON object
+        is 400. A member this operation does not read, including subject
+        and session, is 422 and is never ignored.
+      parameters:
+        - $ref: "#/components/parameters/ForwardedIdToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: activation.schema.json#/$defs/request
+      responses:
+        "200":
+          description: |
+            The grant the session acts in now. bound is the first choice.
+            switched is a change and carries previous. unchanged is the
+            grant the session already acted in.
+          headers: *responseHeaders
+          content:
+            application/json:
+              schema:
+                $ref: activation.schema.json#/$defs/result
+        "400":
+          $ref: "#/components/responses/MalformedBody"
+        "401":
+          $ref: "#/components/responses/NotAuthenticated"
+        "403":
+          $ref: "#/components/responses/ActivationForbidden"
+        "404":
+          $ref: "#/components/responses/ActivationNotFound"
+        "422":
+          $ref: "#/components/responses/InvalidRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        RFC 6750 access token, read from Authorization and from no other
+        header. A token under another name is a missing token. The ten
+        token-refusal codes stay off this response. A 401 names the class
+        not-authenticated and nothing about which check failed.
+  parameters:
+    ForwardedIdToken:
+      name: X-Forwarded-Id-Token
+      in: header
+      required: false
+      schema:
+        type: string
+      description: |
+        The ID token, carried beside the access token. It is never a
+        credential and it is never verified here.
+  headers:
+    X-Request-Id:
+      description: |
+        The request id this service minted. A value on the request is not
+        read.
+      required: true
+      schema:
+        $ref: ../observability/context.schema.json#/$defs/requestId
+    Cache-Control:
+      description: Authenticated responses are not stored.
+      required: true
+      schema:
+        type: string
+        const: no-store
+    X-Content-Type-Options:
+      required: true
+      schema:
+        type: string
+        const: nosniff
+  responses:
+    NotAuthenticated:
+      description: |
+        No session this service could verify, or an anonymous principal on
+        a route that answers for a session. type ends in /not-authenticated.
+        The body names none of the token-refusal codes.
+      headers: *responseHeaders
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    SessionRefused:
+      description: |
+        unknown-subject is 403, the session has ended, and end_session is
+        the path that finishes the proxy sign-out. tenant-mismatch is 403,
+        the session stands, and end_session is absent. The two classes stay
+        distinct so a client does not sign a person out for arriving on the
+        wrong host.
+      headers: *responseHeaders
+      content:
+        application/problem+json:
+          schema:
+            oneOf:
+              - $ref: "#/components/schemas/UnknownSubject"
+              - $ref: "#/components/schemas/TenantMismatch"
+    TenantNotFound:
+      description: |
+        The host names no tenant this product serves. 404. The session
+        stands. type ends in /tenant-not-found.
+      headers: *responseHeaders
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    ActivationForbidden:
+      description: |
+        grant-not-held, with outcome not_held, or a session refusal from
+        SessionRefused. grant-not-held covers a grant the subject does not
+        hold and a grant this host does not admit, as one class.
+      headers: *responseHeaders
+      content:
+        application/problem+json:
+          schema:
+            oneOf:
+              - $ref: "#/components/schemas/GrantNotHeld"
+              - $ref: "#/components/schemas/UnknownSubject"
+              - $ref: "#/components/schemas/TenantMismatch"
+    ActivationNotFound:
+      description: |
+        switch-not-permitted when a change of grant is refused, or
+        tenant-not-found when the host names no tenant. On
+        switch-not-permitted, outcome is switch_forbidden and grant is the
+        grant the session stays bound to. grant is omitted when the session
+        had chosen none.
+      headers: *responseHeaders
+      content:
+        application/problem+json:
+          schema:
+            oneOf:
+              - $ref: "#/components/schemas/SwitchNotPermitted"
+              - $ref: "#/components/schemas/TenantNotFoundProblem"
+    MalformedBody:
+      description: |
+        The body is not one JSON object. 400. type ends in
+        /malformed-body. There is no errors array, because a body that did
+        not parse has no fields to name.
+      headers: *responseHeaders
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    InvalidRequest:
+      description: |
+        The body parsed and was not a role and a scope, or it carried a
+        member this operation does not read. 422. type ends in
+        /invalid-request. errors names each rejected field.
+      headers: *responseHeaders
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/InvalidRequest"
+    InternalError:
+      description: |
+        The request could not be completed. 500. type ends in
+        /internal-error. The body carries the request id and not the cause.
+      headers: *responseHeaders
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+  schemas:
+    Problem:
+      $ref: ../http/problem.schema.json
+    UnknownSubject:
+      allOf:
+        - $ref: "#/components/schemas/Problem"
+        - type: object
+          required: [end_session]
+          properties:
+            end_session:
+              type: string
+              minLength: 1
+              description: |
+                Where the client sends the browser so the proxy session
+                ends.
+          not:
+            required: [outcome]
+    TenantMismatch:
+      allOf:
+        - $ref: "#/components/schemas/Problem"
+        - not:
+            required: [end_session]
+        - not:
+            required: [outcome]
+    GrantNotHeld:
+      allOf:
+        - $ref: "#/components/schemas/Problem"
+        - type: object
+          required: [outcome]
+          properties:
+            outcome:
+              const: not_held
+          not:
+            required: [end_session]
+    SwitchNotPermitted:
+      allOf:
+        - $ref: "#/components/schemas/Problem"
+        - type: object
+          required: [outcome]
+          properties:
+            outcome:
+              const: switch_forbidden
+            grant:
+              description: |
+                The grant the session stays bound to. Omitted when this
+                request authenticated in no grant.
+              $ref: ../rbac/model.schema.json#/$defs/grant
+    TenantNotFoundProblem:
+      allOf:
+        - $ref: "#/components/schemas/Problem"
+        - not:
+            required: [outcome]
+        - not:
+            required: [end_session]
+    InvalidRequest:
+      allOf:
+        - $ref: "#/components/schemas/Problem"
+        - type: object
+          required: [errors]

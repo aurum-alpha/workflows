@@ -2,6 +2,13 @@
   "contract": "audit",
   "schemaVersion": 1,
   "description": "The conformance corpus for standards/080-audit.md. Three parts. 'validity' is judged by event.schema.json alone: an implementation validates each event and must reach the stated verdict. 'floor' is judged by running the implementation: for each described act it must produce an event matching the stated expectations (AE5). 'redaction' is judged by running the implementation's erasure: given the 'before' event and an erasure request for the named subject, it must produce the 'after' event (AE7). Cases marked 'schemaCannotCatch' are here deliberately - they document where the schema stops and the named gate takes over, rather than implying coverage the file does not have.",
+  "judged_by": {
+    "description": "What judges each part below, as data, so one runner can read it: the case key holding the instance, the schema (or the case key naming one and the table that resolves it), and the runner checks the schema cannot express. A part absent here is judged by running an implementation and is a product suite's. A case flagged schemaCannotCatch documents a verdict the schema alone does not reach.",
+    "validity": {
+      "instance": "event",
+      "schema": "https://contracts.aurumalpha.dev/audit/event.schema.json"
+    }
+  },
 
   "validity": [
     {

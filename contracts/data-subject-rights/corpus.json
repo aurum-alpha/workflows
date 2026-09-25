@@ -2,6 +2,21 @@
   "contract": "data-subject-rights",
   "schemaVersion": 1,
   "description": "The conformance corpus for standards/082-data-subject-rights.md. Seven parts. 'inventory' is judged by inventory.schema.json alone. 'coverage' is judged by comparing a catalog to an inventory: each case starts from the shared fixture, applies its mutations, and expects exactly the listed findings (DR1). 'requests' is judged by request.schema.json alone. 'erasure' is judged by running an erasure implementation over the fixture: given a subject, a tenant and an instant, the rows that must remain in the named tables afterwards, byte for byte, and the order entries were treated in (DR4, DR5); a case may instead run the retention purge at an instant. Two erasure cases are detectors: 'anonymise-is-an-allowlist-not-a-denylist' fails an implementation that scrubs the columns it recognises as identifying by name and leaves the rest, and 'audit-rows-survive-redacted-by-subject' fails an implementation that deletes every dependent row and reduces only the subject's own. 'export' is judged two ways: manifest cases by manifest.schema.json, and package cases by building the package from the fixture and comparing the file list, row counts and column sets (DR3). 'hold' is judged by running the request lifecycle with a legal hold placed and released at stated instants (DR6). 'transitions' is judged by a pure function from a request's state and an action to the status or problem type that results (DR2). The fixture models a subject's id as their public id wherever a row references them; an implementation with integer foreign keys resolves through the root row and is judged on the same expectations.",
+  "judged_by": {
+    "description": "What judges each part below, as data, so one runner can read it: the case key holding the instance, the schema (or the case key naming one and the table that resolves it), and the runner checks the schema cannot express. A part absent here is judged by running an implementation and is a product suite's. A case flagged schemaCannotCatch documents a verdict the schema alone does not reach.",
+    "inventory": {
+      "instance": "inventory",
+      "schema": "https://contracts.aurumalpha.dev/data-subject-rights/inventory.schema.json"
+    },
+    "requests": {
+      "instance": "request",
+      "schema": "https://contracts.aurumalpha.dev/data-subject-rights/request.schema.json"
+    },
+    "export": {
+      "instance": "manifest",
+      "schema": "https://contracts.aurumalpha.dev/data-subject-rights/manifest.schema.json"
+    }
+  },
   "fixture": {
     "inventory": {
       "schema_version": 1,

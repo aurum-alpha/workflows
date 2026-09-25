@@ -2,6 +2,13 @@
   "contract": "jobs",
   "schemaVersion": 1,
   "description": "The conformance corpus for standards/057-jobs.md. Three parts. 'declarations' is judged by declaration.schema.json alone: each case is accepted or rejected, and a rejection names the rule. 'keys' is judged by deriving the key: given a trigger and its input, the string JB2 requires. 'policies' is judged by running a job runtime: each case names a duplicate policy and a sequence of runs of one key, where a run may crash at a named point or arrive late; the runtime must produce exactly the stated number of effects and the stated outcome per run, where 'none' means the run crashed before writing an outcome. Two cases are detectors: 'at-most-once-crash-between-act-and-record' fails an implementation that acts before claiming, and 'validity-window-late-retry' fails an implementation that deduplicates without honouring valid_for.",
+  "judged_by": {
+    "description": "What judges each part below, as data, so one runner can read it: the case key holding the instance, the schema (or the case key naming one and the table that resolves it), and the runner checks the schema cannot express. A part absent here is judged by running an implementation and is a product suite's. A case flagged schemaCannotCatch documents a verdict the schema alone does not reach.",
+    "declarations": {
+      "instance": "declaration",
+      "schema": "https://contracts.aurumalpha.dev/jobs/declaration.schema.json"
+    }
+  },
   "declarations": [
     {
       "case": "a-periodic-long-idempotent-job",

@@ -2,6 +2,21 @@
   "contract": "service",
   "schemaVersion": 1,
   "description": "Conformance corpus for standards/030-service.md. 'validity': the value must validate (or fail) against the named $def in health.schema.json, or against logline.schema.json where def is 'logLine'. 'lifecycle': black-box cases a running service must satisfy — the harness drives the described stimulus and asserts 'expect'. An implementation passes the whole file or names the case it fails.",
+  "judged_by": {
+    "description": "What judges each part below, as data, so one runner can read it: the case key holding the instance, the schema (or the case key naming one and the table that resolves it), and the runner checks the schema cannot express. A part absent here is judged by running an implementation and is a product suite's. A case flagged schemaCannotCatch documents a verdict the schema alone does not reach.",
+    "validity": {
+      "instance": "value",
+      "schema_from": "def",
+      "schemas": {
+        "livenessResponse": "https://contracts.aurumalpha.dev/service/health.schema.json#/$defs/livenessResponse",
+        "readinessResponse": "https://contracts.aurumalpha.dev/service/health.schema.json#/$defs/readinessResponse",
+        "logLine": "https://contracts.aurumalpha.dev/service/logline.schema.json"
+      },
+      "checks": [
+        "error_message_adds_to_msg"
+      ]
+    }
+  },
   "validity": [
     {
       "id": "liveness-ok",
@@ -336,6 +351,7 @@
     {
       "id": "logline-rejects-bare-failure-class",
       "def": "logLine",
+      "schemaCannotCatch": true,
       "value": {
         "ts": "2026-08-31T14:07:02.417Z",
         "level": "error",

@@ -2,6 +2,21 @@
   "contract": "feature-flags",
   "schemaVersion": 1,
   "description": "The conformance corpus for standards/038-feature-flags.md. Six parts. 'declarations' is judged by flag-declaration.schema.json alone; 'contexts' by evaluation-context.schema.json alone; 'evaluated_sets' by evaluated-set.schema.json alone — each case is accepted or rejected and a rejection names the rule. 'evaluation' is judged by running an evaluation boundary: given the fixture declarations, a provider state and a context, the call must return exactly the stated value, reason and error code and raise exactly the stated findings (FF1, FF2, FF4, FF6). 'gating' is judged by serving a request behind a flag and a permission check together (FF5). 'experiments' is judged by evaluating a split flag repeatedly and counting distinct variants per subject and exposures recorded (FF10). 'expiry' is judged by comparing a declaration to a date and listing the findings the sweep raises (FF3, FF11). Five cases are detectors: 'provider-unavailable-returns-the-declared-default' fails an implementation that fails open on provider error; 'an-undeclared-flag-is-a-finding' fails an implementation that asks the provider before the declaration; 'flag-on-and-denied-is-refused' fails an implementation that treats a flag as authorization; 'a-review-date-beyond-the-year-exceeds-the-horizon' fails a sweep with no forward ceiling on review_by; 'a-long-lived-flag-reviewed-recently-is-admitted' fails a sweep bounding review_by from created rather than from the reading date.",
+  "judged_by": {
+    "description": "What judges each part below, as data, so one runner can read it: the case key holding the instance, the schema (or the case key naming one and the table that resolves it), and the runner checks the schema cannot express. A part absent here is judged by running an implementation and is a product suite's. A case flagged schemaCannotCatch documents a verdict the schema alone does not reach.",
+    "declarations": {
+      "instance": "declaration",
+      "schema": "https://contracts.aurumalpha.dev/feature-flags/flag-declaration.schema.json"
+    },
+    "contexts": {
+      "instance": "context",
+      "schema": "https://contracts.aurumalpha.dev/feature-flags/evaluation-context.schema.json"
+    },
+    "evaluated_sets": {
+      "instance": "set",
+      "schema": "https://contracts.aurumalpha.dev/feature-flags/evaluated-set.schema.json"
+    }
+  },
   "fixtures": {
     "declarations": [
       {

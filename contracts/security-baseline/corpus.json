@@ -2,6 +2,22 @@
   "contract": "security-baseline",
   "schemaVersion": 1,
   "description": "The conformance corpus for standards/085-security-baseline.md. Four parts. 'headers' is judged by applying response-headers.json to a response: each case names its class, the headers as sent (names case-insensitive), whether the OpenAPI document declares the endpoint public, and the exact set of findings a checker must report; an empty set is acceptance. Two cases are detectors: 'x-frame-options-without-frame-ancestors-rejected' fails a checker that lets X-Frame-Options satisfy the framing requirement, and 'hsts-without-include-subdomains-rejected' fails a checker that tests HSTS for presence and max-age alone. 'from-lines' is judged by running SB1's checker over a Dockerfile given as an array of lines: the findings are '<line number>:<finding>' and an empty list is acceptance; one case is a detector, 'second-stage-unpinned-rejected', which fails a checker that reads only the first FROM. 'scan-acceptance' is judged two ways: 'valid' by acceptance.schema.json (an 'entry' against #/$defs/entry, a 'file' against the whole schema), and where 'today' is given, by the calendar checks SB2 states: an entry past its expiry, and a window over ninety days, are findings. 'security-md' is judged by security-md.schema.json alone.",
+  "judged_by": {
+    "description": "What judges each part below, as data, so one runner can read it: the case key holding the instance, the schema (or the case key naming one and the table that resolves it), and the runner checks the schema cannot express. A part absent here is judged by running an implementation and is a product suite's. A case flagged schemaCannotCatch documents a verdict the schema alone does not reach.",
+    "scan-acceptance": {
+      "instances": {
+        "entry": "https://contracts.aurumalpha.dev/security-baseline/acceptance.schema.json#/$defs/entry",
+        "file": "https://contracts.aurumalpha.dev/security-baseline/acceptance.schema.json"
+      },
+      "checks": [
+        "acceptance_calendar"
+      ]
+    },
+    "security-md": {
+      "instance": "policy",
+      "schema": "https://contracts.aurumalpha.dev/security-baseline/security-md.schema.json"
+    }
+  },
   "headers": [
     {
       "case": "document-complete-set-accepted",

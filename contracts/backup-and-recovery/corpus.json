@@ -2,6 +2,20 @@
   "contract": "backup-and-recovery",
   "schemaVersion": 1,
   "description": "The conformance corpus for standards/028-backup-and-recovery.md. Three parts. 'declarations' is judged by recovery-declaration.schema.json plus four arithmetic relations the schema cannot express and a runner checks, each named in the case that exercises it: retention.floor <= retention.ceiling, retention.ceiling <= erasure_horizon, drill.cadence <= retention.floor, drill.cadence <= drill.stale_after; a case is accepted or rejected, and a rejection names its rule. 'ledger' is judged by erasure-ledger.schema.json alone. 'drills' is judged by running a recovery implementation and has three scenarios: 'freshness' gives the drill's cadence and staleness threshold, the first copy's instant and the drill's run records, and expects whether the store is stale and whether a deployment proceeds (BR4); 'objectives' gives the declared RPO and RTO and the drill's instants and expects the achieved values and the drill's outcome (BR4 step 6); 'restore' gives a copy with its as_of, rows, audit events and restored ledger table, the release's schema version and the ledger's copy from the backup domain, and expects the state at readiness and after (BR6, BR7). Two cases are detectors: 'restore-then-replay-leaves-erased-rows-absent' fails an implementation that reads the ledger from the restored table, and 'erased-rows-are-absent-at-readiness-not-only-afterwards' fails an implementation that reports ready before replay.",
+  "judged_by": {
+    "description": "What judges each part below, as data, so one runner can read it: the case key holding the instance, the schema (or the case key naming one and the table that resolves it), and the runner checks the schema cannot express. A part absent here is judged by running an implementation and is a product suite's. A case flagged schemaCannotCatch documents a verdict the schema alone does not reach.",
+    "declarations": {
+      "instance": "declaration",
+      "schema": "https://contracts.aurumalpha.dev/backup-and-recovery/recovery-declaration.schema.json",
+      "checks": [
+        "recovery_arithmetic"
+      ]
+    },
+    "ledger": {
+      "instance": "entry",
+      "schema": "https://contracts.aurumalpha.dev/backup-and-recovery/erasure-ledger.schema.json"
+    }
+  },
   "declarations": [
     {
       "case": "a-relational-primary-store-under-pitr",

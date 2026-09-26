@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+"""The Go module-major decision is one text, and it matches Go's rule.
+
+job-go-build and job-version-gate each carry the block. A reusable workflow
+runs in the caller's checkout, so the block is copied rather than imported,
+and this checker is what keeps the copies from becoming two answers.
+
+It also runs the block against the cases below. The cases are Go's
+major-version suffix: v0 and v1 are the unsuffixed path, v2 and above end in
+/vN, and /v0 and /v1 are not paths Go accepts. gopkg.in is the one path family
+that uses .vN, including .v0 and .v1.
+
+https://go.dev/doc/modules/version-numbers
+https://go.dev/ref/mod#major-version-suffixes
+
+Usage: check-go-module-version [--repo-root .]
+"""
+
+import argparse
+import pathlib
+import sys
+import textwrap
+
+BEGIN = "# --- BEGIN shared: go module major"
+END = "# --- END shared: go module major ---"
+
+REQUIRED = (
+    pathlib.Path(".github/workflows/job-go-build.yml"),
+    pathlib.Path(".github/workflows/job-version-gate.yml"),
+)
+
+# (version, module path) pairs a release may tag.
+RELEASE_OK = (
+    ("0.6.0", "github.com/aurum-alpha/platform-go"),
+    ("1.0.0", "github.com/aurum-alpha/platform-go"),
+    ("1.2.3", "example.com/v2/m"),
+    ("2.0.0", "github.com/aurum-alpha/platform-go/v2"),
+    ("2.0.0", "example.com/m/v2"),
+    ("10.0.0", "example.com/m/v10"),
+    ("3.1.4", "example.com/m/v3"),
+    ("2.0.0", "gopkg.in/yaml.v2"),
+    ("0.1.0", "gopkg.in/check.v0"),
+    ("1.2.3", "gopkg.in/check.v1"),
+)
+
+# (version, module path) pairs a release must refuse.
+RELEASE_BAD = (
+    ("2.0.0", "github.com/aurum-alpha/platform-go"),
+    ("3.0.0", "github.com/aurum-alpha/platform-go/v2"),
+    ("0.7.0", "github.com/aurum-alpha/platform-go/v2"),
+    ("1.0.0", "github.com/aurum-alpha/platform-go/v2"),
+    ("2.0.0", "example.com/m/v1"),
+    ("1.0.0", "example.com/m/v1"),
+    ("0.1.0", "example.com/m/v0"),
+    ("2.0.0", "example.com/m/v02"),
+    ("2.0.0", "example.com/m/v2.0"),
+    ("1.0.0", "gopkg.in/yaml.v2"),
+)
+
+# Paths Go's CheckPath rejects, whatever version is being tagged.
+PATH_BAD = (
+    "example.com/m/v1",
+    "example.com/m/v0",
+    "example.com/m/v02",
+    "example.com/m/v2.0",
+)
+
+
+def extract(path):
+    text = path.read_text()
+    if BEGIN not in text:
+        return None
+    marker = text.index(BEGIN)
+    # The marker sits mid-line in the workflow. Dedent needs the indent
+    # that belongs to that line, or the first line looks unindented and
+    # the rest of the block keeps the workflow's spaces.
+    start = text.rfind("\n", 0, marker) + 1
+    try:
+        stop = text.index(END, marker) + len(END)
+    except ValueError:
+        sys.exit(f"{path}: opens the shared block and never closes it.\n"
+                 f"Add a line reading exactly: {END}")
+    return textwrap.dedent(text[start:stop])
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--repo-root", default=".", type=pathlib.Path)
+    args = ap.parse_args()
+    root = args.repo_root
+
+    missing = [p for p in REQUIRED if extract(root / p) is None]
+    if missing:
+        print("FAIL: the Go module-major block is missing from:")
+        for p in missing:
+            print(f"  {p}")
+        return 1
+
+    bodies = [(p, extract(root / p)) for p in REQUIRED]
+    reference_path, reference = bodies[0]
+    drifted = [p for p, body in bodies[1:] if body != reference]
+    if drifted:
+        print("FAIL: the Go module-major block differs between copies.")
+        print(f"{reference_path} is the one compared against; these do not match it:")
+        for p in drifted:
+            print(f"  {p}")
+        return 1
+
+    ns = {}
+    exec(reference, ns)
+    path_error = ns["go_module_path_error"]
+    release_error = ns["go_release_path_error"]
+    module_line = ns["go_module_line"]
+
+    failures = []
+
+    def check(label, ok):
+        if not ok:
+            failures.append(label)
+
+    for version, path in RELEASE_OK:
+        err = release_error(version, path)
+        check(f"release {version} on {path} should pass, got {err!r}", err == "")
+        check(f"path {path} should be legal", path_error(path) == "")
+
+    for version, path in RELEASE_BAD:
+        err = release_error(version, path)
+        check(f"release {version} on {path} should fail", err != "")
+
+    for path in PATH_BAD:
+        check(f"path {path} should be illegal", path_error(path) != "")
+
+    sample = "module example.com/m/v2 // the path\n\ngo 1.26\n"
+    check("module line is read", module_line(sample) == "example.com/m/v2")
+    check("a file with no module line reads empty", module_line("go 1.26\n") == "")
+
+    if failures:
+        print(f"FAIL: {len(failures)} case(s)")
+        for line in failures:
+            print(f"  {line}")
+        return 1
+
+    print(f"PASS: {len(REQUIRED)} copies agree, "
+          f"{len(RELEASE_OK) + len(RELEASE_BAD)} release cases")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

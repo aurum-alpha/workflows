@@ -38,28 +38,44 @@
 # exactly there, on a broken artifact download, after ci-ok had already gone
 # green.
 #
-# ADOPTING THIS ALONGSIDE job-version-gate NEEDS always() IN THE CALLER.
-# job-version-gate is pull_request-only and so is skipped on every push to
-# main; GitHub propagates that skip transitively to every job whose `needs`
-# closure contains it, and always() rescues only the job that carries it. A
-# caller that puts this job below ci-ok without its own guard gets a green run
-# with no release in it — silently. The caller's stub wants:
+# THE CALLER NAMES THIS JOB IN ci-ok's needs, AND DOES NOT NEED ci-ok.
+# Needing ci-ok is a cycle. Sitting below ci-ok means a failed tag lands
+# after the required check has already gone green. The job still runs on a
+# pull request (Principle 17: only the tag step is main-only). ci-ok counts
+# a failure of this job only on a push to the default branch, via
+# main_only_jobs and on_default_branch on the ci-ok action.
 #
-#   release:
-#     needs: [ci-ok]
+# job-version-gate is pull_request-only, so it is skipped on every push to
+# the default branch. This job's if must treat that skip as success.
+# Requiring success alone skips the release on the push that has to mint it,
+# and the rollup stays green because a skip is not a failure.
+#
+#   version-release:
+#     needs: [<gates>, version-gate, <build-job>]
 #     if: >-
 #       always()
-#       && needs.ci-ok.result == 'success'
-#     uses: aurum-alpha/workflows/.github/workflows/job-version-release.yml@<sha>
+#       && needs.<build-job>.result == 'success'
+#       && (needs.version-gate.result == 'success' || needs.version-gate.result == 'skipped')
+#     uses: aurum-alpha/workflows/.github/workflows/job-version-release.yml@main
 #     with:
 #       version: ${{ needs.<build-job>.outputs.version }}
 #       version_changed: ${{ needs.<build-job>.outputs.version_changed }}
 #     permissions:
 #       contents: write
 #
-# Note what is NOT in that `if:`: the push/main condition. This job applies it
-# per-step, so the caller must not gate the job to main — doing so is rule D5,
-# and it is what put the untested-until-merge failure above into the portfolio.
+#   ci-ok:
+#     needs: [<gates>, version-gate, <build-job>, version-release]
+#     if: always()
+#     steps:
+#       - uses: aurum-alpha/workflows/.github/actions/ci-ok@main
+#         with:
+#           needs_json: ${{ toJSON(needs) }}
+#           main_only_jobs: version-release
+#           on_default_branch: ${{ github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+#
+# Note what is NOT in the job if: the push/main condition. This job applies
+# it per-step, so the caller must not gate the job to main — doing so is
+# rule D5. The rollup, not the job if, is what makes a main failure required.
 name: job-version-release
 
 on:

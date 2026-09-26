@@ -222,10 +222,117 @@ jobs:
                    "release rather than approving a change and getting a "
                    "release with it.")
 
+          # --- BEGIN shared: go module major
+          # Go's module path (https://go.dev/doc/modules/version-numbers,
+          # https://go.dev/ref/mod#major-version-suffixes): v0 and v1 are the path
+          # with no suffix. v2 and above are a different module whose path ends in
+          # /vN, and the tag's major is that N. /v0 and /v1 are not suffixes Go
+          # accepts. gopkg.in uses .vN and allows .v0 and .v1.
+          # tools/check-go-module-version holds the copies identical and runs the
+          # cases. The block is inline because a reusable workflow runs in the
+          # caller's checkout.
+          import re as _go_re
+
+          def go_module_line(text):
+              for line in text.splitlines():
+                  m = _go_re.match(r"\s*module\s+(\S+)", line)
+                  if m:
+                      return m.group(1)
+              return ""
+
+          def _split_gopkg_in(path):
+              if not path.startswith("gopkg.in/"):
+                  return "", False
+              i = len(path)
+              if path.endswith("-unstable"):
+                  i -= len("-unstable")
+              while i > 0 and path[i - 1].isdigit():
+                  i -= 1
+              if i <= 1 or path[i - 1] != "v" or path[i - 2] != ".":
+                  return "", False
+              path_major = path[i - 2:]
+              if len(path_major) <= 2 or (path_major[2] == "0" and path_major != ".v0"):
+                  return "", False
+              return path_major, True
+
+          def _split_path_version(path):
+              if path.startswith("gopkg.in/"):
+                  return _split_gopkg_in(path)
+              i = len(path)
+              dot = False
+              while i > 0 and (path[i - 1].isdigit() or path[i - 1] == "."):
+                  if path[i - 1] == ".":
+                      dot = True
+                  i -= 1
+              if i <= 1 or i == len(path) or path[i - 1] != "v" or path[i - 2] != "/":
+                  return "", True
+              path_major = path[i - 2:]
+              if dot or len(path_major) <= 2 or path_major[2] == "0" or path_major == "/v1":
+                  return "", False
+              return path_major, True
+
+          def _suffix_major(path_major):
+              body = path_major[1:]
+              if body.endswith("-unstable"):
+                  body = body[: -len("-unstable")]
+              return int(body[1:])
+
+          def go_module_path_error(module_path):
+              _, ok = _split_path_version(module_path)
+              if ok:
+                  return ""
+              return (f"module path {module_path} is not a path Go accepts. "
+                      f"A final /vN must be /v2 or higher, with no leading zero "
+                      f"and no dot. /v0 and /v1 are rejected; v0 and v1 use the "
+                      f"path with no suffix.")
+
+          def go_release_path_error(version, module_path):
+              err = go_module_path_error(module_path)
+              if err:
+                  return err
+              path_major, _ = _split_path_version(module_path)
+              file_major = int(version.split(".")[0])
+              if path_major == "":
+                  if file_major >= 2:
+                      return (f"{version} is major {file_major}. Go fetches that "
+                              f"release from {module_path}/v{file_major}. "
+                              f"Land the module path and every import of it first. "
+                              f"This release tags a tree whose go.mod already ends "
+                              f"in /v{file_major}.")
+                  return ""
+              declared = _suffix_major(path_major)
+              if file_major != declared:
+                  return (f"{version} is major {file_major}, and {module_path} "
+                          f"declares {path_major}. The tag and the suffix are the "
+                          f"same major.")
+              return ""
+          # --- END shared: go module major ---
+
+          # A root go.mod means this release is a Go module. The path and
+          # the imports move in an earlier pull request; this one only tags,
+          # so the tree being tagged already has to be the path Go fetches.
+          module_path = ""
+          gomod = pathlib.Path("go.mod")
+          if gomod.is_file():
+              module_path = go_module_line(gomod.read_text())
+              if not module_path:
+                  fail("go.mod has no module line.",
+                       "The module line is the path Go fetches.")
+              err = go_release_path_error(after, module_path)
+              if err:
+                  fail(err,
+                       "Go's rule: https://go.dev/doc/modules/version-numbers",
+                       "",
+                       "v0 and v1 are the module path with no suffix. v2 and "
+                       "above are a different module, and the path ends in /vN "
+                       "for that major. The path and every import of it land "
+                       "in their own pull request. This one tags the tree that "
+                       "already has them.")
+
           major = before is not None and SEMVER.fullmatch(before) \
               and before.split(".")[0] != after.split(".")[0]
           out(changed="true", before=before or "none", after=after,
-              major="true" if major else "false")
+              major="true" if major else "false", module_path=module_path)
           summary(f"### Release: `{before or 'none'}` → `{after}`\n")
           print(f"{vf}: {before} -> {after}")
 
@@ -237,12 +344,13 @@ jobs:
           AFTER: ${{ steps.gate.outputs.after }}
           MAJOR: ${{ steps.gate.outputs.major }}
           VERSION_FILE: ${{ inputs.version_file }}
+          MODULE_PATH: ${{ steps.gate.outputs.module_path }}
         with:
           script: |
             // Stable marker so the comment is updated in place. A new comment
             // on every push would train reviewers to ignore it.
             const MARKER = '<!-- aurum-alpha:version-gate -->';
-            const { BEFORE, AFTER, MAJOR, VERSION_FILE } = process.env;
+            const { BEFORE, AFTER, MAJOR, VERSION_FILE, MODULE_PATH } = process.env;
 
             // The pre-release example is DERIVED from the version being cut,
             // not written down. It used to read `0.15.1-dev.<sha>` in every
@@ -286,10 +394,11 @@ jobs:
             ];
 
             if (MAJOR === 'true') {
-              lines.push(
-                '',
-                '**Major bump.** This asserts a breaking change to something outside this repo. No tool can check that claim — it is the reviewer’s to confirm.',
-              );
+              const major = (AFTER || '').split('.')[0];
+              const note = MODULE_PATH
+                ? `**Major bump.** \`go.mod\` declares \`${MODULE_PATH}\`, and that path is the one Go fetches for major ${major}. The breaking change to callers is the reviewer’s to confirm.`
+                : '**Major bump.** This asserts a breaking change to something outside this repo. No tool can check that claim — it is the reviewer’s to confirm.';
+              lines.push('', note);
             }
 
             const body = lines.join('\n');

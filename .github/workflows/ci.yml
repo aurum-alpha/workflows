@@ -111,6 +111,12 @@ jobs:
       - name: Check the shared version-stamp block agrees across jobs
         run: tools/check-version-stamp-shared
 
+      # Same reason as the stamp check: the decision is copied into two jobs
+      # because a reusable workflow runs in the caller's checkout. A copy that
+      # drifts tags a Go release the go command cannot fetch.
+      - name: Check the Go module-major block
+        run: tools/check-go-module-version
+
   contract-conformance:
     uses: ./.github/workflows/job-contract-conformance.yml
 
@@ -226,10 +232,19 @@ jobs:
           print(f"version={version} release={changed} stamp={stamp}")
 
   version-release:
-    needs: [ci-ok, version-read]
+    # In the rollup, not below it. Needing ci-ok would be a cycle, and a
+    # failure after ci-ok had already gone green would block nothing.
+    # version-gate is pull-request-only, so on a push it is skipped and that
+    # skip is success here. The tag step inside the job still waits for the
+    # default branch. ci-ok counts a failure of this job only on that push.
+    needs: [lint, conformance, contract-conformance, version-gate, version-read]
     if: >-
       always()
-      && needs.ci-ok.result == 'success'
+      && needs.version-read.result == 'success'
+      && needs.lint.result == 'success'
+      && needs.conformance.result == 'success'
+      && needs.contract-conformance.result == 'success'
+      && (needs.version-gate.result == 'success' || needs.version-gate.result == 'skipped')
     uses: ./.github/workflows/job-version-release.yml
     with:
       version: ${{ needs.version-read.outputs.version }}
@@ -241,11 +256,12 @@ jobs:
 
   ci-ok:
     # version-read is in here rather than downstream because it is not
-    # housekeeping — it is the input housekeeping reads. A version-read that
-    # failed while the rollup went green would hand `release` an empty
-    # `version_changed`, and the release that did not happen would be
-    # reported as fine (rule D6).
-    needs: [lint, conformance, contract-conformance, version-gate, version-read]
+    # housekeeping — it is the input the release reads. A version-read that
+    # failed while the rollup went green would hand the release an empty
+    # version_changed, and the release that did not happen would be reported
+    # as fine (rule D6). version-release is in here so a failed tag on the
+    # default branch turns this check red. A pull request does not count it.
+    needs: [lint, conformance, contract-conformance, version-gate, version-read, version-release]
     if: always()
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
     steps:
@@ -256,3 +272,5 @@ jobs:
       - uses: ./.github/actions/ci-ok
         with:
           needs_json: ${{ toJSON(needs) }}
+          main_only_jobs: version-release
+          on_default_branch: ${{ github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}

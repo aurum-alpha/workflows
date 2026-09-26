@@ -50,6 +50,21 @@ inputs:
       full object is keyed by job id, which is the one thing a reader of a red
       ci-ok actually needs.
     required: true
+  main_only_jobs:
+    description: >-
+      Job ids, separated by commas or spaces, whose failure counts only on a
+      push to the default branch. A pull request still runs those jobs. Their
+      result does not turn this rollup red. Empty counts every dependency.
+    required: false
+    default: ""
+  on_default_branch:
+    description: >-
+      Pass the expression that is true on a push to the repository's default
+      branch. When it is not true, main_only_jobs are left out of the failure
+      count. The default is true, so a caller that names no main_only_jobs
+      counts every dependency, which is the previous behaviour.
+    required: false
+    default: "true"
 
 runs:
   using: composite
@@ -58,6 +73,8 @@ runs:
       shell: bash
       env:
         NEEDS: ${{ inputs.needs_json }}
+        MAIN_ONLY_JOBS: ${{ inputs.main_only_jobs }}
+        ON_DEFAULT_BRANCH: ${{ inputs.on_default_branch }}
       run: |
         set -euo pipefail
 
@@ -65,26 +82,47 @@ runs:
         # actually gated the merge; on a red one it is the diagnosis.
         printf '%s\n' "$NEEDS"
 
-        # Cancelled is reported separately from failure because they mean
-        # opposite things. A failure is a verdict about the code. A cancellation
-        # is almost always the concurrency group superseding an older run, or a
-        # runner going away — nothing was learned about the commit. Collapsing
-        # them into one `exit 1` sent people reading test logs that did not
-        # exist.
-        # Whitespace-tolerant: toJSON's exact spacing is not a contract, and a
-        # rollup that silently matches nothing is the worst possible failure
-        # mode for the job whose entire purpose is to catch failures.
-        failed=$(printf '%s' "$NEEDS" | grep -c '"result":[[:space:]]*"failure"' || true)
-        cancelled=$(printf '%s' "$NEEDS" | grep -c '"result":[[:space:]]*"cancelled"' || true)
+        # python3, not grep: a job id has to be dropped from the object before
+        # the count, and a regex over the whole blob cannot tell one job's
+        # result from another's. Cancelled stays separate from failure. A
+        # failure is a verdict about the code. A cancellation is almost always
+        # the concurrency group superseding an older run, or a runner going
+        # away.
+        python3 - << 'PY'
+        import json, os, sys
 
-        if [ "$failed" -gt 0 ]; then
-          echo "::error::${failed} dependency job(s) failed. See the object above for which."
-          exit 1
-        fi
-        if [ "$cancelled" -gt 0 ]; then
-          echo "::error::${cancelled} dependency job(s) were cancelled." \
-               "Nothing was proved about this commit; re-run if the cancellation was not deliberate."
-          exit 1
-        fi
+        needs = json.loads(os.environ["NEEDS"])
+        main_only = {
+            part
+            for part in os.environ.get("MAIN_ONLY_JOBS", "").replace(",", " ").split()
+            if part
+        }
+        on_default = os.environ.get("ON_DEFAULT_BRANCH", "true") == "true"
+        ignored = []
+        if not on_default:
+            for job in sorted(main_only):
+                if job in needs:
+                    ignored.append(job)
+                    del needs[job]
+        if ignored:
+            print("Not counted on this run (pull request): " + ", ".join(ignored))
 
-        echo "All dependencies succeeded."
+        def ids(result):
+            return [
+                job for job, info in needs.items()
+                if isinstance(info, dict) and info.get("result") == result
+            ]
+
+        failed, cancelled = ids("failure"), ids("cancelled")
+        if failed:
+            print(f"::error::{len(failed)} dependency job(s) failed: {', '.join(failed)}")
+            sys.exit(1)
+        if cancelled:
+            print(
+                f"::error::{len(cancelled)} dependency job(s) were cancelled: "
+                f"{', '.join(cancelled)}. Nothing was proved about this commit; "
+                "re-run if the cancellation was not deliberate."
+            )
+            sys.exit(1)
+        print("All dependencies succeeded.")
+        PY

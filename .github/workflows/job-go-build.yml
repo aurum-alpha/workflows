@@ -305,14 +305,97 @@ jobs:
 
           # The stamp target is derived, never passed: go.mod names the module,
           # and the Aurum Alpha standard puts build identity in internal/version.
-          module = None
-          for line in pathlib.Path("go.mod").read_text().splitlines():
-              m = re.match(r"\s*module\s+(\S+)", line)
-              if m:
-                  module = m.group(1)
-                  break
+          # --- BEGIN shared: go module major
+          # Go's module path (https://go.dev/doc/modules/version-numbers,
+          # https://go.dev/ref/mod#major-version-suffixes): v0 and v1 are the path
+          # with no suffix. v2 and above are a different module whose path ends in
+          # /vN, and the tag's major is that N. /v0 and /v1 are not suffixes Go
+          # accepts. gopkg.in uses .vN and allows .v0 and .v1.
+          # tools/check-go-module-version holds the copies identical and runs the
+          # cases. The block is inline because a reusable workflow runs in the
+          # caller's checkout.
+          import re as _go_re
+
+          def go_module_line(text):
+              for line in text.splitlines():
+                  m = _go_re.match(r"\s*module\s+(\S+)", line)
+                  if m:
+                      return m.group(1)
+              return ""
+
+          def _split_gopkg_in(path):
+              if not path.startswith("gopkg.in/"):
+                  return "", False
+              i = len(path)
+              if path.endswith("-unstable"):
+                  i -= len("-unstable")
+              while i > 0 and path[i - 1].isdigit():
+                  i -= 1
+              if i <= 1 or path[i - 1] != "v" or path[i - 2] != ".":
+                  return "", False
+              path_major = path[i - 2:]
+              if len(path_major) <= 2 or (path_major[2] == "0" and path_major != ".v0"):
+                  return "", False
+              return path_major, True
+
+          def _split_path_version(path):
+              if path.startswith("gopkg.in/"):
+                  return _split_gopkg_in(path)
+              i = len(path)
+              dot = False
+              while i > 0 and (path[i - 1].isdigit() or path[i - 1] == "."):
+                  if path[i - 1] == ".":
+                      dot = True
+                  i -= 1
+              if i <= 1 or i == len(path) or path[i - 1] != "v" or path[i - 2] != "/":
+                  return "", True
+              path_major = path[i - 2:]
+              if dot or len(path_major) <= 2 or path_major[2] == "0" or path_major == "/v1":
+                  return "", False
+              return path_major, True
+
+          def _suffix_major(path_major):
+              body = path_major[1:]
+              if body.endswith("-unstable"):
+                  body = body[: -len("-unstable")]
+              return int(body[1:])
+
+          def go_module_path_error(module_path):
+              _, ok = _split_path_version(module_path)
+              if ok:
+                  return ""
+              return (f"module path {module_path} is not a path Go accepts. "
+                      f"A final /vN must be /v2 or higher, with no leading zero "
+                      f"and no dot. /v0 and /v1 are rejected; v0 and v1 use the "
+                      f"path with no suffix.")
+
+          def go_release_path_error(version, module_path):
+              err = go_module_path_error(module_path)
+              if err:
+                  return err
+              path_major, _ = _split_path_version(module_path)
+              file_major = int(version.split(".")[0])
+              if path_major == "":
+                  if file_major >= 2:
+                      return (f"{version} is major {file_major}. Go fetches that "
+                              f"release from {module_path}/v{file_major}. "
+                              f"Land the module path and every import of it first. "
+                              f"This release tags a tree whose go.mod already ends "
+                              f"in /v{file_major}.")
+                  return ""
+              declared = _suffix_major(path_major)
+              if file_major != declared:
+                  return (f"{version} is major {file_major}, and {module_path} "
+                          f"declares {path_major}. The tag and the suffix are the "
+                          f"same major.")
+              return ""
+          # --- END shared: go module major ---
+          module = go_module_line(pathlib.Path("go.mod").read_text())
           if not module:
               sys.exit("go.mod has no module line")
+          path_err = go_module_path_error(module)
+          if path_err:
+              sys.exit(path_err)
           pkg = f"{module}/internal/version"
 
           # `go build -X` on a symbol that does not exist is SILENTLY IGNORED —
@@ -428,6 +511,14 @@ jobs:
 
           changed, stamp = resolve_version_stamp(
               os.environ["VERSION_FILE"], version, commit)
+
+          # A release tags `version`. Go fetches v2 and above only from a
+          # path ending in /vN. Refuse before any output is published, so a
+          # later job cannot mint the tag this build just rejected.
+          if changed and re.fullmatch(r"\d+\.\d+\.\d+", version):
+              release_err = go_release_path_error(version, module)
+              if release_err:
+                  sys.exit(release_err)
 
           with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
               fh.write(f"version={version}\n")

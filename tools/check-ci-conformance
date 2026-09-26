@@ -32,6 +32,9 @@ principle needed enforcing:
                            (job-image-build with no artifacts:)
   D4  publish is in ci-ok  a publish job outside the rollup fails invisibly
   D5  publish runs on PRs  the main-check goes on the step, never the job
+  REL release in the rollup  job-version-release is named in ci-ok's needs,
+                          does not need ci-ok, and ci-ok counts it only on a
+                          push to the default branch
   D6  every job blocks     every job is NAMED in ci-ok's needs, not merely
                           needs. Distinct from D1: a job can sit correctly
                           downstream of the build and still be absent from the
@@ -850,8 +853,9 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
             # Housekeeping is the one shape deliberately outside the rollup:
             # it fails without saying anything about the commit, and a merge
             # blocked on a registry API hiccup is worse than a week of extra
-            # blobs. The registry prune was the first; tagging a release is the
-            # second, and there will be others.
+            # blobs. The registry prune is that shape. The release mint is not.
+            # It is named in ci-ok's needs, and ci-ok counts its failure only
+            # on a push to the default branch.
             #
             # The test is structural rather than a list of job names: a job is
             # housekeeping exactly when the rollup is upstream of it. That
@@ -868,6 +872,27 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
             if "job-image-prune" in props.get("uses", "") and not housekeeping:
                 bad("D6", f"'{job}' prunes the registry but ci-ok is not upstream "
                           "of it — housekeeping must not run ahead of the gates")
+            if "job-version-release" in props.get("uses", ""):
+                # In the rollup, and counted only on a push to the default
+                # branch. Below the rollup, a failed tag is invisible. Counted
+                # on a pull request, a rehearsal failure blocks a merge the
+                # tag step was never going to perform.
+                if housekeeping or ("ci-ok" in jobs and job not in rollup):
+                    bad("REL", f"'{job}' mints the release outside ci-ok's needs. "
+                               "Name it in the rollup and do not need ci-ok, or a "
+                               "failed tag lands after the required check is green")
+                else:
+                    # parse_jobs folds a job's steps into one string. The
+                    # ci-ok action inputs live in that string.
+                    steps = str(jobs.get("ci-ok", {}).get("steps", ""))
+                    if not re.search(rf"main_only_jobs:\s*(?:\S+\s+)*{re.escape(job)}\b", steps):
+                        bad("REL", f"'{job}' is in ci-ok's needs, and ci-ok does not "
+                                   "list it in main_only_jobs. A pull request then "
+                                   "goes red when the rehearsal fails")
+                    if "default_branch" not in steps:
+                        bad("REL", "ci-ok on_default_branch must read the repository "
+                                   "default branch, so the release job is counted "
+                                   "only on that push")
 
             # D2 says a build never needs a gate — build first, fail fast — and
             # that is about SOURCE builds, which compile something and must come

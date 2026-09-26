@@ -1,0 +1,65 @@
+# The catalog's gitleaks configuration, and the only allow-list job-secret-scan
+# reads (032 SE4). A repository carries none of its own: the job passes this
+# file with --config, which makes a .gitleaks.toml inert, deletes a
+# .gitleaksignore from the checkout, and runs with --ignore-gitleaks-allow;
+# check-secret-locations reports all three.
+#
+# Every entry is path-scoped, and SE4 admits two reasons for one: SE9's
+# development credential, and a corpus case that exists to be found. The third
+# entry admits no value at all; it stops a misreading. Nothing else belongs
+# here, and an entry is a reviewed change to this file.
+title = "Aurum Alpha secret scanning (032 SE4)"
+
+[extend]
+useDefault = true
+
+# 032 SE9: the file that starts a development backing service mints its
+# credential. The devkit renders these files into every product with one
+# literal family, and a value outside the family in any of them is still a
+# finding: path AND value, never path alone.
+[[allowlists]]
+description = "032 SE9: the devkit's development credential family, in the files it renders and in the compose files that start the development backing services"
+condition = "AND"
+paths = [
+  '''(^|/)dev/keycloak/realm\.json$''',
+  '''(^|/)dev/oauth2-proxy/oauth2-proxy\.cfg$''',
+  '''(^|/)dev/personas\.json$''',
+  '''(^|/)dev/tools/dev-token$''',
+  '''^devkit/''',
+  '''(^|/)(docker-)?compose(\.[^/]+)?\.ya?ml$''',
+  '''(^|/)[^/]+\.compose\.ya?ml$''',
+]
+regexes = [
+  '''^devkit-local-only''',
+  '''^ZGV2a2l0LWxvY2FsLW9ubHk''',
+]
+
+# A corpus case that expects a scanner to find something has to hold
+# something to find. contracts/*/corpus.json is the standard's own test
+# vectors, vendored into every platform module and product, and every value
+# in one is a documented sample, never a credential. The scanner is proven
+# against the secrets corpus in the job, so a case is found there rather
+# than reported here.
+[[allowlists]]
+description = "032 SE4: a corpus case under contracts/ exists to be found; the job proves the scanner against it instead"
+paths = [
+  '''(^|/)contracts/[^/]+/corpus\.json$''',
+]
+
+# An image reference is a pin (085 SB1), never a value. gitleaks reads `auth`
+# in `oauth2-proxy:v7.9.0-alpine` as a keyword and the tag as the secret, in
+# every rendered dev/compose/auth.compose.yaml. Scoped to the one line shape
+# in the two file kinds that carry image references.
+[[allowlists]]
+description = "085 SB1: an image reference on a compose image: line or a Dockerfile FROM line is a pin, not a value"
+condition = "AND"
+paths = [
+  '''(^|/)(docker-)?compose(\.[^/]+)?\.ya?ml$''',
+  '''(^|/)[^/]+\.compose\.ya?ml$''',
+  '''(^|/)Dockerfile(\.[^/]+)?$''',
+  '''(^|/)[^/]+\.[Dd]ockerfile$''',
+]
+regexTarget = "line"
+regexes = [
+  '''^\s*(image:\s|FROM\s)''',
+]

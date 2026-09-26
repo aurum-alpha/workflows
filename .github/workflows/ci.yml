@@ -120,6 +120,16 @@ jobs:
   contract-conformance:
     uses: ./.github/workflows/job-contract-conformance.yml
 
+  # The catalog eats its own cooking here too, at the local path, so a change
+  # to the job or the checker is gated by the run that ships it. The
+  # standing-state half blocks from the start: this history holds nothing the
+  # config does not already name, the corpus vectors and the devkit's image
+  # line, so there is no window to hold open.
+  secret-scan:
+    uses: ./.github/workflows/job-secret-scan.yml
+    with:
+      fail_on_existing: true
+
   version-gate:
     uses: ./.github/workflows/job-version-gate.yml
     permissions:
@@ -237,13 +247,14 @@ jobs:
     # version-gate is pull-request-only, so on a push it is skipped and that
     # skip is success here. The tag step inside the job still waits for the
     # default branch. ci-ok counts a failure of this job only on that push.
-    needs: [lint, conformance, contract-conformance, version-gate, version-read]
+    needs: [lint, conformance, contract-conformance, secret-scan, version-gate, version-read]
     if: >-
       always()
       && needs.version-read.result == 'success'
       && needs.lint.result == 'success'
       && needs.conformance.result == 'success'
       && needs.contract-conformance.result == 'success'
+      && needs.secret-scan.result == 'success'
       && (needs.version-gate.result == 'success' || needs.version-gate.result == 'skipped')
     uses: ./.github/workflows/job-version-release.yml
     with:
@@ -261,7 +272,7 @@ jobs:
     # version_changed, and the release that did not happen would be reported
     # as fine (rule D6). version-release is in here so a failed tag on the
     # default branch turns this check red. A pull request does not count it.
-    needs: [lint, conformance, contract-conformance, version-gate, version-read, version-release]
+    needs: [lint, conformance, contract-conformance, secret-scan, version-gate, version-read, version-release]
     if: always()
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
     steps:

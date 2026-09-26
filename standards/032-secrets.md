@@ -153,8 +153,17 @@ has every commit, and a later removal removes it from none of them.
   credential shapes and high-entropy strings. It checks the placeholder
   grammar on `.env.example` lines whose names carry a secret kind (SE3). It
   refuses the push, in CI as a gate and, where the host offers it, as push
-  protection. An allow-list entry is path-scoped with a reason, and the only
-  reason admitted is SE9's development credential.
+  protection. `job-secret-scan` is that gate ([`010-ci.md`](010-ci.md)),
+  and it is proven against this standard's corpus before it judges a tree.
+  Push protection is an organisation setting, not a workflow: an
+  organisation owner enables it under the organisation's code security
+  settings.
+- **The allow-list is the catalog's, and a repository adds nothing to it**.
+  An entry is path-scoped with a reason. Two reasons are admitted: SE9's
+  development credential, and a corpus case under `contracts/` that exists
+  to be found. A match that is no value at all, an image reference read as
+  one, is tuned out in the same file. A repository-side allow-list, an
+  ignore file or an inline marker is a finding.
 - **A secret found in history is leaked, not deleted**. The response is
   SE8's: rotate first. Rewriting history removes the value from one copy of a
   repository that has many and destroys the evidence of when it arrived.
@@ -454,3 +463,12 @@ Per PC3, under [`contracts/secrets/`](../contracts/secrets/):
   ([`038-feature-flags.md`](038-feature-flags.md) FF2) is built into the
   image because the process evaluates flags by name from it. A process
   evaluates no secret. It reads a variable its code names (SE2).
+- **A repository-side allow-list.** gitleaks reads a `.gitleaks.toml`, a
+  `.gitleaksignore` and a `gitleaks:allow` marker from the tree it scans.
+  Each is an exemption nobody outside that repository reviews. The job
+  makes all three inert and reports them. The one allow-list is the
+  catalog's, where an entry is a reviewed change (SE4).
+- **The scanner's own GitHub Action.** It needs a licence key for an
+  organisation, and it reads the repository's own allow-list. The job runs
+  the published image, pinned by digest, and carries the allow-list itself
+  (SE4).

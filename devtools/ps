@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+if [ "${DX_INVOKED:-}" != 1 ]; then
+  echo "run ./dx ps" >&2
+  exit 1
+fi
+DX_LIB_SOURCE=1
+. "$DX_ROOT/tools/.dx/lib.sh"
+cd "$DX_ROOT"
+dx_compose ps "$@"

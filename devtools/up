@@ -1,0 +1,23 @@
+#!/bin/sh
+# Bring the stack up and print the banner from devtools.json.
+# 016-local-development.md LD8.
+set -eu
+if [ "${DX_INVOKED:-}" != 1 ]; then
+  echo "run ./dx up" >&2
+  exit 1
+fi
+DX_LIB_SOURCE=1
+. "$DX_ROOT/tools/.dx/lib.sh"
+cd "$DX_ROOT"
+"$DX_ROOT/tools/.dx/host"
+dx_need_docker
+if [ "${DX_COMPOSE_BAKE:-}" = 0 ]; then
+  export COMPOSE_BAKE=false
+fi
+build=
+if [ "${DX_COMPOSE_BUILD:-}" = 1 ]; then
+  build=--build
+fi
+# shellcheck disable=SC2086
+dx_compose up $build --wait -d "$@"
+printf '\n%s\n' "$DX_BANNER"

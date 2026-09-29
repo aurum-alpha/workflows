@@ -501,7 +501,7 @@ anything serves.
 **A long-running service must depend on each one-shot.**
 `server` depends on `migrate` and `seed` with `service_completed_successfully`.
 `--wait` fails a one-shot nobody depends on, even on exit 0.
-`tools/dev-init` then never prints the ports.
+`./dx up` then never prints the ports.
 `product.example.yaml` shows the edges.
 
 **The one-shots depend on no database in the fragment.** The fragment does not

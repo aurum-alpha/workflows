@@ -1,0 +1,48 @@
+#!/bin/sh
+# Reinstall into the named node_modules volume when the lockfile or a vendored
+# tarball changed. Docker seeds that volume only on first create; a later
+# `compose up --build` leaves the old tree in place and hides a newly added
+# package (016-local-development.md LD7).
+#
+# The image entrypoint. Docker runs this file by path. ./dx sync writes it
+# to tools/.dx/deps, and the Dockerfile copies that path.
+set -eu
+
+cd /app
+
+# pnpm otherwise prompts before replacing a volume-seeded tree, and aborts
+# without a TTY (ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY).
+export CI=true
+
+stamp=/app/node_modules/.dev-deps-stamp
+current=$(
+  {
+    sha256sum package.json pnpm-lock.yaml
+    if [ -d vendor ]; then
+      find vendor -type f | sort | while read -r f; do
+        sha256sum "$f"
+      done
+    fi
+  } | sha256sum | awk '{print $1}'
+)
+
+if [ ! -f "$stamp" ] || [ "$(cat "$stamp")" != "$current" ]; then
+  if [ "${DEV_DEPS_STAMP_ONLY:-}" = "1" ]; then
+    mkdir -p /app/node_modules
+    printf '%s\n' "$current" >"$stamp"
+    exit 0
+  fi
+  if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+    echo "error: NODE_AUTH_TOKEN is required to install @aurum-alpha packages." >&2
+    exit 1
+  fi
+  printf '%s\n' '@aurum-alpha:registry=https://npm.pkg.github.com' > /root/.npmrc
+  printf '%s\n' '//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}' >> /root/.npmrc
+  pnpm install --frozen-lockfile --config.confirmModulesPurge=false \
+    --store-dir /root/.local/share/pnpm/store
+  rm -f /root/.npmrc
+  mkdir -p /app/node_modules
+  printf '%s\n' "$current" >"$stamp"
+fi
+
+exec "$@"

@@ -1,0 +1,30 @@
+#!/bin/sh
+# Host prerequisites named by devtools.json. ./dx up runs this first.
+set -eu
+if [ "${DX_INVOKED:-}" != 1 ]; then
+  echo "run ./dx host" >&2
+  exit 1
+fi
+
+ensure=$DX_WORKFLOWS/tools/private-module-host
+if [ -z "${DX_WORKFLOWS:-}" ] || [ ! -x "$ensure" ]; then
+  echo "error: ../workflows/tools/private-module-host is missing. Clone aurum-alpha/workflows next to this repository." >&2
+  exit 1
+fi
+
+if [ -n "${DX_HOST_MODES:-}" ]; then
+  oldifs=$IFS
+  IFS=,
+  for mode in $DX_HOST_MODES; do
+    IFS=$oldifs
+    "$ensure" "$mode"
+  done
+  IFS=$oldifs
+fi
+
+if [ "${DX_TOKEN:-}" = 1 ] && [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+  echo "error: NODE_AUTH_TOKEN is not exported. The dev image fetches private modules with it." >&2
+  echo "It is a GitHub token with repo scope, and gh already holds one:" >&2
+  echo "  echo 'export NODE_AUTH_TOKEN=\$(gh auth token)' >> ~/.zshrc" >&2
+  exit 1
+fi

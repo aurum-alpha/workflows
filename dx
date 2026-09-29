@@ -1,0 +1,329 @@
+#!/bin/sh
+# The one catalog file a product commits.
+#
+# ./dx sync copies devtools/ from the sibling workflows checkout into
+# tools/.dx/. ./dx update replaces this file from that same checkout.
+# Every other name is a catalog script, a devtools.json command, or a
+# program under tools/.
+set -eu
+
+root=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+cache=$root/tools/.dx
+
+workflows_root() {
+  sib=$root/../workflows
+  if [ -f "$sib/dx" ] && [ -d "$sib/devtools" ]; then
+    (CDPATH= cd -- "$sib" && pwd)
+    return 0
+  fi
+  if [ -f "$root/dx" ] && [ -d "$root/devtools" ]; then
+    printf '%s\n' "$root"
+    return 0
+  fi
+  return 1
+}
+
+require_workflows() {
+  wf=$(workflows_root) || {
+    echo "error: ../workflows is missing. Clone aurum-alpha/workflows next to this repository." >&2
+    exit 1
+  }
+  printf '%s\n' "$wf"
+}
+
+file_hash() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk 'NR==1 { print $1 }'
+  else
+    shasum -a 256 "$1" | awk 'NR==1 { print $1 }'
+  fi
+}
+
+need_python() {
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "error: python3 is required to read devtools.json." >&2
+    exit 1
+  fi
+}
+
+load_config() {
+  need_python
+  if [ ! -f "$root/devtools.json" ]; then
+    echo "error: devtools.json is missing." >&2
+    exit 1
+  fi
+  eval "$(python3 - "$root/devtools.json" <<'PY'
+import json, shlex, sys
+with open(sys.argv[1], encoding="utf-8") as fh:
+    cfg = json.load(fh)
+host = cfg.get("host", [])
+if not isinstance(host, list) or any(not isinstance(mode, str) for mode in host):
+    sys.stderr.write("devtools.json: host must be a list of strings\n")
+    sys.exit(1)
+for mode in host:
+    if mode not in ("go", "npm", "composer"):
+        sys.stderr.write("devtools.json: unknown host mode %s\n" % mode)
+        sys.exit(1)
+compose = cfg.get("compose", {})
+if not isinstance(compose, dict):
+    sys.stderr.write("devtools.json: compose must be an object\n")
+    sys.exit(1)
+profiles = compose.get("profiles", [])
+if not isinstance(profiles, list) or any(not isinstance(p, str) for p in profiles):
+    sys.stderr.write("devtools.json: compose.profiles must be a list of strings\n")
+    sys.exit(1)
+banner = cfg.get("banner", "")
+if not isinstance(banner, str):
+    sys.stderr.write("devtools.json: banner must be a string\n")
+    sys.exit(1)
+token = cfg.get("token", False)
+build = compose.get("build", False)
+bake = compose.get("bake", True)
+if not isinstance(token, bool) or not isinstance(build, bool) or not isinstance(bake, bool):
+    sys.stderr.write("devtools.json: token, compose.build, and compose.bake must be booleans\n")
+    sys.exit(1)
+print("DX_HOST_MODES=" + shlex.quote(",".join(host)))
+print("DX_TOKEN=" + ("1" if token else "0"))
+print("DX_COMPOSE_BUILD=" + ("1" if build else "0"))
+print("DX_COMPOSE_BAKE=" + ("0" if bake is False else "1"))
+print("DX_COMPOSE_PROFILES=" + shlex.quote(" ".join(profiles)))
+print("DX_BANNER=" + shlex.quote(banner))
+PY
+)"
+  export DX_HOST_MODES DX_TOKEN DX_COMPOSE_BUILD DX_COMPOSE_BAKE DX_COMPOSE_PROFILES DX_BANNER
+}
+
+command_of() {
+  need_python
+  python3 - "$root/devtools.json" "$1" <<'PY'
+import json, sys
+with open(sys.argv[1], encoding="utf-8") as fh:
+    cfg = json.load(fh)
+commands = cfg.get("commands", {})
+if not isinstance(commands, dict):
+    sys.stderr.write("devtools.json: commands must be an object\n")
+    sys.exit(1)
+value = commands.get(sys.argv[2])
+if value is None:
+    sys.exit(0)
+if not isinstance(value, str) or value == "":
+    sys.stderr.write("devtools.json: commands.%s must be a string\n" % sys.argv[2])
+    sys.exit(1)
+sys.stdout.write(value)
+PY
+}
+
+do_sync() {
+  wf=$(require_workflows)
+  src=$wf/devtools
+  if [ ! -d "$src" ]; then
+    echo "error: $src is missing." >&2
+    exit 1
+  fi
+  tmp=$(mktemp -d)
+  for f in "$src"/*; do
+    [ -f "$f" ] || continue
+    name=$(basename "$f")
+    cp "$f" "$tmp/$name"
+    chmod +x "$tmp/$name"
+  done
+  git -C "$wf" rev-parse HEAD >"$tmp/.sha"
+  : >"$tmp/.manifest"
+  for f in "$tmp"/*; do
+    [ -f "$f" ] || continue
+    name=$(basename "$f")
+    printf '%s %s\n' "$name" "$(file_hash "$f")" >>"$tmp/.manifest"
+  done
+  rm -rf "$cache"
+  mkdir -p "$root/tools"
+  mv "$tmp" "$cache"
+}
+
+do_update() {
+  wf=$(require_workflows)
+  if [ ! -f "$wf/dx" ]; then
+    echo "error: $wf/dx is missing." >&2
+    exit 1
+  fi
+  tmp=$(mktemp)
+  cp "$wf/dx" "$tmp"
+  chmod +x "$tmp"
+  mv "$tmp" "$root/dx"
+}
+
+warn_stale() {
+  if wf=$(workflows_root); then
+    head=$(git -C "$wf" rev-parse HEAD)
+    if [ -f "$wf/dx" ] && [ "$(file_hash "$root/dx")" != "$(file_hash "$wf/dx")" ]; then
+      echo "dx is behind ../workflows. Run ./dx update." >&2
+    fi
+    if [ -f "$cache/.sha" ]; then
+      have=$(cat "$cache/.sha")
+      if [ "$have" != "$head" ]; then
+        echo "tools/.dx is from $have; ../workflows is $head. Run ./dx sync." >&2
+      fi
+    fi
+  fi
+  if [ -f "$cache/.manifest" ]; then
+    while read -r name hash; do
+      [ -n "$name" ] || continue
+      if [ ! -f "$cache/$name" ] || [ "$(file_hash "$cache/$name")" != "$hash" ]; then
+        echo "tools/.dx/$name was edited. Run ./dx sync." >&2
+      fi
+    done <"$cache/.manifest"
+  fi
+}
+
+list_names() {
+  dir=$1
+  [ -d "$dir" ] || return 0
+  for f in "$dir"/*; do
+    [ -f "$f" ] && [ -x "$f" ] || continue
+    name=$(basename "$f")
+    [ "$name" = "lib.sh" ] && continue
+    printf '%s\n' "$name"
+  done
+}
+
+do_status() {
+  warn_stale
+  echo "commands:"
+  echo "  sync"
+  echo "  update"
+  seen=" sync update "
+  if [ -d "$cache" ]; then
+    list_names "$cache" | while read -r name; do
+      echo "  $name"
+    done
+    seen="$seen$(list_names "$cache" | tr '\n' ' ')"
+  elif wf=$(workflows_root); then
+    list_names "$wf/devtools" | while read -r name; do
+      echo "  $name"
+    done
+    seen="$seen$(list_names "$wf/devtools" | tr '\n' ' ')"
+  fi
+  if [ -f "$root/devtools.json" ]; then
+    need_python
+    keys=$(python3 - "$root/devtools.json" <<'PY'
+import json, sys
+with open(sys.argv[1], encoding="utf-8") as fh:
+    cfg = json.load(fh)
+commands = cfg.get("commands", {})
+if isinstance(commands, dict):
+    for name in commands:
+        print(name)
+PY
+)
+    for name in $keys; do
+      case " $seen " in
+        *" $name "*) continue ;;
+      esac
+      echo "  $name"
+      seen="$seen$name "
+    done
+  fi
+  if [ -d "$root/tools" ]; then
+    list_names "$root/tools" | while read -r name; do
+      case " $seen " in
+        *" $name "*) continue ;;
+      esac
+      echo "  $name"
+    done
+  fi
+}
+
+dispatch_path() {
+  rel=$1
+  shift
+  case "$rel" in
+    tools/.dx | tools/.dx/*)
+      echo "run ./dx <command>" >&2
+      exit 1
+      ;;
+    tools/*) ;;
+    *)
+      echo "error: ./dx runs a path under tools/." >&2
+      exit 1
+      ;;
+  esac
+  case "$rel" in
+    *..*)
+      echo "error: ./dx runs a path under tools/." >&2
+      exit 1
+      ;;
+  esac
+  if [ ! -x "$root/$rel" ]; then
+    echo "error: $rel is not executable." >&2
+    exit 1
+  fi
+  cd "$root"
+  exec "$root/$rel" "$@"
+}
+
+run_json() {
+  got=$(command_of "$1") || exit 1
+  shift
+  [ -n "$got" ] || return 1
+  cd "$root"
+  if [ $# -eq 0 ]; then
+    exec sh -c "$got"
+  fi
+  exec sh -c "$got \"\$@\"" sh "$@"
+}
+
+if [ $# -eq 0 ]; then
+  do_status
+  exit 0
+fi
+
+cmd=$1
+shift
+case "$cmd" in
+  sync)
+    do_sync
+    exit 0
+    ;;
+  update)
+    do_update
+    exit 0
+    ;;
+  */*)
+    dispatch_path "$cmd" "$@"
+    ;;
+esac
+
+if [ ! -f "$cache/.sha" ]; then
+  do_sync
+fi
+warn_stale
+
+if [ -f "$root/devtools.json" ]; then
+  if run_json "$cmd" "$@"; then
+    exit 0
+  fi
+fi
+
+if [ -e "$cache/$cmd" ] && [ -e "$root/tools/$cmd" ]; then
+  echo "error: $cmd is both tools/.dx/$cmd and tools/$cmd." >&2
+  exit 1
+fi
+
+if [ -x "$cache/$cmd" ]; then
+  load_config
+  export DX_INVOKED=1
+  export DX_ROOT=$root
+  if wf=$(workflows_root); then
+    export DX_WORKFLOWS=$wf
+  else
+    export DX_WORKFLOWS=
+  fi
+  exec "$cache/$cmd" "$@"
+fi
+
+if [ -x "$root/tools/$cmd" ]; then
+  cd "$root"
+  exec "$root/tools/$cmd" "$@"
+fi
+
+echo "error: no command $cmd." >&2
+exit 1

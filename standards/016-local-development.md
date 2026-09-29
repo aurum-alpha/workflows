@@ -220,7 +220,18 @@ thing provisioned.
 
 A one-shot that exits 0 fails `--wait` with no such edge.
 `server` depends on `seed` the way it depends on `migrate`.
-`tools/dev-init` runs `tools/repo-setup`, then `docker compose up --wait -d`, then prints the ports. `tools/repo-setup` is that repository's host prerequisites and names only what that repository needs. Private Go, npm, and Composer credentials are applied by `workflows/tools/private-module-host`, which `tools/repo-setup` calls. The docker invocation is the same in every repository.
+
+`./dx up` is the command a person runs. The clone contains `./dx`. When `tools/.dx/` is missing, `up` copies the catalog scripts from the sibling `../workflows` checkout into that directory, then continues. It runs host setup, then `docker compose up --wait -d`, then prints the banner.
+
+`devtools.json` is the repository's own file. It names the host modes (`go`, `npm`, `composer`), the compose flags (`build`, `bake`, `profiles`), the banner, and the commands that belong to this repository. A `token` of true refuses to start when `NODE_AUTH_TOKEN` is unset, which is the dev image's BuildKit secret. The scripts under `tools/.dx/` are byte-identical in every repository. Product differences stay in the json.
+
+`./dx sync` copies those scripts and records the workflows commit in `tools/.dx/.sha`. `./dx update` replaces `./dx` from that same checkout. The cache is gitignored. `./dx` is committed.
+
+A command prints one line when the sibling checkout is at a different commit, and the command still runs. A cached file whose bytes differ from the recorded hash prints the same way. `sync` restores the scripts. `update` restores `./dx`.
+
+Private Go, npm, and Composer credentials are applied by `workflows/tools/private-module-host`, which `./dx host` calls. The sibling checkout is where that program is read from.
+
+**A handed-over repository vendors the cache.** A client checkout can no longer reach `aurum-alpha/workflows`, so `sync` and `update` stop. Handover copies `tools/.dx/` into the tree and removes that path from `.gitignore`, the same moment the agent standard is vendored. `./dx` is already in the tree. The cache that was copied keeps running.
 
 **An environment file the repository does not contain fails the whole stack.**
 A compose file naming one fails before anything starts. Where local values are

@@ -3,3 +3,6 @@
 # directory in `git status` that belongs to nobody's change.
 __pycache__/
 *.py[cod]
+
+# ./dx sync writes the catalog cache here. The source is devtools/.
+tools/.dx/

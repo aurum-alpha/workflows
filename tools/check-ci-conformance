@@ -372,6 +372,9 @@ CALLEE_NEEDS = {
     # reached only on the main-push path inside the job; the caller still has
     # to hold it, because a called workflow can never hold more than its caller.
     "job-version-release": {"contents": "write"},
+    # Reads a release's digest from ghcr before pinning it. Its writes go to
+    # another repository, through an App token the caller never holds.
+    "job-deploy-pin": {"packages": "read"},
 }
 PERM_RANK = {"none": 0, "read": 1, "write": 2}
 

@@ -8,9 +8,10 @@
 # runs nowhere until the deploy repository names it. That repository is the
 # record of what runs in each environment, and a deployer polls it. Moving a
 # pin there by hand after every merge is the step this job removes: every
-# merge to main moves the product's staging pin, and every release opens the
-# pull request that would move its production pin. A person merges that one;
-# nothing here reaches production.
+# merge to main opens, or brings up to date, the pull request that moves the
+# product's staging pin, and every release opens the one that would move its
+# production pin. A person merges both. Nothing here writes to the deploy
+# repository's main branch, so nothing here deploys anything.
 #
 # IT DECIDES NOTHING ABOUT THE FORMAT. The deploy repository's own tools/pin
 # validates the pin, writes it and renders what follows from it. This job
@@ -28,8 +29,13 @@
 # one repository. Until the App exists the job says so and moves nothing, so a
 # caller can adopt it first.
 #
-# WHAT A PULL REQUEST GETS. The images it would pin and the tag it would pin
-# them at, printed. Only the push is suppressed (Principle 17, rule D5).
+# ONE PULL REQUEST PER STACK AND ENVIRONMENT. The staging branch is
+# pin/staging-<stack>, rebuilt from main on every merge and force-pushed, so
+# the one open staging pull request always carries the newest build. A
+# release's branch is pin/<stack>-v<version>.
+#
+# WHAT A PRODUCT'S OWN PULL REQUEST GETS. The images it would pin and the tag
+# it would pin them at, printed. Nothing is pushed (Principle 17, rule D5).
 #
 # WHERE THE CALLER PUTS IT. Below `ci-ok`, so a commit whose CI failed pins
 # nothing:
@@ -141,7 +147,7 @@ jobs:
               echo "::error::images: '${line}' is not SERVICE=ghcr.io/<owner>/<image> with no tag"
               exit 1
             fi
-            echo "- staging: \`${line}:sha-${short}\`" >> "$GITHUB_STEP_SUMMARY"
+            echo "- staging: \`${line}:sha-${short}\`, as a pull request" >> "$GITHUB_STEP_SUMMARY"
             count=$((count + 1))
           done <<< "$IMAGES"
           if [ "$count" -eq 0 ]; then
@@ -203,47 +209,6 @@ jobs:
           path: deploy
           fetch-depth: 0
 
-      - name: Pin staging to this build
-        if: steps.plan.outputs.move == 'true'
-        working-directory: deploy
-        env:
-          STACK: ${{ inputs.stack }}
-          IMAGES: ${{ inputs.images }}
-          SHORT: ${{ steps.plan.outputs.short }}
-          SLUG: ${{ steps.token.outputs.app-slug }}
-        run: |
-          set -euo pipefail
-          git config user.name "${SLUG}[bot]"
-          git config user.email "${SLUG}[bot]@users.noreply.github.com"
-          pins=()
-          while IFS= read -r line; do
-            [ -n "$line" ] || continue
-            [ "${line#\#}" = "$line" ] || continue
-            pins+=("${line}:sha-${SHORT}")
-          done <<< "$IMAGES"
-          # Another product's pin may land between the fetch and the push, so a
-          # rejected push starts again from the new main.
-          for attempt in 1 2 3 4 5; do
-            git fetch --quiet origin main
-            git reset --quiet --hard origin/main
-            python3 tools/pin staging "$STACK" "${pins[@]}"
-            if [ -z "$(git status --porcelain)" ]; then
-              echo "::notice::staging already runs ${STACK} at sha-${SHORT}"
-              exit 0
-            fi
-            git add -A
-            git commit --quiet \
-              -m "Pin ${STACK} staging to ${GITHUB_REPOSITORY}@${SHORT}" \
-              -m "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
-            if git push --quiet origin HEAD:main; then
-              echo "Pinned ${STACK} staging to sha-${SHORT}" >> "$GITHUB_STEP_SUMMARY"
-              exit 0
-            fi
-            sleep $((attempt * 5))
-          done
-          echo "::error::main moved five times under this push; re-run the job"
-          exit 1
-
       - name: Log in to ghcr to read the release's digest
         if: steps.plan.outputs.move == 'true' && steps.plan.outputs.release == 'true'
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
@@ -252,51 +217,107 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Open the production pull request for this release
-        if: steps.plan.outputs.move == 'true' && steps.plan.outputs.release == 'true'
+      - name: Open the pin pull requests
+        if: steps.plan.outputs.move == 'true'
         working-directory: deploy
         env:
           STACK: ${{ inputs.stack }}
           IMAGES: ${{ inputs.images }}
+          SHORT: ${{ steps.plan.outputs.short }}
+          RELEASE: ${{ steps.plan.outputs.release }}
           VERSION: ${{ inputs.version }}
           OWNER: ${{ steps.plan.outputs.owner }}
           NAME: ${{ steps.plan.outputs.name }}
+          SLUG: ${{ steps.token.outputs.app-slug }}
           GH_TOKEN: ${{ steps.token.outputs.token }}
         run: |
           set -euo pipefail
-          pins=()
+          git config user.name "${SLUG}[bot]"
+          git config user.email "${SLUG}[bot]@users.noreply.github.com"
+          api="${GITHUB_API_URL}/repos/${OWNER}/${NAME}"
+
+          # One branch per stack and environment, rebuilt from main on every
+          # call, and one pull request on it. A newer build replaces what the
+          # branch carries, so a stack never has two pin pull requests open
+          # for one environment and merging always takes the newest.
+          # $1 environment, $2 branch, $3 title, $4 body, then the pins.
+          open_pin_pr() {
+            local env="$1" branch="$2" title="$3" body="$4"
+            shift 4
+            git fetch --quiet origin main
+            git checkout --quiet -B "$branch" origin/main
+            if [ "$env" = "production" ]; then
+              python3 tools/pin production "$STACK" --version "$VERSION" "$@"
+            else
+              python3 tools/pin staging "$STACK" "$@"
+            fi
+            if [ -z "$(git status --porcelain)" ]; then
+              echo "::notice::${env} already runs what this build would pin for ${STACK}"
+              return 0
+            fi
+            git add -A
+            git commit --quiet -m "$title" -m "$body"
+            git push --quiet --force origin "HEAD:refs/heads/${branch}"
+            local payload status
+            payload="$(python3 -c 'import json,sys; print(json.dumps({"title": sys.argv[1], "head": sys.argv[2], "base": "main", "body": sys.argv[3]}))' \
+              "$title" "$branch" "$body")"
+            status="$(curl -sS -o response.json -w '%{http_code}' -X POST \
+              -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" \
+              "${api}/pulls" -d "$payload")"
+            case "$status" in
+              201)
+                echo "- ${env}: opened $(python3 -c 'import json; print(json.load(open("response.json"))["html_url"])')" >> "$GITHUB_STEP_SUMMARY"
+                ;;
+              422)
+                # Already open on this branch: the push above moved it, and
+                # the title and body now name this build.
+                curl -sS -o response.json -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" \
+                  "${api}/pulls?state=open&head=${OWNER}:${branch}"
+                local number
+                number="$(python3 -c 'import json; r=json.load(open("response.json")); print(r[0]["number"] if r else "")')"
+                if [ -z "$number" ]; then
+                  echo "::error::opening the ${env} pull request answered 422 and none is open on ${branch}"
+                  cat response.json
+                  return 1
+                fi
+                payload="$(python3 -c 'import json,sys; print(json.dumps({"title": sys.argv[1], "body": sys.argv[2]}))' "$title" "$body")"
+                status="$(curl -sS -o /dev/null -w '%{http_code}' -X PATCH \
+                  -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" \
+                  "${api}/pulls/${number}" -d "$payload")"
+                [ "$status" = "200" ] || { echo "::error::updating pull request #${number} answered ${status}"; return 1; }
+                echo "- ${env}: updated ${GITHUB_SERVER_URL}/${OWNER}/${NAME}/pull/${number}" >> "$GITHUB_STEP_SUMMARY"
+                ;;
+              *)
+                echo "::error::opening the ${env} pull request answered ${status}"
+                cat response.json
+                return 1
+                ;;
+            esac
+            rm -f response.json
+          }
+
+          staging=()
+          production=()
           while IFS= read -r line; do
             [ -n "$line" ] || continue
             [ "${line#\#}" = "$line" ] || continue
-            image="${line#*=}"
-            digest="$(docker buildx imagetools inspect "${image}:v${VERSION}" --format '{{json .Manifest}}' \
-              | python3 -c 'import json,sys; print(json.load(sys.stdin)["digest"])')"
-            pins+=("${line}@${digest}")
+            staging+=("${line}:sha-${SHORT}")
+            if [ "$RELEASE" = "true" ]; then
+              image="${line#*=}"
+              digest="$(docker buildx imagetools inspect "${image}:v${VERSION}" --format '{{json .Manifest}}' \
+                | python3 -c 'import json,sys; print(json.load(sys.stdin)["digest"])')"
+              production+=("${line}@${digest}")
+            fi
           done <<< "$IMAGES"
-          branch="pin/${STACK}-v${VERSION}"
-          git fetch --quiet origin main
-          git checkout --quiet -B "$branch" origin/main
-          python3 tools/pin production "$STACK" --version "$VERSION" "${pins[@]}"
-          if [ -z "$(git status --porcelain)" ]; then
-            echo "::notice::production already runs ${STACK} v${VERSION}"
-            exit 0
+
+          commit="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
+          open_pin_pr staging "pin/staging-${STACK}" \
+            "Pin ${STACK} staging to ${GITHUB_REPOSITORY#*/}@${SHORT}" \
+            "Built from ${commit} and published as sha-${SHORT}. Merging this deploys it to staging."
+
+          if [ "$RELEASE" = "true" ]; then
+            release_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/v${VERSION}"
+            open_pin_pr production "pin/${STACK}-v${VERSION}" \
+              "Pin ${STACK} production to v${VERSION}" \
+              "Release ${release_url}, pinned by digest. Merge the staging pull request first, so production takes what staging ran. Merging this deploys it to production."
           fi
-          git add -A
-          git commit --quiet \
-            -m "Pin ${STACK} production to v${VERSION}" \
-            -m "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/v${VERSION}"
-          git push --quiet --force origin "HEAD:refs/heads/${branch}"
-          body="$(printf 'Release [v%s](%s/%s/releases/tag/v%s) of %s, pinned by digest. It has run in staging since the commit that cut it. Merging this deploys it to production.' \
-            "$VERSION" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$VERSION" "$STACK")"
-          payload="$(python3 -c 'import json,sys; print(json.dumps({"title": sys.argv[1], "head": sys.argv[2], "base": "main", "body": sys.argv[3]}))' \
-            "Pin ${STACK} production to v${VERSION}" "$branch" "$body")"
-          status="$(curl -sS -o response.json -w '%{http_code}' -X POST \
-            -H "Authorization: Bearer ${GH_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            "${GITHUB_API_URL}/repos/${OWNER}/${NAME}/pulls" -d "$payload")"
-          case "$status" in
-            201) echo "Opened $(python3 -c 'import json; print(json.load(open("response.json"))["html_url"])')" >> "$GITHUB_STEP_SUMMARY" ;;
-            422) echo "::notice::a pull request for ${branch} is already open; its branch now carries this pin" ;;
-            *) echo "::error::opening the pull request answered ${status}"; cat response.json; exit 1 ;;
-          esac
-          rm -f response.json

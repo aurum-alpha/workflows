@@ -313,11 +313,13 @@ jobs:
           commit="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
           open_pin_pr staging "pin/staging-${STACK}" \
             "Pin ${STACK} staging to ${GITHUB_REPOSITORY#*/}@${SHORT}" \
-            "Built from ${commit} and published as sha-${SHORT}. Merging this deploys it to staging."
+            "Built from ${commit} and published as sha-${SHORT}. Merging this deploys it to staging." \
+            "${staging[@]}"
 
           if [ "$RELEASE" = "true" ]; then
             release_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/v${VERSION}"
             open_pin_pr production "pin/${STACK}-v${VERSION}" \
               "Pin ${STACK} production to v${VERSION}" \
-              "Release ${release_url}, pinned by digest. Merge the staging pull request first, so production takes what staging ran. Merging this deploys it to production."
+              "Release ${release_url}, pinned by digest. Merge the staging pull request first, so production takes what staging ran. Merging this deploys it to production." \
+              "${production[@]}"
           fi

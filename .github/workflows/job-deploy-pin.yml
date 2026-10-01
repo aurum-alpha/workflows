@@ -316,8 +316,8 @@ jobs:
             "Built from ${commit} and published as sha-${SHORT}. Merging this deploys it to staging."
 
           if [ "$RELEASE" = "true" ]; then
-            release="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/v${VERSION}"
+            release_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/v${VERSION}"
             open_pin_pr production "pin/${STACK}-v${VERSION}" \
               "Pin ${STACK} production to v${VERSION}" \
-              "Release ${release}, pinned by digest. Merge the staging pull request first, so production takes what staging ran. Merging this deploys it to production."
+              "Release ${release_url}, pinned by digest. Merge the staging pull request first, so production takes what staging ran. Merging this deploys it to production."
           fi

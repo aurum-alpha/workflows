@@ -35,6 +35,11 @@ principle needed enforcing:
   REL release in the rollup  job-version-release is named in ci-ok's needs,
                           does not need ci-ok, and ci-ok counts it only on a
                           push to the default branch
+  FG  stale pushes stop early  a job calls job-freshness-gate.yml with no
+                          if:, and every graph root needs it. Policy-role roots
+                          and ci-ok are exempt. A root that does not wait on
+                          the gate builds a pull request's stale later push
+                          anyway, which is the run the gate exists to save
   D6  every job blocks     every job is NAMED in ci-ok's needs, not merely
                           needs. Distinct from D1: a job can sit correctly
                           downstream of the build and still be absent from the
@@ -1214,6 +1219,43 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
                 f"runs-on: {m.group(1).strip()} bypasses vars.RUNNER with no "
                 "'Principle 4' note above it explaining why",
             )
+
+    # --- FG: a later push builds only on a head holding the base's tip ------
+    #
+    # job-freshness-gate fails a pull request's later push whose head lacks
+    # the base branch's current tip. It saves a runner only if the DAG waits
+    # on it, so every graph root names it in needs:. A graph root that does
+    # not would build anyway, on the answer nobody can use.
+    #
+    # Policy-role roots are exempt: conformance and the version gate read no
+    # build output and spend a few seconds, which is the property D1 exempts
+    # them for. ci-ok is exempt because it waits on everything already.
+    #
+    # The caller carries no if:. A skipped job skips everything that needs
+    # it, transitively, and always() rescues only the job that carries it.
+    # So a conditional here would stop every build on the pushes it skipped,
+    # main's included, with the run still green. The job decides per event
+    # in its own step for exactly that reason.
+    #
+    # The catalog is exempt as it is from ADOPT: it defines the job rather
+    # than calling it.
+    if not defines_catalog(repo):
+        fg_callers = sorted(j for j, p in jobs.items()
+                            if (catalog_target(p.get("uses", "")) or "").endswith("/job-freshness-gate.yml"))
+        if not fg_callers:
+            bad("FG", "no job calls job-freshness-gate.yml — a pull request's later "
+                      "push on a stale head builds in full, on an answer nobody can use")
+        else:
+            fg = fg_callers[0]
+            if jobs[fg].get("if", ""):
+                bad("FG", f"'{fg}' carries if: — a skip would propagate through needs: "
+                          "and stop every build it skipped, main's included; the job "
+                          "decides per event in its own step")
+            for job in sorted(jobs):
+                if job in (fg, "ci-ok") or graph[job] or roles.get(job) == "policy":
+                    continue
+                bad("FG", f"'{job}' is a graph root but does not need '{fg}' — it "
+                          "builds on a stale head the gate has already refused")
 
     # --- P3: fail closed --------------------------------------------------
     for m in re.finditer(r"continue-on-error:\s*(.+)$", text, re.M):

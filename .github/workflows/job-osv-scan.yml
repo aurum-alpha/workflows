@@ -71,23 +71,18 @@ on:
         default: false
       upload_sarif:
         description: >-
-          Upload results to Security > Code Scanning. Default TRUE.
+          Upload results to Security > Code Scanning. Default FALSE.
 
-          It was false for as long as it was an entitlement rather than a
-          preference: code scanning on a private repository needs a GitHub
-          Code Security license, nine of the eleven repos here are private,
-          and left on without one the upload step fails and takes the scan's
-          verdict with it. That licence is now held, so the constraint is
-          gone and the default follows the thing we actually want — findings
-          in the Security tab, where they are triaged, dated and assignable,
-          instead of in a job log nobody opens.
+          Code scanning on a private repository needs GitHub Code Security
+          enabled on that repository, and it is off on the product
+          repositories. With it off, the upload step fails and takes the
+          scan's verdict with it, so a clean scan reads red. The scan's own
+          verdict and its JSON artifacts are unaffected by this input.
 
-          The caller-side lever if a repo is not yet enabled: set false with
-          the reason at the call site. Enablement is per repository, so the
-          license alone does not guarantee acceptance — this default is being
-          rolled out one repo at a time for that reason.
+          Set true at the call site for a repository that has Code Security
+          enabled.
         type: boolean
-        default: true
+        default: false
 
 jobs:
   # Exactly one of these runs. `full` takes everything that is not a pull

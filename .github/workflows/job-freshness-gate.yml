@@ -1,0 +1,130 @@
+# aurum-job: capability=freshness-gate language=- role=policy
+# Portfolio capability: a pull request's later pushes run CI only on a branch
+# that already contains the base branch's current tip. Single-job reusable
+# workflow: the caller owns the job id and needs: wiring; this file owns the
+# entire job body.
+#
+# Branches must be up to date before merging, org-wide (standards/010-ci.md,
+# "Main is reached only by merge"). So a run on a head that does not contain
+# the base tip proves a tree that cannot land: the branch has to take in main
+# and run again before it merges, whatever this run says. On self-hosted
+# runners shared by every repository, that run is runner time spent on an
+# answer nobody can use, queued in front of runs whose answers someone can.
+#
+# The rule:
+#
+#   * The FIRST run of a pull request runs in full, however far behind it is:
+#     the opened, reopened and ready_for_review events. An author learns what
+#     their change does before being asked to do anything else.
+#   * Every LATER push (the synchronize event) runs in full only if its head
+#     already contains the base branch's tip as it stands now. Otherwise this
+#     job fails in seconds, every job waiting on it is skipped, and ci-ok goes
+#     red naming the fix: take in main, then push.
+#
+# Drafts are not exempt; they are where most repeat pushes happen. A re-run of
+# a failed run is judged again against the base as it stands at the re-run, so
+# re-running does not get round the rule. Merging main in and rebasing onto it
+# both pass. A branch updated through GitHub's update-branch, by a person or by
+# gha-runner-controller's auto-merge, contains the tip by construction.
+#
+# THIS JOB IS NEVER SKIPPED, AND THAT IS LOAD-BEARING.
+#
+# Callers put it upstream of their builds, so its result decides whether the
+# rest of the DAG runs. A job that is skipped skips everything that needs it,
+# transitively, and always() rescues only the job that carries it. If this job
+# carried `if: github.event_name == 'pull_request'` the way job-version-gate
+# does, every push to main would skip every build, every publish and the
+# release, with the run still green. So the job runs on every event, and the
+# step decides: anything other than a pull request's synchronize passes at
+# once. A caller job carries no `if:` for the same reason.
+#
+# The base tip is fetched live rather than read from the event payload, because
+# the payload's base sha is the base when the event fired, and a re-run fires
+# no new event.
+name: job-freshness-gate
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: >-
+          Override runs-on. Leave empty for the standard default, which resolves
+          vars.RUNNER. Set a literal label only where that one job has a reason to
+          bypass the standard runner, and say the reason in a comment beside it
+          (CI_STANDARD Principle 4).
+        type: string
+        default: ""
+
+jobs:
+  freshness-gate:
+    runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-26.04' }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Decide whether this run is judged
+        id: judged
+        env:
+          EVENT: ${{ github.event_name }}
+          ACTION: ${{ github.event.action }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "pull_request" ] && [ "$ACTION" = "synchronize" ]; then
+            echo "judged=true" >> "$GITHUB_OUTPUT"
+            echo "A later push to a pull request: judged against the base's current tip."
+          else
+            echo "judged=false" >> "$GITHUB_OUTPUT"
+            echo "Not judged: event ${EVENT}${ACTION:+ ($ACTION)} is a first run or not a pull request."
+          fi
+
+      # Full history, no blobs: ancestry needs every commit and no file
+      # contents, so this costs commits only, however large the tree. The
+      # credential stays in the checkout because the next step fetches the
+      # base again, from a repository that is private.
+      - if: steps.judged.outputs.judged == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: true
+
+      - name: Require the base branch's current tip in the head
+        if: steps.judged.outputs.judged == 'true'
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --filter=blob:none origin \
+            "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+          tip="$(git rev-parse "refs/remotes/origin/${BASE_REF}")"
+          if git merge-base --is-ancestor "$tip" "$HEAD_SHA"; then
+            echo "The head contains ${BASE_REF} at ${tip}; the run proceeds."
+            exit 0
+          fi
+          behind="$(git rev-list --count "${HEAD_SHA}..${tip}")"
+          echo "::error::${BASE_REF} has moved since this branch last took it in. Merge or rebase onto ${BASE_REF}, then push again."
+          {
+            echo "### This push was not built"
+            echo
+            echo "**${BASE_REF} has moved ${behind} commit(s) past this branch.** Every later push to a pull request"
+            echo "runs CI only on a branch that already contains the base's current tip, because the branch has to"
+            echo "take it in and run again before it can merge anyway."
+            echo
+            echo "| | |"
+            echo "| --- | --- |"
+            echo "| head | \`${HEAD_SHA}\` |"
+            echo "| ${BASE_REF} | \`${tip}\` |"
+            echo
+            echo "Take in ${BASE_REF} and push:"
+            echo
+            echo '```sh'
+            echo "git fetch origin ${BASE_REF}"
+            echo "git rebase origin/${BASE_REF}   # or: git merge origin/${BASE_REF}"
+            echo "git push --force-with-lease    # plain git push after a merge"
+            echo '```'
+            echo
+            echo "A pull request's first run is never held to this; see standards/010-ci.md."
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1

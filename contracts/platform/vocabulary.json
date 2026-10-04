@@ -251,6 +251,14 @@
         "invalid_input",
         "rate_limited"
       ]
+    },
+    "grants_option_members": {
+      "rule": "060 AU8, grants.schema.json. scope_name is the product's name for the place a grant's scope names: absent for global and wherever the product supplies none, never null, never empty.",
+      "values": [
+        "grant",
+        "active",
+        "scope_name"
+      ]
     }
   },
   "options": {
@@ -331,6 +339,9 @@
     "entitlements": {
       "type": "the EntitlementsProvider, or absent"
     },
+    "scopeNames": {
+      "type": "the ScopeNames port, or absent; absent, the grants view carries no scope_name"
+    },
     "audit": {
       "type": "the AuditSink; the no-op when absent"
     },
@@ -389,6 +400,9 @@
     ],
     "HostTenant": [
       "tenantFor"
+    ],
+    "ScopeNames": [
+      "namesFor"
     ],
     "Provisioner": [
       "ensureIdentity",

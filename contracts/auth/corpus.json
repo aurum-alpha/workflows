@@ -1,14 +1,15 @@
 {
   "contract": "auth",
   "schemaVersion": 1,
-  "description": "Conformance corpus for standards/060-auth.md. 'validity': the value must validate (or fail) against the named schema root. The AU2 access token has no root here on purpose — its shape is RFC 9068's and this repository describes none of it, so every claim about the token is a live case under 'behaviour'. 'behaviour': black-box cases a live deployment must satisfy. An implementation passes the whole file or names the case it fails. Where a behaviour case names a 'code', a 'reason', a 'slug' or an 'audit' action, the value is the vocabulary's (contracts/platform/vocabulary.json) and an implementation reproduces it exactly.",
+  "description": "Conformance corpus for standards/060-auth.md. 'validity': the value must validate (or fail) against the named schema root, the client identity document or the session grants view. The AU2 access token has no root here on purpose — its shape is RFC 9068's and this repository describes none of it, so every claim about the token is a live case under 'behaviour'. 'behaviour': black-box cases a live deployment must satisfy. An implementation passes the whole file or names the case it fails. Where a behaviour case names a 'code', a 'reason', a 'slug' or an 'audit' action, the value is the vocabulary's (contracts/platform/vocabulary.json) and an implementation reproduces it exactly.",
   "judged_by": {
     "description": "What judges each part below, as data, so one runner can read it: the case key holding the instance, the schema (or the case key naming one and the table that resolves it), and the runner checks the schema cannot express. A part absent here is judged by running an implementation and is a product suite's. A case flagged schemaCannotCatch documents a verdict the schema alone does not reach.",
     "validity": {
       "instance": "value",
       "schema_from": "def",
       "schemas": {
-        "me": "https://contracts.aurumalpha.dev/auth/me.schema.json"
+        "me": "https://contracts.aurumalpha.dev/auth/me.schema.json",
+        "grants": "https://contracts.aurumalpha.dev/auth/grants.schema.json"
       }
     }
   },
@@ -101,6 +102,115 @@
       },
       "valid": false,
       "note": "an absent list and an empty list are different claims; requiring the field makes 'this user may do nothing here' explicit rather than inferred"
+    },
+    {
+      "id": "grants-option-without-scope-name-ok",
+      "def": "grants",
+      "value": {
+        "schema_version": 1,
+        "options": [
+          {
+            "grant": {
+              "subject": "usr_8fK2mQ7xW3pLzR",
+              "role": "tenant_admin",
+              "scope": "tenant:northwind"
+            },
+            "active": false
+          }
+        ],
+        "switch_in_session": true,
+        "must_choose": true
+      },
+      "valid": true,
+      "note": "scope_name is optional: a product that names no place, and every option at global, carries none (AU8)"
+    },
+    {
+      "id": "grants-option-with-scope-name-ok",
+      "def": "grants",
+      "value": {
+        "schema_version": 1,
+        "options": [
+          {
+            "grant": {
+              "subject": "usr_8fK2mQ7xW3pLzR",
+              "role": "tenant_admin",
+              "scope": "tenant:northwind"
+            },
+            "active": false,
+            "scope_name": "Northwind Workshop"
+          }
+        ],
+        "switch_in_session": true,
+        "must_choose": true
+      },
+      "valid": true,
+      "note": "the product's own name for the place, beside the grant it labels; the platform never invents one (AU8)"
+    },
+    {
+      "id": "grants-rejects-an-empty-scope-name",
+      "def": "grants",
+      "value": {
+        "schema_version": 1,
+        "options": [
+          {
+            "grant": {
+              "subject": "usr_8fK2mQ7xW3pLzR",
+              "role": "tenant_admin",
+              "scope": "tenant:northwind"
+            },
+            "active": false,
+            "scope_name": ""
+          }
+        ],
+        "switch_in_session": true,
+        "must_choose": true
+      },
+      "valid": false,
+      "note": "a product with no name for a scope omits the member; an empty or blank name is a label with nothing in it (AU8)"
+    },
+    {
+      "id": "grants-rejects-a-blank-scope-name",
+      "def": "grants",
+      "value": {
+        "schema_version": 1,
+        "options": [
+          {
+            "grant": {
+              "subject": "usr_8fK2mQ7xW3pLzR",
+              "role": "tenant_admin",
+              "scope": "tenant:northwind"
+            },
+            "active": false,
+            "scope_name": "   "
+          }
+        ],
+        "switch_in_session": true,
+        "must_choose": true
+      },
+      "valid": false,
+      "note": "whitespace is no name either, and a client would render an empty label (AU8)"
+    },
+    {
+      "id": "grants-rejects-a-null-scope-name",
+      "def": "grants",
+      "value": {
+        "schema_version": 1,
+        "options": [
+          {
+            "grant": {
+              "subject": "usr_8fK2mQ7xW3pLzR",
+              "role": "tenant_admin",
+              "scope": "tenant:northwind"
+            },
+            "active": false,
+            "scope_name": null
+          }
+        ],
+        "switch_in_session": true,
+        "must_choose": true
+      },
+      "valid": false,
+      "note": "absent and a name are the two states, never null, as for the active grant (AU8)"
     }
   ],
   "behaviour": [

@@ -690,6 +690,38 @@ not derived beside it. A session that has already chosen, under a product
 admitting no change, is `binding_lost` when its grant goes, whatever the
 candidate count says.
 
+#### The grants view names the place, and the product supplies the name
+
+A grant's scope is an identifier, and a person choosing a capacity reads a
+place. So each option in the grants view carries an optional `scope_name`. It
+is the product's name for the place the grant's scope names. "Admin ·
+Northwind Workshop" is a role label beside a `scope_name`.
+
+**The product names the place, and the platform never invents a name.**
+Products call a tenant a workshop, a company, a practice or a team. Neither
+the name nor the noun belongs to the platform. A product that wants names
+implements the `ScopeNames` port. Its one operation, `namesFor`, maps a list
+of scopes to their names. The identity tier asks it once per view, for the
+scopes of the options.
+
+- **`global` carries no name.** It names no place. The tier does not ask the
+  port about it, and drops a name the port offers for it.
+- **A scope the port leaves unnamed carries no member.** The member is
+  absent, never null and never empty. The client then writes its own label
+  for the scope.
+- **A product without the port carries no `scope_name` at all.** The member
+  is optional, and a view without it is complete.
+- **A failure of the port fails the view.** The port reads the product's own
+  tables. The tier answers its error as it answers one from the grant store.
+- **The name decides nothing.** Activating a grant names a role and a scope,
+  never a name. A client renders the name as text and reads no meaning into
+  it.
+
+**The name travels in the view because a choosing session can reach nothing
+else.** Every application route answers a choosing session with `409`. So a
+client on the chooser cannot fetch the names from the product. The grants
+view is one of the three routes that serve it.
+
 ### AU9. The gateway routes, and where a route goes is how it is authenticated
 
 **The tier in front of an application is a gateway.** A gateway's question is
@@ -875,6 +907,9 @@ settled question, drifting from the RFC the moment either moved.
   carries no permission for any grant. What a grant can do is the `me`
   document's answer for the active one. Listing the others' would put a union
   on screen.
+  Each option carries the product's `scope_name` where the product supplies
+  one. That member is additive under PC6, so the view stays at schema
+  version 1.
 - **`activation.schema.json`**: the request and the 200 body of
   `POST /api/v1/me/active`. The request names a role and a scope. The subject
   is the session's and is not a member. The 200 names `bound`, `switched` or

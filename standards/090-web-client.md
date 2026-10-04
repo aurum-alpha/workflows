@@ -278,6 +278,22 @@ derived from a browser-supplied trace is ever a trusted input. The reason is
 the one the observability standard gives about `tenant_id`: it arrives from a
 caller who can put anything in it.
 
+### WC6. A person sees words, never an identifier
+
+**No raw identifier reaches the interface.** Role names, permissions,
+scopes, enum values and database ids are the system's vocabulary, not the
+reader's. The interface shows a label in words, in Title Case for a role:
+"Platform Admin", never `platform_admin`.
+
+**Who is signed in is shown as the person.** The header or account menu names
+them by `user.name`, falling back to `user.email`. Where it shows a role, the
+role sits beside the person ("Jared Gisin · Platform Admin"), never alone.
+
+The platform's client package carries the one implementation: `personName`,
+`roleLabel` and `identityLabel`. A product passes its own role labels where it
+defines them; the package's default turns an identifier into Title Case words.
+A product does not write a second one.
+
 ## The artifacts
 
 Per PC3, under [`contracts/web-client/`](../contracts/web-client/):

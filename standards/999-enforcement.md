@@ -74,6 +74,7 @@ can disagree eventually will.
 | — | Only a version change mints a `v<version>` image tag or package version | — | **review only** |
 | — | A version or artifact name built for a package manager obeys that manager's semantics | — | **review only** |
 | — | A Go release's major matches the module path suffix | `job-version-gate`, `job-go-build`, `tools/check-go-module-version` | gated¹¹ |
+| — | A pull request's later push builds only on a head holding the base's tip | `job-freshness-gate` | gated¹² |
 | — | Caller permissions cover shared jobs | `check-caller-permissions` | gated¹ |
 | — | Overrides use pnpm's key alone, not npm's or yarn's | `check-overrides` | gated¹ |
 | — | Every override carries a reason, and no reason outlives its override | `check-overrides` | gated¹ |
@@ -158,6 +159,10 @@ rejects a release commit whose version major and module path disagree.
 repository root. `tools/check-go-module-version` runs in this repository and
 holds the two copies of the decision to one text. A module that is not at
 the repository root is judged by the build job in its own directory.
+
+¹² Gated in every repository whose `ci.yml` calls `job-freshness-gate` with
+its graph roots waiting on it. A repository that calls it with nothing
+waiting on it fails red on a stale push and still spends the runners.
 
 Each platform module still executes `check()` itself. Each product that
 answers for billing still executes `entitlementsFor()` itself. The behaviour

@@ -285,6 +285,12 @@ scopes, enum values and database ids are the system's vocabulary, not the
 reader's. The interface shows a label in words, in Title Case for a role:
 "Platform Admin", never `platform_admin`.
 
+**An error is told in words, with its code beside them.** The message says
+what went wrong and what to do next. The error's code and the request id can
+follow it, set apart as a reference for support. "This request is already
+closed, so it can't be changed. Reference: `invalid_state`" passes. A code in
+place of the sentence is forbidden; a code beside it is not.
+
 **Who is signed in is shown as the person.** The header or account menu names
 them by `user.name`, falling back to `user.email`. Where it shows a role, the
 role sits beside the person ("Jared Gisin · Platform Admin"), never alone.
@@ -324,6 +330,10 @@ Per PC3, under [`contracts/web-client/`](../contracts/web-client/):
 
 ## Decisions
 
+- **Keeping error codes off the screen entirely.** A screenshot is often all
+  support receives, and the code names the failure exactly. A meaningful
+  sentence serves the person; the reference beside it serves whoever helps
+  them. Hiding it would cost the second for nothing the first needs.
 - **Authenticating the error-report intake.** A session would stop a
   login-page crash from reporting. The route stays unauthenticated. The four
   guards bound it.

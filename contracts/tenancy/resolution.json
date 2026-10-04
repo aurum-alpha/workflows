@@ -1,7 +1,7 @@
 {
   "contract": "tenancy",
   "schemaVersion": 1,
-  "description": "The resolution corpus for standards/060-auth.md AU8 and standards/092-tenant-hostnames.md TH1-TH3: the artifact that makes one active grant per session enforceable from one source across every implementation. An implementation loads 'scopeContainment', 'hosts', 'grants' and 'bindings', then answers every case in 'resolve', 'switch' and 'view' and reproduces each expected outcome, and refuses every case in 'rejections'. A session names a subject and, under host_names_tenant, the host the request arrived on. A policy names whether a subject holds more than one grant and whether the active one changes inside a session. Every case's expected outcome is the standard's, never an implementation's.",
+  "description": "The resolution corpus for standards/060-auth.md AU8 and standards/092-tenant-hostnames.md TH1-TH3: the artifact that makes one active grant per session enforceable from one source across every implementation. An implementation loads 'scopeContainment', 'hosts', 'grants' and 'bindings', then answers every case in 'resolve', 'switch' and 'view' and reproduces each expected outcome, and refuses every case in 'rejections'. A session names a subject and, under host_names_tenant, the host the request arrived on. A policy names whether a subject holds more than one grant and whether the active one changes inside a session. A view case carrying 'scopeNames' is the ScopeNames port's answer, scope to name, and a case without it is a product that supplies no port. A view case's option lists its role and scope, and its scope_name where the view carries one; an option listing no scope_name is one whose wire option has no such member. Every case's expected outcome is the standard's, never an implementation's.",
   "fixture": {
     "scopeContainment": {
       "description": "Two tenants and nothing beneath them; 'global' contains everything. The host filter runs containment one way: the host's tenant has to contain the grant's scope (TH1).",
@@ -252,6 +252,33 @@
       "policy": { "multipleGrants": true, "switchInSession": false },
       "expect": { "must_choose": false, "active": { "role": "auditor", "scope": "tenant:acme" }, "options": [ { "role": "tenant_admin", "scope": "tenant:acme" }, { "role": "auditor", "scope": "tenant:acme" } ], "switch_in_session": false },
       "note": "a client reads switch_in_session before it renders a switcher, and never learns the policy any other way"
+    },
+    {
+      "id": "a-scope-name-the-product-supplies-is-carried",
+      "session": { "id": "ses_ben_1", "subject": "usr_ben" },
+      "tenancy": "single_host",
+      "policy": { "multipleGrants": true, "switchInSession": true },
+      "scopeNames": { "tenant:acme": "Acme Jewellers", "tenant:globex": "Globex Workshop" },
+      "expect": { "must_choose": false, "active": { "role": "approver", "scope": "tenant:acme" }, "options": [ { "role": "approver", "scope": "tenant:acme", "scope_name": "Acme Jewellers" }, { "role": "viewer", "scope": "tenant:globex", "scope_name": "Globex Workshop" } ], "switch_in_session": true },
+      "note": "the product names the place and the view carries its words beside the grant; the scope is still the grant's, and the name decides nothing (AU8, grants.schema.json)"
+    },
+    {
+      "id": "a-scope-the-product-does-not-name-carries-no-scope-name",
+      "session": { "id": "ses_ben_1", "subject": "usr_ben" },
+      "tenancy": "single_host",
+      "policy": { "multipleGrants": true, "switchInSession": true },
+      "scopeNames": { "tenant:acme": "Acme Jewellers" },
+      "expect": { "must_choose": false, "active": { "role": "approver", "scope": "tenant:acme" }, "options": [ { "role": "approver", "scope": "tenant:acme", "scope_name": "Acme Jewellers" }, { "role": "viewer", "scope": "tenant:globex" } ], "switch_in_session": true },
+      "note": "a scope the product leaves unnamed has no scope_name member; the platform never invents a name, and the client falls back to its own label (AU8)"
+    },
+    {
+      "id": "a-global-grant-carries-no-scope-name",
+      "session": { "id": "ses_dan_1", "subject": "usr_dan" },
+      "tenancy": "single_host",
+      "policy": { "multipleGrants": true, "switchInSession": true },
+      "scopeNames": { "global": "Everywhere" },
+      "expect": { "must_choose": false, "active": { "role": "platform_admin", "scope": "global" }, "options": [ { "role": "platform_admin", "scope": "global" } ], "switch_in_session": true },
+      "note": "global names no place, so the platform does not ask the product to name it and carries no name for it even where one is offered (AU8)"
     }
   ],
   "rejections": [

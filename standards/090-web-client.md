@@ -301,6 +301,12 @@ The platform's client package carries the one implementation: `personName`,
 defines them; the package's default turns an identifier into Title Case words.
 A product does not write a second one.
 
+**The product names a grant's place.** The grants view carries its
+`scope_name` where the product supplies one (060 AU8). The package's grant
+label writes that name first. A product's own scope labels come next. The
+scope type in Title Case is the last default, and the id after the colon is
+never shown.
+
 ## The artifacts
 
 Per PC3, under [`contracts/web-client/`](../contracts/web-client/):

@@ -29,10 +29,16 @@
   "$defs": {
     "option": {
       "type": "object",
-      "description": "One capacity on offer, and whether the session is acting in it.",
+      "description": "One capacity on offer, whether the session is acting in it, and the product's name for the place it is scoped to where the product supplies one.",
       "properties": {
         "grant": { "$ref": "https://contracts.aurumalpha.dev/rbac/model.schema.json#/$defs/grant" },
-        "active": { "type": "boolean" }
+        "active": { "type": "boolean" },
+        "scope_name": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S",
+          "description": "The product's display name for the place the grant's scope names: 'Northwind Workshop' for tenant:northwind. THE PRODUCT NAMES THE PLACE AND THE PLATFORM NEVER INVENTS ONE: products call a tenant a workshop, a company, a practice or a team, so neither the name nor the noun is the platform's to choose. ABSENT, never null and never empty, for global, which names no place, and wherever the product supplies no name for this scope. A client renders it as text and decides nothing from it: the scope is still the grant's, and activating a grant names the role and the scope, never this name."
+        }
       },
       "required": ["grant", "active"],
       "additionalProperties": false

@@ -129,7 +129,11 @@ application version and the commit describe the *build* rather than the
 environment, so baking them breaks nothing. And no server can supply them,
 because under a split origin the backend has no idea which frontend build a
 given browser is running. The bundler writes them at build time (`define` in
-Vite and its equivalents). That is the browser's half of the runtime
+Vite and its equivalents, or a Vite plugin that exports
+`virtual:app-version-info`). The fleet template is
+[`tools/templates/client-build-version/`](../tools/templates/client-build-version/).
+Show the stamp on an existing admin or settings screen; add a route only when
+no suitable screen exists. That is the browser's half of the runtime
 provenance rule ([`030-service.md`](030-service.md) SC5), and WC5 requires it
 in error reports.
 

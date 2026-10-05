@@ -15,8 +15,14 @@
 #
 # So the split is along the question, not along convenience: test-unit answers
 # "do the tests pass" and nothing else, and this job answers "did Codecov take
-# it". Callers put this in ci-ok's needs and nothing else downstream of it, so a
-# Codecov outage turns one job red and leaves the pipeline running.
+# it". Callers put this in ci-ok's needs and nothing else downstream of it.
+#
+# And the answer to "did Codecov take it" never blocks a merge. Coverage is a
+# report: the test jobs compute it and publish it as run artifacts whatever
+# Codecov does. A failed upload is a failed STEP, raised as a warning on the
+# run, and the job still succeeds, so a Codecov outage leaves ci-ok green and
+# every merge queue moving. This is the one continue-on-error in the catalog
+# outside warn_only (CI_STANDARD Principle 3 names it).
 #
 # It DISCOVERS its inputs rather than being told what to expect. The test jobs
 # name their artifacts `coverage-*` and `testresults-*`; this globs those
@@ -180,12 +186,15 @@ jobs:
           repo has tests yet."
           fi
 
-      # fail_ci_if_error, on both uploads and on purpose. A failed upload is the
-      # thing this job is for; swallowing it would leave the same silence that
-      # made the test-results upload lie for months, reporting success while
-      # every Dependabot run was being refused for want of a token.
+      # fail_ci_if_error, on both uploads and on purpose, so a refused upload is
+      # a failed step rather than a quiet success: swallowing it reports success
+      # while every upload is being refused, for want of a token or a reachable
+      # Codecov. continue-on-error, on both, so that failed step does not fail
+      # the job. The last step turns either failure into a warning on the run.
       - name: Upload coverage to Codecov
+        id: upload-coverage
         if: steps.census.outputs.coverage != ''
+        continue-on-error: true
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -213,7 +222,9 @@ jobs:
       # this is one action for both uploads rather than the v5 the warning
       # names. One action, one pin, one thing to keep current.
       - name: Upload test results to Codecov
+        id: upload-testresults
         if: ${{ !cancelled() && steps.census.outputs.testresults != '' }}
+        continue-on-error: true
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -223,3 +234,19 @@ jobs:
           disable_search: true
           fail_ci_if_error: true
           skip_validation: true
+
+      # outcome, not conclusion: continue-on-error makes a failed step's
+      # conclusion success, and its outcome is what still says it failed.
+      - name: Report a failed upload
+        if: >-
+          ${{ !cancelled() && (steps.upload-coverage.outcome == 'failure' ||
+          steps.upload-testresults.outcome == 'failure') }}
+        shell: bash
+        env:
+          COVERAGE: ${{ steps.upload-coverage.outcome }}
+          TESTRESULTS: ${{ steps.upload-testresults.outcome }}
+        run: |
+          msg="coverage upload: ${COVERAGE:-skipped}, test results upload: ${TESTRESULTS:-skipped}."
+          msg+=" Nothing is blocked: coverage is in this run's coverage-* artifacts."
+          msg+=" Re-run this job once Codecov answers."
+          echo "::warning title=Codecov upload failed::${msg}"

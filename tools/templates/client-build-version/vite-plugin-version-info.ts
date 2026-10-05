@@ -23,7 +23,7 @@ export function vitePluginVersionInfo(repoRoot: string): Plugin {
         return;
       }
       const info = resolveVersionInfo(repoRoot);
-      return `export const versionInfo = ${JSON.stringify(info)} as const;\n`;
+      return `export const versionInfo = ${JSON.stringify(info)};\n`;
     },
   };
 }

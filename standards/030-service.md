@@ -284,7 +284,12 @@ Per PC3, under [`contracts/service/`](../contracts/service/):
 - **Publishing `/healthz` and `/readyz` on the public product hostname.**
   The body names the commit and each dependency. An internet client learns
   which build to attack and which checks the process runs. The probes stay
-  on the process listener (SC1, SC5).
+  on the process listener (SC1, SC5). They are for operators, orchestrators
+  and CI — not part of the commercial website a visitor uses. Platform
+  libraries may register the same paths on an application router for local
+  convenience; products still **omit** them from the public product origin
+  ([`085-security-baseline.md`](085-security-baseline.md)) and hit the process
+  listener or direct port for monitoring.
 - **A public page that only says the process is up.** `github.com/healthz`
   is 58 bytes and reads "Service ready". GitHub publishes no kube-style
   `/readyz`. A public page answers a different question from the process

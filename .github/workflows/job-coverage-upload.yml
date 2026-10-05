@@ -246,6 +246,7 @@ jobs:
           COVERAGE: ${{ steps.upload-coverage.outcome }}
           TESTRESULTS: ${{ steps.upload-testresults.outcome }}
         run: |
-          echo "::warning title=Codecov upload failed::coverage upload: ${COVERAGE:-skipped}, \
-          test results upload: ${TESTRESULTS:-skipped}. Nothing is blocked: coverage is \
-          in this run's coverage-* artifacts. Re-run this job once Codecov answers."
+          msg="coverage upload: ${COVERAGE:-skipped}, test results upload: ${TESTRESULTS:-skipped}."
+          msg+=" Nothing is blocked: coverage is in this run's coverage-* artifacts."
+          msg+=" Re-run this job once Codecov answers."
+          echo "::warning title=Codecov upload failed::${msg}"

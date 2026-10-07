@@ -160,10 +160,11 @@ def read_record(target: pathlib.Path) -> dict:
     proxy. `tenant_hosts`, optional, lists the labels a product with tenant
     hostnames serves under .localhost; each becomes a redirect target the
     realm admits beside the apex (092 TH5), and nothing else changes.
-    `realm`, optional, is the one realm setting a product may move:
+    `realm`, optional, holds the two realm settings a product may move:
     `{"registration": true}` lets people self-register at the provider, for a
-    product whose users are whoever signs up. Every other realm setting is the
-    devkit's, and the same in every product. `logout`, optional, is `proxy`
+    product whose users are whoever signs up, and `{"mcp_client": true}` adds
+    the public client an MCP client signs a person in with. Every other realm
+    setting is the devkit's, and the same in every product. `logout`, optional, is `proxy`
     (the default) or `realm`: whether /logout ends only this application's
     session, or the provider's as well.
 
@@ -202,10 +203,10 @@ def read_record(target: pathlib.Path) -> dict:
         problems.append("realm must be an object")
     else:
         for key, value in realm.items():
-            if key != "registration":
-                problems.append(f"realm: unknown setting {key!r}; registration is the one a product may move")
+            if key not in REALM_SETTINGS:
+                problems.append(f"realm: unknown setting {key!r}; registration and mcp_client are the ones a product may move")
             elif not isinstance(value, bool):
-                problems.append("realm.registration must be true or false")
+                problems.append(f"realm.{key} must be true or false")
 
     if "logout" in data:
         if data["logout"] not in LOGOUT_MODES:
@@ -382,20 +383,93 @@ def refuse_if_admin_roles_missing(text: str) -> None:
         )
 
 
+# The realm settings a product may move, each true or false.
+REALM_SETTINGS = ("registration", "mcp_client")
+
+# Where an MCP client's sign-in may return: a loopback listener for a client
+# on the developer's machine, on any port, and the claude.ai connector's
+# callback.
+MCP_REDIRECT_URIS = [
+    "http://127.0.0.1/*",
+    "http://localhost/*",
+    "https://claude.ai/api/mcp/auth_callback",
+]
+
+
+def mcp_client() -> dict:
+    """The public client an MCP client signs a person in with.
+
+    Authorization code with PKCE and no secret, because the client runs where
+    a secret cannot be kept. It is bound to the same browser flow as the
+    application client, so the access gate refuses an identity without the
+    application's role (060 AU4), and its access token carries the
+    application's audience and type, so the product's verifier accepts it
+    unchanged.
+    """
+    return {
+        "clientId": "__REPO__-mcp",
+        "name": "__REPO__ MCP clients, authorization code with PKCE",
+        "enabled": True,
+        "protocol": "openid-connect",
+        "publicClient": True,
+        "standardFlowEnabled": True,
+        "implicitFlowEnabled": False,
+        "directAccessGrantsEnabled": False,
+        "serviceAccountsEnabled": False,
+        "frontchannelLogout": False,
+        "fullScopeAllowed": False,
+        "redirectUris": MCP_REDIRECT_URIS,
+        "webOrigins": [],
+        "attributes": {
+            "pkce.code.challenge.method": "S256",
+            "access.token.header.type.rfc9068": "true",
+        },
+        "authenticationFlowBindingOverrides": {
+            "browser": "aa0000f1-0000-4000-8000-0000000000f1",
+        },
+        "protocolMappers": [
+            {
+                "name": "audience",
+                "protocol": "openid-connect",
+                "protocolMapper": "oidc-audience-mapper",
+                "consentRequired": False,
+                "config": {
+                    "included.client.audience": "__REPO__",
+                    "id.token.claim": "false",
+                    "access.token.claim": "true",
+                    "lightweight.claim": "false",
+                    "introspection.token.claim": "true",
+                },
+            }
+        ],
+        "defaultClientScopes": ["acr", "basic", "email", "profile", "web-origins"],
+        "optionalClientScopes": [],
+    }
+
+
 def realm_settings(text: str, record: dict) -> str:
-    """Apply the one realm setting a product may move.
+    """Apply the realm settings a product may move.
 
     The template has registration off, which is right for a product whose
     users are invited (AU4). A product whose users are whoever signs up sets
-    `realm.registration` and the rendered realm has it on. Nothing else in the
-    realm is a product's to change, so nothing else is read.
+    `realm.registration` and the rendered realm has it on. A product serving
+    an MCP endpoint sets `realm.mcp_client` and the rendered realm gains
+    `<repo>-mcp` as its first client. Nothing else in the realm is a
+    product's to change, so nothing else is read.
     """
-    if not record.get("realm", {}).get("registration", False):
-        return text
-    marker = '"registrationAllowed": false'
-    if marker not in text:
-        raise ValueError("realm-template.json: registrationAllowed is not where the renderer expects it")
-    return text.replace(marker, '"registrationAllowed": true', 1)
+    settings = record.get("realm", {})
+    if settings.get("registration", False):
+        marker = '"registrationAllowed": false'
+        if marker not in text:
+            raise ValueError("realm-template.json: registrationAllowed is not where the renderer expects it")
+        text = text.replace(marker, '"registrationAllowed": true', 1)
+    if settings.get("mcp_client", False):
+        marker = '  "clients": [\n'
+        if marker not in text:
+            raise ValueError("realm-template.json: the clients list is not where the renderer expects it")
+        client = json.dumps(mcp_client(), indent=2).replace("\n", "\n    ")
+        text = text.replace(marker, marker + "    " + client + ",\n", 1)
+    return text
 
 
 def personas_text(realm_template: str) -> str:

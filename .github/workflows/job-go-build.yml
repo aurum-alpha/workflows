@@ -130,7 +130,7 @@ on:
           THIS IS THE RELEASE SWITCH. A version-named emission — a git tag, a
           v<version> image tag, a GitHub release, a versioned package — is
           produced only where this is true. Everything else on main publishes
-          under sha-<short> and latest, which name a commit rather than a
+          under sha-<short> and dev, which name a commit rather than a
           claim.
 
           Read it in the caller as

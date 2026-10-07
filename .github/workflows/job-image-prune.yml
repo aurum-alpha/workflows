@@ -143,8 +143,8 @@ jobs:
           # `imagetools create` builds an index that POINTS AT the staged digest
           # and tags the index. The staged manifest stays untagged — so after a
           # successful publish, the manifest this job would most like to delete
-          # is precisely the one `:latest` resolves to. Age is no protection:
-          # `:latest` on a quiet repo is routinely older than any threshold
+          # is precisely the one `:dev` or `:latest` resolves to. Age is no
+          # protection: `:latest` on a quiet repo is routinely older than any threshold
           # worth setting.
           live = set()
           for v in versions:

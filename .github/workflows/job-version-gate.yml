@@ -20,8 +20,9 @@
 #
 #   A version-named emission — a git tag, a v<version> image tag, a release,
 #   a versioned package — is produced only by a commit that changed the
-#   version file. Provenance-named emissions (sha-<short>, latest, run
-#   artifacts) are produced by every green build.
+#   version file. Provenance-named emissions (sha-<short>, dev, run
+#   artifacts) are produced by every green build; latest moves only on a
+#   release commit.
 #
 # This job is one half of that. It gates the pull request: the version moves
 # forward or not at all, and a commit that moves it carries nothing but the
@@ -32,7 +33,7 @@
 # MAIN IS NOT VERSIONED AT EVERY COMMIT. Work merges without a version; a
 # release is its own pull request, reviewed as a release and nothing else.
 # Everything between two releases is still built, still gated and still
-# published under sha-<short> and latest — it is installable, it is just not
+# published under sha-<short> and dev — it is installable, it is just not
 # minted. That was already true in practice (five of the twenty merges before
 # this one did not touch .version); what changes is that the artifacts stop
 # claiming otherwise.

@@ -70,8 +70,8 @@ on:
       images:
         description: >-
           One line per service the stack runs, SERVICE=IMAGE with no tag:
-          `server=ghcr.io/aurum-alpha/<repo>`. The staging tag is this
-          commit's sha-<short>; the production reference is the release's
+          `server=ghcr.io/aurum-alpha/<repo>`. The staging tag is `:dev`
+          (rolling main); the production reference is the release's
           v<version> resolved to its digest. Blank lines and lines starting
           with # are skipped.
         type: string
@@ -147,7 +147,7 @@ jobs:
               echo "::error::images: '${line}' is not SERVICE=ghcr.io/<owner>/<image> with no tag"
               exit 1
             fi
-            echo "- staging: \`${line}:sha-${short}\`, as a pull request" >> "$GITHUB_STEP_SUMMARY"
+            echo "- staging: \`${line}:dev\`, as a pull request" >> "$GITHUB_STEP_SUMMARY"
             count=$((count + 1))
           done <<< "$IMAGES"
           if [ "$count" -eq 0 ]; then
@@ -301,7 +301,7 @@ jobs:
           while IFS= read -r line; do
             [ -n "$line" ] || continue
             [ "${line#\#}" = "$line" ] || continue
-            staging+=("${line}:sha-${SHORT}")
+            staging+=("${line}:dev")
             if [ "$RELEASE" = "true" ]; then
               image="${line#*=}"
               digest="$(docker buildx imagetools inspect "${image}:v${VERSION}" --format '{{json .Manifest}}' \
@@ -312,8 +312,8 @@ jobs:
 
           commit="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
           open_pin_pr staging "pin/staging-${STACK}" \
-            "Pin ${STACK} staging to ${GITHUB_REPOSITORY#*/}@${SHORT}" \
-            "Built from ${commit} and published as sha-${SHORT}. Merging this deploys it to staging." \
+            "Pin ${STACK} staging to ${GITHUB_REPOSITORY#*/} :dev" \
+            "Built from ${commit} and published as :dev (sha-${SHORT}). Merging this deploys it to staging." \
             "${staging[@]}"
 
           if [ "$RELEASE" = "true" ]; then

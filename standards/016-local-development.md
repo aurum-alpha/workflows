@@ -186,6 +186,10 @@ The failure that hides is the one a developer most wants caught before a push.
 second source of truth. The copies then drift, in the direction nobody watches.
 This is [`010-ci.md`](010-ci.md) Principle 1, inside a Dockerfile.
 
+**Corepack is not used to get the package manager.** Node 25 and later do not
+ship it, so `corepack enable` fails there. The npm install above works on every
+Node version, on a host and in an image alike.
+
 ### LD7. The dependency tree is a named volume the container populates
 
 The repository is bind-mounted into the container. A named volume is mounted

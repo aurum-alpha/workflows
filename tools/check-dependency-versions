@@ -2,11 +2,12 @@
 """Verify every Node app in the portfolio pins the same toolchain versions.
 
 The version each repo actually uses comes from package.json's packageManager
-field — that is what corepack activates locally and what pnpm/action-setup
-reads in the shared jobs, so CI and a developer's machine can never disagree
-with each other. What that field cannot do is agree ACROSS repos: nothing stops
-one repo drifting to a different pnpm. This check closes that gap by comparing
-every repo against dependency-versions.json.
+field. pnpm/action-setup reads it in the shared jobs, and the npm install of
+standards/016-local-development.md LD6 reads it on a developer's machine and in
+an image, so CI and a developer's machine can never disagree with each other.
+What that field cannot do is agree ACROSS repos: nothing stops one repo
+drifting to a different pnpm. This check closes that gap by comparing every
+repo against dependency-versions.json.
 
 Run against local clones:
     tools/check-dependency-versions --root /workspace

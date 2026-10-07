@@ -30,18 +30,24 @@ on:
           gated, not another one built from the same source.
         type: string
         required: true
+      version_changed:
+        description: >-
+          From the build job's `version_changed` output (`true` when this commit
+          changed `.version`). Gates the `latest` tag with the same rule as
+          `v<semver>` in `extra_tags`.
+        type: string
+        default: "false"
       extra_tags:
         description: >-
           Newline-separated additional docker/metadata-action tag rules, on top
-          of the portfolio defaults (`latest` on the default branch, `sha-<short>`,
-          and the branch name). For a repo that publishes a version from a file
-          or a build number.
+          of the portfolio defaults (`dev` on the default branch, `latest` on a
+          release commit, `sha-<short>`, and the branch name). For a repo that
+          publishes a version from a file or a build number.
 
-          It may not produce `latest`. The default rule already does, gated on
-          the default branch, and this input is the one way a caller could route
-          around that gate. Rejected by name below, and the computed tag list is
-          checked again afterwards in case a rule produces it by some other
-          spelling.
+          It may not produce `latest` or `dev`. The default rules already do,
+          and this input is the one way a caller could route around those gates.
+          Rejected by name below, and the computed tag list is checked again
+          afterwards in case a rule produces them by some other spelling.
         type: string
         default: ""
       runner:
@@ -63,10 +69,9 @@ jobs:
       # build job holds it to stage a digest; this one holds it to promote.
       packages: write
     steps:
-      # `latest` means "what is on main". A pull request that could claim it
-      # would silently redirect every deployment that pulls by that tag to
-      # unreviewed code, and the tag carries no evidence of where it came from.
-      - name: extra_tags may not claim latest
+      # `dev` is main's rolling tag; `latest` is the latest release only. A pull
+      # request that could claim either would silently redirect deployments.
+      - name: extra_tags may not claim dev or latest
         if: ${{ inputs.extra_tags != '' }}
         env:
           EXTRA: ${{ inputs.extra_tags }}
@@ -74,7 +79,13 @@ jobs:
           set -euo pipefail
           if printf '%s' "$EXTRA" | grep -qiE '(value|suffix|prefix)=latest\b|^\s*latest\s*$'; then
             echo "::error::extra_tags may not produce 'latest'." \
-                 "The default rule already emits it, gated on the default branch;" \
+                 "The default rule emits it, gated on version_changed;" \
+                 "this input is the only way to route around that gate."
+            exit 1
+          fi
+          if printf '%s' "$EXTRA" | grep -qiE '(value|suffix|prefix)=dev\b|^\s*dev\s*$'; then
+            echo "::error::extra_tags may not produce 'dev'." \
+                 "The default rule emits it, gated on the default branch;" \
                  "this input is the only way to route around that gate."
             exit 1
           fi
@@ -84,7 +95,8 @@ jobs:
         with:
           images: ${{ inputs.image }}
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=dev,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ inputs.version_changed == 'true' }}
             type=sha,prefix=sha-,format=short
             type=ref,event=branch
             ${{ inputs.extra_tags }}
@@ -100,39 +112,36 @@ jobs:
           printf '%s\n' "$TAGS" | sed 's/^/  /'
 
           # Belt and braces, evaluated on every run including pull requests.
-          # The Promote step below is main-gated, so a stray `latest` on a
-          # branch could not actually ship — but being quietly saved by a second
-          # gate is not the same as being correct, and this is the run where
-          # someone can still see it. `latest` is main's tag, and only main's.
+          # The Promote step below is main-gated, so a stray tag on a branch
+          # could not actually ship — but being quietly saved by a second gate
+          # is not the same as being correct, and this is the run where someone
+          # can still see it. `dev` is main's rolling tag; `latest` is release
+          # only and may appear on a release pull request preview.
           #
-          # REF, not event. This asked for `push` as well, and that conflated
-          # two different claims: "this tag would be wrong" and "this run will
-          # not publish". Only the first deserves an error. A workflow_dispatch
-          # on main computes `latest` because metadata-action's
-          # {{is_default_branch}} is true — and it is right: the image IS main's,
-          # so the tag describes it accurately. The run simply is not the one
-          # that promotes, which the Promote step below already decides on its
-          # own. Failing here made every manual run of CI on main red at a step
-          # whose entire job is to PRINT what would happen, before it had done
-          # anything at all.
+          # REF, not event. A workflow_dispatch on main computes `dev` because
+          # metadata-action's {{is_default_branch}} is true — and it is right.
+          # The run simply is not the one that promotes, which the Promote step
+          # below already decides on its own.
           #
-          # A pull_request still fails, and that is the case worth keeping: its
-          # GITHUB_REF is refs/pull/N/merge, so a stray `latest` on a branch is
-          # caught exactly where a human is looking at it.
+          # A pull_request still fails for `dev` off main, and that is the case
+          # worth keeping: its GITHUB_REF is refs/pull/N/merge on a feature
+          # branch, so a stray `dev` is caught where a human is looking.
+          if printf '%s\n' "$TAGS" | grep -qE ':dev$'; then
+            if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+              echo "::error::The computed tags include ':dev' on ${GITHUB_REF}." \
+                   "dev is main's rolling tag, and only main's."
+              exit 1
+            fi
+          fi
           if printf '%s\n' "$TAGS" | grep -qE ':latest$'; then
             if [ "$GITHUB_REF" != "refs/heads/main" ]; then
               echo "::error::The computed tags include ':latest' on ${GITHUB_REF}." \
-                   "latest is main's tag, and only main's."
+                   "latest is a release tag; it must not appear off main."
               exit 1
             fi
           fi
 
           # Say why nothing will ship, on the run where someone is watching.
-          # A skipped Promote step is silent, and "the job was green and no tag
-          # moved" is the same shape as the failure this repo keeps finding:
-          # something that did not happen, reported as nothing wrong. Cheap to
-          # print, and it answers the question a person actually has when they
-          # dispatched CI by hand and went looking for their tag.
           if [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$GITHUB_REF" = "refs/heads/main" ]; then
             echo "This run promotes: push to main."
           else

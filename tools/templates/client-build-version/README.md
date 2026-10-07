@@ -3,6 +3,10 @@
 Build provenance for the browser is **compiled into the bundle**, not fetched
 ( [`standards/090-web-client.md`](../../standards/090-web-client.md) WC2).
 
+In CI, `job-build-js-vite` sets `AURUM_BUILD_STAMP` and `AURUM_RELEASE_BUILD`
+from the shared version-stamp block (same answer as Go and OCI). The plugin
+reads those env vars; it does not re-implement the stamp algorithm.
+
 ## Copy into a product repository
 
 1. Copy `resolve-version-info.ts` and `vite-plugin-version-info.ts` into
@@ -25,6 +29,10 @@ Build provenance for the browser is **compiled into the bundle**, not fetched
    declare module "virtual:app-version-info" {
      export const versionInfo: {
        readonly version: string;
+       readonly releaseVersion: string;
+       readonly buildStamp: string;
+       readonly isReleaseBuild: boolean;
+       readonly channel: "release" | "development" | "local";
        readonly gitBranch: string;
        readonly gitCommit: string;
        readonly buildDate: string;
@@ -34,10 +42,21 @@ Build provenance for the browser is **compiled into the bundle**, not fetched
    }
    ```
 
-4. UI: `import { versionInfo } from "virtual:app-version-info"` on an
-   **existing** admin/settings screen (no new route unless nothing fits).
+4. UI: show **`buildStamp`** as the headline; badge **Release** when
+   `isReleaseBuild`, else **Development build** (or **Local** when
+   `channel === "local"`). Prefer `@aurum-alpha/platform-web`'s
+   `BuildProvenanceBlock` when available.
 5. Remove any `/api/version-info`, `version-info.json` fetch, or server-side
    generators for the client stamp.
-6. CI: `vite build` must run with `.version` and git (or `GITHUB_*`) available.
+6. CI: `vite build` must run with `.version`, git (or `GITHUB_*`), and the
+   catalog env vars above.
 
 Do not commit generated stamps. The plugin runs at bundle time only.
+
+## Node server bundles (`job-build-js-esbuild`)
+
+The esbuild job does not run this Vite plugin. Server provenance on `/healthz`
+comes from **runtime env** the image sets at deploy time (`VERSION` as the
+build stamp, `GIT_COMMIT`, `BUILT_AT`), wired in the product's Dockerfile or
+compose from the same `stamp` output as the client build. The browser bundle
+alone uses `AURUM_BUILD_STAMP` at `vite build` time.

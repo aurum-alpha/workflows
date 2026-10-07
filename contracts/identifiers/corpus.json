@@ -9,6 +9,7 @@
       "schema_from": "def",
       "schemas": {
         "date": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/date",
+        "duration": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/duration",
         "money": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/money",
         "nanoid": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/nanoid",
         "prefixedHandle": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/prefixedHandle",
@@ -48,6 +49,16 @@
     { "id": "tsinput-rejects-bare-offset", "def": "timestampInput", "value": "2026-08-31T14:07:02+0200", "valid": false, "note": "RFC 3339 offsets carry a colon (IP4)" },
     { "id": "date-ok", "def": "date", "value": "1988-02-29", "valid": true },
     { "id": "date-rejects-datetime", "def": "date", "value": "1988-02-29T00:00:00.000Z", "valid": false, "note": "a calendar date is not an instant (IP4)" },
+    { "id": "duration-day-ok", "def": "duration", "value": "P1D", "valid": true },
+    { "id": "duration-hours-ok", "def": "duration", "value": "PT4H", "valid": true },
+    { "id": "duration-every-component-ok", "def": "duration", "value": "P1Y2M3W4DT5H6M7S", "valid": true, "note": "weeks combine with the other components on input (IP6)" },
+    { "id": "duration-fraction-ok", "def": "duration", "value": "PT0,5S", "valid": true, "note": "a fraction on the lowest-order component, comma or full stop (IP6)" },
+    { "id": "duration-rejects-bare-p", "def": "duration", "value": "P", "valid": false, "note": "a designator with no component is not a duration (IP6)" },
+    { "id": "duration-rejects-empty-time", "def": "duration", "value": "P1DT", "valid": false, "note": "a T with no time component after it (IP6)" },
+    { "id": "duration-rejects-hours-before-t", "def": "duration", "value": "P1H", "valid": false, "note": "hours, minutes and seconds follow the T (IP6)" },
+    { "id": "duration-rejects-negative", "def": "duration", "value": "P-1D", "valid": false, "note": "a span is not negative (IP6)" },
+    { "id": "duration-rejects-seconds-number", "def": "duration", "value": 86400, "valid": false, "note": "a setting is never a bare count of seconds with the unit in the field name (IP6)" },
+    { "id": "duration-rejects-inner-fraction", "def": "duration", "value": "P1.5DT2H", "valid": false, "note": "only the lowest-order component carries a fraction (IP6)" },
     { "id": "money-usd-ok", "def": "money", "value": { "amount": 1999, "currency": "USD" }, "valid": true, "note": "$19.99 — USD minor-unit exponent is 2 (IP5)" },
     { "id": "money-jpy-ok", "def": "money", "value": { "amount": 1999, "currency": "JPY" }, "valid": true, "note": "¥1999 — JPY minor-unit exponent is 0; the exponent is the currency's, never a universal 2 (IP5)" },
     { "id": "money-negative-ok", "def": "money", "value": { "amount": -500, "currency": "EUR" }, "valid": true, "note": "refunds and adjustments are negative amounts, not a second shape (IP5)" },
@@ -63,6 +74,10 @@
     { "id": "ts-negative-offset", "kind": "timestamp", "input": "2026-08-31T07:07:02.417-07:00", "emit": "2026-08-31T14:07:02.417Z" },
     { "id": "ts-offset-crosses-midnight", "kind": "timestamp", "input": "2026-09-01T01:30:00.000+11:00", "emit": "2026-08-31T14:30:00.000Z", "note": "normalising to UTC moves the calendar day when the offset crosses midnight (IP4)" },
     { "id": "ts-lowercase-z", "kind": "timestamp", "input": "2026-08-31t14:07:02.417z", "emit": "2026-08-31T14:07:02.417Z", "note": "RFC 3339 permits lowercase t/z on input; the canonical emit is uppercase (IP4)" },
+    { "id": "duration-drop-zero", "kind": "duration", "input": "P0DT4H", "emit": "PT4H", "note": "zero components are dropped (IP6)" },
+    { "id": "duration-zero", "kind": "duration", "input": "P0D", "emit": "PT0S", "note": "a duration of nothing is PT0S (IP6)" },
+    { "id": "duration-no-folding", "kind": "duration", "input": "PT36H", "emit": "PT36H", "note": "the server never folds hours into days on the way out (IP6)" },
+    { "id": "duration-fraction-full-stop", "kind": "duration", "input": "PT0,5S", "emit": "PT0.5S", "note": "a decimal comma is accepted and a full stop emitted (IP6)" },
     { "id": "uuid-fold-to-lowercase", "kind": "uuidv7", "input": "01923E8A-7F4E-7CC3-9A2B-3F8D2C1B0A99", "emit": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99", "note": "parsers may accept uppercase from foreign systems; the wire form emitted is lowercase (IP2, IP3)" }
   ]
 }

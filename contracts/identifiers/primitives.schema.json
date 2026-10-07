@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json",
   "title": "Aurum Alpha primitive representations",
-  "description": "Wire-form definitions for identifiers, timestamps, dates, and money. Governed by standards/020-identifiers.md; other contracts reference these $defs instead of restating patterns. schemaVersion 1 — evolves additively per PC6.",
+  "description": "Wire-form definitions for identifiers, timestamps, dates, durations, and money. Governed by standards/020-identifiers.md; other contracts reference these $defs instead of restating patterns. schemaVersion 1 — evolves additively per PC6.",
   "$defs": {
     "schemaVersion": {
       "const": 1
@@ -47,6 +47,11 @@
       "description": "Calendar date, RFC 3339 full-date: no time, no zone (IP4).",
       "format": "date",
       "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "duration": {
+      "type": "string",
+      "description": "A span of time: an ISO 8601 duration, PnYnMnWnDTnHnMnS, with a fraction allowed on the lowest-order component only. Accepted in any valid form, emitted canonically: zero components dropped, PT0S for none, no unit folded into another. Years and months are calendar units and never convert to days (IP6). A measurement the server observed is a number, not this.",
+      "pattern": "^P(?!$)(?!.*[.,]\\d+[YMWDHS].*\\d)(?:\\d+(?:[.,]\\d+)?Y)?(?:\\d+(?:[.,]\\d+)?M)?(?:\\d+(?:[.,]\\d+)?W)?(?:\\d+(?:[.,]\\d+)?D)?(?:T(?=\\d)(?:\\d+(?:[.,]\\d+)?H)?(?:\\d+(?:[.,]\\d+)?M)?(?:\\d+(?:[.,]\\d+)?S)?)?$"
     },
     "currency": {
       "type": "string",

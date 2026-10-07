@@ -230,35 +230,44 @@ Then the tree that was proved is the tree that lands.
 
 **Bring the branch up to date by rebasing onto the default branch. Merging it
 in is also acceptable.** Squash is the merge method, so the branch's history is
-discarded either way. A rebase leaves a reviewer a series of commits that are
-the change and nothing else; merging leaves a merge commit per update. A rebase
+discarded either way. A rebase leaves a series of commits that are the change and nothing else; merging leaves a merge commit per update. A rebase
 rewrites pushed history and needs a force-push, which costs nobody on a branch
 one person or one agent works. Where a branch is shared, merge instead. Never
 rewrite history on a branch belonging to someone else.
 
-**Do not report a pull request as landed while it is green but behind.** It is
-not mergeable yet. Sitting through the update and the re-run is part of landing
-it, not an optional extra. With several pull requests open against one
-repository, each merge stales the rest. So they land one at a time, and the
-order is a decision rather than an accident.
+**Do not report a pull request as landed while required checks are failing, while
+GitHub reports merge conflicts, or while it is otherwise not mergeable.** The
+automated merge process updates each branch against the default branch so
+GitHub's up-to-date requirement is satisfied; the agent fixes failed checks and
+merge conflicts when they appear. With several pull requests open against one
+repository, each merge stales the rest. The automated process generally merges
+in creation order; the agent keeps its pull requests mergeable and does not
+choose merge order or click merge.
 
-### 5. The human approval gate
+### 5. Approval
 
 **An agent does not merge, deploy, or close an issue on its own verification.**
-Tests passing is evidence the change did not break covered behaviour. It is not
-evidence the change does what was asked.
 
-**The gate is at merge, and pushing is not the gate.** Every repository takes
-changes into its default branch through a pull request. So a push releases
-nothing; it is how the work reaches CI. An agent commits, pushes, and opens or
-updates a pull request as soon as the work is coherent. It does not wait to be
-told to. What it never does without explicit sign-off is merge that pull
-request, deploy it, or close the issue behind it.
+**Merging is automated outside the agent.** A separate process generally merges
+pull requests in creation order and keeps each branch current with the default
+branch so GitHub's up-to-date requirement holds. The agent never clicks merge,
+enables merge, or chooses merge order.
+
+**While a pull request it opened or is actively working remains open, the agent
+monitors it until it merges or is closed, then stops.** On that pull request it
+fixes CI failures and merge conflicts only; merge happens outside the agent.
+Mergeable means required checks green and no merge conflicts; keeping it that
+way continues after the implementation handoff.
+
+**Push is not the gate.** Every change reaches the default branch through a
+pull request. An agent commits, pushes, and opens or updates a pull request as
+soon as the work is coherent; it does not wait to be told. Without explicit
+instruction it does not merge, deploy, or close the tracked issue.
 
 Holding a push until someone asks for one buys no safety, because the pull
 request is the safety. What it costs is the earliest signal available. A branch
 nobody has built is a branch nobody knows is broken, and the failure surfaces
-after the review rather than before it.
+in CI on the pull request rather than after merge.
 
 A repository is permitted to set an *additional* gate earlier, on a named class
 of change. Examples: workflow files that publish images, a plan that must be
@@ -266,13 +275,15 @@ agreed before implementation. It says so in its own **Approval** section. That
 is a narrower hold on specific work, never a reason to sit on an ordinary
 change.
 
-An agent reaching the gate posts a handoff and stops. The handoff carries three
-things, every time, without being asked:
+An agent posts a handoff when implementation is complete; monitoring for CI
+failures and merge conflicts on open pull requests continues until each one
+merges or is closed. The handoff carries three things, every time, without
+being asked:
 
 - **What changed**, in a sentence or two.
 - **The exact commands to run** to see it.
 - **What to look for**: the expected output, the log line, the field, the
-  screen. A reviewer does not have to work out what "working" looks like.
+  screen — stated plainly, not left for the reader to infer.
 
 An agent is permitted to comment on the tracked issue while working: progress,
 blockers, a link to the pull request. It never closes one on its own say-so.
@@ -281,14 +292,12 @@ blockers, a link to the pull request. It never closes one on its own say-so.
 
 **Change only what the task requires.** Adjacent improvements, tempting
 refactors, and cleanups that are obviously correct are still out of scope. They
-enlarge the diff a reviewer has to hold in their head. They hide the change
-that was actually requested inside changes that were not.
+enlarge the diff and hide the change that was actually requested inside
+changes that were not.
 
 Where an agent sees a real problem outside the task, it **says so and does not
 fix it**. The saying is a line in the handoff, or an issue in the named
-tracker. That is not timidity. A reviewer approving a five-file diff for a
-one-file task is approving the one file and skimming the rest. Everyone
-involved knows it.
+tracker.
 
 **Prefer extending what exists to adding something parallel.** A second helper
 that nearly duplicates the first gives a codebase two answers to one question.

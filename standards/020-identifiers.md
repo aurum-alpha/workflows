@@ -134,6 +134,36 @@ Sub-minor-unit precision (per-unit prices, FX rates) belongs to the standard
 of the capability that needs it; this rule forbids floats and implied
 currencies, not precision.
 
+### IP6. A duration is an ISO 8601 duration
+
+A span of time on the wire is an **ISO 8601 duration string**:
+`PnYnMnWnDTnHnMnS`. For example, `P1D` is a day and `PT4H` is four hours.
+This covers every API field, event field, declaration and stored value that
+holds a span: a deadline, a grace period, an SLA, a retention window.
+
+It is not a bare number of seconds or milliseconds with the unit in the
+field name. That is IP4's Unix-integer problem again. The unit lives outside the
+value, and the first consumer that reads it wrongly is off by a factor of a
+thousand. The exception is a **measurement**, such as a latency the
+server observed. A `duration_ms` count is a sample, not a setting, and a
+number is its honest type.
+
+The direction is IP4's:
+
+1. **Accept liberally.** An API accepts any valid ISO 8601 duration,
+   including weeks and a fraction on the lowest-order component.
+2. **Emit canonically.** Zero components are dropped, and a duration of
+   nothing is `PT0S`. A server never folds one unit into another on the
+   way out: `PT36H` stays `PT36H`.
+
+**Years and months are calendar units, not fixed lengths.** A month is 28
+to 31 days, and a year 365 or 366. They convert to each other, because a
+year is always twelve months, but never to days. A product that needs a
+fixed span refuses a calendar unit by name in its validation error.
+
+How a person sees and enters a duration is the presentation layer's job,
+in [`090-web-client.md`](090-web-client.md) WC4.
+
 ## The artifacts
 
 Per PC3, the contract lives under
@@ -141,7 +171,7 @@ Per PC3, the contract lives under
 
 - **`primitives.schema.json`**: JSON Schema (2020-12) `$defs` for
   `uuidv7`, `nanoid`, `prefixedHandle`, `publicId` (the union), `timestamp`,
-  `timestampInput`, `date`, `money`, `currency`. Every other contract's
+  `timestampInput`, `date`, `duration`, `money`, `currency`. Every other contract's
   schema references these by `$ref` rather than restating a pattern: one
   source of truth per primitive, mechanically. The two timestamp defs carry
   IP4's direction. Request-side schemas reference `timestampInput` (any

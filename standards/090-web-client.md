@@ -205,8 +205,9 @@ library carrying its own copy of the locale data. The browser's data is
 maintained, complete, and already downloaded. A bundled copy of CLDR is a
 large download that ages, for a consistency the platform's data already gives.
 
-Two specifics, because both are got wrong in the same way: by assuming the
-developer's own locale is the general case.
+Three specifics. The first two are got wrong in the same way: by assuming
+the developer's own locale is the general case. The third is got wrong by
+showing the wire form to a person.
 
 - **Money is not divided by 100**. The server sends minor units and a
   currency code (IP5). The exponent belongs to the currency, and JPY has
@@ -217,6 +218,13 @@ developer's own locale is the general case.
   given instant falls on depends on the viewer's zone. So a timestamp
   rendered as a bare date without converting first is off by one for a
   predictable fraction of users every day.
+- **A duration is words and units, never the ISO form**. The server sends
+  an ISO 8601 duration (IP6). A person reads it in words, through
+  `Intl.DurationFormat` where the browser has it. A person enters it as a
+  whole number and a unit, through the design system's duration field. The
+  field is locked to the units the product means, and translates to the
+  wire form. A stored value those units cannot say is shown as custom and
+  left unchanged until the person replaces it.
 
 **The server never sends a pre-formatted string**, and a client never asks for
 one. That would push one viewer's locale into a shared response, and turn

@@ -33,8 +33,8 @@ on:
       version_changed:
         description: >-
           From the build job's `version_changed` output (`true` when this commit
-          changed `.version`). Gates the `latest` tag with the same rule as
-          `v<semver>` in `extra_tags`.
+          changed `.version`). Gates the `latest` tag on the default branch,
+          with the same rule as `v<semver>` in `extra_tags`.
         type: string
         default: "false"
       extra_tags:
@@ -96,7 +96,7 @@ jobs:
           images: ${{ inputs.image }}
           tags: |
             type=raw,value=dev,enable={{is_default_branch}}
-            type=raw,value=latest,enable=${{ inputs.version_changed == 'true' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' && inputs.version_changed == 'true' }}
             type=sha,prefix=sha-,format=short
             type=ref,event=branch
             ${{ inputs.extra_tags }}
@@ -115,8 +115,9 @@ jobs:
           # The Promote step below is main-gated, so a stray tag on a branch
           # could not actually ship — but being quietly saved by a second gate
           # is not the same as being correct, and this is the run where someone
-          # can still see it. `dev` is main's rolling tag; `latest` is release
-          # only and may appear on a release pull request preview.
+          # can still see it. `dev` is main's rolling tag; `latest` is the
+          # release tag, computed only on main. A release pull request moves
+          # `.version` too, so version_changed alone would put it here.
           #
           # REF, not event. A workflow_dispatch on main computes `dev` because
           # metadata-action's {{is_default_branch}} is true — and it is right.

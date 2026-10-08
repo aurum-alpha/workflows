@@ -248,6 +248,11 @@ def defines_catalog(repo: pathlib.Path) -> bool:
 #              Deliberately does NOT satisfy D3: conformance and the version
 #              gate say nothing about the bytes being published.
 #   publish    emits or promotes an artifact. D3, D4 and D5 apply.
+#   stage      assembles or runs a candidate artifact, held by digest under no
+#              tag. It needs the builds that produced its inputs and nothing
+#              else, so it runs beside the gates instead of after them. D4 and
+#              D5 apply. D3 does not: the publish that tags the candidate is
+#              what must reach a gate.
 #   toolchain  builds what other jobs run inside. A graph root, and not a
 #              product, so D3's premise does not reach it.
 #   none       no DAG obligations either way.
@@ -900,13 +905,14 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
             # D2 says a build never needs a gate — build first, fail fast — and
             # that is about SOURCE builds, which compile something and must come
             # before anything is spent testing it. An image build compiles
-            # nothing: it packages artifacts the source builds already produced,
-            # which is why it is the convergence point every gate hangs off.
+            # nothing: it packages artifacts the source builds already produced.
+            # It carries role=stage and runs beside the gates; the publish that
+            # tags it is what every gate hangs off.
             #
             # That distinction used to be `BUILD_RE and not PUBLISH_RE`, one
             # regex subtracted from another because the first could not tell
             # `image-build` from `go-build`. The catalog jobs say which they are
-            # — role=build compiles, role=publish packages — so there is nothing
+            # — role=build compiles, role=stage packages — so there is nothing
             # to subtract.
             if roles.get(job) == "build":
                 inv = sorted(n for n in graph[job] if roles.get(n) == "gate")
@@ -1140,7 +1146,8 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
                             "no logs",
                         )
 
-            # D3, D4 and D5 reach exactly the jobs the catalog calls a publish.
+            # D3, D4 and D5 reach exactly the jobs the catalog calls a publish,
+            # and D4 and D5 also reach a stage.
             #
             # The prune is one of them and still answers to none of the three,
             # because it sits downstream of the rollup — it deletes rather than
@@ -1166,11 +1173,11 @@ def check(repo: pathlib.Path) -> tuple[list[str], str | None]:
             # keep current, which matters because the last one had four stale
             # entries out of thirteen.
             if (
-                roles.get(job) == "publish"
+                roles.get(job) in ("publish", "stage")
                 and "ci-ok" not in ancestors(job, graph)
             ):
                 reach = ancestors(job, graph)
-                if not any(roles.get(a) == "gate" for a in reach):
+                if roles.get(job) == "publish" and not any(roles.get(a) == "gate" for a in reach):
                     # No gate in reach. Before failing, ask what a gate could
                     # have tested: if every image build in this chain (the job
                     # itself included) is a job-image-build caller passing no

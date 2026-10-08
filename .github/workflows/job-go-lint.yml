@@ -87,7 +87,7 @@ jobs:
           echo "go=$(go env GOVERSION)" >> "$GITHUB_OUTPUT"
       - name: Cache golangci-lint binary
         id: golangci-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/golangci-bin
           key: golangci-${{ inputs.golangci_version }}-${{ steps.toolchain.outputs.go }}-${{ runner.os }}
@@ -100,6 +100,13 @@ jobs:
         run: |
           set -euo pipefail
           go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${{ inputs.golangci_version }}"
+      # A pull request restores and never saves (010-ci.md Principle 21).
+      - name: Save golangci-lint
+        if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && steps.golangci-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/golangci-bin
+          key: ${{ steps.golangci-cache.outputs.cache-primary-key }}
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.GOMODCACHE }}

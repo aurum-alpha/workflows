@@ -56,7 +56,8 @@ runs:
       working-directory: ${{ inputs.workdir }}
       run: |
         echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
-    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+    - id: pnpm-store
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ env.STORE_PATH }}
         key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
@@ -68,3 +69,10 @@ runs:
       env:
         NODE_AUTH_TOKEN: ${{ github.token }}
       run: pnpm install --frozen-lockfile
+    # A pull request restores and never saves (010-ci.md Principle 21).
+    - name: Save the pnpm store
+      if: inputs.install == 'true' && github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && steps.pnpm-store.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ env.STORE_PATH }}
+        key: ${{ steps.pnpm-store.outputs.cache-primary-key }}

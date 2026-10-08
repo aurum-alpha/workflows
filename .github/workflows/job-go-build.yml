@@ -206,7 +206,8 @@ jobs:
           key: go-mod-${{ runner.os }}-${{ hashFiles(format('{0}/go.sum', inputs.workdir)) }}
           restore-keys: |
             go-mod-${{ runner.os }}-
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - id: go-build-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.GOCACHE }}
           # Scoped by target arch: the compiled objects in GOCACHE are for the
@@ -571,6 +572,13 @@ jobs:
                   check=True, env=env)
               os.chmod(out, 0o755)
 
+      # A pull request restores and never saves (010-ci.md Principle 21).
+      - name: Save the build cache
+        if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && steps.go-build-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GOCACHE }}
+          key: ${{ steps.go-build-cache.outputs.cache-primary-key }}
       # The arch suffix is the catalog's, not the caller's. upload-artifact
       # refuses a duplicate name, so without it two matrix legs would race and
       # the second would fail; with it, one `artifact_name: server-go-bin`

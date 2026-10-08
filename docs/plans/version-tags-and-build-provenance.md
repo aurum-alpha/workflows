@@ -13,7 +13,7 @@ release or a development build—with matching identity on client and server.
 | Rolling main tag | **`dev`** — moves on **every** green push to `main`, release commits included. On a release build, **`dev` and `latest` point at the same digest**. |
 | Release tag | **`latest`** — moves **only** on a main push where **`.version` changed** (same gate as `v<semver>` today). **No transition period** for the old “`latest` = head of main” semantics. |
 | Immutable pin | **`sha-<short>`** — unchanged; use for one-off pins and forensics. |
-| Staging deploys | Portainer stacks on **`aurumalpha.dev`** pull **`:dev`**, not `:latest`. |
+| Staging deploys | Portainer stacks on **`aurumalpha.dev`** pin **`sha-<short>`**. Pinning `:dev` was tried and reverted on 2026-10-08: the pin never changed, so no stack redeployed. |
 | Production deploys | Portainer stacks for production keep **`:latest`** (now meaning latest **release** only). |
 | Settings UI | **Dual UI**: show **client (bundle)** build provenance and **server (API)** build provenance when both exist. |
 

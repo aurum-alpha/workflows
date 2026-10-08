@@ -1,0 +1,37 @@
+# Portfolio capability: where a Go job keeps its caches. Every job-go-*.yml
+# runs this before actions/setup-go.
+#
+# On a runner whose controller shares a Go tool cache and a module cache
+# across the runners on one host (GHR_GO_TOOLCACHE, GHR_GOMODCACHE), Go is
+# installed into the shared tool cache once per host and version, under a lock,
+# and the module cache is the shared one. Everywhere else, both caches go under
+# runner.temp as before. The go-caches script beside this file says why setup-go
+# cannot be left to install into a shared directory itself.
+#
+# A composite action rather than a step copied into seven jobs, for the reason
+# ci-ok is one: the body had no business differing.
+name: go-caches
+description: Put the Go module and build caches in place, and install Go into a shared tool cache where the runner has one.
+
+inputs:
+  workdir:
+    description: The directory holding go.mod, as the calling job's workdir input.
+    required: false
+    default: "."
+
+outputs:
+  shared-mod:
+    description: >-
+      "true" when GOMODCACHE is the runner's shared module cache. Callers skip
+      actions/cache for the module cache then: there is nothing to restore, and
+      a save would only copy the shared cache into GitHub's.
+    value: ${{ steps.caches.outputs.shared-mod }}
+
+runs:
+  using: composite
+  steps:
+    - id: caches
+      shell: bash
+      env:
+        GO_MOD_FILE: ${{ inputs.workdir }}/go.mod
+      run: '"${GITHUB_ACTION_PATH}/go-caches"'

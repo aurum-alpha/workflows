@@ -49,22 +49,18 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Go into the runner's shared tool cache and the module cache in place,
+      # before setup-go looks for Go (.github/actions/go-caches says why).
+      - id: caches
+        uses: aurum-alpha/workflows/.github/actions/go-caches@main
+        with:
+          workdir: ${{ inputs.workdir }}
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: ${{ inputs.workdir }}/go.mod
           cache: false
-      - name: Isolate Go caches to runner.temp
-        shell: bash
-        run: |
-          set -euo pipefail
-          mod="${RUNNER_TEMP}/go-mod"
-          build="${RUNNER_TEMP}/go-build"
-          mkdir -p "${mod}" "${build}"
-          {
-            echo "GOMODCACHE=${mod}"
-            echo "GOCACHE=${build}"
-          } >> "$GITHUB_ENV"
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: steps.caches.outputs.shared-mod != 'true'
         with:
           path: ${{ env.GOMODCACHE }}
           key: go-mod-${{ runner.os }}-${{ hashFiles(format('{0}/go.sum', inputs.workdir)) }}

@@ -159,7 +159,8 @@ jobs:
         shell: bash
         working-directory: ${{ inputs.workdir }}
         run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - id: composer-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ steps.composer-cache-dir.outputs.dir }}
           key: ${{ runner.os }}-composer-${{ hashFiles(format('{0}/composer.lock', inputs.workdir)) }}
@@ -168,6 +169,13 @@ jobs:
       - name: Install dependencies
         working-directory: ${{ inputs.workdir }}
         run: composer install --no-interaction --no-progress --prefer-dist
+      # A pull request restores and never saves (010-ci.md Principle 21).
+      - name: Save the composer cache
+        if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && steps.composer-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.composer-cache-dir.outputs.dir }}
+          key: ${{ steps.composer-cache.outputs.cache-primary-key }}
       - name: Static analysis (PHPStan)
         working-directory: ${{ inputs.workdir }}
         continue-on-error: ${{ inputs.warn_only }}

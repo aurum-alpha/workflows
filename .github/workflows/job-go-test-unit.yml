@@ -74,7 +74,8 @@ jobs:
           key: go-mod-${{ runner.os }}-${{ hashFiles(format('{0}/go.sum', inputs.workdir)) }}
           restore-keys: |
             go-mod-${{ runner.os }}-
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - id: go-build-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.GOCACHE }}
           key: go-build-${{ runner.os }}-${{ hashFiles(format('{0}/go.sum', inputs.workdir)) }}
@@ -90,7 +91,7 @@ jobs:
       # binary and the cache key does not carry the toolchain version.
       - name: Cache gotestsum
         id: gotestsum-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/gotestsum-bin
           key: gotestsum-${{ inputs.gotestsum_version }}-${{ runner.os }}
@@ -103,6 +104,13 @@ jobs:
         run: |
           set -euo pipefail
           go install "gotest.tools/gotestsum@${{ inputs.gotestsum_version }}"
+      # A pull request restores and never saves (010-ci.md Principle 21).
+      - name: Save gotestsum
+        if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && steps.gotestsum-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/gotestsum-bin
+          key: ${{ steps.gotestsum-cache.outputs.cache-primary-key }}
 
       - name: Download embedded assets
         if: inputs.needs_artifact != ''
@@ -149,6 +157,13 @@ jobs:
           "${RUNNER_TEMP}/gotestsum-bin/gotestsum" \
             --junitfile=test-report.junit.xml \
             -- ./... -race -covermode=atomic -coverprofile=coverage/go-unit.out
+      # A pull request restores and never saves (010-ci.md Principle 21).
+      - name: Save the build cache
+        if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && steps.go-build-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GOCACHE }}
+          key: ${{ steps.go-build-cache.outputs.cache-primary-key }}
       # Artifact names are a namespace shared by every job in the caller's run,
       # and a called workflow cannot see the caller's job id (github.job reads
       # `test-unit`, the id inside this file). workdir is the only thing that

@@ -55,7 +55,8 @@ jobs:
             echo "GOMODCACHE=${mod}"
             echo "GOCACHE=${build}"
           } >> "$GITHUB_ENV"
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - id: go-mod-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.GOMODCACHE }}
           key: go-mod-${{ runner.os }}-${{ hashFiles(format('{0}/go.sum', inputs.workdir)) }}
@@ -86,3 +87,10 @@ jobs:
         run: |
           go mod download
           go mod verify
+      # A pull request restores and never saves (010-ci.md Principle 21).
+      - name: Save the module cache
+        if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && steps.go-mod-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GOMODCACHE }}
+          key: ${{ steps.go-mod-cache.outputs.cache-primary-key }}

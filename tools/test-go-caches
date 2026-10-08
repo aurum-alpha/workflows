@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+# Tests .github/actions/go-caches/go-caches, the Go cache setup every
+# job-go-*.yml runs. The catalog's own CI never runs those jobs, so this is the
+# only place the script runs before it reaches the portfolio.
+#
+# Downloads come from a fake Go release on file://: a tarball holding go/bin/go
+# and a go.dev-shaped JSON list carrying its sha256.
+set -euo pipefail
+
+root="$(cd "$(dirname "$0")/.." && pwd)"
+script="${root}/.github/actions/go-caches/go-caches"
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+
+fails=0
+pass() { echo "  ok  $1"; }
+fail() { echo "FAIL  $1"; fails=$((fails + 1)); }
+
+# A fake release of Go 1.26.6 for linux-amd64.
+dl="${work}/dl"
+mkdir -p "${dl}/pkg/go/bin"
+printf '#!/bin/sh\necho go1.26.6\n' > "${dl}/pkg/go/bin/go"
+chmod +x "${dl}/pkg/go/bin/go"
+tar -czf "${dl}/go1.26.6.linux-amd64.tar.gz" -C "${dl}/pkg" go
+sum="$(sha256sum "${dl}/go1.26.6.linux-amd64.tar.gz" | cut -d' ' -f1)"
+cat > "${dl}/list.json" <<JSON
+[
+ {
+  "version": "go1.26.6",
+  "stable": true,
+  "files": [
+   {
+    "filename": "go1.26.6.src.tar.gz",
+    "os": "", "arch": "",
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+   },
+   {
+    "filename": "go1.26.6.linux-amd64.tar.gz",
+    "os": "linux", "arch": "amd64", "version": "go1.26.6",
+    "sha256": "${sum}",
+    "size": 1, "kind": "archive"
+   }
+  ]
+ }
+]
+JSON
+
+# run <case dir> [VAR=value ...]: run the script for one simulated job, with
+# its own RUNNER_TEMP, GITHUB_ENV and GITHUB_OUTPUT under the case directory.
+run() {
+  local dir="$1"; shift
+  local job; job="$(mktemp -d "${dir}/job-XXXX")"
+  mkdir -p "${job}/temp"
+  : > "${job}/env"; : > "${job}/out"
+  env -i PATH="$PATH" HOME="$job" \
+    RUNNER_TEMP="${job}/temp" RUNNER_ARCH=X64 \
+    GITHUB_ENV="${job}/env" GITHUB_OUTPUT="${job}/out" \
+    GO_MOD_FILE="${dir}/go.mod" \
+    GO_CACHES_DL_BASE="file://${dl}" GO_CACHES_JSON_URL="file://${dl}/list.json" \
+    "$@" "$script" > "${job}/log" 2>&1
+  local rc=$?
+  echo "$job"
+  return $rc
+}
+
+newcase() {
+  local dir="${work}/$1"
+  mkdir -p "${dir}/tc" "${dir}/mod"
+  printf 'module example.com/x\n\ngo %s\n' "${2:-1.26.6}" > "${dir}/go.mod"
+  echo "$dir"
+}
+
+# 1. No shared caches: both under RUNNER_TEMP, and nothing installed.
+c="$(newcase plain)"
+j="$(run "$c")"
+if grep -q "^GOMODCACHE=${j}/temp/go-mod$" "${j}/env" && grep -q "^GOCACHE=${j}/temp/go-build$" "${j}/env" \
+   && grep -q '^shared-mod=false$' "${j}/out"; then pass "no shared caches: both under RUNNER_TEMP"; else fail "no shared caches"; cat "${j}/log"; fi
+
+# 2. A shared module cache becomes GOMODCACHE; GOCACHE stays per job.
+c="$(newcase sharedmod)"
+j="$(run "$c" GHR_GOMODCACHE="${c}/mod")"
+if grep -q "^GOMODCACHE=${c}/mod$" "${j}/env" && grep -q "^GOCACHE=${j}/temp/go-build$" "${j}/env" \
+   && grep -q '^shared-mod=true$' "${j}/out"; then pass "shared module cache used, build cache per job"; else fail "shared module cache"; cat "${j}/log"; fi
+
+# 3. A cold shared tool cache: Go installed in setup-go's layout.
+c="$(newcase cold)"
+j="$(run "$c" GHR_GO_TOOLCACHE="${c}/tc")"
+if [ -x "${c}/tc/1.26.6/x64/bin/go" ] && [ -f "${c}/tc/1.26.6/x64.complete" ] \
+   && [ -z "$(ls -A "${c}/tc" | grep '^\.' || true)" ]; then pass "cold: installed with marker, no lock or temp left"; else fail "cold install"; cat "${j}/log"; ls -la "${c}/tc"; fi
+
+# 4. Warm: the marker is there, so nothing is downloaded.
+j="$(run "$c" GHR_GO_TOOLCACHE="${c}/tc" GO_CACHES_DL_BASE="file:///nonexistent")"
+if grep -q "already in the shared tool cache" "${j}/log"; then pass "warm: no download"; else fail "warm"; cat "${j}/log"; fi
+
+# 5. Five jobs at once on a cold cache: all succeed, one install.
+c="$(newcase race)"
+pids=()
+for _ in 1 2 3 4 5; do
+  ( run "$c" GHR_GO_TOOLCACHE="${c}/tc" > /dev/null ) & pids+=($!)
+done
+ok=1
+for p in "${pids[@]}"; do wait "$p" || ok=0; done
+installs="$(grep -l '^Installed Go' "${c}"/job-*/log | wc -l)"
+if [ "$ok" = 1 ] && [ "$installs" = 1 ] && [ -x "${c}/tc/1.26.6/x64/bin/go" ] \
+   && [ -z "$(ls -A "${c}/tc" | grep '^\.' || true)" ]; then pass "race: 5 jobs, all green, 1 install"; else fail "race: ok=${ok} installs=${installs}"; cat "${c}"/job-*/log; fi
+
+# 6. A stale lock left by a dead job is taken over.
+c="$(newcase stale)"
+mkdir "${c}/tc/.lock-1.26.6-x64"; touch -d '-20 minutes' "${c}/tc/.lock-1.26.6-x64"
+j="$(run "$c" GHR_GO_TOOLCACHE="${c}/tc" GO_CACHES_LOCK_STALE=60)"
+if [ -f "${c}/tc/1.26.6/x64.complete" ] && grep -q "stale install lock" "${j}/log"; then pass "stale lock taken over"; else fail "stale lock"; cat "${j}/log"; fi
+
+# 7. A live lock that never clears: the job fails, by name, after the wait.
+c="$(newcase held)"
+mkdir "${c}/tc/.lock-1.26.6-x64"
+if j="$(run "$c" GHR_GO_TOOLCACHE="${c}/tc" GO_CACHES_LOCK_WAIT=4)"; then fail "held lock: should fail"; else
+  if grep -q "Waited 4s for another job" "${j}/log"; then pass "held lock: fails after the wait"; else fail "held lock message"; cat "${j}/log"; fi
+fi
+
+# 8. A checksum that does not match: no marker, lock released.
+c="$(newcase badsum)"
+sed "s/${sum}/$(printf 'f%.0s' $(seq 64))/" "${dl}/list.json" > "${c}/bad.json"
+if j="$(run "$c" GHR_GO_TOOLCACHE="${c}/tc" GO_CACHES_JSON_URL="file://${c}/bad.json")"; then fail "bad checksum: should fail"; else
+  if [ ! -e "${c}/tc/1.26.6/x64.complete" ] && [ ! -e "${c}/tc/.lock-1.26.6-x64" ] \
+     && [ -z "$(ls -A "${c}/tc" | grep '^\.tmp' || true)" ]; then pass "bad checksum: fails, no marker, lock released"; else fail "bad checksum left state"; ls -la "${c}/tc"; fi
+fi
+
+# 9. A go line that is not an exact release is left to setup-go.
+c="$(newcase inexact 1.26)"
+j="$(run "$c" GHR_GO_TOOLCACHE="${c}/tc")"
+if grep -q "names no exact Go release" "${j}/log" && [ -z "$(ls -A "${c}/tc")" ]; then pass "inexact version: left to setup-go"; else fail "inexact version"; cat "${j}/log"; fi
+
+# 10. The toolchain line wins over the go line.
+c="$(newcase toolchain 1.26.0)"
+printf 'toolchain go1.26.6\n' >> "${c}/go.mod"
+j="$(run "$c" GHR_GO_TOOLCACHE="${c}/tc")"
+if [ -f "${c}/tc/1.26.6/x64.complete" ] && [ ! -e "${c}/tc/1.26.0" ]; then pass "toolchain line wins"; else fail "toolchain line"; cat "${j}/log"; fi
+
+if [ "$fails" -gt 0 ]; then
+  echo "${fails} case(s) failed"
+  exit 1
+fi
+echo "all cases passed"

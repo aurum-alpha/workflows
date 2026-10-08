@@ -117,6 +117,13 @@ jobs:
       - name: Check the Go module-major block
         run: tools/check-go-module-version
 
+      # The go-caches action runs inside every job-go-*.yml, and those jobs
+      # never run here. Its script installs Go into a directory other jobs
+      # are reading, so the lock and the atomic rename are tested where a
+      # break would otherwise first show up as red Go jobs across the fleet.
+      - name: Test the go-caches script
+        run: tools/test-go-caches
+
   contract-conformance:
     uses: ./.github/workflows/job-contract-conformance.yml
 

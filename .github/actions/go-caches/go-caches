@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+# go-caches: where a Go job's caches live, and Go installed into a shared
+# tool cache before actions/setup-go looks for it.
+#
+# The controller that starts self-hosted runners may mount two directories
+# shared by every runner on a host and name them in the job's environment:
+#
+#   GHR_GO_TOOLCACHE  setup-go's own tool cache for Go (<ver>/<arch> plus a
+#                     <ver>/<arch>.complete marker), mounted at _work/_tool/go
+#   GHR_GOMODCACHE    a module cache to use as GOMODCACHE
+#
+# Where neither is set (GitHub-hosted runners, or a controller without shared
+# caches) this does what the jobs did before it existed: both caches go under
+# RUNNER_TEMP, and actions/cache fills the module cache.
+#
+# Why Go is installed here rather than by setup-go: setup-go's install deletes
+# the version's folder, copies the files in, then writes the marker. On a
+# shared directory every Go job of a run misses at once, and a job that
+# finished copying has its Go deleted under it by the next. This installs once,
+# under a lock, with an atomic rename, so setup-go only ever finds it.
+#
+# Inputs (environment):
+#   GO_MOD_FILE   path to the go.mod naming the version (required)
+#   RUNNER_TEMP, RUNNER_ARCH, GITHUB_ENV, GITHUB_OUTPUT  set by the runner
+#   GO_CACHES_DL_BASE, GO_CACHES_JSON_URL  download overrides, for the test
+#   GO_CACHES_LOCK_WAIT, GO_CACHES_LOCK_STALE  seconds, for the test
+set -euo pipefail
+
+: "${GO_MOD_FILE:?GO_MOD_FILE names the go.mod to read}"
+: "${RUNNER_TEMP:?}" "${GITHUB_ENV:?}" "${GITHUB_OUTPUT:?}"
+
+dl_base="${GO_CACHES_DL_BASE:-https://go.dev/dl}"
+json_url="${GO_CACHES_JSON_URL:-https://go.dev/dl/?mode=json&include=all}"
+lock_wait="${GO_CACHES_LOCK_WAIT:-600}"
+lock_stale="${GO_CACHES_LOCK_STALE:-600}"
+
+# --- the module and build caches -------------------------------------------
+build="${RUNNER_TEMP}/go-build"
+mkdir -p "$build"
+if [ -n "${GHR_GOMODCACHE:-}" ] && [ -d "$GHR_GOMODCACHE" ] && [ -w "$GHR_GOMODCACHE" ]; then
+  mod="$GHR_GOMODCACHE"
+  shared_mod=true
+  echo "Module cache: shared at ${mod}"
+else
+  mod="${RUNNER_TEMP}/go-mod"
+  mkdir -p "$mod"
+  shared_mod=false
+  if [ -n "${GHR_GOMODCACHE:-}" ]; then
+    echo "::warning::GHR_GOMODCACHE=${GHR_GOMODCACHE} is not a writable directory; using ${mod}"
+  fi
+fi
+{
+  echo "GOMODCACHE=${mod}"
+  echo "GOCACHE=${build}"
+} >> "$GITHUB_ENV"
+echo "shared-mod=${shared_mod}" >> "$GITHUB_OUTPUT"
+
+# --- Go, into the shared tool cache ------------------------------------------
+tc="${GHR_GO_TOOLCACHE:-}"
+if [ -z "$tc" ]; then
+  exit 0
+fi
+if [ ! -d "$tc" ] || [ ! -w "$tc" ]; then
+  echo "::warning::GHR_GO_TOOLCACHE=${tc} is not a writable directory; setup-go installs Go itself"
+  exit 0
+fi
+
+# The version setup-go will ask for: the toolchain line, else the go line. Only
+# an exact release is installed here; anything else (1.26, 1.27rc1) is left to
+# setup-go, which resolves it its own way.
+ver="$(sed -nE 's/^toolchain[[:space:]]+go([0-9]+\.[0-9]+\.[0-9]+)[[:space:]]*$/\1/p' "$GO_MOD_FILE" | head -1)"
+if [ -z "$ver" ]; then
+  ver="$(sed -nE 's/^go[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+)[[:space:]]*$/\1/p' "$GO_MOD_FILE" | head -1)"
+fi
+if [ -z "$ver" ]; then
+  echo "${GO_MOD_FILE} names no exact Go release; setup-go installs Go itself"
+  exit 0
+fi
+
+case "${RUNNER_ARCH:-X64}" in
+  X64) arch=x64; goarch=amd64 ;;
+  ARM64) arch=arm64; goarch=arm64 ;;
+  *) echo "Runner arch ${RUNNER_ARCH} has no shared Go; setup-go installs Go itself"; exit 0 ;;
+esac
+
+dest="${tc}/${ver}/${arch}"
+marker="${dest}.complete"
+if [ -f "$marker" ]; then
+  echo "Go ${ver} (${arch}) is already in the shared tool cache"
+  exit 0
+fi
+
+lock="${tc}/.lock-${ver}-${arch}"
+waited=0
+while ! mkdir "$lock" 2>/dev/null; do
+  if [ -f "$marker" ]; then
+    echo "Go ${ver} (${arch}) was installed by another job while this one waited"
+    exit 0
+  fi
+  # A lock older than lock_stale belongs to a job that died holding it.
+  if [ -d "$lock" ] && [ $(( $(date +%s) - $(stat -c %Y "$lock" 2>/dev/null || date +%s) )) -ge "$lock_stale" ]; then
+    echo "Removing a stale install lock: ${lock}"
+    rmdir "$lock" 2>/dev/null || true
+    continue
+  fi
+  if [ "$waited" -ge "$lock_wait" ]; then
+    echo "::error::Waited ${lock_wait}s for another job to install Go ${ver} into ${tc}"
+    exit 1
+  fi
+  sleep 2
+  waited=$((waited + 2))
+done
+tmp=""
+trap 'rmdir "$lock" 2>/dev/null || true; if [ -n "$tmp" ]; then rm -rf "$tmp"; fi' EXIT
+
+if [ -f "$marker" ]; then
+  echo "Go ${ver} (${arch}) was installed by another job while this one waited"
+  exit 0
+fi
+
+file="go${ver}.linux-${goarch}.tar.gz"
+echo "Installing Go ${ver} (${arch}) into the shared tool cache"
+# The published checksum, read without jq or python: the runner image carries
+# neither. Each file's object in go.dev's list names its filename before its
+# sha256, and objects hold no nested braces.
+sum="$(curl -fsSL --retry 3 "$json_url" | tr -d ' \n\t' \
+  | grep -oE "\"filename\":\"${file//./\\.}\"[^}]*" \
+  | grep -oE '"sha256":"[0-9a-f]{64}"' | head -1 | cut -d'"' -f4 || true)"
+if [ -z "$sum" ]; then
+  echo "::error::No published sha256 for ${file} at ${json_url}"
+  exit 1
+fi
+
+# Unpack beside the destination so the final move is a rename on one
+# filesystem, and nothing ever sees a half-written Go.
+tmp="$(mktemp -d "${tc}/.tmp-${ver}-${arch}-XXXXXX")"
+curl -fsSL --retry 3 -o "${tmp}/${file}" "${dl_base}/${file}"
+echo "${sum}  ${tmp}/${file}" | sha256sum -c --quiet -
+tar -xzf "${tmp}/${file}" -C "$tmp"
+mkdir -p "${tc}/${ver}"
+# A folder without its marker is an install that died; nothing reads it, since
+# setup-go looks for the marker first.
+rm -rf "$dest"
+mv "${tmp}/go" "$dest"
+touch "$marker"
+echo "Installed Go ${ver} (${arch}) at ${dest}"

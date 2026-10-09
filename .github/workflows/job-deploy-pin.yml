@@ -34,6 +34,16 @@
 # the one open staging pull request always carries the newest build. A
 # release's branch is pin/<stack>-v<version>.
 #
+# A PRODUCTION-ONLY STACK GETS NO STAGING PULL REQUEST. Whether a stack has
+# a staging environment is the deploy repository's fact, read from its tree:
+# environments/staging/<stack>/ exists or it does not. A stack with none
+# (gha-runner-controller: one controller per GitHub organisation, so a
+# staging twin would need a second GitHub App and scale set) skips the
+# staging pin, and the summary says so rather than passing in silence. Its
+# release pins production as any other does; the deploy repository creates
+# such a stack's production directory by hand, since there is no staging
+# twin to derive it from.
+#
 # WHAT A PRODUCT'S OWN PULL REQUEST GETS. The images it would pin and the tag
 # it would pin them at, printed. Nothing is pushed (Principle 17, rule D5).
 #
@@ -147,7 +157,7 @@ jobs:
               echo "::error::images: '${line}' is not SERVICE=ghcr.io/<owner>/<image> with no tag"
               exit 1
             fi
-            echo "- staging: \`${line}:sha-${short}\`, as a pull request" >> "$GITHUB_STEP_SUMMARY"
+            echo "- staging: \`${line}:sha-${short}\`, as a pull request where the stack has a staging environment" >> "$GITHUB_STEP_SUMMARY"
             count=$((count + 1))
           done <<< "$IMAGES"
           if [ "$count" -eq 0 ]; then
@@ -311,10 +321,16 @@ jobs:
           done <<< "$IMAGES"
 
           commit="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
-          open_pin_pr staging "pin/staging-${STACK}" \
-            "Pin ${STACK} staging to ${GITHUB_REPOSITORY#*/}@${SHORT}" \
-            "Built from ${commit} and published as sha-${SHORT}. Merging this deploys it to staging." \
-            "${staging[@]}"
+          if [ -d "environments/staging/${STACK}" ]; then
+            open_pin_pr staging "pin/staging-${STACK}" \
+              "Pin ${STACK} staging to ${GITHUB_REPOSITORY#*/}@${SHORT}" \
+              "Built from ${commit} and published as sha-${SHORT}. Merging this deploys it to staging." \
+              "${staging[@]}"
+          else
+            # A production-only stack: nothing to pin until a release.
+            echo "::notice::${STACK} has no staging environment (environments/staging/${STACK} does not exist in ${OWNER}/${NAME}), so no staging pull request was opened."
+            echo "- staging: none; ${STACK} is production-only, and a release pins production" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
           if [ "$RELEASE" = "true" ]; then
             release_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/v${VERSION}"

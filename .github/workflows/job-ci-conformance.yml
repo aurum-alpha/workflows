@@ -12,6 +12,15 @@ name: ci-conformance
 # two renames without anything noticing. A check that only runs when someone
 # remembers to run it is not a gate.
 #
+# It also runs actionlint over the caller's workflow files. The checkers read
+# ci.yml for what it calls and what it grants; actionlint reads it for whether
+# GitHub will accept it at all. A file GitHub cannot parse — a context used
+# where it is not available, a key that does not exist — produces a run with
+# zero jobs that concludes failure in the same second it starts, so no check
+# ever reports on the head, and a merge waiting on ci-ok waits on nothing.
+# The catalog lints its own files this way in ci.yml; this is the same
+# instrument pointed at the caller.
+#
 # check-catalog-loops, check-version-stamp-shared and check-go-module-version
 # are deliberately absent: they inspect this repo's own shared jobs, so they
 # belong in this repo's CI and nowhere else.
@@ -146,6 +155,34 @@ jobs:
           REPO: ${{ steps.repo.outputs.name }}
           AURUM_CATALOG_ROOT: .aurum-catalog
         run: .aurum-catalog/tools/check-ci-conformance --repo-root ".ci-root/$REPO"
+        continue-on-error: ${{ inputs.warn_only }}
+
+      # Every workflow file the caller has, under .github/workflows, through
+      # actionlint's own rules: the syntax, the keys, and every ${{ }}
+      # expression against the contexts GitHub makes available where it
+      # stands. Those are the findings GitHub itself refuses a file for, and
+      # a refused file is the failure nothing downstream can see — zero jobs,
+      # no logs, no check on the head.
+      #
+      # shellcheck and pyflakes are off here. Both are questions about the
+      # scripts inside run: steps rather than about the file, and the
+      # catalog's own lint job keeps shellcheck on for the catalog's files.
+      # Turned on fleet-wide they would redden callers for findings that do
+      # not stop a run, under a job whose other steps are about whether the
+      # pipeline is the standard's. That is a separate gate to argue for.
+      #
+      # By digest with the version in band, as job-secret-scan pins gitleaks
+      # (085 SB1). actionlint discovers the project from the working
+      # directory, which needs the checkout's .git beside .github — it is
+      # there — so no path is passed and the tree is linted whole.
+      - name: Every workflow file is one GitHub will accept
+        if: ${{ !cancelled() }}
+        env:
+          REPO: ${{ steps.repo.outputs.name }}
+          ACTIONLINT_IMAGE: rhysd/actionlint@sha256:887a259a5a534f3c4f36cb02dca341673c6089431057242cdc931e9f133147e9 # v1.7.7
+        run: >
+          docker run --rm -v "$PWD/.ci-root/$REPO:/repo" --workdir /repo
+          "$ACTIONLINT_IMAGE" -color -shellcheck= -pyflakes=
         continue-on-error: ${{ inputs.warn_only }}
 
 

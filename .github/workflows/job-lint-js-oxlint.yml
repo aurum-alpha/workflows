@@ -170,7 +170,9 @@ jobs:
             ${{ runner.os }}-pnpm-store-
       - working-directory: ${{ inputs.workdir }}
         env:
-          NODE_AUTH_TOKEN: ${{ github.token }}
+          # Prefer the org read token when present; github.token cannot
+          # download every private @aurum-alpha package a consumer pins.
+          NODE_AUTH_TOKEN: ${{ secrets.AURUM_READ_TOKEN != '' && secrets.AURUM_READ_TOKEN || github.token }}
         run: pnpm install --frozen-lockfile
       # A pull request restores and never saves (010-ci.md Principle 21).
       - name: Save the pnpm store

@@ -92,14 +92,14 @@ jobs:
       # with a success. That is the whole-repo-failed case and it is handled by
       # the census below, not by this step.
       - name: Collect coverage reports
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: ${{ inputs.coverage_pattern }}
           merge-multiple: false
           path: _coverage
 
       - name: Collect test reports
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: ${{ inputs.testresults_pattern }}
           merge-multiple: false

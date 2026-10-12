@@ -115,7 +115,7 @@ jobs:
           else
             echo "tool=composer:v2" >> "$GITHUB_OUTPUT"
           fi
-      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2.37.2
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2.40.0
         with:
           php-version-file: ${{ inputs.workdir }}/.php-version
           extensions: ${{ inputs.extensions }}
@@ -199,7 +199,7 @@ jobs:
       #
       # Inherits success() deliberately: a failed unit publishes no coverage.
       - name: Publish coverage for the upload job
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-php-${{ steps.key.outputs.key }}
           path: ${{ inputs.workdir }}/coverage/php-unit.xml
@@ -212,7 +212,7 @@ jobs:
       # the job died before the test step, which is worth failing on.
       - name: Publish test results for the upload job
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: testresults-php-${{ steps.key.outputs.key }}
           path: ${{ inputs.workdir }}/test-report.junit.xml

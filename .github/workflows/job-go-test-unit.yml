@@ -44,6 +44,28 @@ on:
         description: gotestsum version to install, for the JUnit report.
         type: string
         default: "v1.13.0"
+      packages:
+        description: >-
+          Space-separated `go list` patterns this call tests, relative to
+          workdir. The default is every package. A caller that splits one
+          module's tests across several runners names each shard's packages
+          here and gives each call its own `shard`.
+        type: string
+        default: ./...
+      exclude:
+        description: >-
+          Space-separated `go list` patterns removed from `packages`. This is
+          how the last shard says "everything the other shards did not name":
+          a package added later lands in it without anyone editing ci.yml.
+        type: string
+        default: ""
+      shard:
+        description: >-
+          Names this call's artifacts when one workdir has more than one
+          caller. Lowercase letters, digits and hyphens. Empty for the only
+          caller, which keeps the artifact names it always had.
+        type: string
+        default: ""
 
 jobs:
   test-unit:
@@ -137,6 +159,8 @@ jobs:
       - name: Unit tests
         working-directory: ${{ inputs.workdir }}
         env:
+          PACKAGES: ${{ inputs.packages }}
+          EXCLUDE: ${{ inputs.exclude }}
           # -race is implemented in C and refuses to run without cgo. The portfolio
           # runners default CGO_ENABLED=0 (the repos ship static binaries), so
           # this must be set for the test run or every -race invocation dies
@@ -150,9 +174,28 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p coverage
+          # Resolve the shard to import paths first. `go test` with an empty
+          # list runs the package in the current directory and passes, so a
+          # shard that selects nothing must stop here, not go green.
+          # shellcheck disable=SC2086
+          go list ${PACKAGES} | sort -u > "${RUNNER_TEMP}/packages.txt"
+          if [ -n "${EXCLUDE}" ]; then
+            # shellcheck disable=SC2086
+            go list ${EXCLUDE} | sort -u > "${RUNNER_TEMP}/excluded.txt"
+            grep -vxFf "${RUNNER_TEMP}/excluded.txt" "${RUNNER_TEMP}/packages.txt" \
+              > "${RUNNER_TEMP}/selected.txt" || true
+          else
+            cp "${RUNNER_TEMP}/packages.txt" "${RUNNER_TEMP}/selected.txt"
+          fi
+          if [ ! -s "${RUNNER_TEMP}/selected.txt" ]; then
+            echo "::error::packages='${PACKAGES}' exclude='${EXCLUDE}' selects no package"
+            exit 1
+          fi
+          echo "Testing $(wc -l < "${RUNNER_TEMP}/selected.txt") packages"
+          mapfile -t pkgs < "${RUNNER_TEMP}/selected.txt"
           "${RUNNER_TEMP}/gotestsum-bin/gotestsum" \
             --junitfile=test-report.junit.xml \
-            -- ./... -race -covermode=atomic -coverprofile=coverage/go-unit.out
+            -- "${pkgs[@]}" -race -covermode=atomic -coverprofile=coverage/go-unit.out
       # A pull request restores and never saves (010-ci.md Principle 21).
       - name: Save the build cache
         if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && steps.go-build-cache.outputs.cache-hit != 'true'
@@ -162,8 +205,9 @@ jobs:
           key: ${{ steps.go-build-cache.outputs.cache-primary-key }}
       # Artifact names are a namespace shared by every job in the caller's run,
       # and a called workflow cannot see the caller's job id (github.job reads
-      # `test-unit`, the id inside this file). workdir is the only thing that
-      # distinguishes two callers of this job, so it is the key.
+      # `test-unit`, the id inside this file). workdir distinguishes two callers
+      # on different modules, and shard two callers on one module, so the two
+      # together are the key.
       #
       # !cancelled(), because the test-results upload below runs on a failed
       # run and reads this output. Without it a failing unit skips this step,
@@ -175,10 +219,18 @@ jobs:
         shell: bash
         env:
           WD: ${{ inputs.workdir }}
+          SHARD: ${{ inputs.shard }}
         run: |
           set -euo pipefail
           key="${WD//\//-}"
           key="${key//./root}"
+          if [ -n "${SHARD}" ]; then
+            if ! [[ "${SHARD}" =~ ^[a-z0-9-]+$ ]]; then
+              echo "::error::shard '${SHARD}' must be lowercase letters, digits and hyphens"
+              exit 1
+            fi
+            key="${key}-${SHARD}"
+          fi
           echo "key=${key}" >> "$GITHUB_OUTPUT"
 
       # Handed to job-coverage-upload rather than sent to Codecov from here, so

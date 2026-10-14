@@ -92,13 +92,20 @@ jobs:
           key: go-mod-${{ runner.os }}-${{ hashFiles(format('{0}/go.sum', inputs.workdir)) }}
           restore-keys: |
             go-mod-${{ runner.os }}-
+      # This job's own key, not the one go-vet and go-lint share. A test
+      # binary here is compiled with -race and -covermode=atomic, which gives
+      # every dependency different compile actions from the plain build the
+      # others cache. Under the shared key whichever job finished first saved
+      # it, the vet and lint jobs finish long before this one, and this job
+      # restored a cache holding none of its own objects and recompiled the
+      # module's whole dependency tree on every run (about two minutes).
       - id: go-build-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.GOCACHE }}
-          key: go-build-${{ runner.os }}-${{ hashFiles(format('{0}/go.sum', inputs.workdir)) }}
+          key: go-test-${{ runner.os }}-${{ hashFiles(format('{0}/go.sum', inputs.workdir)) }}
           restore-keys: |
-            go-build-${{ runner.os }}-
+            go-test-${{ runner.os }}-
       # `go test` has no JUnit mode and is not going to grow one, so the report
       # Codecov Test Analytics reads — per-test timings, failure rates, flaky
       # detection — comes from gotestsum wrapping it.

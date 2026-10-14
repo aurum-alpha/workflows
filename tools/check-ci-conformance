@@ -1441,7 +1441,13 @@ REPORTING_JOBS = {"job-release-risk.yml"}
 # than the workflow default (an image build wanting packages: write) has to say
 # so here. tools/check-caller-permissions verifies the grant actually covers
 # what the shared job requests.
-STUB_KEYS = {"uses", "needs", "with", "secrets", "if", "permissions"}
+#
+# `strategy` is a stub key because a matrix is how one stub calls a shared job
+# once per shard, and the alternative is N copies of the stub that differ in
+# one `with:` value. The id stays one, so `ci-ok` names one job and rule ID
+# reads one id. A matrix over a shared job is still a call: the `with:` it
+# passes is `${{ matrix.* }}`, and the stub keeps no step of its own.
+STUB_KEYS = {"uses", "needs", "with", "secrets", "if", "permissions", "strategy"}
 
 # What a stub's `uses:` must look like. The reference half agrees with rule PIN
 # — a first-party workflow is taken at `@main`, never pinned — and this pattern

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.aurumalpha.dev/rbac/model.schema.json",
   "title": "Aurum Alpha RBAC model",
-  "description": "The shapes of standards/070-rbac.md: permission, scope, role and grant. This file fixes the model; contracts/rbac/decisions.json fixes the behaviour. schemaVersion 1 — evolves additively per PC6.",
+  "description": "The shapes of standards/070-rbac.md: permission, scope, role, condition and grant. This file fixes the model; contracts/rbac/decisions.json fixes the behaviour. schemaVersion 1 — evolves additively per PC6.",
   "$defs": {
     "permission": {
       "type": "string",
@@ -14,9 +14,87 @@
       "pattern": "^(global|[a-z][a-z0-9_]*:[A-Za-z0-9_-]+)$",
       "description": "Either the literal 'global' or a type:id pair such as tenant:acme (RB5). The application declares which scope types exist and how they contain one another; this contract fixes the shape and leaves the hierarchy to the application, because a standard naming the levels would fit no two products."
     },
+    "conditionOperator": {
+      "type": "string",
+      "enum": [
+        "equals_subject",
+        "contains_subject",
+        "within"
+      ],
+      "description": "The closed operator set of RB11, fixed by the standard; no product adds one. equals_subject: the property is the caller's id. contains_subject: the caller's id is in the property, a set. within: the property is a timestamp no older than the role entry's duration before now. A property that is empty fails every operator."
+    },
+    "condition": {
+      "type": "object",
+      "description": "A condition declared in code on one resource (RB11), as RB1 declares a permission. It names one property of that resource's object and one operator. It is known as resource.name, such as lead.owner, and a role entry on a permission of that resource names it by name alone.",
+      "properties": {
+        "resource": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "The resource segment of the permissions this condition can restrict (RB2): the object the act is done to."
+        },
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "How a role entry and the identity document name the condition."
+        },
+        "property": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "The property of the object the condition reads. The query that fetches the object selects it."
+        },
+        "operator": {
+          "$ref": "#/$defs/conditionOperator"
+        }
+      },
+      "required": [
+        "resource",
+        "name",
+        "property",
+        "operator"
+      ],
+      "additionalProperties": false
+    },
+    "conditionReference": {
+      "description": "A condition named in a role entry: its name, or its name with a parameter. within takes exactly one parameter, an ISO 8601 duration such as P5D, and the other operators take none. Whether a parameter fits its operator is validated when the role is written (RB3), since the operator is the declaration's.",
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "parameter": {
+              "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/duration"
+            }
+          },
+          "required": [
+            "name",
+            "parameter"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "conditionGroups": {
+      "type": "array",
+      "description": "Any-of groups of all-of conditions (RB11): the entry holds for an object when every condition in at least one group holds. There is no NOT, no nesting and no expression.",
+      "minItems": 1,
+      "items": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "$ref": "#/$defs/conditionReference"
+        }
+      }
+    },
     "role": {
       "type": "object",
-      "description": "A named set of permissions (RB3). Roles do not nest and do not inherit — a role that should have what another has lists the same permissions, so that what a person can do stays readable from the role's own definition.",
+      "description": "A named set of permissions (RB3). Roles do not nest and do not inherit — a role that should have what another has lists the same permissions, so that what a person can do stays readable from the role's own definition. A permission is held once, either unconditionally or with the condition groups 'conditions' gives it.",
       "properties": {
         "name": {
           "type": "string",
@@ -28,6 +106,16 @@
           "description": "Every entry MUST be in the application's declared permission set (RB1), validated at write time. A stored role carrying a typo grants nothing and says nothing.",
           "items": {
             "$ref": "#/$defs/permission"
+          }
+        },
+        "conditions": {
+          "type": "object",
+          "description": "The role's conditional entries, by permission (RB3, RB11). Optional: a permission with no key here is held unconditionally, and a role without the member is unconditional throughout. Validated at write time: every key is a permission in this role's 'permissions', every condition is declared on that permission's resource, and every parameter fits its operator. A role listing a permission twice is refused.",
+          "propertyNames": {
+            "$ref": "#/$defs/permission"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/conditionGroups"
           }
         }
       },
@@ -63,7 +151,7 @@
     },
     "decision": {
       "type": "object",
-      "description": "What check() returns (RB8). Never a bare boolean: a denial that cannot say why is the SC2 reason-giving failure on the surface where it matters most. An allowance names the grant that satisfied it; a denial names one of the six reasons. Both are logged and shown to an administrator; neither reaches an unauthorised caller, whose response is the HA3 envelope.",
+      "description": "What check() returns (RB8). Never a bare boolean: a denial that cannot say why is the SC2 reason-giving failure on the surface where it matters most. An allowance names the grant that satisfied it; a denial names one of the eight reasons. Both are logged and shown to an administrator; neither reaches an unauthorised caller, whose response is the HA3 envelope.",
       "properties": {
         "allowed": {
           "type": "boolean"
@@ -87,14 +175,16 @@
         },
         "denial": {
           "type": "string",
-          "description": "Why the check was refused, one of the six reasons RB8 names. Present when allowed is false and absent otherwise. undeclared_permission and invalid_scope are also errors; the decision beside the error carries them.",
+          "description": "Why the check was refused, one of the eight reasons RB8 names. Present when allowed is false and absent otherwise. undeclared_permission and invalid_scope are also errors; the decision beside the error carries them.",
           "enum": [
             "no_active_grant",
             "invalid_scope",
             "scope_not_contained",
             "permission_not_held",
             "undeclared_permission",
-            "no_permissions_requested"
+            "no_permissions_requested",
+            "condition_not_met",
+            "object_required"
           ]
         }
       },

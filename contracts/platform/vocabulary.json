@@ -84,14 +84,16 @@
       }
     },
     "denial_reasons": {
-      "rule": "070 RB8. A denied decision carries exactly one. undeclared_permission and invalid_scope are also errors, and the decision beside the error carries the reason.",
+      "rule": "070 RB8. A denied decision carries exactly one. undeclared_permission and invalid_scope are also errors, and the decision beside the error carries the reason. condition_not_met and object_required are RB11's: no group of a conditional entry holds for the object, or a conditional entry was checked without one.",
       "values": [
         "no_active_grant",
         "invalid_scope",
         "scope_not_contained",
         "permission_not_held",
         "undeclared_permission",
-        "no_permissions_requested"
+        "no_permissions_requested",
+        "condition_not_met",
+        "object_required"
       ]
     },
     "role_origins": {
@@ -99,6 +101,14 @@
       "values": [
         "system",
         "tenant"
+      ]
+    },
+    "condition_operators": {
+      "rule": "070 RB11. The closed operator set a declared condition names; no product adds one. within is the only operator that takes a parameter, an ISO 8601 duration.",
+      "values": [
+        "equals_subject",
+        "contains_subject",
+        "within"
       ]
     },
     "scope": {

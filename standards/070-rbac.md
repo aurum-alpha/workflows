@@ -73,6 +73,13 @@ Two segments, never three. A three-part permission is a resource that has not
 been named: `system.dashboard.view` is `system_dashboard.view`. Writing it the
 second way keeps the check a simple equality rather than a prefix question.
 
+**The resource names the object the act is done to**. `lead.review` is an
+act done to a lead, so a lead is the object its check is decided against.
+It is also the object a condition of RB11 is evaluated on. A permission named
+after a process rather than its object is renamed before it takes a
+condition. A conflict a CRM sync raises is reconciled on a lead, so the
+permission is `lead.reconcile_crm` and not `crm_sync.reconcile`.
+
 ### RB3. A role is a named set of permissions, and every permission in it is real
 
 Roles can be **declared in code** or **stored as data**. Code means a closed
@@ -89,6 +96,30 @@ as a person who cannot do something everyone believes they can.
 has lists the same permissions. Inheritance turns *what can this person do*
 into a graph traversal, and the answer stops being readable from the role's own
 definition. The duplication it would remove is duplication a reviewer can see.
+
+#### A role entry is a permission, with or without conditions
+
+A role entry is a permission, held unconditionally or with conditions. The
+conditions are any-of groups of all-of conditions, and RB11 defines them.
+`queue_item.act when (owner) or (assigned)` is one entry with two groups.
+`lead.review when (owner and recent(P5D))` is one entry with one group of two
+conditions. An entry with no conditions is unconditional.
+
+**A role holds a permission once**: unconditionally, or with its groups. Two
+entries for one permission would make the decision depend on which entry was
+read. That is the evaluation-order problem RB6 refuses negative grants for.
+
+The write-time validation covers the conditions too, and anything else is
+refused:
+
+- **A condition is declared on the permission's resource** (RB11). A
+  condition on another resource names a property the object does not carry.
+- **A parameter fits its operator**. `within` takes one ISO 8601 duration,
+  and the other operators take none.
+- **A permission appears in the role once**.
+
+A stored role that broke one of these would decide nothing the way its author
+read it.
 
 #### Why data is safe here when it was not for permissions
 
@@ -304,14 +335,22 @@ A pure `check` makes the second impossible by construction. It also makes the
 *Given these grants, this check returns deny* has no meaning if the answer also
 depends on state the case cannot state.
 
+**A permission held with conditions is checked against an object**. The
+object check is `check(subject, permission, scope, object, now)`. It stays a
+pure function, because the object and the instant are arguments like the
+rest. It reads no clock and no store. The same arguments give the same
+decision every time, which is why the corpus can state `now`.
+
 #### The operations
 
 | Operation | Semantics |
 |---|---|
-| `check(subject, permission, scope) → Decision` | The primitive. Deny by default. |
+| `check(subject, permission, scope) → Decision` | The primitive. Deny by default. A permission held with conditions is refused with `object_required`. |
+| `check(subject, permission, scope, object, now) → Decision` | The object check. Everything the primitive decides, then the object's tenant and the role entry's groups (RB11). The one authority on an object. |
+| `constraint(subject, permission, scope, now) → Constraint` | Optional. The same conditions as a predicate a store applies to a list that pages or counts: unconditional, an OR-of-ANDs over declared properties, or deny. A query optimization that agrees with the object check, never part of the decision (RB11). |
 | `checkAny(subject, permissions[], scope) → Decision` | Allowed if any one is. |
 | `checkAll(subject, permissions[], scope) → Decision` | Allowed only if every one is. |
-| `permissionsFor(subject, scope) → permission[]` | The active grant's role's set, complete and enumerated. Feeds `/me`. |
+| `permissionsFor(subject, scope) → permission[]` | The active grant's role's set, complete and enumerated, with each conditional permission's groups reported beside it. Feeds `/me`. |
 | `rolesFor(subject, scope) → role[]` | For display, and for an admin screen. |
 | `grant(subject, role, scope)` / `revoke(subject, role, scope)` | Administrative. Both are audited events. |
 
@@ -339,7 +378,7 @@ support call. It is never returned to an unauthorised caller. The
 [`050-http.md`](050-http.md) HA3 envelope that reaches the client says the
 request was refused, and the reason stays in the log.
 
-**A denial carries one of six reasons**, and every implementation names them
+**A denial carries one of eight reasons**, and every implementation names them
 the same way. An allowance carries the grant and the role that satisfied it.
 
 | Reason | The denial |
@@ -350,6 +389,8 @@ the same way. An allowance carries the grant and the role that satisfied it.
 | `permission_not_held` | The active grant's role does not carry the permission. |
 | `undeclared_permission` | The permission is not in RB1's set. |
 | `no_permissions_requested` | `checkAny` or `checkAll` was asked about an empty list (RB7). |
+| `condition_not_met` | The role holds the permission with conditions, and no group holds for the object (RB11). |
+| `object_required` | The role holds the permission with conditions, and the check named no object. It fails closed (RB11). |
 
 Two of them are also errors. RB1 makes a check against an undeclared
 permission an error rather than a denial. A scope that is not a scope is the
@@ -421,14 +462,146 @@ at routing and at an agreement check. The
 [tenant hostnames standard](092-tenant-hostnames.md) says so. The scope still
 comes from here.
 
+### RB11. A role's permission can be conditional on the object, and the library decides it
+
+Products authorize on a property of the object, and the answer often differs
+by role. A setter reconciles a CRM conflict only on leads they own, and an
+administrator on any lead. A setter acts on a queue item they own or are
+assigned, and an operator on any item. Without this rule there are three ways
+to say that, and each is refused or unshared:
+
+- **A role-name branch**, which RB4 forbids.
+- **A second permission that widens the first**, which is a permission
+  granting another (RB6).
+- **An ownership check written by hand in each handler**. That is RB10's
+  second case, repeated per handler and judged by no corpus.
+
+A condition puts the restriction in the role, beside the permission it
+restricts, and the library decides it.
+
+#### Where the line is
+
+**A check that gives the same answer for every caller is a domain rule, not
+authorization**. It lives in the handler or the store, and it refuses with
+409 or 422, never 403. A disposed lead, a do-not-contact flag, a cooldown, a
+decision already recorded and "no lead is reviewed after 5 days" are domain
+rules.
+
+**A check whose answer depends on the role is a condition on that role's
+permission**. The role holds the permission with the condition or without it.
+"Setters on leads they own, administrators on any" is a condition. So is
+"setters within 5 days of a lead's creation, administrators any time".
+
+#### Conditions are declared in code, per resource
+
+A condition is declared in code on one resource, as RB1 declares a
+permission. It names one property of that resource's object and one operator.
+`lead.owner`, `queue_item.assigned` and `lead.recent` are declarations. A role
+entry on a permission of that resource names the condition by its name alone:
+`owner`, `assigned`, `recent`. The declaration is code for RB1's reason. The
+property is read by the code that fetches the object, so the two ship
+together.
+
+#### The operators are closed
+
+This standard fixes the operators, and no product adds one:
+
+- **`equals_subject`**: the property is the caller's id.
+- **`contains_subject`**: the caller's id is in the property, which is a set.
+  The set is an array, or a membership table beside the row, as RB10 admits.
+- **`within`**: the property is a timestamp no older than a duration before
+  `now`. The duration is the one parameter a role entry can give, as an ISO
+  8601 duration such as `P5D`. A timestamp exactly that duration before
+  `now` is inside the window.
+
+**A property that is empty fails every operator**. A lead nobody owns is no
+setter's lead, and an empty set contains nobody.
+
+**A role entry is OR-of-ANDs, and nothing more**. The entry holds for an
+object when every condition in at least one group holds. There is no NOT,
+because RB6 has no negative grants. There is no nesting and no expression,
+because a role is read at a glance or it is not reviewed.
+
+#### Access control is the object check, and data retrieval is separate
+
+**The object check is the whole of access control on a conditional
+permission, and it is correct on its own**. Fetching data is a separate act.
+It decides what is loaded, never what is allowed. No query predicate is part
+of authorization, for one object or for a list.
+
+The decision is made in two steps, and the library makes both:
+
+1. **The route fails early**. Middleware asks whether the active grant's role
+   holds the permission in any form, at the session's scope. A role that holds
+   it in no form is refused there with `permission_not_held`. For an
+   unconditional entry this is the whole decision. For a conditional entry a
+   request that passes is allowed nothing yet.
+2. **The handler checks the object**. The object check makes every decision
+   the primitive makes. Then it compares the object's tenant with the
+   session's (RB10). Then it evaluates the role entry's groups against the
+   object.
+
+**The object carries what the conditions read**. The handler fetches the
+object by its id, with whatever joins it wants. The query selects the
+properties the declared conditions read, and the handler passes the object to
+the check. A condition never becomes a `WHERE` clause on that path. A list
+fetches its rows the same way and checks each row, keeping the rows the check
+allows.
+
+**A conditional permission checked without an object is refused** with
+`object_required`. A check that has not seen the object cannot say a
+condition holds for it, so it fails closed. An unconditional entry answers
+the primitive exactly as it does without conditions.
+
+#### `constraint` is a query optimization and nothing else
+
+A list that pages or counts has one problem the object check does not solve.
+Checking rows after fetching them leaves short pages and wrong totals. So
+`constraint(subject, permission, scope, now)` returns the same conditions as
+a predicate a store can apply in the query. Its answer is unconditional, an
+OR-of-ANDs over declared properties, or deny.
+
+**The predicate is an optimization, never a rule**. The permission check is
+correct without it, on one object and on a list. A list that applies it still
+checks each row it returns, and the predicate only fills the page and makes
+the count true. It agrees with the object check on every row, and the corpus
+holds the two equal. It is never a second rule, and it never widens a filter
+the caller supplied.
+
+#### The client is told the conditions
+
+`permissionsFor` and the `/me` document of [`060-auth.md`](060-auth.md) AU6
+report the conditions beside the flat list. The list itself is unchanged, and
+it still names every permission held in any form. A client then never draws an
+action the server will refuse. The conditions are advisory like the list:
+
+```json
+{
+  "permissions": ["lead.read", "lead.reconcile_crm", "queue_item.act"],
+  "conditions": {
+    "lead.reconcile_crm": [["owner"]],
+    "queue_item.act": [["owner"], ["assigned"]]
+  }
+}
+```
+
+#### The tenant stays a scope
+
+The tenant comes from the session (RB10). Conditions narrow inside it and
+never widen it. An object in another tenant is refused with
+`scope_not_contained`, whatever its conditions say. A list's own tenant
+filter is unchanged by this rule.
+
 ## The artifacts
 
 Per PC3, under [`contracts/rbac/`](../contracts/rbac/):
 
-- **`model.schema.json`**: permission, role, grant and scope shapes.
-- **`decisions.json`**: a set of grants, then a list of checks, each with the
-  grant it is made in and the decision it expects. One corpus judges every
-  implementation, which is why RB7 requires a pure function.
+- **`model.schema.json`**: permission, role, condition, grant and scope
+  shapes.
+- **`decisions.json`**: a set of grants, declared conditions, objects and a
+  fixed `now`, then a list of checks. Each check names the grant it is made
+  in and the decision it expects. One corpus judges every implementation,
+  which is why RB7 requires a pure function.
 
 ## Decisions
 
@@ -451,3 +624,21 @@ Per PC3, under [`contracts/rbac/`](../contracts/rbac/):
   put in front of. The call site that wrote it forgot to name a permission.
   Both operations refuse the empty list with a reason the caller can read
   (RB7).
+- **Ownership as a grant scope**. A grant per person's set of records would
+  make ownership a scope. RB6 gives a session one grant, so a setter scoped to
+  their own records would lose sight of everything else. RB10 already places
+  ownership on the row, and RB11 decides it there.
+- **A permission that waives another's restriction**, such as
+  `lead.act_any`. A permission never grants or widens another (RB6), and this
+  one would exist only to do that.
+- **An expression language**, such as CEL or OPA. A role is read at a glance
+  or it is not reviewed. A closed operator set with OR-of-ANDs covers
+  ownership, assignment, membership and time windows that differ by role
+  (RB11).
+- **NOT in a condition group**. RB6 has no negative grants, and a negated
+  condition is a negative grant inside a role.
+- **Every list filtered in the query, as the rule**. A query predicate is data
+  retrieval, and access control is the object check alone. The object check
+  is correct without any predicate, and most lists are bounded and check each
+  row. `constraint` is an optional optimization for the lists that page or
+  count, and it agrees with the object check (RB11).

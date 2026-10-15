@@ -1,7 +1,7 @@
 {
   "contract": "rbac",
   "schemaVersion": 1,
-  "description": "The decision corpus for standards/070-rbac.md \u2014 the artifact that makes a polyglot authorization standard enforceable from one source. An implementation loads 'roles', 'scopeContainment' and 'grants', then evaluates every case in 'checks' and either reproduces each expected decision or names the case it failed. Every check states the 'activeGrant' it is made in: a session acts in exactly one grant and the effective permission set is that grant's role's set, so the active grant is an argument like the subject, the permission and the scope (RB5, RB6). No running service and no network: the corpus is data and check() is a pure function of its arguments, which is what RB7 requires and why it requires it. A denied check states the 'denial' it expects, one of the six reasons RB8 names, and an implementation reproduces that too.",
+  "description": "The decision corpus for standards/070-rbac.md \u2014 the artifact that makes a polyglot authorization standard enforceable from one source. An implementation loads 'roles', 'scopeContainment' and 'grants', then evaluates every case in 'checks' and either reproduces each expected decision or names the case it failed. Every check states the 'activeGrant' it is made in: a session acts in exactly one grant and the effective permission set is that grant's role's set, so the active grant is an argument like the subject, the permission and the scope (RB5, RB6). No running service and no network: the corpus is data and check() is a pure function of its arguments, which is what RB7 requires and why it requires it. A denied check states the 'denial' it expects, one of the eight reasons RB8 names, and an implementation reproduces that too. A check naming an 'object' is the object check of RB7 and RB11: the object is the fixture's 'objects' entry of that id, and 'now' is the fixture's 'now', both passed as arguments. A 'constraint' case states the predicate constraint() returns and the 'rows' it is held to: the object check over those rows allows exactly the rows the expectation lists, so the two agree by construction of the case.",
   "fixture": {
     "permissions": [
       "invoice.read",
@@ -10,7 +10,11 @@
       "user.invite",
       "user.remove",
       "report.read",
-      "report.export"
+      "report.export",
+      "lead.read",
+      "lead.review",
+      "lead.reconcile_crm",
+      "queue_item.act"
     ],
     "roles": [
       {
@@ -56,6 +60,50 @@
         "permissions": [
           "report.read",
           "report.export"
+        ]
+      },
+      {
+        "name": "setter",
+        "origin": "system",
+        "permissions": [
+          "lead.read",
+          "lead.review",
+          "lead.reconcile_crm",
+          "queue_item.act"
+        ],
+        "conditions": {
+          "lead.reconcile_crm": [
+            [
+              "owner"
+            ]
+          ],
+          "lead.review": [
+            [
+              "owner",
+              {
+                "name": "recent",
+                "parameter": "P5D"
+              }
+            ]
+          ],
+          "queue_item.act": [
+            [
+              "owner"
+            ],
+            [
+              "assigned"
+            ]
+          ]
+        }
+      },
+      {
+        "name": "lead_admin",
+        "origin": "system",
+        "permissions": [
+          "lead.read",
+          "lead.review",
+          "lead.reconcile_crm",
+          "queue_item.act"
         ]
       }
     ],
@@ -111,8 +159,143 @@
         "subject": "usr_fay",
         "role": "regional_auditor",
         "scope": "tenant:acme"
+      },
+      {
+        "subject": "usr_gil",
+        "role": "setter",
+        "scope": "tenant:acme"
+      },
+      {
+        "subject": "usr_hal",
+        "role": "lead_admin",
+        "scope": "tenant:acme"
       }
-    ]
+    ],
+    "conditions": [
+      {
+        "resource": "lead",
+        "name": "owner",
+        "property": "owner_id",
+        "operator": "equals_subject"
+      },
+      {
+        "resource": "lead",
+        "name": "recent",
+        "property": "created_at",
+        "operator": "within"
+      },
+      {
+        "resource": "queue_item",
+        "name": "owner",
+        "property": "owner_id",
+        "operator": "equals_subject"
+      },
+      {
+        "resource": "queue_item",
+        "name": "assigned",
+        "property": "assignee_ids",
+        "operator": "contains_subject"
+      }
+    ],
+    "now": "2026-10-15T12:00:00.000Z",
+    "objects": {
+      "description": "Objects an object check is decided against, by id. Each names its resource, the scope its row belongs to (RB10), and the properties the declared conditions read, as the handler's query selected them. A property that is null, absent or an empty set is empty.",
+      "lead_owned_recent": {
+        "resource": "lead",
+        "scope": "tenant:acme",
+        "properties": {
+          "owner_id": "usr_gil",
+          "created_at": "2026-10-13T12:00:00.000Z"
+        }
+      },
+      "lead_owned_on_the_boundary": {
+        "resource": "lead",
+        "scope": "tenant:acme",
+        "properties": {
+          "owner_id": "usr_gil",
+          "created_at": "2026-10-10T12:00:00.000Z"
+        }
+      },
+      "lead_owned_stale": {
+        "resource": "lead",
+        "scope": "tenant:acme",
+        "properties": {
+          "owner_id": "usr_gil",
+          "created_at": "2026-10-10T11:59:59.999Z"
+        }
+      },
+      "lead_other_owner_recent": {
+        "resource": "lead",
+        "scope": "tenant:acme",
+        "properties": {
+          "owner_id": "usr_ivy",
+          "created_at": "2026-10-14T12:00:00.000Z"
+        }
+      },
+      "lead_unowned": {
+        "resource": "lead",
+        "scope": "tenant:acme",
+        "properties": {
+          "owner_id": null,
+          "created_at": "2026-10-14T12:00:00.000Z"
+        }
+      },
+      "lead_owned_in_another_tenant": {
+        "resource": "lead",
+        "scope": "tenant:globex",
+        "properties": {
+          "owner_id": "usr_gil",
+          "created_at": "2026-10-14T12:00:00.000Z"
+        }
+      },
+      "queue_item_owned": {
+        "resource": "queue_item",
+        "scope": "tenant:acme",
+        "properties": {
+          "owner_id": "usr_gil",
+          "assignee_ids": []
+        }
+      },
+      "queue_item_assigned": {
+        "resource": "queue_item",
+        "scope": "tenant:acme",
+        "properties": {
+          "owner_id": "usr_ivy",
+          "assignee_ids": [
+            "usr_jo",
+            "usr_gil"
+          ]
+        }
+      },
+      "queue_item_assigned_alone": {
+        "resource": "queue_item",
+        "scope": "tenant:acme",
+        "properties": {
+          "owner_id": "usr_jo",
+          "assignee_ids": [
+            "usr_gil"
+          ]
+        }
+      },
+      "queue_item_assigned_elsewhere": {
+        "resource": "queue_item",
+        "scope": "tenant:acme",
+        "properties": {
+          "owner_id": "usr_ivy",
+          "assignee_ids": [
+            "usr_jo"
+          ]
+        }
+      },
+      "queue_item_unassigned": {
+        "resource": "queue_item",
+        "scope": "tenant:acme",
+        "properties": {
+          "owner_id": null,
+          "assignee_ids": []
+        }
+      }
+    }
   },
   "checks": [
     {
@@ -543,6 +726,489 @@
         "denial": "no_permissions_requested"
       },
       "note": "every permission in an empty list is held, so the naive loop allows; the refusal is what the caller can see (RB7)"
+    },
+    {
+      "id": "a-single-condition-met-is-allowed",
+      "check": {
+        "subject": "usr_gil",
+        "activeGrant": {
+          "role": "setter",
+          "scope": "tenant:acme"
+        },
+        "permission": "lead.reconcile_crm",
+        "scope": "tenant:acme",
+        "object": "lead_owned_recent"
+      },
+      "expect": {
+        "allowed": true,
+        "reason": {
+          "role": "setter",
+          "scope": "tenant:acme"
+        }
+      },
+      "note": "setter holds lead.reconcile_crm when (owner), and usr_gil owns the lead. The decision names the grant and the role, as every allowance does (RB8, RB11)"
+    },
+    {
+      "id": "a-single-condition-not-met-is-denied",
+      "check": {
+        "subject": "usr_gil",
+        "activeGrant": {
+          "role": "setter",
+          "scope": "tenant:acme"
+        },
+        "permission": "lead.reconcile_crm",
+        "scope": "tenant:acme",
+        "object": "lead_other_owner_recent"
+      },
+      "expect": {
+        "allowed": false,
+        "denial": "condition_not_met"
+      },
+      "note": "the same entry on a lead usr_ivy owns. The role holds the permission, so the denial is condition_not_met and never permission_not_held (RB8, RB11)"
+    },
+    {
+      "id": "an-all-of-group-with-one-part-failing-is-denied",
+      "check": {
+        "subject": "usr_gil",
+        "activeGrant": {
+          "role": "setter",
+          "scope": "tenant:acme"
+        },
+        "permission": "lead.review",
+        "scope": "tenant:acme",
+        "object": "lead_other_owner_recent"
+      },
+      "expect": {
+        "allowed": false,
+        "denial": "condition_not_met"
+      },
+      "note": "lead.review when (owner and recent(P5D)). The lead is recent and someone else's, so one part of the only group fails and the group fails with it (RB11)"
+    },
+    {
+      "id": "any-of-groups-allow-when-only-the-second-holds",
+      "check": {
+        "subject": "usr_gil",
+        "activeGrant": {
+          "role": "setter",
+          "scope": "tenant:acme"
+        },
+        "permission": "queue_item.act",
+        "scope": "tenant:acme",
+        "object": "queue_item_assigned"
+      },
+      "expect": {
+        "allowed": true,
+        "reason": {
+          "role": "setter",
+          "scope": "tenant:acme"
+        }
+      },
+      "note": "queue_item.act when (owner) or (assigned). usr_ivy owns the item and usr_gil is among its assignees, so the first group fails and the second holds. An implementation that reads only the first group fails here (RB11)"
+    },
+    {
+      "id": "contains-subject-with-the-caller-in-the-set-is-allowed",
+      "check": {
+        "subject": "usr_gil",
+        "activeGrant": {
+          "role": "setter",
+          "scope": "tenant:acme"
+        },
+        "permission": "queue_item.act",
+        "scope": "tenant:acme",
+        "object": "queue_item_assigned_alone"
+      },
+      "expect": {
+        "allowed": true,
+        "reason": {
+          "role": "setter",
+          "scope": "tenant:acme"
+        }
+      },
+      "note": "assignee_ids is [usr_gil] and usr_jo owns the item, so contains_subject alone decides it (RB11)"
+    },
+    {
+      "id": "contains-subject-with-the-caller-out-of-the-set-is-denied",
+      "check": {
+        "subject": "usr_gil",
+        "activeGrant": {
+          "role": "setter",
+          "scope": "tenant:acme"
+        },
+        "permission": "queue_item.act",
+        "scope": "tenant:acme",
+        "object": "queue_item_assigned_elsewhere"
+      },
+      "expect": {
+        "allowed": false,
+        "denial": "condition_not_met"
+      },
+      "note": "assignee_ids is [usr_jo] and the owner is usr_ivy; neither group holds (RB11)"
+    },
+    {
+      "id": "within-inside-the-window-is-allowed",
+      "check": {
+        "subject": "usr_gil",
+        "activeGrant": {
+          "role": "setter",
+          "scope": "tenant:acme"
+        },
+        "permission": "lead.review",
+        "scope": "tenant:acme",
+        "object": "lead_owned_recent"
+      },
+      "expect": {
+        "allowed": true,
+        "reason": {
+          "role": "setter",
+          "scope": "tenant:acme"
+        }
+      },
+      "note": "created two days before the fixture's now, inside P5D, and owned by the caller, so the one group holds (RB11)"
+    },
+    {
+      "id": "within-on-the-boundary-is-allowed",
+      "check": {
+        "subject": "usr_gil",
+        "activeGrant": {
+          "role": "setter",
+          "scope": "tenant:acme"
+        },
+        "permission": "lead.review",
+        "scope": "tenant:acme",
+        "object": "lead_owned_on_the_boundary"
+      },
+      "expect": {
+        "allowed": true,
+        "reason": {
+          "role": "setter",
+          "scope": "tenant:acme"
+        }
+      },
+      "note": "created exactly P5D before now. No older than the duration includes the boundary, so the instant now minus P5D is inside the window (RB11)"
+    },
+    {
+      "id": "within-outside-the-window-is-denied",
+      "check": {
+        "subject": "usr_gil",
+        "activeGrant": {
+          "role": "setter",
+          "scope": "tenant:acme"
+        },
+        "permission": "lead.review",
+        "scope": "tenant:acme",
+        "object": "lead_owned_stale"
+      },
+      "expect": {
+        "allowed": false,
+        "denial": "condition_not_met"
+      },
+      "note": "created one millisecond before the boundary. The caller owns the lead, so recent(P5D) is the part that fails (RB11)"
+    },
+    {
+      "id": "an-empty-property-fails-equals-subject",
+      "check": {
+        "subject": "usr_gil",
+        "activeGrant": {
+          "role": "setter",
+          "scope": "tenant:acme"
+        },
+        "permission": "lead.reconcile_crm",
+        "scope": "tenant:acme",
+        "object": "lead_unowned"
+      },
+      "expect": {
+        "allowed": false,
+        "denial": "condition_not_met"
+      },
+      "note": "owner_id is null. An empty property fails every operator, so a lead nobody owns is no setter's (RB11)"
+    },
+    {
+      "id": "an-empty-set-fails-contains-subject",
+      "check": {
+        "subject": "usr_gil",
+        "activeGrant": {
+          "role": "setter",
+          "scope": "tenant:acme"
+        },
+        "permission": "queue_item.act",
+        "scope": "tenant:acme",
+        "object": "queue_item_unassigned"
+      },
+      "expect": {
+        "allowed": false,
+        "denial": "condition_not_met"
+      },
+      "note": "owner_id is null and assignee_ids is empty, so both groups fail on an empty property (RB11)"
+    },
+    {
+      "id": "a-conditional-permission-checked-without-an-object-fails-closed",
+      "check": {
+        "subject": "usr_gil",
+        "activeGrant": {
+          "role": "setter",
+          "scope": "tenant:acme"
+        },
+        "permission": "lead.reconcile_crm",
+        "scope": "tenant:acme"
+      },
+      "expect": {
+        "allowed": false,
+        "denial": "object_required"
+      },
+      "note": "the existing call without an object, against an entry that carries conditions. Nothing can be said of an object the check was not given, so it refuses (RB8, RB11)"
+    },
+    {
+      "id": "an-unconditional-holder-is-allowed-on-any-object",
+      "check": {
+        "subject": "usr_hal",
+        "activeGrant": {
+          "role": "lead_admin",
+          "scope": "tenant:acme"
+        },
+        "permission": "lead.reconcile_crm",
+        "scope": "tenant:acme",
+        "object": "lead_other_owner_recent"
+      },
+      "expect": {
+        "allowed": true,
+        "reason": {
+          "role": "lead_admin",
+          "scope": "tenant:acme"
+        }
+      },
+      "note": "lead_admin holds lead.reconcile_crm with no conditions, so the object's owner does not matter. The same permission on the same object is denied to usr_gil as setter (RB11)"
+    },
+    {
+      "id": "an-unconditional-holder-is-allowed-without-an-object",
+      "check": {
+        "subject": "usr_hal",
+        "activeGrant": {
+          "role": "lead_admin",
+          "scope": "tenant:acme"
+        },
+        "permission": "lead.reconcile_crm",
+        "scope": "tenant:acme"
+      },
+      "expect": {
+        "allowed": true,
+        "reason": {
+          "role": "lead_admin",
+          "scope": "tenant:acme"
+        }
+      },
+      "note": "an unconditional entry answers the existing call exactly as before conditions existed; only a conditional entry needs the object (RB11)"
+    },
+    {
+      "id": "an-object-in-another-tenant-is-denied-whatever-its-conditions",
+      "check": {
+        "subject": "usr_gil",
+        "activeGrant": {
+          "role": "setter",
+          "scope": "tenant:acme"
+        },
+        "permission": "lead.reconcile_crm",
+        "scope": "tenant:acme",
+        "object": "lead_owned_in_another_tenant"
+      },
+      "expect": {
+        "allowed": false,
+        "denial": "scope_not_contained"
+      },
+      "note": "the caller owns the lead, and the lead's row is in tenant:globex. The object check compares the object's tenant with the session's before any condition, and a condition never widens the scope (RB10, RB11)"
+    },
+    {
+      "id": "permissionsFor-reports-conditions-beside-the-flat-list",
+      "operation": "permissionsFor",
+      "check": {
+        "subject": "usr_gil",
+        "activeGrant": {
+          "role": "setter",
+          "scope": "tenant:acme"
+        },
+        "scope": "tenant:acme"
+      },
+      "expect": {
+        "permissions": [
+          "lead.read",
+          "lead.reconcile_crm",
+          "lead.review",
+          "queue_item.act"
+        ],
+        "conditions": {
+          "lead.reconcile_crm": [
+            [
+              "owner"
+            ]
+          ],
+          "lead.review": [
+            [
+              "owner",
+              {
+                "name": "recent",
+                "parameter": "P5D"
+              }
+            ]
+          ],
+          "queue_item.act": [
+            [
+              "owner"
+            ],
+            [
+              "assigned"
+            ]
+          ]
+        }
+      },
+      "note": "the flat list is unchanged and still names every permission held in any form; the conditions sit beside it, by permission, so a client never draws an action the server refuses. An unconditional role reports no conditions (RB7, RB11)"
+    },
+    {
+      "id": "constraint-for-an-unconditional-entry-is-unconditional",
+      "operation": "constraint",
+      "check": {
+        "subject": "usr_hal",
+        "activeGrant": {
+          "role": "lead_admin",
+          "scope": "tenant:acme"
+        },
+        "permission": "queue_item.act",
+        "scope": "tenant:acme",
+        "rows": [
+          "queue_item_owned",
+          "queue_item_assigned",
+          "queue_item_assigned_alone",
+          "queue_item_assigned_elsewhere",
+          "queue_item_unassigned"
+        ]
+      },
+      "expect": {
+        "constraint": {
+          "kind": "unconditional"
+        },
+        "rows": [
+          "queue_item_owned",
+          "queue_item_assigned",
+          "queue_item_assigned_alone",
+          "queue_item_assigned_elsewhere",
+          "queue_item_unassigned"
+        ]
+      },
+      "note": "lead_admin holds queue_item.act with no conditions, so the predicate adds nothing and the object check allows every row (RB11)"
+    },
+    {
+      "id": "constraint-for-any-of-groups-is-their-predicate",
+      "operation": "constraint",
+      "check": {
+        "subject": "usr_gil",
+        "activeGrant": {
+          "role": "setter",
+          "scope": "tenant:acme"
+        },
+        "permission": "queue_item.act",
+        "scope": "tenant:acme",
+        "rows": [
+          "queue_item_owned",
+          "queue_item_assigned",
+          "queue_item_assigned_alone",
+          "queue_item_assigned_elsewhere",
+          "queue_item_unassigned"
+        ]
+      },
+      "expect": {
+        "constraint": {
+          "kind": "conditions",
+          "groups": [
+            [
+              {
+                "property": "owner_id",
+                "operator": "equals_subject"
+              }
+            ],
+            [
+              {
+                "property": "assignee_ids",
+                "operator": "contains_subject"
+              }
+            ]
+          ]
+        },
+        "rows": [
+          "queue_item_owned",
+          "queue_item_assigned",
+          "queue_item_assigned_alone"
+        ]
+      },
+      "note": "(owner) or (assigned) as an OR-of-ANDs over the declared properties, bound by the store to the subject. Applied to the rows it keeps exactly those the object check allows, and the empty ones fail in both (RB11)"
+    },
+    {
+      "id": "constraint-for-an-all-of-group-carries-the-parameter",
+      "operation": "constraint",
+      "check": {
+        "subject": "usr_gil",
+        "activeGrant": {
+          "role": "setter",
+          "scope": "tenant:acme"
+        },
+        "permission": "lead.review",
+        "scope": "tenant:acme",
+        "rows": [
+          "lead_owned_recent",
+          "lead_owned_on_the_boundary",
+          "lead_owned_stale",
+          "lead_other_owner_recent",
+          "lead_unowned"
+        ]
+      },
+      "expect": {
+        "constraint": {
+          "kind": "conditions",
+          "groups": [
+            [
+              {
+                "property": "owner_id",
+                "operator": "equals_subject"
+              },
+              {
+                "property": "created_at",
+                "operator": "within",
+                "parameter": "P5D"
+              }
+            ]
+          ]
+        },
+        "rows": [
+          "lead_owned_recent",
+          "lead_owned_on_the_boundary"
+        ]
+      },
+      "note": "(owner and recent(P5D)), bound by the store to the subject and the fixture's now. The boundary row is kept by both, and the stale and foreign rows by neither (RB11)"
+    },
+    {
+      "id": "constraint-for-a-permission-not-held-is-deny",
+      "operation": "constraint",
+      "check": {
+        "subject": "usr_ana",
+        "activeGrant": {
+          "role": "viewer",
+          "scope": "tenant:acme"
+        },
+        "permission": "queue_item.act",
+        "scope": "tenant:acme",
+        "rows": [
+          "queue_item_owned",
+          "queue_item_assigned",
+          "queue_item_assigned_alone",
+          "queue_item_assigned_elsewhere",
+          "queue_item_unassigned"
+        ]
+      },
+      "expect": {
+        "constraint": {
+          "kind": "deny"
+        },
+        "rows": [],
+        "denial": "permission_not_held"
+      },
+      "note": "viewer holds queue_item.act in no form. The predicate matches nothing and the object check allows no row, for the reason the route step refuses (RB11)"
     }
   ],
   "rejections": [
@@ -627,6 +1293,30 @@
         "refused": false
       },
       "note": "'global:acme' is a scope of type 'global' and model.schema.json's pattern admits it; an implementation is never stricter than the schema, because a shape one module refuses and another accepts is the divergence one schema exists to prevent (RB5)"
+    },
+    {
+      "id": "role-naming-an-undeclared-condition-is-refused",
+      "stimulus": "store a role holding lead.review when (assigned), where assigned is declared on queue_item and not on lead",
+      "expect": {
+        "refused": true
+      },
+      "note": "a condition is declared on one resource and restricts only that resource's permissions. Accepted, it names a property the object does not carry, and the entry decides nothing its author read it to (RB3, RB11)"
+    },
+    {
+      "id": "role-with-a-parameter-that-does-not-fit-its-operator-is-refused",
+      "stimulus": "store a role holding lead.reconcile_crm when (owner(P5D)), then one holding lead.review when (recent) with no duration, then one with recent('5 days')",
+      "expect": {
+        "refused": true
+      },
+      "note": "within takes exactly one ISO 8601 duration and equals_subject and contains_subject take none. A parameter is validated against the declaration's operator when the role is written (RB3, RB11)"
+    },
+    {
+      "id": "role-holding-a-permission-twice-is-refused",
+      "stimulus": "store a role whose permissions list lead.review twice, once to be held unconditionally and once with (owner)",
+      "expect": {
+        "refused": true
+      },
+      "note": "a role holds a permission once, unconditionally or with its groups. Two entries would make the decision depend on which one was read, the evaluation-order problem RB6 refuses negative grants for (RB3)"
     }
   ]
 }

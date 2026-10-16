@@ -18,8 +18,9 @@ name: ci-conformance
 # where it is not available, a key that does not exist — produces a run with
 # zero jobs that concludes failure in the same second it starts, so no check
 # ever reports on the head, and a merge waiting on ci-ok waits on nothing.
-# The catalog lints its own files this way in ci.yml; this is the same
-# instrument pointed at the caller.
+# shellcheck runs inside that step over every run: script, the way the
+# catalog lints its own files in ci.yml; this is the same instrument pointed
+# at the caller.
 #
 # check-catalog-loops, check-version-stamp-shared and check-go-module-version
 # are deliberately absent: they inspect this repo's own shared jobs, so they
@@ -164,12 +165,16 @@ jobs:
       # a refused file is the failure nothing downstream can see — zero jobs,
       # no logs, no check on the head.
       #
-      # shellcheck and pyflakes are off here. Both are questions about the
-      # scripts inside run: steps rather than about the file, and the
-      # catalog's own lint job keeps shellcheck on for the catalog's files.
-      # Turned on fleet-wide they would redden callers for findings that do
-      # not stop a run, under a job whose other steps are about whether the
-      # pipeline is the standard's. That is a separate gate to argue for.
+      # shellcheck runs too, over the script inside every run: step, at every
+      # severity, as the catalog's own lint job runs it. A run: script is code
+      # that executes on every pull request, and the findings it carries —
+      # a variable split on spaces, a counter nothing reads, a keyword where
+      # a word was meant — are the ones that work until the input changes.
+      # The shellcheck is the one the pinned image carries, so a finding is
+      # the same locally and here.
+      #
+      # pyflakes stays off. It reads the steps whose shell is python, which
+      # some callers carry, and gating them is its own decision.
       #
       # By digest with the version in band, as job-secret-scan pins gitleaks
       # (085 SB1). actionlint discovers the project from the working
@@ -182,7 +187,7 @@ jobs:
           ACTIONLINT_IMAGE: rhysd/actionlint@sha256:887a259a5a534f3c4f36cb02dca341673c6089431057242cdc931e9f133147e9 # v1.7.7
         run: >
           docker run --rm -v "$PWD/.ci-root/$REPO:/repo" --workdir /repo
-          "$ACTIONLINT_IMAGE" -color -shellcheck= -pyflakes=
+          "$ACTIONLINT_IMAGE" -color -pyflakes=
         continue-on-error: ${{ inputs.warn_only }}
 
 

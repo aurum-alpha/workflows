@@ -118,9 +118,8 @@ jobs:
         run: tools/check-go-module-version
 
       # The go-caches action runs inside every job-go-*.yml, and those jobs
-      # never run here. Its script installs Go into a directory other jobs
-      # are reading, so the lock and the atomic rename are tested where a
-      # break would otherwise first show up as red Go jobs across the fleet.
+      # never run here. A break in it would first show up as red or slow Go
+      # jobs across the fleet, so its script is tested where it is written.
       - name: Test the go-caches script
         run: tools/test-go-caches
 

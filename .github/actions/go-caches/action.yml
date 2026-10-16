@@ -1,37 +1,37 @@
 # Portfolio capability: where a Go job keeps its caches. Every job-go-*.yml
 # runs this before actions/setup-go.
 #
-# On a runner whose controller shares a Go tool cache and a module cache
-# across the runners on one host (GHR_GO_TOOLCACHE, GHR_GOMODCACHE), Go is
-# installed into the shared tool cache once per host and version, under a lock,
-# and the module cache is the shared one. Everywhere else, both caches go under
-# runner.temp as before. The go-caches script beside this file says why setup-go
-# cannot be left to install into a shared directory itself.
+# Both caches go under runner.temp. On a runner the controller has put behind a
+# LAN Go module proxy (GHR_GOPROXY=1), the job skips actions/cache for the
+# module cache; the go-caches script beside this file says why.
 #
 # A composite action rather than a step copied into seven jobs, for the reason
 # ci-ok is one: the body had no business differing.
 name: go-caches
-description: Put the Go module and build caches in place, and install Go into a shared tool cache where the runner has one.
+description: Put the Go module and build caches under runner.temp, and say whether the job restores the module cache.
 
 inputs:
+  # Read by nothing since the action stopped installing Go. It stays declared
+  # because job-go-*.yml at an earlier catalog commit still pass it, and an
+  # undeclared input is a warning on every Go job they run. The job files at
+  # this commit no longer pass it.
   workdir:
-    description: The directory holding go.mod, as the calling job's workdir input.
+    description: Unused. Accepted from callers at an earlier catalog commit.
     required: false
     default: "."
 
 outputs:
-  shared-mod:
+  skip-mod-cache:
     description: >-
-      "true" when GOMODCACHE is the runner's shared module cache. Callers skip
-      actions/cache for the module cache then: there is nothing to restore, and
-      a save would only copy the shared cache into GitHub's.
-    value: ${{ steps.caches.outputs.shared-mod }}
+      "true" when the runner fetches modules through a LAN Go proxy. Callers
+      skip actions/cache for the module cache then, restore and save alike:
+      the proxy serves only the modules a job needs, faster than the whole
+      cache restores.
+    value: ${{ steps.caches.outputs.skip-mod-cache }}
 
 runs:
   using: composite
   steps:
     - id: caches
       shell: bash
-      env:
-        GO_MOD_FILE: ${{ inputs.workdir }}/go.mod
       run: '"${GITHUB_ACTION_PATH}/go-caches"'

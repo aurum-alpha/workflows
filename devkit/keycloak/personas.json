@@ -1,5 +1,5 @@
 {
-  "$comment": "What each persona IS in the application, keyed by the username realm-template.json gives it. The realm says who the fifteen people are at the provider; this says what a product's seed writes for each of them, so 'tenant-a-admin' means the same rows in every product. tools/render-devkit joins the two into dev/personas.json and refuses a username named in one file and not the other. `user` is whether the application holds a row for the identity at all (AU6: the provider admitting a person and the application knowing them are different facts). `grants` are {tenant, role_class}: tenant is the symbolic label a product maps to its own tenant id, or null for the global scope; role_class is admin, operator or member, and a product maps each onto its own role names (070 RB3). A product without tenants reads only the global grants and ignores the rest.",
+  "$comment": "What each persona IS in the application, keyed by the username realm-template.json gives it. The realm says who the seventeen people are at the provider; this says what a product's seed writes for each of them, so 'tenant-a-admin' means the same rows in every product. tools/render-devkit joins the two into dev/personas.json and refuses a username named in one file and not the other. `user` is whether the application holds a row for the identity at all (AU6: the provider admitting a person and the application knowing them are different facts). `grants` are {tenant, role_class}: tenant is the symbolic label a product maps to its own tenant id, or null for the global scope; role_class is admin, operator or member, and a product maps each onto its own role names (070 RB3). A product without tenants reads only the global grants and ignores the rest.",
   "personas": {
     "platform-admin": {
       "application": { "user": true, "grants": [ { "tenant": null, "role_class": "admin" } ] },
@@ -60,6 +60,14 @@
     "user-two": {
       "application": { "user": true, "grants": [ { "tenant": null, "role_class": "member" } ] },
       "exercises": "A second plain account, so a product with no tenants can show one person's data being another's to nobody."
+    },
+    "user-three": {
+      "application": { "user": true, "grants": [ { "tenant": null, "role_class": "member" } ] },
+      "exercises": "A third plain account: someone the product serves rather than staffs, so a journey that writes data never shares a person with one that asserts an empty start."
+    },
+    "user-four": {
+      "application": { "user": true, "grants": [ { "tenant": null, "role_class": "member" } ] },
+      "exercises": "A fourth plain account, for a product whose end-user journeys need a person who has done nothing yet beside three who have."
     }
   }
 }

@@ -164,7 +164,7 @@ here, and not to the renderer, fails at the render rather than at the first
 
 | File | What it is |
 |---|---|
-| `keycloak/realm-template.json` | The realm import document: three clients, the access gate, and fifteen personas |
+| `keycloak/realm-template.json` | The realm import document: three clients, the access gate, and seventeen personas |
 | `keycloak/personas.json` | What each persona is in the application, keyed by username; joined with the realm into the rendered `dev/personas.json` |
 | `nginx/edge.conf` | The edge at offset +0, and the only routing table |
 | `oauth2-proxy/oauth2-proxy.cfg` | The relying party behind `auth_request`. Cookie name and `Secure` come from the profile overlay |
@@ -273,7 +273,7 @@ idles out after 28800, and it ends absolutely at 604800. `duplicateEmailsAllowed
 is false and `verifyEmail` is true, because AU3 keys provisioning on an address
 that is unique and verified.
 
-## The fifteen personas
+## The seventeen personas
 
 Subject ids are fixed in the file. A test that logs in as a persona and asserts
 on a subject cannot have that subject change per machine. Every persona
@@ -300,13 +300,15 @@ product. A persona named in one file and not the other refuses to render.
 | `tenant-b-member` | `aa000013-…-000000000013` | yes | member in b | The ordinary member of tenant b, reaching nothing in a |
 | `user-one` | `aa000014-…-000000000014` | yes | member at global | A plain account, for a product with no tenants |
 | `user-two` | `aa000015-…-000000000015` | yes | member at global | A second plain account, so one person's data can be shown to be nobody else's |
+| `user-three` | `aa000016-…-000000000016` | yes | member at global | A third plain account, so a journey that writes data never shares a person with one that asserts an empty start |
+| `user-four` | `aa000017-…-000000000017` | yes | member at global | A fourth plain account, a person who has done nothing yet beside three who have |
 
 Personas 7 and 8 hold the role so that each trips its own refusal and not the
 gate's. `admin`, `operator` and `member` are role classes, and a product maps
 each onto its own role names (070 RB3); `a` and `b` are tenant labels a product
 maps onto its own tenant ids, and `global` is `global`. A product with no
 tenants reads the global grants and ignores the rest: its people are
-`user-one`, `user-two` and `platform-admin`, and the tenant personas are
+`user-one` to `user-four` and `platform-admin`, and the tenant personas are
 identities it never knows.
 
 ## Browser-facing against container-facing

@@ -580,7 +580,10 @@ def routes_text(routes: list[dict], template: str) -> str:
                   f"        proxy_pass                         http://{upstream};",
                   "        proxy_set_header Upgrade           $http_upgrade;",
                   "        proxy_set_header Connection        $connection_upgrade;",
-                  "        proxy_set_header Host              $host;",
+                  # $http_host and not $host: the edge listens on a port
+                  # block, and $host drops the port, so an application that
+                  # builds a URL from its Host header points at :80.
+                  "        proxy_set_header Host              $http_host;",
                   "        proxy_set_header X-Real-IP         $remote_addr;",
                   "        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;",
                   "        proxy_set_header X-Forwarded-Proto $scheme;"]

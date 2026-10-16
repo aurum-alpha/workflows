@@ -625,6 +625,44 @@
       }
     },
     {
+      "id": "aa000016-0000-4000-8000-000000000016",
+      "username": "user-three",
+      "email": "user-three@__REPO__.test",
+      "firstName": "User",
+      "lastName": "Three",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "devkit-local-only",
+          "temporary": false
+        }
+      ],
+      "clientRoles": {
+        "__REPO__": ["access"]
+      }
+    },
+    {
+      "id": "aa000017-0000-4000-8000-000000000017",
+      "username": "user-four",
+      "email": "user-four@__REPO__.test",
+      "firstName": "User",
+      "lastName": "Four",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "devkit-local-only",
+          "temporary": false
+        }
+      ],
+      "clientRoles": {
+        "__REPO__": ["access"]
+      }
+    },
+    {
       "username": "service-account-__REPO__-admin",
       "enabled": true,
       "emailVerified": true,

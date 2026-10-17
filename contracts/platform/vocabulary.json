@@ -48,6 +48,12 @@
       "ts": "tenancy",
       "php": "Platform\\Tenancy"
     },
+    "audit": {
+      "go": "audit",
+      "ts": "audit",
+      "php": "Platform\\Audit",
+      "note": "080's envelope, recorder port and SQL store. A leaf: it depends on no other package, so rbac and auth/keycloak can record through it."
+    },
     "log": {
       "go": "log",
       "ts": "log",
@@ -220,11 +226,30 @@
       ]
     },
     "audit_actions": {
-      "rule": "080 AE3. Shapes are audit/event.schema.json's.",
+      "rule": "080 AE3. The reserved auth.* set, complete; every other action is a product's declared permission. Shapes are audit/event.schema.json's.",
       "values": [
         "auth.login",
+        "auth.login_failed",
+        "auth.logout",
+        "auth.session_revoked",
         "auth.access_denied",
         "auth.grant_activated"
+      ]
+    },
+    "audit_outcomes": {
+      "rule": "080 AE2.",
+      "values": [
+        "success",
+        "failure"
+      ]
+    },
+    "audit_actor_types": {
+      "rule": "080 AE2. An actor's type. A target's type is the entity's own name and is not enumerated.",
+      "values": [
+        "user",
+        "service",
+        "system",
+        "anonymous"
       ]
     },
     "authorization_claims_never_read": {
@@ -353,7 +378,7 @@
       "type": "the ScopeNames port, or absent; absent, the grants view carries no scope_name"
     },
     "audit": {
-      "type": "the AuditSink; the no-op when absent"
+      "type": "the AuditSink; the no-op when absent. A product builds one from a Recorder through the audit package's identity adapter"
     },
     "choosePath": {
       "type": "a client path, or absent"
@@ -389,6 +414,12 @@
       "login",
       "accessDenied",
       "grantActivated"
+    ],
+    "Recorder": [
+      "record"
+    ],
+    "Names": [
+      "display"
     ],
     "GrantStore": [
       "grantsFor"
@@ -476,6 +507,14 @@
       "SwitchHandler",
       "SwitchResult"
     ],
+    "audit": [
+      "AuditEvent",
+      "AuditPrincipal",
+      "Change",
+      "AuditDecision",
+      "Recorder",
+      "Names"
+    ],
     "auth/binding": [
       "Routes"
     ]
@@ -501,6 +540,11 @@
       "grant",
       "revoke"
     ],
+    "Onboarding": [
+      "invite",
+      "remove",
+      "changeLoginEmail"
+    ],
     "RoleAdministrator": [
       "put",
       "delete",
@@ -517,6 +561,9 @@
     ],
     "Renderer": [
       "render"
+    ],
+    "Recorder": [
+      "record"
     ]
   }
 }

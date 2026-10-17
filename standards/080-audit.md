@@ -75,6 +75,7 @@ Every audit event is the same object, whatever produced it:
 | `trace_id`, `request_id`, `span_id` | The request that produced it, per OC2 and OC4, so an audit row joins to the logs of its own request. |
 | `changes` | Optional. What the act altered, as before/after per field. |
 | `reason` | Optional free text: the justification an administrator typed, or the decision reason from RBAC's RB8 on a refusal. |
+| `decision` | Optional. The permission the act was decided under and the capacity that satisfied it, per RB6 and RB8. |
 
 **`actor` and `target` are separate objects and neither is optional**. An
 audit table that fuses them into one `user_id` cannot say who granted the
@@ -114,6 +115,12 @@ user because that is what happened, and the impersonator is recorded because
 that is who is accountable. An impersonation feature whose audit rows do not
 distinguish the two is an accountability hole with a support ticket attached.
 
+**`decision` states the capacity an act was done in.** It carries the
+permission, the grant that satisfied it, and the scope the check asked about.
+Where RB11 decided it, it also carries the object and the condition. On a
+refusal it carries the denial instead of the grant. RB6 says an act names the
+capacity it was done in, and this member is where that name is queryable.
+
 ### AE3. The action names the permission that authorized it
 
 `action` is `resource.verb`, matching the RBAC permission format exactly:
@@ -143,7 +150,7 @@ standard owns, so that every product spells them identically:
 | `auth.login_failed` | Authentication was attempted and refused. `actor.type` is `anonymous`; the account that was aimed at is the `target`. |
 | `auth.logout` | The user ended the session. |
 | `auth.session_revoked` | The session was ended by something other than the user: back-channel logout, an administrator, an expiry. |
-| `auth.access_denied` | An authenticated subject was refused, including [`060-auth.md`](060-auth.md) AU6's unknown-subject refusal. |
+| `auth.access_denied` | An authenticated subject was refused with no permission in play: [`060-auth.md`](060-auth.md) AU6's unknown subject, a host the session is not in, a session with no grant. |
 | `auth.grant_activated` | A session bound to a grant, or changed which grant it acts in. It carries the grant activated, and the previous grant where there was one. |
 
 **`auth.grant_activated` is one action for both acts**. There is no second
@@ -156,6 +163,11 @@ change* a query that needs a union.
 
 A product does not add to this namespace; `auth.*` is this standard's. Everything
 else a product audits is one of its own declared permissions.
+
+**A refusal by a permission guard is recorded under that permission.** The
+outcome is `failure`, and `reason` and `decision.denial` carry the RB8
+denial. `auth.access_denied` is never used for it. One query over
+a permission then returns what was done under it and what was refused.
 
 ### AE4. An audit event is self-contained, immutable, and outlives its subject
 
@@ -319,11 +331,52 @@ error return, or a queue publish nobody confirms all produce a trail with holes
 that nothing reports. A trail with unreported holes is worse than no trail,
 because it is trusted.
 
+### AE9. An audit event is produced by the service, and a client produces none
+
+A browser or a native client never writes an audit event. It has no clock the
+service trusts, no actor it can prove, and no transaction to share. The service
+records the act at the moment it performs it, with the actor it authenticated.
+A client error report ([`090-web-client.md`](090-web-client.md) WC5) is
+telemetry with a closed shape, and it is not an audit event. No route accepts
+an audit event from a caller. A history screen renders what a service route
+reads from the audit store, under a declared permission.
+
+### AE10. `actor.ip` is the socket peer unless a declared proxy forwarded it
+
+A forwarding header is the caller's to write unless a trusted hop wrote it.
+The service reads one only when the connection peer is a proxy the product
+declared. Otherwise `actor.ip` is the address the connection arrived from. The
+declaration names the header and the proxy addresses, in configuration and
+never in code. The same posture governs the client-error limiter's key under
+WC5.
+
 ## The artifacts
 
 Per PC3, under [`contracts/audit/`](../contracts/audit/):
 
 - **`event.schema.json`**: the AE2 event as JSON Schema 2020-12, carrying the
-  AE3 action pattern, the reserved `auth.*` set, and AE2's conditional rules.
+  AE3 action pattern, the reserved `auth.*` set, the `decision` block, and
+  AE2's conditional rules.
 - **`corpus.json`**: `validity` cases for whole events, `floor` cases per AE5
   category, and `redaction` cases for AE7's erasure.
+- **`table.postgres.sql`, `table.mysql.sql`, `table.sqlite.sql`**: the table
+  every product applies, one column per AE2 member, with the AE6 grant block
+  where the engine has roles. A product's migration carries the file verbatim.
+
+## Decisions
+
+- **A guard refusal under `auth.access_denied`.** One reserved action for every
+  refusal was weighed and not taken. A refusal of `invoice.void` would then not
+  be found by a query over `invoice.void`. The permission vocabulary and the
+  action vocabulary would fork on the rows that matter most.
+- **The capacity as text in `reason`.** Not taken. A capacity is a thing a
+  query asks for, and free text is not a key. Three implementations would
+  spell it three ways.
+- **A client-emitted event through a signed request.** Not taken. The service
+  is the only witness with a clock it trusts, a verified actor and a
+  transaction to share.
+- **Trusting a forwarding header unconditionally.** Not taken. The address in
+  the record is then the caller's to choose, and so is the limiter's key.
+- **One JSON column per event instead of a table shape.** Not taken.
+  Retention, erasure and the indexes on action, actor, target and tenant then
+  become a query each product writes for itself.

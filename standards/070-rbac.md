@@ -265,6 +265,8 @@ Three properties follow, and together they are the reason for the rule:
   computation over a set of grants has its result in no reviewable place.
 - **An act names the capacity it was done in**. The decision of RB8 names one
   grant and one role, so an audit row can state which capacity the person used.
+  The row carries it in its `decision` member ([`080-audit.md`](080-audit.md)
+  AE2).
 - **A person acting in two capacities at once is refused by construction**. An
   auditor grant and an administrator grant in one request is the combination a
   separation of duties exists to prevent.
@@ -374,7 +376,9 @@ is also the difference between an audit trail worth keeping and a log of the
 word `false`.
 
 The reason is what an application logs and what an administrator reads on a
-support call. It is never returned to an unauthorised caller. The
+support call. It is never returned to an unauthorised caller. The audit row
+of a refused act carries it in `decision.denial`
+([`080-audit.md`](080-audit.md) AE3). The
 [`050-http.md`](050-http.md) HA3 envelope that reaches the client says the
 request was refused, and the reason stays in the log.
 

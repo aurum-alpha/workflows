@@ -269,6 +269,150 @@
         "target": { "type": "invoice", "id": "01923e01-3333-7000-8000-000000000003", "display": "INV-2026-0412" },
         "severity": "high"
       }
+    },
+    {
+      "case": "a-refusal-is-recorded-under-the-permission-it-refused",
+      "valid": true,
+      "why": "AE3. The action is the permission that was refused, the outcome is failure, and the denial travels in both reason and decision.denial. One query over invoice.void then returns what was done and what was refused; auth.access_denied is for a refusal with no permission in play.",
+      "event": {
+        "schema_version": 1,
+        "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0d01",
+        "occurred_at": "2026-03-04T09:12:44.108Z",
+        "action": "invoice.void",
+        "outcome": "failure",
+        "actor": { "type": "user", "id": "01923e01-2222-7000-8000-000000000002", "display": "Sam Reyes <sam@example.com>" },
+        "target": { "type": "invoice", "id": "01923e01-3333-7000-8000-000000000003", "display": "INV-2026-0412" },
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "reason": "permission_not_held",
+        "decision": { "permission": "invoice.void", "scope": "tenant:acme", "denial": "permission_not_held" }
+      }
+    },
+    {
+      "case": "a-decision-block-names-the-capacity-used",
+      "valid": true,
+      "why": "RB6 and AE2. The grant in decision is the capacity the person acted in: one role at one scope, never a union. The scope asked about is named beside it, because RB5 containment means the two can differ.",
+      "event": {
+        "schema_version": 1,
+        "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0d02",
+        "occurred_at": "2026-03-04T09:12:44.108Z",
+        "action": "user.grant_role",
+        "outcome": "success",
+        "actor": { "type": "user", "id": "01923e01-1111-7000-8000-000000000001", "display": "Dana Okoye <dana@example.com>" },
+        "target": { "type": "user", "id": "01923e01-2222-7000-8000-000000000002", "display": "Sam Reyes <sam@example.com>" },
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "decision": { "permission": "user.grant_role", "grant": { "role": "admin", "scope": "tenant:acme" }, "scope": "tenant:acme" }
+      }
+    },
+    {
+      "case": "an-object-decision-names-the-row-and-the-condition",
+      "valid": true,
+      "why": "RB11. A conditional permission was decided over an object, and the row says which object by resource and scope and which condition held. The object's contents are not here: changes is where values go, under AE4.",
+      "event": {
+        "schema_version": 1,
+        "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0d03",
+        "occurred_at": "2026-03-04T09:12:44.108Z",
+        "action": "lead.touch",
+        "outcome": "success",
+        "actor": { "type": "user", "id": "01923e01-2222-7000-8000-000000000002", "display": "Sam Reyes <sam@example.com>" },
+        "target": { "type": "lead", "id": "01923e01-4444-7000-8000-000000000004", "display": "Lead 4471" },
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "decision": { "permission": "lead.touch", "grant": { "role": "setter", "scope": "tenant:acme" }, "scope": "tenant:acme", "object": { "resource": "lead", "scope": "tenant:acme" }, "condition": "owner" }
+      }
+    },
+    {
+      "case": "a-system-actor-under-a-permission-carries-no-grant",
+      "valid": true,
+      "why": "AE2. A scheduled job acts under the permission that names its work and in no grant, because a system actor holds none. The decision carries the permission alone, which is why grant is optional on an allowed decision.",
+      "event": {
+        "schema_version": 1,
+        "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0d04",
+        "occurred_at": "2026-03-04T09:12:44.108Z",
+        "action": "crm.sync",
+        "outcome": "success",
+        "actor": { "type": "system", "id": "sys_leadqualifierpool", "display": "the pool" },
+        "target": { "type": "lead", "id": "01923e01-4444-7000-8000-000000000004", "display": "Lead 4471" },
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "decision": { "permission": "crm.sync" }
+      }
+    },
+    {
+      "case": "a-decision-with-an-unknown-denial-is-rejected",
+      "valid": false,
+      "why": "RB8 names eight reasons and every implementation spells them the same way. A ninth is a product inventing a vocabulary nobody else can query.",
+      "event": {
+        "schema_version": 1,
+        "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0d05",
+        "occurred_at": "2026-03-04T09:12:44.108Z",
+        "action": "invoice.void",
+        "outcome": "failure",
+        "actor": { "type": "user", "id": "01923e01-2222-7000-8000-000000000002", "display": "Sam Reyes <sam@example.com>" },
+        "target": { "type": "invoice", "id": "01923e01-3333-7000-8000-000000000003", "display": "INV-2026-0412" },
+        "reason": "because",
+        "decision": { "permission": "invoice.void", "denial": "because" }
+      }
+    },
+    {
+      "case": "a-refused-decision-that-also-names-a-grant-is-rejected",
+      "valid": false,
+      "why": "A refused decision names what refused it and nothing that would have allowed it. A grant beside a denial claims a capacity the person did not get to act in.",
+      "event": {
+        "schema_version": 1,
+        "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0d06",
+        "occurred_at": "2026-03-04T09:12:44.108Z",
+        "action": "invoice.void",
+        "outcome": "failure",
+        "actor": { "type": "user", "id": "01923e01-2222-7000-8000-000000000002", "display": "Sam Reyes <sam@example.com>" },
+        "target": { "type": "invoice", "id": "01923e01-3333-7000-8000-000000000003", "display": "INV-2026-0412" },
+        "decision": { "permission": "invoice.void", "grant": { "role": "viewer", "scope": "tenant:acme" }, "denial": "permission_not_held" }
+      }
+    },
+    {
+      "case": "a-decided-act-that-failed-without-a-denial-is-rejected",
+      "valid": false,
+      "why": "AE3. A failure under a permission is a refusal, and a refusal has an RB8 reason. A failed decided act with no denial is a row that says something was refused and cannot say why.",
+      "event": {
+        "schema_version": 1,
+        "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0d07",
+        "occurred_at": "2026-03-04T09:12:44.108Z",
+        "action": "invoice.void",
+        "outcome": "failure",
+        "actor": { "type": "user", "id": "01923e01-2222-7000-8000-000000000002", "display": "Sam Reyes <sam@example.com>" },
+        "target": { "type": "invoice", "id": "01923e01-3333-7000-8000-000000000003", "display": "INV-2026-0412" },
+        "decision": { "permission": "invoice.void", "scope": "tenant:acme" }
+      }
+    },
+    {
+      "case": "a-decided-act-that-succeeded-naming-a-denial-is-rejected",
+      "valid": false,
+      "why": "The mirror of the previous case. A denial on a success is one of the two fields lying, and the row cannot say which.",
+      "event": {
+        "schema_version": 1,
+        "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0d08",
+        "occurred_at": "2026-03-04T09:12:44.108Z",
+        "action": "invoice.void",
+        "outcome": "success",
+        "actor": { "type": "user", "id": "01923e01-2222-7000-8000-000000000002", "display": "Sam Reyes <sam@example.com>" },
+        "target": { "type": "invoice", "id": "01923e01-3333-7000-8000-000000000003", "display": "INV-2026-0412" },
+        "decision": { "permission": "invoice.void", "grant": { "role": "approver", "scope": "tenant:acme" }, "denial": "permission_not_held" }
+      }
+    },
+    {
+      "case": "a-grant-activation-is-a-reserved-action",
+      "valid": true,
+      "why": "AE3's table reserves auth.grant_activated for a session binding to a grant or changing which it acts in. It is in the reserved enum, so a module's vocabulary test holds the set and not only the pattern. The actor and the target are the same person: the act is on their own session.",
+      "event": {
+        "schema_version": 1,
+        "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0d09",
+        "occurred_at": "2026-03-04T09:12:44.108Z",
+        "action": "auth.grant_activated",
+        "outcome": "success",
+        "actor": { "type": "user", "id": "01923e01-2222-7000-8000-000000000002", "display": "Sam Reyes <sam@example.com>" },
+        "target": { "type": "user", "id": "01923e01-2222-7000-8000-000000000002", "display": "Sam Reyes <sam@example.com>" },
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "changes": [
+          { "field": "grant", "before": "viewer@tenant:acme", "after": "approver@tenant:acme" }
+        ]
+      }
     }
   ],
 
@@ -331,7 +475,7 @@
       "case": "a-destructive-act-is-refused",
       "category": "AE5.4 destructive and irreversible writes",
       "act": "A user without invoice.void attempts to void an invoice and is refused.",
-      "expect": { "outcome": "failure", "reasonPresent": true, "why": "RB8's decision reason lands here and in the log, and never in the response to the refused caller." }
+      "expect": { "action": "the permission refused, invoice.void", "outcome": "failure", "reasonPresent": true, "decision.denial": "the RB8 reason" }
     },
     {
       "case": "a-session-lifetime-is-changed",
@@ -356,6 +500,36 @@
       "category": "AE8, the negative case",
       "act": "A void is attempted, the change fails on a constraint, and the transaction rolls back.",
       "expect": { "noEvent": true, "why": "AE8's inference is that no event means it did not happen. An implementation writing the event outside the change's transaction produces a record of a void that never occurred, and this case fails it." }
+    },
+    {
+      "case": "the-host-and-the-session-disagree",
+      "category": "AE5.1 authentication and session lifecycle",
+      "act": "A session established on one tenant's host presents itself on another tenant's host (092-tenant-hostnames.md TH3).",
+      "expect": { "action": "auth.access_denied", "outcome": "failure", "actor.type": "user", "reasonPresent": true }
+    },
+    {
+      "case": "a-session-binds-to-a-grant",
+      "category": "AE5.1 authentication and session lifecycle",
+      "act": "A session holding several grants chooses one, or changes which it acts in (060-auth.md AU8).",
+      "expect": { "action": "auth.grant_activated", "outcome": "success", "actor.type": "user", "changesPresent": true }
+    },
+    {
+      "case": "a-forwarded-address-from-an-undeclared-hop-is-ignored",
+      "category": "AE10 the client address",
+      "act": "A request carries a forwarding header from a peer the product has not declared as a proxy.",
+      "expect": { "actor.ip": "the socket peer's address, never the header's" }
+    },
+    {
+      "case": "a-forwarded-address-from-the-declared-proxy-is-recorded",
+      "category": "AE10 the client address",
+      "act": "The same header arrives from the peer the product declared as its proxy.",
+      "expect": { "actor.ip": "the address the header names" }
+    },
+    {
+      "case": "a-client-error-report-produces-no-event",
+      "category": "AE9, the negative case",
+      "act": "A browser posts an error report to POST /api/client-errors (090-web-client.md WC5).",
+      "expect": { "noEvent": true, "why": "AE9. A report is telemetry under a closed schema from a caller with no proven actor. An implementation turning it into an audit row records a claim nobody can stand behind." }
     }
   ],
 
@@ -418,6 +592,35 @@
         "actor": { "type": "user", "id": "01923e01-1111-7000-8000-000000000001", "display": "Dana Okoye <dana@example.com>" },
         "target": { "type": "user", "id": "01923e01-2222-7000-8000-000000000002" },
         "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "erased_at": "2026-09-01T00:00:00.000Z",
+        "erased_subjects": ["01923e01-2222-7000-8000-000000000002"]
+      }
+    },
+    {
+      "case": "erasure-leaves-the-decision-block-intact",
+      "erase": { "subject_id": "01923e01-2222-7000-8000-000000000002", "at": "2026-09-01T00:00:00.000Z" },
+      "why": "AE7 removes identification and nothing else. The capacity the person acted in is part of the shape of the trail, not of their identity, so decision survives byte for byte beside the public ids.",
+      "before": {
+        "schema_version": 1,
+        "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0c03",
+        "occurred_at": "2026-03-04T09:12:44.108Z",
+        "action": "invoice.void",
+        "outcome": "success",
+        "actor": { "type": "user", "id": "01923e01-2222-7000-8000-000000000002", "display": "Sam Reyes <sam@example.com>", "ip": "203.0.113.24", "user_agent": "Mozilla/5.0" },
+        "target": { "type": "invoice", "id": "01923e01-3333-7000-8000-000000000003", "display": "INV-2026-0412" },
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "decision": { "permission": "invoice.void", "grant": { "role": "approver", "scope": "tenant:acme" }, "scope": "tenant:acme" }
+      },
+      "after": {
+        "schema_version": 1,
+        "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0c03",
+        "occurred_at": "2026-03-04T09:12:44.108Z",
+        "action": "invoice.void",
+        "outcome": "success",
+        "actor": { "type": "user", "id": "01923e01-2222-7000-8000-000000000002" },
+        "target": { "type": "invoice", "id": "01923e01-3333-7000-8000-000000000003", "display": "INV-2026-0412" },
+        "tenant_id": "01923e01-9999-7000-8000-00000000000f",
+        "decision": { "permission": "invoice.void", "grant": { "role": "approver", "scope": "tenant:acme" }, "scope": "tenant:acme" },
         "erased_at": "2026-09-01T00:00:00.000Z",
         "erased_subjects": ["01923e01-2222-7000-8000-000000000002"]
       }

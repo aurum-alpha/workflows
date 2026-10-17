@@ -278,7 +278,8 @@ otherwise.
   is the attack this bound stops.
 - **A body that is not the WC5 shape is refused.** The schema is closed. An
   unknown field is the leak WC5 exists to stop. A report that does not
-  validate is not stored.
+  validate is not stored. A report is telemetry, and it is never an audit
+  event ([`080-audit.md`](080-audit.md) AE9).
 - **A limit refusal is HA7's `429` with `Retry-After`.** The body is the RFC
   9457 envelope of 050 HA3.
 

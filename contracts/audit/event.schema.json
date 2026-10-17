@@ -16,7 +16,8 @@
         "auth.login_failed",
         "auth.logout",
         "auth.session_revoked",
-        "auth.access_denied"
+        "auth.access_denied",
+        "auth.grant_activated"
       ],
       "description": "AE3's reserved namespace, for auditable acts that happen before or outside authorization and so have no permission behind them. The auth.* namespace belongs to this standard; a product does not extend it, and everything else it audits is one of its own declared permissions."
     },
@@ -41,7 +42,7 @@
         "ip": {
           "type": "string",
           "minLength": 1,
-          "description": "Where the principal is a person acting over HTTP. Personal data: removed by AE7 erasure."
+          "description": "Where the principal is a person acting over HTTP. AE10: the socket peer, or the address a declared proxy forwarded; a forwarding header from any other hop is not read. Personal data: removed by AE7 erasure."
         },
         "user_agent": {
           "type": "string",
@@ -80,6 +81,63 @@
       },
       "required": ["field"],
       "additionalProperties": false
+    },
+    "grantRef": {
+      "type": "object",
+      "description": "RB6. The capacity an act was done in: the role and the scope of the one grant the session acted in. The subject is the actor and is not restated.",
+      "properties": {
+        "role": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "scope": { "$ref": "https://contracts.aurumalpha.dev/rbac/model.schema.json#/$defs/scope" }
+      },
+      "required": ["role", "scope"],
+      "additionalProperties": false
+    },
+    "objectRef": {
+      "type": "object",
+      "description": "RB11. The object a conditional permission was decided over: its resource and the scope it belongs to. Never the object's contents, which are AE4's changes or nothing.",
+      "properties": {
+        "resource": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "scope": { "$ref": "https://contracts.aurumalpha.dev/rbac/model.schema.json#/$defs/scope" }
+      },
+      "required": ["resource", "scope"],
+      "additionalProperties": false
+    },
+    "decision": {
+      "type": "object",
+      "description": "AE2. RB6 and RB8 rendered onto the row: the permission the act was decided under, the grant that satisfied it, the scope the check asked about, the object and the condition where RB11 decided it, and the denial where it was refused. A refused decision names its denial and no grant. Optional on the wire because PC6 adds and never requires; AE2 expects it on every event whose action is a permission (AE3), and never on a reserved auth.* action, which no permission decides. A system actor acting under a permission with no grant carries the permission alone.",
+      "properties": {
+        "permission": { "$ref": "#/$defs/action" },
+        "grant": { "$ref": "#/$defs/grantRef" },
+        "scope": { "$ref": "https://contracts.aurumalpha.dev/rbac/model.schema.json#/$defs/scope", "description": "The scope the check asked about, which the grant's scope contains (RB5)." },
+        "object": { "$ref": "#/$defs/objectRef" },
+        "condition": {
+          "type": "string",
+          "minLength": 1,
+          "description": "RB11. The condition group that held, or that was checked and failed, by the names the role declares, comma-joined. Absent on an unconditional permission."
+        },
+        "denial": {
+          "enum": [
+            "no_active_grant",
+            "invalid_scope",
+            "scope_not_contained",
+            "permission_not_held",
+            "undeclared_permission",
+            "no_permissions_requested",
+            "condition_not_met",
+            "object_required"
+          ],
+          "description": "RB8's reason, restated from rbac/model.schema.json so a change to either copy is visible here; each platform module's vocabulary test holds the two equal."
+        }
+      },
+      "required": ["permission"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "description": "A refused decision names what refused it and nothing that would have allowed it.",
+          "if": { "required": ["denial"] },
+          "then": { "not": { "required": ["grant"] } }
+        }
+      ]
     }
   },
   "properties": {
@@ -130,6 +188,10 @@
     "reason": {
       "type": "string",
       "description": "Optional free text: the justification an administrator typed, or the decision reason from standards/070-rbac.md RB8 on a refusal. RB8's reason belongs here and in the log, never in the response to the refused caller."
+    },
+    "decision": {
+      "$ref": "#/$defs/decision",
+      "description": "AE2. Optional. Present where a permission decided the act (AE3): on a refusal, decision.denial is the RB8 reason and reason carries it as text."
     },
     "erased_at": {
       "$ref": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp",
@@ -182,6 +244,15 @@
       "then": { "required": ["erased_subjects"] },
       "else": {
         "not": { "required": ["erased_subjects"] }
+      }
+    },
+    {
+      "description": "AE3: a decided act that failed names its denial, and one that succeeded names none. A refusal recorded under the permission is what makes one query over a permission return what was done and what was refused.",
+      "if": { "required": ["decision"] },
+      "then": {
+        "if": { "properties": { "outcome": { "const": "failure" } }, "required": ["outcome"] },
+        "then": { "properties": { "decision": { "required": ["denial"] } } },
+        "else": { "properties": { "decision": { "not": { "required": ["denial"] } } } }
       }
     }
   ]

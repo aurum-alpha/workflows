@@ -48,13 +48,13 @@ on:
         description: >-
           Comma-separated build platforms, e.g. `linux/amd64,linux/arm64`.
 
-          ONE call builds them all. buildx produces a single OCI image index
-          carrying every platform under one digest, which is what `digest`
-          below returns and what job-image-publish promotes — so a `docker
-          pull` resolves to the puller's own architecture with no manifest
-          assembly on our side. Do not reach for a matrix here: that would
-          produce N single-platform images and N digests, and then need a
-          further job to stitch back together what buildx already built.
+          ONE input names them all and ONE digest comes back: an OCI image
+          index carrying every platform, which is what `digest` below returns
+          and what job-image-publish promotes — so a `docker pull` resolves to
+          the puller's own architecture with no manifest assembly on the
+          caller's side. A caller does not matrix this job: that would produce
+          N single-platform images and N digests, and then need a further job
+          to stitch back together what this job already returns as one.
 
           What a multi-platform build costs depends on what the stage DOES,
           and the difference is large enough to design around:
@@ -70,12 +70,32 @@ on:
               leg, per image.
 
           Emulation IS set up, conditionally, for exactly that case: the QEMU
-          step below runs only when `platforms` names more than one, so a
-          single-platform caller pays nothing. v1.27.0 documented no-QEMU as a
+          step below runs only when one runner builds more than one platform,
+          so a single-platform caller pays nothing. v1.27.0 documented no-QEMU as a
           rule and required RUN-free runtime stages; v1.28.0 makes it a
           preference with a stated price, because forcing a distroless
           rewrite (and a third-party dependency for anything apt used to
           supply) onto a repo that just wants arm64 was the worse trade.
+
+          Native arm64 removes the price where the hardware exists. Where the
+          platforms build is this job's decision, not the caller's, and it
+          follows `vars.RUNNER_ARM64`:
+
+            - Unset, one buildx call on one runner builds every platform,
+              emulating the foreign one, as above.
+            - Set to an arm64 runner label, with `platforms` exactly
+              `linux/amd64,linux/arm64` (either order), each platform builds
+              on its own hardware: amd64 on the standard runner line, arm64 on
+              that label. Each leg pushes by digest, and a merge job assembles
+              the index from the two with `imagetools create`. Nothing runs
+              under emulation. A lone `linux/arm64` goes to that label too.
+
+          The split is right only because two machines build. On one machine a
+          single buildx call already produces the index, and splitting it
+          would buy nothing but a merge. The variable is the switch the same
+          way `vars.RUNNER` is: with the arm64 runners down, the arm64 leg
+          waits in the queue rather than failing, and the repair is unsetting
+          the variable and re-running, which puts the build back on emulation.
 
           Prefer the RUN-free shape where it is natural — it is materially
           faster and it is why the portfolio's distroless images cost nothing on
@@ -169,12 +189,37 @@ on:
         description: >-
           Digest of the staged manifest. The handoff to job-image-starts and
           job-image-publish: both address the image by this, so what is started
-          and what is promoted are provably the same bytes.
-        value: ${{ jobs.build.outputs.digest }}
+          and what is promoted are provably the same bytes. Where the platforms
+          built natively it is the merge's index; a leg's own digest names one
+          platform and is never returned.
+        value: ${{ jobs.merge.outputs.digest || jobs.build.outputs.digest }}
 
 jobs:
+  # One leg per runner. With vars.RUNNER_ARM64 set and the two platforms the
+  # fleet ships, that is two legs, each building its own platform natively;
+  # otherwise it is one leg building everything `platforms` names, exactly as
+  # a job without a matrix would. `arch` is empty on that single leg, and every
+  # step below that only a split build needs keys on it.
+  #
+  # The split is gated on the exact platform pair rather than on any list
+  # naming arm64: these are the two platforms with a runner each, and a third
+  # would have nowhere native to go.
   build:
-    runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-26.04' }}
+    name: ${{ matrix.leg.arch != '' && format('build ({0})', matrix.leg.arch) || 'build' }}
+    strategy:
+      matrix:
+        leg: >-
+          ${{ fromJSON(
+            (vars.RUNNER_ARM64 != ''
+              && (inputs.platforms == 'linux/amd64,linux/arm64'
+                || inputs.platforms == 'linux/arm64,linux/amd64'))
+            && '[{"platform":"linux/amd64","arch":"amd64"},{"platform":"linux/arm64","arch":"arm64"}]'
+            || format('[{{"platform":"{0}","arch":""}}]', inputs.platforms)
+          ) }}
+    # An arm64 build goes to the arm64 label ahead of `runner`: a caller's
+    # literal names an amd64 machine, and an arm64 leg there would be the
+    # emulated build the split exists to avoid.
+    runs-on: ${{ (matrix.leg.platform == 'linux/arm64' && vars.RUNNER_ARM64) || inputs.runner || vars.RUNNER || 'ubuntu-26.04' }}
     timeout-minutes: 30
     permissions:
       contents: read
@@ -186,7 +231,11 @@ jobs:
       packages: write
     outputs:
       image: ${{ steps.name.outputs.image }}
-      digest: ${{ steps.build.outputs.digest }}
+      slug: ${{ steps.name.outputs.slug }}
+      # Empty from a native leg: its digest is one platform's, and the merge
+      # below returns the image's. Leaving it out keeps a merge that never ran
+      # from handing downstream a one-platform image under the image's name.
+      digest: ${{ matrix.leg.arch == '' && steps.build.outputs.digest || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -201,6 +250,10 @@ jobs:
             image="ghcr.io/${GITHUB_REPOSITORY}"
           fi
           echo "image=${image,,}" >> "$GITHUB_OUTPUT"
+          # The image path as one artifact-name and cache-scope component, for
+          # the split build's per-platform names: a slash is legal in neither.
+          path="${image#ghcr.io/}"
+          echo "slug=${path//\//-}" | tr '[:upper:]' '[:lower:]' >> "$GITHUB_OUTPUT"
           echo "Staging ${image,,}"
 
       # Exactly the artifacts the mapping names, into a staging directory.
@@ -386,7 +439,8 @@ jobs:
       # Emulation for foreign-architecture RUN steps, and ONLY when there is a
       # foreign architecture to emulate. Registering binfmt costs a few seconds
       # and buys nothing for a single-platform build, so the seven callers that
-      # ship one architecture skip it entirely.
+      # ship one architecture skip it entirely, and so does each leg of a split
+      # build, which runs on its own platform's hardware.
       #
       # It has to precede setup-buildx-action: binfmt is registered on the host
       # and the builder inherits what is already there.
@@ -397,7 +451,7 @@ jobs:
       # that genuinely needs a package manager is not forced to choose between
       # arm64 and a Dockerfile rewrite.
       - name: Set up QEMU for cross-platform RUN steps
-        if: contains(inputs.platforms, ',')
+        if: contains(matrix.leg.platform, ',')
         uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
@@ -470,13 +524,17 @@ jobs:
       # The alternative considered was a `ci-<sha>` staging tag, which works and
       # leaves one dead tag per commit per image, forever, with no TTL in GHCR
       # and no way to tell a stale staging tag from a real one by name alone.
+      #
+      # A split build's legs cache under their own scope. Left on the default,
+      # the two would write the one scope in turn, and each would start every
+      # run from the other platform's layers.
       - id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ${{ inputs.context }}
           file: ${{ inputs.dockerfile }}
           target: ${{ inputs.target }}
-          platforms: ${{ inputs.platforms }}
+          platforms: ${{ matrix.leg.platform }}
           build-args: ${{ inputs.build_args }}
           # Private module installs mount this as id=aurum_read_token. The org
           # read token can clone platform-go and platform-php. An npm install
@@ -485,13 +543,14 @@ jobs:
             aurum_read_token=${{ secrets.AURUM_READ_TOKEN != '' && secrets.AURUM_READ_TOKEN || github.token }}
           labels: ${{ steps.meta.outputs.labels }}
           outputs: type=image,name=${{ steps.name.outputs.image }},push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: ${{ matrix.leg.arch != '' && format('type=gha,scope={0}-{1}', steps.name.outputs.slug, matrix.leg.arch) || 'type=gha' }}
+          cache-to: ${{ matrix.leg.arch != '' && format('type=gha,mode=max,scope={0}-{1}', steps.name.outputs.slug, matrix.leg.arch) || 'type=gha,mode=max' }}
 
       - name: Report the staged digest
         env:
           IMAGE: ${{ steps.name.outputs.image }}
           DIGEST: ${{ steps.build.outputs.digest }}
+          ARCH: ${{ matrix.leg.arch }}
         run: |
           set -euo pipefail
           if [ -z "$DIGEST" ]; then
@@ -501,8 +560,129 @@ jobs:
           fi
           echo "Staged ${IMAGE}@${DIGEST}"
           {
-            echo "### Image staged"
+            if [ -n "$ARCH" ]; then
+              echo "### ${ARCH} leg staged"
+            else
+              echo "### Image staged"
+            fi
             echo '```'
             echo "${IMAGE}@${DIGEST}"
             echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # A matrix job has one set of outputs, which the last leg to finish
+      # writes, so a leg's digest reaches the merge as an artifact instead.
+      # One per leg, named for its image and platform, so a caller building
+      # two images in one run hands each merge its own pair. `overwrite`
+      # because a re-run of a failed leg uploads under the name its first
+      # attempt already used.
+      - name: Write the leg's digest for the merge
+        if: matrix.leg.arch != ''
+        env:
+          ARCH: ${{ matrix.leg.arch }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/image-digest"
+          printf '%s' "$DIGEST" > "${RUNNER_TEMP}/image-digest/${ARCH}"
+
+      - if: matrix.leg.arch != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: image-digest-${{ steps.name.outputs.slug }}-${{ matrix.leg.arch }}
+          path: ${{ runner.temp }}/image-digest/${{ matrix.leg.arch }}
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 1
+
+  # The index the split legs did not build together. Only a split build has
+  # one to make: a single leg's buildx call already pushed the index, and its
+  # digest is the build job's output.
+  merge:
+    needs: build
+    if: >-
+      vars.RUNNER_ARM64 != ''
+      && (inputs.platforms == 'linux/amd64,linux/arm64'
+        || inputs.platforms == 'linux/arm64,linux/amd64')
+    runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-26.04' }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # Pushes the index, by digest like every manifest this job stages.
+      packages: write
+    outputs:
+      digest: ${{ steps.merge.outputs.digest }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: ${{ runner.temp }}/image-digest
+          # Brace alternation, the one glob that means "exactly these names"
+          # (see the build job's download above).
+          pattern: "{image-digest-${{ needs.build.outputs.slug }}-amd64,image-digest-${{ needs.build.outputs.slug }}-arm64}"
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # `imagetools create` writes an index over manifests already in the
+      # registry and moves no layers, the same operation job-image-publish
+      # promotes with. It refuses to push without a reference to push to, and
+      # a tag would be the staging tag this job exists not to leave. So the
+      # reference is the index's own digest: --dry-run prints the index
+      # exactly as it would be pushed, with one newline after it, and the
+      # sha256 of those bytes is the address the registry will verify.
+      #
+      # Then it is read back, because the output is only as good as what the
+      # registry now serves: the same bytes at that digest, carrying both
+      # platforms. A leg that pushed the wrong platform fails here rather than
+      # as an image that starts on one architecture and dies on the other.
+      - id: merge
+        env:
+          IMAGE: ${{ needs.build.outputs.image }}
+        run: |
+          set -euo pipefail
+          dir="${RUNNER_TEMP}/image-digest"
+          refs=()
+          for arch in amd64 arm64; do
+            if [ ! -s "${dir}/${arch}" ]; then
+              echo "::error::No ${arch} digest arrived from its build leg," \
+                   "so there is no index to assemble."
+              exit 1
+            fi
+            refs+=("${IMAGE}@$(cat "${dir}/${arch}")")
+          done
+
+          docker buildx imagetools create --dry-run "${refs[@]}" > "${RUNNER_TEMP}/index.json"
+          digest="sha256:$(head -c -1 "${RUNNER_TEMP}/index.json" | sha256sum | cut -d' ' -f1)"
+          docker buildx imagetools create --tag "${IMAGE}@${digest}" "${refs[@]}"
+
+          docker buildx imagetools inspect --raw "${IMAGE}@${digest}" > "${RUNNER_TEMP}/pushed.json"
+          served="sha256:$(sha256sum < "${RUNNER_TEMP}/pushed.json" | cut -d' ' -f1)"
+          if [ "$served" != "$digest" ]; then
+            echo "::error::The registry serves ${served} at ${IMAGE}@${digest}," \
+                 "so the index pushed is not the index assembled."
+            exit 1
+          fi
+          platforms=$(docker buildx imagetools inspect "${IMAGE}@${digest}" \
+            --format '{{range .Manifest.Manifests}}{{if ne .Platform.OS "unknown"}}{{.Platform.OS}}/{{.Platform.Architecture}}{{"\n"}}{{end}}{{end}}' \
+            | sort | paste -sd, -)
+          if [ "$platforms" != "linux/amd64,linux/arm64" ]; then
+            echo "::error::The index carries '${platforms}', not" \
+                 "linux/amd64,linux/arm64."
+            exit 1
+          fi
+
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+          echo "Staged ${IMAGE}@${digest} (${platforms})"
+          {
+            echo "### Image staged"
+            echo '```'
+            echo "${IMAGE}@${digest}"
+            echo '```'
+            echo "Built natively: ${platforms}."
           } >> "$GITHUB_STEP_SUMMARY"

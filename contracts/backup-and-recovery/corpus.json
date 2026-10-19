@@ -1286,7 +1286,7 @@
           ]
         }
       },
-      "why": "BR6 and BR7, a VERIFIED DETECTOR. The copy predates the erasure of the first subject, so the restored rows hold that subject and the restored ledger table does not hold the entry. Replay reads the ledger's copy in the backup domain, re-runs the erasure, and leaves only the never-erased subject's rows; the erased subject's audit events stay, redacted per 080 AE7, and the schema is at the release's version before replay runs (025 SD3). An implementation that reads the ledger from the restored table finds only the entry that predates as_of, replays nothing that matters, and fails this case and the one below while passing every case that does not restore."
+      "why": "BR6 and BR7, a VERIFIED DETECTOR. The copy predates the erasure of the first subject, so the restored rows hold that subject and the restored ledger table does not hold the entry. Replay reads the ledger's copy in the backup domain, re-runs the erasure, and leaves only the never-erased subject's rows; the erased subject's audit events stay, redacted because this service built 080 AE11's redaction and its ledger records it, and the schema is at the release's version before replay runs (025 SD3). An implementation that reads the ledger from the restored table finds only the entry that predates as_of, replays nothing that matters, and fails this case and the one below while passing every case that does not restore."
     },
     {
       "case": "erased-rows-are-absent-at-readiness-not-only-afterwards",

@@ -197,8 +197,8 @@ An entry holds the subject's public id and type
 request's public id, and the instant. It holds the entities touched with the
 treatment each received. The treatments are `delete` for rows removed, and
 `anonymise` for rows kept with the subject's fields transformed. The third is
-`redact`, for audit events kept with their identification removed
-([`080-audit.md`](080-audit.md) AE7). It carries identifiers and never
+`redact`, for audit events kept with their identification removed, where a
+product built redaction ([`080-audit.md`](080-audit.md) AE11). It carries identifiers and never
 personal data, because it outlives the erasure by the whole retention window.
 
 **The ledger is kept twice, and the second copy is the one that matters**. It
@@ -224,8 +224,8 @@ restored table. Irreversible destruction is idempotent
 
 So an entry replayed against a copy that never held the subject is a no-op.
 Replaying every entry is admitted where it is simpler than selecting the
-newer ones. Replay redacts audit events and never deletes them: AE7 holds
-after a restore as before it.
+newer ones. Replay never deletes audit events. It redacts them only where the
+product built redaction (080 AE11), so a restore leaves the trail as it was.
 
 **Replay completes before readiness.** The restored service answers `/readyz`
 `503` until the replay's run record is `succeeded`. A server that serves

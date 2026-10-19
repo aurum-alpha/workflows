@@ -48,7 +48,7 @@
           },
           "treatment": {
             "enum": ["delete", "anonymise", "redact"],
-            "description": "delete: the subject's rows or objects were removed (025 SD12). anonymise: rows were kept and the subject's fields transformed by the declared transformation. redact: audit events were kept and their identification replaced with a tombstone (080 AE7). A retained row under a legal basis does not appear here, because nothing was done to it."
+            "description": "delete: the subject's rows or objects were removed (025 SD12). anonymise: rows were kept and the subject's fields transformed by the declared transformation. redact: audit events were kept and their identification replaced with a tombstone where the product built redaction (080 AE11). A retained row under a legal basis does not appear here, because nothing was done to it."
           },
           "count": {
             "type": "integer",

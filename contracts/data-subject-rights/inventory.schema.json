@@ -47,7 +47,7 @@
     },
     "stamp": {
       "type": "object",
-      "description": "DR5. Optional on anonymise and retain: two columns the erasure job writes when it reduces a row, so the row itself says it was reduced and for whom. This is 080 AE7's erased_at and erased_subjects pair, generalised: the audit store declares it and any store whose reduced rows must be distinguishable from rows that never carried the value may.",
+      "description": "DR5. Optional on anonymise and retain: two columns the erasure job writes when it reduces a row, so the row itself says it was reduced and for whom. This is 080 AE11's erased_at and erased_subjects pair, generalised: an audit store whose product built redaction declares it, and any store whose reduced rows must be distinguishable from rows that never carried the value may.",
       "properties": {
         "at": {
           "$ref": "#/$defs/identifier",

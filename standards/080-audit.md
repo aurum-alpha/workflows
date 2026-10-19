@@ -31,7 +31,7 @@ An audit event and a log line are different things with different readers:
 | Reader | An engineer, during an incident | An administrator, an auditor, a client |
 | Question | Why is this broken | Who did this, and when |
 | Completeness | Best-effort; sampling and level filtering are legitimate | Complete, or it is not evidence |
-| Lifetime | Days to weeks | A year at minimum (AE7) |
+| Lifetime | Days to weeks | The product's retention period (AE7) |
 | Queried by | A human with a log search tool | **The application itself**, on a history screen |
 | Owner | The execution environment | The application |
 
@@ -45,8 +45,8 @@ application's datastore.
 An implementation **is permitted to** emit the event to the log stream as well,
 which is often convenient. But **the log stream is never the system of
 record**. A product that writes audit events only to stdout relies on the
-platform's log pipeline to retain them for a year. That is three bets it cannot
-honour. Nothing samples; retention is set correctly and stays set; a
+platform's log pipeline to retain them for the whole retention period. That
+is three bets it cannot honour. Nothing samples; retention is set correctly and stays set; a
 ten-month-old line is still queryable by tenant on a support call. Two of those
 are outside the application's control entirely.
 
@@ -185,7 +185,13 @@ So:
   readable.
 - **Events are append-only**. No `UPDATE`, no `DELETE`, no correcting a row. A
   mistaken event is followed by another event, exactly as a ledger is corrected
-  by a reversing entry and never by an eraser.
+  by a reversing entry and never by an eraser. Retention (AE7) is the only
+  removal, and redaction (AE11) the only change.
+- **Removing a person changes nothing in their history**. A person who leaves,
+  or whose account is deleted, still did what the events say they did. That
+  is why the display is captured at write time: the trail stays legible after
+  the person is gone. A building keeps its door log when an employee leaves,
+  for the same reason.
 - **Deleting the target never deletes its events**. The history of a deleted
   invoice is the part you most need. Cascade-delete on a foreign key to the
   audit table is how it goes away silently. The audit store holds public ids
@@ -236,9 +242,15 @@ tamper-evidence**.
 Append-only discipline means the writes are the only writes. The application's
 database grant on the audit table carries `INSERT` and `SELECT` and not
 `UPDATE` or `DELETE`, where the engine allows that separation. The code path
-has no update or delete to begin with. Retention deletion (AE7) runs under a
-separate, narrower credential and by policy, never as a capability the request
+has no update or delete to begin with. Retention deletion (AE7) runs under the
+schema owner's credential and by policy, never as a capability the request
 path holds.
+
+**The application role has one name and one origin**. It is the product's
+name in snake case followed by `_app`. A migration creates it and grants it
+every table, so a database built from migrations alone has it. The deployment
+sets its password from the secret named for the product, `<PRODUCT>_DB_APP_PASSWORD`.
+The owner runs the migrations; the application role never does.
 
 Hash chaining, where each row carries a hash of its predecessor, is **not
 required**, though it is the intuitive answer. A chain is only tamper-*evident*
@@ -265,7 +277,7 @@ in its **Conventions** and names which of the two it did. A chain with no
 external anchor is ceremony, and this standard would rather a product spend the
 effort on AE8.
 
-### AE7. Retention has a floor, a ceiling, and survives erasure
+### AE7. The product sets its retention period, and one operation applies it
 
 **Audit events are tenant-scoped data**, held under the same isolation rules as
 any other tenant data: the [structured-data standard](025-structured-data.md)'s.
@@ -273,34 +285,29 @@ A query that can read another tenant's audit rows is the same defect as one
 that can read their invoices. It is worse in disclosure terms, because audit
 rows are a map of who does what inside that organisation.
 
-**The retention floor is one year**. It is the shortest window that covers an
-annual audit cycle and the ordinary contractual clause asking for records
-covering the prior year. Below that, the first time a client asks, the honest
-answer is that it is gone. Products under a specific regime (financial, health,
-a client contract naming a period) set longer in their **Conventions**. They
-say which obligation set it.
+**The retention period is the product's choice, and it is set in code**. The
+product passes it to the platform's audit module, and the module applies the
+value it is given. Where the product passes none, the module's default is 400
+days. The product states its period, and the reason for it, in its
+**Conventions**. No environment variable sets it, because a period a
+deployment can change is a trail a deployment can empty.
 
-**There is a ceiling too**. Audit rows are a detailed record of identified
-people's behaviour, so keeping them forever is an accumulating liability rather
-than diligence. A product states its retention period and deletes on it, by
-policy. "We never delete" is a decision to hold personal data indefinitely, and
-it must be made on purpose if it is made at all.
+**Retention is one operation with one name**. `audit-retain` is a subcommand
+of the product image's own entry point, and the platform's audit module
+implements it. It deletes the events older than the period, and nothing else.
+It connects with the schema owner's credential, read from `DATABASE_URL`,
+because the application role holds no `DELETE` (AE6).
 
-**Erasure and audit do not conflict**. When a data subject's erasure request is
-honoured, the **event survives and the identifying content is removed**.
-`actor.id` and `target.id` remain; `display`, `ip`, `user_agent` and any
-personal values inside `changes` are replaced with a tombstone marker. What is
-kept is *"subject 01923e8a-… voided invoice `inv_9Kd…` on 2026-03-04"*: the
-shape of the trail, the sequence, the accountability. What is lost is the
-identification, which is what was asked for.
+**The product's part is the connection and the period**. The module opens no
+connection of its own. So the product opens one from `DATABASE_URL`, and
+hands it to the module with its period. A product writes no other retention
+code.
 
-This is the one modification permitted against AE4's append-only rule. It is a
-defined operation with its own audit event, not an `UPDATE` available to
-application code. The request that triggers it is
-[`082-data-subject-rights.md`](082-data-subject-rights.md)'s. The redaction is
-re-applied after any restore by the erasure ledger's replay
-([`028-backup-and-recovery.md`](028-backup-and-recovery.md) BR6). So a restore
-from a copy taken before the request does not undo it.
+**The deployment runs it daily, as `audit-retain --daily`**. The module's
+command then runs once, waits a day after a success or an hour after a
+failure, and runs again. A product never schedules its own retention. So every
+product's trail is maintained the same way, and a product that lacks the
+subcommand fails visibly in its own deployment.
 
 ### AE8. The event is written with the change, or the failure is loud
 
@@ -350,6 +357,38 @@ declaration names the header and the proxy addresses, in configuration and
 never in code. The same posture governs the client-error limiter's key under
 WC5.
 
+**The declaration is one variable, `TRUSTED_PROXY`**. Its value is the header,
+a space, then comma-separated CIDR prefixes, such as
+`X-Real-IP 172.16.0.0/12`. The header is `X-Real-IP`, which the edge
+overwrites with the client's address on every request. A product reads no
+other variable for it, and the platform's audit module parses it.
+
+### AE11. Redaction is a rare exception a product builds in code
+
+**By default no event is ever changed** (AE4). Redaction is the one
+exception. It blanks the identification of one named person in events that
+name them, and keeps the event. A product turns it on only by a code change
+that calls the platform's audit module, never by configuration or a document.
+
+Redaction has a narrow reach:
+
+- **The target, never the actor.** A person who acted in a role, as an
+  employee, an administrator or an operator, stays named. That record is the
+  accountability the trail exists for.
+- **What it blanks.** The target's `display`, and the personal values inside
+  `changes`. The ids, the action, the outcome and the instant remain.
+- **Where it applies.** A person who was acted on and was never a user, such
+  as a candidate or a lead. Or a regime or a client contract that names it.
+  The product names which in its **Conventions**.
+- **How it runs.** The module's redaction operation, under the schema owner's
+  credential, outside the request path. It stamps `erased_at` and
+  `erased_subjects`, and records its own event.
+
+A product with no such case does not build it. Most products never need it,
+because the record of who did what is what the trail is for. Data kept for
+accountability and for legal claims is commonly exempt from erasure requests.
+A product under a regime that says otherwise confirms it with counsel first.
+
 ## The artifacts
 
 Per PC3, under [`contracts/audit/`](../contracts/audit/):
@@ -358,7 +397,7 @@ Per PC3, under [`contracts/audit/`](../contracts/audit/):
   AE3 action pattern, the reserved `auth.*` set, the `decision` block, and
   AE2's conditional rules.
 - **`corpus.json`**: `validity` cases for whole events, `floor` cases per AE5
-  category, and `redaction` cases for AE7's erasure.
+  category, and `redaction` cases for AE11's exception.
 - **`table.postgres.sql`, `table.mysql.sql`, `table.sqlite.sql`**: the table
   every product applies, one column per AE2 member, with the AE6 grant block
   where the engine has roles. A product's migration carries the file verbatim.
@@ -378,5 +417,15 @@ Per PC3, under [`contracts/audit/`](../contracts/audit/):
 - **Trusting a forwarding header unconditionally.** Not taken. The address in
   the record is then the caller's to choose, and so is the limiter's key.
 - **One JSON column per event instead of a table shape.** Not taken.
-  Retention, erasure and the indexes on action, actor, target and tenant then
+  Retention, redaction and the indexes on action, actor, target and tenant then
   become a query each product writes for itself.
+- **Redacting on every erasure request.** Not taken. It rewrites the record of
+  who did what each time a person leaves. That record is what the trail is
+  for, and it is commonly exempt from erasure.
+- **A retention floor and ceiling enforced by the module.** Not taken. The
+  period is the product's policy, and the module applies the value it is given.
+- **The retention period in an environment variable.** Not taken. A value one
+  edit away in a deployment can empty the trail, and a policy belongs in
+  reviewed code.
+- **A product's own retention command or schedule.** Not taken. Each product
+  then maintains one table its own way, and each way fails differently.

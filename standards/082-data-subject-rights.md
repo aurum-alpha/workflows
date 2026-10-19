@@ -37,7 +37,7 @@ is two entries with two treatments. Examples are a message with a sender and a
 recipient, and an audit event with an actor and a target. Erasure targets a
 subject, and a subject can appear in either position. An implementation that
 reasons per row gets exactly one of the two right. That is the failure 080
-AE7's redaction corpus already detects, arriving here for every table.
+AE11's redaction corpus already detects, arriving here for every table.
 
 **A store with no personal data is declared too**, with `treatment: none` and
 a reason. The inventory is complete when every table in the engine's catalog
@@ -220,15 +220,21 @@ scrub is complete only until the next migration. And the column that leaks is
 the free-text one: a notes field carrying a phone number is personal data
 whatever its name says.
 
-**What `anonymise` leaves is 080 AE7's shape, generalised**. The subject's
+**What `anonymise` leaves is 080 AE11's shape, generalised**. The subject's
 public id remains on the rows that referenced it, and resolves to a shell row
-that identifies nobody. That is how an audit event keeps `actor.id` and loses
-`display`. The residue is anonymous on one condition: every entry naming the
-subject has been treated.
+that identifies nobody. That is how a redacted audit event keeps `target.id`
+and loses `display`. The residue is anonymous on one condition: every entry
+naming the subject has been treated.
 
-The audit store is declared `anonymise` with the AE7 stamp (`erased_at`,
-`erased_subjects`) and **never `delete`**. Deleting it removes the trail 080
-AE4 says outlives its subject.
+**The audit store is declared `retain`, never `delete` or `anonymise`**. Its
+events record who did what, so 080 AE4 keeps them whole when a person leaves. Each of its two entries, by actor and by target, retains every column.
+The basis is `legal_claims`, and its reference is 080 AE4. Its `retain_for` is
+the product's retention period, counted from `occurred_at`.
+080 AE7's operation is what deletes the events once that period ends.
+
+A product that built redaction (080 AE11) declares its target entry
+`anonymise` with the AE11 stamp (`erased_at`, `erased_subjects`) instead. The
+actor entry stays `retain`.
 
 **`retain` is the only treatment that keeps personal data against the
 subject's request. It is admitted only with the obligation named and an expiry
@@ -242,8 +248,8 @@ at erasure time, not at expiry. The invoice keeps its amount, currency, issue
 date and tax id for seven years, and loses the billing email now.
 
 On expiry `retention.purge`, 057's own periodic example, deletes it. The
-schema refuses a basis without `retain_for`, for 080 AE7's reason against a
-missing ceiling. In every treatment the job reads the declaration and applies
+schema refuses a basis without `retain_for`, because a basis with no expiry
+keeps personal data forever. In every treatment the job reads the declaration and applies
 the tombstone rule. A product wanting a richer transformation, such as a
 generalised postcode or a bucketed age, declares the derived column as
 retained. It populates that column in ordinary code. So the job stays a
@@ -274,20 +280,22 @@ name. The hold table is itself an inventory entry, `retain` under
 
 An erasure that cannot be proved ran is a promise. The job therefore ends by
 writing two records in the same transaction as its last batch. A request is
-`completed` only when both exist. **The audit event** (080) has action
-`data_subject.erase`, actor the requester, and target the subject. The job
-writes it *after* the subject's identification is gone. So it carries the
-subject's public id and no display, with `erased_at` and `erased_subjects`
-naming the subject from the moment it is written.
+`completed` only when both exist.
 
-The event that proves the erasure is the first event that conforms to it.
+**The audit event** (080) has action `data_subject.erase`, actor the
+requester, and target the subject. It is written like any other event, with
+both displays as they were at the time. Where the product built redaction
+(080 AE11), the event carries the subject's public id and no display. Its
+`erased_at` and `erased_subjects` then name the subject from the moment it is
+written.
+
 **The erasure ledger entry** (028) carries the subject's public id, the
 tenant, the request id, the entries treated and the instant. It is what a
 restore replays before a service is readmitted to traffic, so a backup taken
 before the erasure cannot resurrect what it removed. Its retention is 028's to
 state. The ledger's treatment vocabulary is 028's: `delete`, `anonymise`, and
-`redact` for an append-only store carrying AE7's stamp. `redact` is what this
-standard's `anonymise` means on the audit store.
+`redact` for an append-only store carrying AE11's stamp. `redact` is what this
+standard's `anonymise` means on the audit store, where a product built it.
 
 A `retain` entry writes nothing to the ledger, because nothing was done to the
 row. The longest any copy of an erased subject's data persists is the
@@ -322,7 +330,7 @@ treated by the same declaration as any single erasure.
 | the person row | `anonymise`, `retained_columns: []`, global, `export_excludes: [password_hash]` | Becomes the shell every other row can still reference; the hash is a credential and leaves with nothing. |
 | tenant memberships | `delete`, `membership: true` | The row that says the subject belongs; its absence everywhere is what lets global rows go. |
 | invoices | `retain` under `legal_obligation`, seven years from `issued_at`, keeping amount, currency, issue date and tax id | The obligation names the columns; the billing email is not among them and goes now. |
-| audit events | two `anonymise` entries, by actor and by target, AE7 stamp, third-party columns excluded from export | The trail survives; the identification of whichever side the subject was on does not. |
+| audit events | two `retain` entries, by actor and by target, every column retained, `legal_claims` under 080 AE4 for the retention period, third-party columns excluded from export | The trail records who did what, and a person leaving changes none of it (080 AE4). |
 | messages | two `anonymise` entries, by sender and by recipient, keeping body and time | The other party still holds the message (025 SD12); the subject's identity behind it is gone. |
 | notification provider | `external`, `delete`, `export: false` | A copy the service placed there, removed through the provider's interface. |
 

@@ -1,7 +1,7 @@
 {
   "contract": "audit",
   "schemaVersion": 1,
-  "description": "The conformance corpus for standards/080-audit.md. Three parts. 'validity' is judged by event.schema.json alone: an implementation validates each event and must reach the stated verdict. 'floor' is judged by running the implementation: for each described act it must produce an event matching the stated expectations (AE5). 'redaction' is judged by running the implementation's erasure: given the 'before' event and an erasure request for the named subject, it must produce the 'after' event (AE7). Cases marked 'schemaCannotCatch' are here deliberately - they document where the schema stops and the named gate takes over, rather than implying coverage the file does not have.",
+  "description": "The conformance corpus for standards/080-audit.md. Three parts. 'validity' is judged by event.schema.json alone: an implementation validates each event and must reach the stated verdict. 'floor' is judged by running the implementation: for each described act it must produce an event matching the stated expectations (AE5). 'redaction' is judged by running the implementation's erasure: given the 'before' event and an erasure request for the named subject, it must produce the 'after' event (AE11). Cases marked 'schemaCannotCatch' are here deliberately - they document where the schema stops and the named gate takes over, rather than implying coverage the file does not have.",
   "judged_by": {
     "description": "What judges each part below, as data, so one runner can read it: the case key holding the instance, the schema (or the case key naming one and the table that resolves it), and the runner checks the schema cannot express. A part absent here is judged by running an implementation and is a product suite's. A case flagged schemaCannotCatch documents a verdict the schema alone does not reach.",
     "validity": {
@@ -243,7 +243,7 @@
     {
       "case": "an-erasure-marker-without-its-subjects-is-rejected",
       "valid": false,
-      "why": "AE7. erased_at alone says an erasure happened and not whose, which nobody can verify afterwards. The pair travels together in both directions, which is the part of AE7 the schema can hold; that the named subjects actually lost their display strings is judged by the redaction cases below, because it is a cross-reference JSON Schema cannot express.",
+      "why": "AE11. erased_at alone says an erasure happened and not whose, which nobody can verify afterwards. The pair travels together in both directions, which is the part of AE11 the schema can hold; that the named subjects actually lost their display strings is judged by the redaction cases below, because it is a cross-reference JSON Schema cannot express.",
       "event": {
         "schema_version": 1,
         "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0b0e",
@@ -537,7 +537,7 @@
     {
       "case": "erasure-keeps-the-act-and-loses-the-identification",
       "erase": { "subject_id": "01923e01-2222-7000-8000-000000000002", "at": "2026-09-01T00:00:00.000Z" },
-      "why": "AE7. What survives is the shape of the trail - who by public id, what, when, in what order. What goes is everything that identifies the person behind that id. The supposed conflict between an erasure right and an audit obligation dissolves at exactly this line.",
+      "why": "AE11. What survives is the shape of the trail - who by public id, what, when, in what order. What goes is everything that identifies the person behind that id. The supposed conflict between an erasure right and an audit obligation dissolves at exactly this line.",
       "before": {
         "schema_version": 1,
         "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0c01",
@@ -599,7 +599,7 @@
     {
       "case": "erasure-leaves-the-decision-block-intact",
       "erase": { "subject_id": "01923e01-2222-7000-8000-000000000002", "at": "2026-09-01T00:00:00.000Z" },
-      "why": "AE7 removes identification and nothing else. The capacity the person acted in is part of the shape of the trail, not of their identity, so decision survives byte for byte beside the public ids.",
+      "why": "AE11 removes identification and nothing else. The capacity the person acted in is part of the shape of the trail, not of their identity, so decision survives byte for byte beside the public ids.",
       "before": {
         "schema_version": 1,
         "event_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0c03",

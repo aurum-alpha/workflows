@@ -78,12 +78,15 @@ jobs:
           set -euo pipefail
           # go.mod's own version is what golangci-lint must be built with.
           echo "go=$(go env GOVERSION)" >> "$GITHUB_OUTPUT"
+      # The runner's architecture is in the key because the cached file is an
+      # executable: an arm64 runner restoring an amd64 build fails with
+      # `Exec format error`, as job-go-test-unit's gotestsum cache did.
       - name: Cache golangci-lint binary
         id: golangci-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/golangci-bin
-          key: golangci-${{ inputs.golangci_version }}-${{ steps.toolchain.outputs.go }}-${{ runner.os }}
+          key: golangci-${{ inputs.golangci_version }}-${{ steps.toolchain.outputs.go }}-${{ runner.os }}-${{ runner.arch }}
       - name: Build golangci-lint with the repo toolchain
         if: steps.golangci-cache.outputs.cache-hit != 'true'
         shell: bash

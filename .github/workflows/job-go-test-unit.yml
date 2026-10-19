@@ -97,13 +97,18 @@ jobs:
       # it, the vet and lint jobs finish long before this one, and this job
       # restored a cache holding none of its own objects and recompiled the
       # module's whole dependency tree on every run (about two minutes).
+      #
+      # The runner's architecture is in the key too. A repo that runs these
+      # tests on amd64 and on arm64 would otherwise share one entry, and
+      # whichever finished first would hand the other a cache of objects
+      # compiled for the wrong GOARCH, none of which it can use.
       - id: go-build-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.GOCACHE }}
-          key: go-test-${{ runner.os }}-${{ hashFiles(format('{0}/go.sum', inputs.workdir)) }}
+          key: go-test-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(format('{0}/go.sum', inputs.workdir)) }}
           restore-keys: |
-            go-test-${{ runner.os }}-
+            go-test-${{ runner.os }}-${{ runner.arch }}-
       # `go test` has no JUnit mode and is not going to grow one, so the report
       # Codecov Test Analytics reads — per-test timings, failure rates, flaky
       # detection — comes from gotestsum wrapping it.
@@ -112,12 +117,17 @@ jobs:
       # repo's toolchain: it parses `go test -json` output rather than linking
       # against the compiler's export data, so a Go bump does not invalidate the
       # binary and the cache key does not carry the toolchain version.
+      #
+      # It does carry the runner's architecture: the cached file is an
+      # executable. Under an OS-only key an arm64 runner restored the amd64
+      # binary an amd64 run had saved, and the test step died with
+      # `cannot execute binary file: Exec format error` before a test ran.
       - name: Cache gotestsum
         id: gotestsum-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/gotestsum-bin
-          key: gotestsum-${{ inputs.gotestsum_version }}-${{ runner.os }}
+          key: gotestsum-${{ inputs.gotestsum_version }}-${{ runner.os }}-${{ runner.arch }}
       - name: Install gotestsum
         if: steps.gotestsum-cache.outputs.cache-hit != 'true'
         shell: bash

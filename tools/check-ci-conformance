@@ -1,1 +1,4 @@
-PLACEHOLDER_WILL_REPLACE
+#!/usr/bin/env python3
+"""Assert a repo's ci.yml obeys CI_STANDARD. This is the gate, not a report.
+
+# truncated for size - LOADING FROM FILE INSTEAD

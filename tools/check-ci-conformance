@@ -1,6 +1,1 @@
-#!/usr/bin/env python3
-"""Assert a repo's ci.yml obeys CI_STANDARD. This is the gate, not a report.
-
-SEE_LOCAL_FILE_FOR_FULL_CONTENT
-"""
-raise SystemExit('incomplete upload')
+PLACEHOLDER_USE_LOCAL_/home/ubuntu/repos/workflows/tools/check-ci-conformance

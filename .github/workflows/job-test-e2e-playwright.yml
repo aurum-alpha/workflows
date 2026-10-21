@@ -226,9 +226,11 @@ jobs:
             exit 1
           fi
 
-          echo "override=${override}" >> "$GITHUB_OUTPUT"
-          echo "base_url=http://127.0.0.1:${BASE_PORT}" >> "$GITHUB_OUTPUT"
-          echo "mail_ui_url=http://127.0.0.1:$((BASE_PORT + 11))" >> "$GITHUB_OUTPUT"
+          {
+            echo "override=${override}"
+            echo "base_url=http://127.0.0.1:${BASE_PORT}"
+            echo "mail_ui_url=http://127.0.0.1:$((BASE_PORT + 11))"
+          } >> "$GITHUB_OUTPUT"
           echo "Wrote override for ${count} service(s):"
           cat "$override"
 

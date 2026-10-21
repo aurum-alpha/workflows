@@ -332,9 +332,15 @@
     "drizzle-kit latest 0.31.x). Vitest 5, pnpm 12, concurrently 10 and",
     "React 19.3 stay deferred. postcss and autoprefixer stay asserted even",
     "though no unit declares them today, so the next adopter is held to the",
-    "new line from the first commit."
+    "new line from the first commit.",
+    "",
+    "@playwright/test is asserted where present for job-test-e2e-playwright.",
+    "The job runs the suite inside the Playwright Docker image at the same",
+    "version, pinned by digest in the workflow. Bump the package here and the",
+    "image pin in the job together."
   ],
   "devDependencies": {
+    "@playwright/test": "1.64.1",
     "@tailwindcss/typography": "0.5.20",
     "@tailwindcss/vite": "4.3.3",
     "@types/memoizee": "0.4.12",

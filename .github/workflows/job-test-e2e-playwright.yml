@@ -1,0 +1,303 @@
+# aurum-job: capability=test-e2e language=js role=gate
+# Portfolio capability: test-e2e for a TypeScript product whose Playwright
+# suite exercises the assembled stack (CI_STANDARD Principle 12 — one way per
+# capability; standards/010-ci.md "Standard job DAG" step 3).
+#
+# Builds prove the sources compile. Unit tests prove pieces. This job proves
+# the images that will ship, through the real edge: oauth2-proxy, Keycloak and
+# Mailpit from the product's compose (the auth.devkit fragment), plus every
+# application service the caller maps to a staged digest. It never rebuilds.
+# The digest is the handoff from job-image-build — the same sentence
+# job-image-starts and job-image-publish already speak.
+#
+# Browsers come from the Playwright Docker image, pinned by digest with the
+# version in band (085 SB1). That image is chosen over installing browsers on
+# the runner because (1) the browser binaries and system libraries are the
+# ones Microsoft ships for that exact @playwright/test release, (2) the pin
+# is one line to bump with the package, and (3) self-hosted runners stay free
+# of --with-deps root installs that differ between hosts. The suite still runs
+# as `pnpm test:e2e`, the canonical command (015-commands.md DC2), inside that
+# container on the host network so it reaches the edge at offset zero (LD4).
+name: job-test-e2e-playwright
+
+on:
+  workflow_call:
+    inputs:
+      workdir:
+        description: >-
+          Directory holding package.json and the test:e2e script, relative to
+          the repo root. Defaults to `.`. Same shape rules as the other JS
+          jobs (workflows#252).
+        type: string
+        default: "."
+      compose_file:
+        description: >-
+          Compose file at the repository root that starts the local stack,
+          including the auth.devkit fragment (edge, oauth2-proxy, Keycloak,
+          Mailpit). Defaults to compose.yaml.
+        type: string
+        default: compose.yaml
+      base_port:
+        description: >-
+          The project's block base from ports.json. The edge is published at
+          offset zero (016-local-development.md LD4); the suite is pointed at
+          http://127.0.0.1:<base_port>. Mailpit's UI is advertised at +11 for
+          email stories.
+        type: number
+        required: true
+      images:
+        description: >-
+          Newline-separated `service=image@sha256:<digest>` entries. Each
+          names a compose service that the product's compose.yaml would
+          otherwise build, and the staged digest job-image-build produced for
+          it. The job writes a compose override that sets that image and
+          resets `build`, pulls by digest, and starts the stack with
+          `--no-build`. A service that still has a build key and no override
+          fails closed rather than compiling in this job.
+        type: string
+        required: true
+      timeout_minutes:
+        description: >-
+          Job ceiling. E2e stands a full stack and a browser; the default is
+          higher than a unit gate and exists only to bound a hang
+          (010-ci.md: every job sets timeout-minutes).
+        type: number
+        default: 45
+      runner:
+        description: >-
+          Override runs-on. Leave empty for the standard default
+          (CI_STANDARD Principle 4).
+        type: string
+        default: ""
+
+jobs:
+  test-e2e:
+    runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-26.04' }}
+    timeout-minutes: ${{ fromJSON(inputs.timeout_minutes) }}
+    permissions:
+      contents: read
+      # Read staged digests from ghcr, and private @aurum-alpha packages at
+      # install. The job-level block replaces the caller's token grant.
+      packages: read
+    env:
+      # Pin matches dependency-versions.json's @playwright/test. Bump both in
+      # one change. Digest is the pin; the tag is the version comment (SB1).
+      PLAYWRIGHT_IMAGE: mcr.microsoft.com/playwright:v1.64.1-jammy@sha256:7e9f074b4b69f7c746865936ac7840733cf5dfc957f265a547f331e7b83922d7 # v1.64.1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Validate workdir
+        env:
+          WD: ${{ inputs.workdir }}
+        run: |
+          set -euo pipefail
+          case "$WD" in
+            "") echo "::error::workdir is empty; use '.' for the repo root."
+                exit 1 ;;
+            /*) echo "::error::workdir must be relative to the repo root;" \
+                     "got '$WD'."; exit 1 ;;
+            ..|../*|*/../*|*/..)
+                echo "::error::workdir must not escape the repo root;" \
+                     "got '$WD'."; exit 1 ;;
+          esac
+          if [ ! -f "$WD/package.json" ]; then
+            echo "::error::no package.json at workdir '$WD'."
+            exit 1
+          fi
+
+      - name: Validate compose_file
+        env:
+          CF: ${{ inputs.compose_file }}
+        run: |
+          set -euo pipefail
+          case "$CF" in
+            "") echo "::error::compose_file is empty."
+                exit 1 ;;
+            /*) echo "::error::compose_file must be relative to the repo root;" \
+                     "got '$CF'."; exit 1 ;;
+            ..|../*|*/../*|*/..)
+                echo "::error::compose_file must not escape the repo root;" \
+                     "got '$CF'."; exit 1 ;;
+          esac
+          if [ ! -f "$CF" ]; then
+            echo "::error::no compose file at '$CF'."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: ${{ inputs.workdir }}/.node-version
+          registry-url: https://npm.pkg.github.com
+          scope: "@aurum-alpha"
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: ${{ inputs.workdir }}/package.json
+          standalone: true
+          dest: ${{ runner.temp }}/setup-pnpm
+      - name: Get pnpm store directory
+        shell: bash
+        working-directory: ${{ inputs.workdir }}
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+      - id: pnpm-store
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+      - working-directory: ${{ inputs.workdir }}
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+        run: pnpm install --frozen-lockfile
+      - name: Save the pnpm store
+        if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && steps.pnpm-store.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ steps.pnpm-store.outputs.cache-primary-key }}
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull staged images and write the compose override
+        id: stack
+        env:
+          IMAGES: ${{ inputs.images }}
+          COMPOSE_FILE: ${{ inputs.compose_file }}
+          BASE_PORT: ${{ inputs.base_port }}
+        run: |
+          set -euo pipefail
+
+          if ! [[ "$BASE_PORT" =~ ^[0-9]+$ ]] || [ "$BASE_PORT" -lt 1024 ]; then
+            echo "::error::base_port must be an integer host port >= 1024;" \
+                 "got '$BASE_PORT'."
+            exit 1
+          fi
+
+          override="${RUNNER_TEMP}/compose.e2e-images.yaml"
+          {
+            echo "# Generated by job-test-e2e-playwright. Do not edit."
+            echo "# Each service is the staged digest; build is reset so"
+            echo "# compose cannot rebuild (010-ci.md: e2e against artifacts)."
+            echo "services:"
+          } > "$override"
+
+          count=0
+          while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            [ "${line#\#}" = "$line" ] || continue
+            case "$line" in
+              *=*) ;;
+              *) echo "::error::images entries must be service=image@sha256:…;" \
+                      "got '$line'."; exit 1 ;;
+            esac
+            svc="${line%%=*}"
+            ref="${line#*=}"
+            case "$ref" in
+              *@sha256:*) ;;
+              *) echo "::error::image for '$svc' must be addressed by digest" \
+                      "(name@sha256:…); got '$ref'."; exit 1 ;;
+            esac
+            case "$svc" in
+              *[!a-zA-Z0-9_-]*|"")
+                echo "::error::service name '$svc' is not a compose service id."
+                exit 1 ;;
+            esac
+            echo "Pulling $ref for service $svc"
+            docker pull -q "$ref"
+            # Compose merge keeps a sibling build: unless build is reset, up
+            # --no-build still sees a build key from the product's file.
+            # !reset is Compose Specification 2.24+; runners carry that.
+            {
+              echo "  ${svc}:"
+              echo "    image: ${ref}"
+              echo "    pull_policy: never"
+              echo "    build: !reset null"
+            } >> "$override"
+            count=$((count + 1))
+          done <<< "$IMAGES"
+
+          if [ "$count" -eq 0 ]; then
+            echo "::error::images is empty; pass every compose service that" \
+                 "would otherwise build, as service=image@sha256:…."
+            exit 1
+          fi
+
+          {
+            echo "override=${override}"
+            echo "base_url=http://127.0.0.1:${BASE_PORT}"
+            echo "mail_ui_url=http://127.0.0.1:$((BASE_PORT + 11))"
+          } >> "$GITHUB_OUTPUT"
+          echo "Wrote override for ${count} service(s):"
+          cat "$override"
+
+      - name: Bring the stack up from digests
+        id: up
+        env:
+          COMPOSE_FILE: ${{ inputs.compose_file }}
+          OVERRIDE: ${{ steps.stack.outputs.override }}
+        run: |
+          set -euo pipefail
+          # --no-build is the contract: digests only, never a rebuild.
+          docker compose -f "$COMPOSE_FILE" -f "$OVERRIDE" up --wait --no-build -d
+          docker compose -f "$COMPOSE_FILE" -f "$OVERRIDE" ps
+
+      - name: Pull the Playwright image
+        run: docker pull -q "$PLAYWRIGHT_IMAGE"
+
+      - name: End-to-end tests
+        env:
+          WD: ${{ inputs.workdir }}
+          BASE_URL: ${{ steps.stack.outputs.base_url }}
+          MAIL_UI_URL: ${{ steps.stack.outputs.mail_ui_url }}
+        run: |
+          set -euo pipefail
+          # The canonical command is pnpm test:e2e (015 DC2). pnpm itself is
+          # the standalone binary setup-pnpm installed on the runner; the
+          # Playwright image supplies browsers and OS libraries for the
+          # pinned release. Host network: the edge listens on the runner's
+          # loopback at offset zero. HOME=/tmp so a non-root uid can write.
+          pnpm_bin="$(command -v pnpm)"
+          docker run --rm --init --network host \
+            --user "$(id -u):$(id -g)" \
+            -v "$PWD:/work" \
+            -v "${pnpm_bin}:/usr/local/bin/pnpm:ro" \
+            -w "/work/${WD}" \
+            -e CI=true \
+            -e HOME=/tmp \
+            -e BASE_URL \
+            -e MAIL_UI_URL \
+            -e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+            "$PLAYWRIGHT_IMAGE" \
+            pnpm test:e2e
+
+      - name: Upload Playwright HTML report
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-report
+          path: ${{ inputs.workdir }}/playwright-report
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-traces
+          path: ${{ inputs.workdir }}/test-results
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Tear the stack down
+        if: always() && steps.up.outcome != 'skipped'
+        env:
+          COMPOSE_FILE: ${{ inputs.compose_file }}
+          OVERRIDE: ${{ steps.stack.outputs.override }}
+        run: |
+          set -euo pipefail
+          docker compose -f "$COMPOSE_FILE" -f "$OVERRIDE" down -v --remove-orphans \
+            || true

@@ -18,6 +18,8 @@
 # of --with-deps root installs that differ between hosts. The suite still runs
 # as `pnpm test:e2e`, the canonical command (015-commands.md DC2), inside that
 # container on the host network so it reaches the edge at offset zero (LD4).
+# pnpm is prepared in-container via corepack from package.json's packageManager
+# — the host shim is not mounted (it resolves into PNPM_HOME and exits 127).
 name: job-test-e2e-playwright
 
 on:
@@ -255,24 +257,32 @@ jobs:
           MAIL_UI_URL: ${{ steps.stack.outputs.mail_ui_url }}
         run: |
           set -euo pipefail
-          # The canonical command is pnpm test:e2e (015 DC2). pnpm itself is
-          # the standalone binary setup-pnpm installed on the runner; the
-          # Playwright image supplies browsers and OS libraries for the
-          # pinned release. Host network: the edge listens on the runner's
-          # loopback at offset zero. HOME=/tmp so a non-root uid can write.
-          pnpm_bin="$(command -v pnpm)"
+          # The canonical command is pnpm test:e2e (015 DC2). The Playwright
+          # image supplies Node, browsers and OS libraries. Do not mount the
+          # host's `pnpm` from PATH: on runners that also expose a global shim,
+          # that wrapper resolves into PNPM_HOME under /usr/local/global and
+          # exits 127 inside the container. Prepare package.json's
+          # packageManager with corepack in the image instead.
+          # Host network: the edge listens on the runner's loopback at offset
+          # zero. HOME=/tmp so a non-root uid can write.
           docker run --rm --init --network host \
             --user "$(id -u):$(id -g)" \
             -v "$PWD:/work" \
-            -v "${pnpm_bin}:/usr/local/bin/pnpm:ro" \
             -w "/work/${WD}" \
             -e CI=true \
             -e HOME=/tmp \
+            -e COREPACK_HOME=/tmp/corepack \
+            -e COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
             -e BASE_URL \
             -e MAIL_UI_URL \
             -e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
             "$PLAYWRIGHT_IMAGE" \
-            pnpm test:e2e
+            bash -lc 'set -euo pipefail
+              mkdir -p "$HOME/.local/bin" "$COREPACK_HOME"
+              corepack enable --install-directory "$HOME/.local/bin"
+              export PATH="$HOME/.local/bin:$PATH"
+              corepack prepare --activate
+              pnpm test:e2e'
 
       - name: Upload Playwright HTML report
         if: failure()

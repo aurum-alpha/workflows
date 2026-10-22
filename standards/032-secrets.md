@@ -230,8 +230,9 @@ declared as its own subject.
 
 **Each image carries the least its jobs declare** ([`035-workers.md`](035-workers.md)
 WK8). The server, the pool and the jobs image carry the runtime credential.
-The migrate image carries the migration credential and nothing else, and no
-other image carries it. No image carries a credential to a backing service
+The migrate step is handed the migration credential and nothing else, and no
+other process is handed it; where the step runs the server image, the server
+process is still never given it. No image carries a credential to a backing service
 another service owns, which is SD13's edge of a service seen from the
 credential's side. The declaration's `images` field states this, and a secret
 whose images include `migrate` includes nothing else, by schema.

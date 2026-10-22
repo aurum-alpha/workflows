@@ -122,20 +122,38 @@ what already exists, cannot apply it either. The same holds for a database
 restored from a backup taken between apply and record. The version record
 gives ordering and speed; convergence gives recovery.
 
-### SD3. Migrations ship in their own image and run as a step before rollout
+### SD3. Migrations ship in the product's image and run as a step before rollout
 
 A migration is in the repository, and the repository is not present where the
 service runs. So the question *how is a migration applied* has one answer.
-**The migrations ship in an image built from the same repository, in the same
-build run, at the same version as the service**. That image is the migration
-runner and the `.sql` files and nothing else: not the listener, not a worker.
-An image does one thing. The migration credential then has exactly one home:
-the runtime image never holds it, and the migrate image holds nothing but it.
+**The migrations and their runner ship in an image built from the same
+repository, in the same build run, at the same version as the service, and
+nothing outside that repository carries a copy of the SQL.** A deployment
+names the image and the command. It never holds a migration file, because a
+copy held where the service runs falls behind the moment the next migration
+lands in the repository, and nothing fails when it does.
 
-Two rules of [`010-ci.md`](010-ci.md) bind the two images. Under BUILD ONCE
-the migrate image is assembled from what the build job stored, never
-recompiled. Under repository versioning the migrate image and the service
-image at one version carry one schema by construction.
+**The standard shape is the service image carrying its own runner.** The
+image holds the migrations directory beside the bundle. The same binary that
+serves answers a `migrate` subcommand: `node dist/index.js migrate`,
+`cm migrate`, `php spark migrate`. The deployment runs that image once with
+that subcommand, under the owner credential, before the servers and workers
+start. Every stack then runs the identical command from the identical image:
+the local one-shot, CI's e2e job and a deployed stack. That is one runner
+and one copy of the SQL, which is the property this rule exists for.
+
+**A separate migrate image is the alternative, not the rule.** A product
+takes it where the runner's dependency closure differs from the service's
+enough to split the image under [`010-ci.md`](010-ci.md). Its `AGENTS.md`
+says so. It is held to the same sentences: built from the same run,
+versioned with the service, the only place the SQL ships. Where another
+standard says *the migrate image*, it means whichever image the migrate
+step runs.
+
+Two rules of [`010-ci.md`](010-ci.md) bind the image either way. Under
+BUILD ONCE it is assembled from what the build job stored, never recompiled.
+Under repository versioning the runner and the service at one version carry
+one schema by construction.
 
 **The migrate image runs to completion and exits**. It applies every pending
 migration in order and exits zero, or stops at the first failure and exits
@@ -146,14 +164,14 @@ applies nothing and exits zero. A run against a half-migrated one finishes
 the job rather than refusing it.
 
 This is [factor XII](https://12factor.net/admin-processes) met in its own
-terms: migrations are run by `docker run <service>-migrate:<version>`,
+terms: migrations are run by `docker run <service>:<version> migrate`,
 against any release, with nothing but the image reference. A pipeline step
 and a person at a keyboard run the identical command.
 
-The migrate image is the first one-shot worker of
+The migrate step is the first one-shot worker of
 [`035-workers.md`](035-workers.md), and the migration is a `once_ever`,
 single-flight, blocking job under [`057-jobs.md`](057-jobs.md). A repository
-that holds several services has one migrate image per service, because each
+that holds several services has one migrate step per service, because each
 holds a different credential.
 
 **It runs as a discrete step before rollout, never at service boot.** Two
@@ -166,13 +184,16 @@ service checks the schema version at start. If it is behind, it reports
 and takes no traffic ([`030-service.md`](030-service.md) SC6). That report is
 the backstop, not the mechanism.
 
-**The migration credential is not the runtime credential**, and the separate
-image is what makes that enforceable rather than remembered. The service's
-database role cannot alter the schema; the migrate image's can. Because the
-service image contains no migration runner, there is nothing in it that could
-use the stronger credential if it were leaked to it. This is the
-least-privilege split [`080-audit.md`](080-audit.md) AE6 already asks for on
-one table, generalised to all of them.
+**The migration credential is not the runtime credential**, and the
+database role is what makes that enforceable rather than remembered. The
+service connects as a role that holds no DDL and cannot alter the schema; the
+migrate step runs under the owner's. A runner inside the service image
+therefore changes nothing under the runtime credential. Handed the service's
+`DATABASE_URL`, it is refused at the first `CREATE`. The split
+rests on the role, and the one-shot is what carries the owner's login; the
+service process is never given it. This is the least-privilege split
+[`080-audit.md`](080-audit.md) AE6 already asks for on one table,
+generalised to all of them.
 
 Where a product isolates by **one database per tenant** (SD6), the migrate
 image iterates every tenant database. A failure in one is reported by name

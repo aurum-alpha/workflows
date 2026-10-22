@@ -216,8 +216,10 @@ live in a standard, the entry points there.
   package, a rendered manifest. Every artifact carries the repository's
   version.
 - **Image.** An OCI container image, the unit of packaging and deployment. An
-  image does one thing: it is a server, or a worker, or the migrate step
-  ([`010-ci.md`](010-ci.md), Principle 15).
+  image does one thing: it is a server, or a worker, or the migrate step,
+  which is the server image run once with its `migrate` subcommand
+  ([`010-ci.md`](010-ci.md), Principle 15;
+  [`025-structured-data.md`](025-structured-data.md) SD3).
 - **Build run.** One execution of a repository's CI on one commit, producing
   every artifact the repository ships and testing them together. The artifacts
   of one run share a provenance and assert compatibility with one another by

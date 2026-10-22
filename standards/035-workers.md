@@ -83,9 +83,11 @@ contract, and is packaged only by being inside a worker.
 credential, and the configuration surface. Where all three are the same, jobs
 share an image; where one differs, the image splits. Applied to workers:
 
-- The **migrate image**, `<service>-migrate`, stands alone. It gets
-  the migration credential and nothing else, per 025 SD3, and no other job
-  is permitted to hold that credential.
+- The **migrate step** is the service image run once with its `migrate`
+  subcommand, per 025 SD3. It runs under the migration credential, which no
+  other job is permitted to hold. A product whose runner's closure differs splits
+  it into `<service>-migrate`, and that image then holds the migrations and
+  their runner and nothing else.
 - The **recovery image**, `<service>-recovery`, stands alone: it alone holds
   the restore credential ([`028-backup-and-recovery.md`](028-backup-and-recovery.md)
   BR3).
@@ -132,7 +134,7 @@ declaration, and records why in its own decisions.
 
 ```
 docker run --env-file <env> <service>-jobs:<version> <job.name> [--at <tick>] [--key <key>] [args...]
-docker run --env-file <env> <service>-migrate:<version>
+docker run --env-file <env> <service>:<version> migrate
 ```
 
 The one-shot reads the job's declaration (057 JB3) and refuses to run a job
@@ -240,8 +242,8 @@ what its jobs declare they need, which is one of the three things WK2 splits
 images on.
 
 The pool and the ordinary one-shot image carry the service's runtime
-credential. The migrate image carries the migration credentials and no
-runtime credential. Those are the relational one and, where
+credential. The migrate step is handed the migration credentials and no
+runtime credential, whichever image runs it. Those are the relational one and, where
 [`027-json-document-storage.md`](027-json-document-storage.md) admits a JSON
 document store, that store's declaration credential (027 DS7). The recovery
 image carries the restore credential and the runtime credential for its run

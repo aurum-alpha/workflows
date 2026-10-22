@@ -500,6 +500,18 @@ role name for the role class and its own tenant id for the label. Both are
 idempotent, both exit, and `docker compose up` runs them in order before
 anything serves.
 
+**`tools/migrate` is a wrapper, never the runner.** The runner is the
+product's own image's `migrate` subcommand, shipped beside the server with
+the migrations inside the image. A deployed stack runs that image once with
+that subcommand before the server starts
+([`025-structured-data.md`](../standards/025-structured-data.md) SD3). A
+product either points this `migrate` service at its server image with that
+command, or has `tools/migrate` call the same subcommand from the checkout.
+A `tools/migrate` that applies SQL on its own, with `psql` over the mounted
+tree, is a second runner. It works here and leaves the deployed stack with
+nothing to run. Whoever deploys the product then copies the SQL out of the
+repository to fill the gap, which is the copy SD3 forbids.
+
 **A long-running service must depend on each one-shot.**
 `server` depends on `migrate` and `seed` with `service_completed_successfully`.
 `--wait` fails a one-shot nobody depends on, even on exit 0.

@@ -3,8 +3,10 @@
   "schemaVersion": 1,
   "description": "standards/025-structured-data.md SD7 as data: for each admitted engine, the column type each identifiers-contract primitive lands in, so a schema checker reads this rather than a person re-deriving it from prose. An engine is admitted by adding its object here, in its own change, with every primitive filled in and every 'why' answered. No engine is mandated (SD7); an engine absent from this file is not yet admitted.",
   "primitives": {
-    "uuidv7PublicId": "IP2. The public id for machine-scale entities. Never the primary key (IP1) - it is a separate, indexed, immutable column beside the internal key.",
-    "handle": "IP2. A nanoid or prefixed handle. The CHECK constraint carries the IP2 pattern so the column cannot admit a value the contract would reject.",
+    "uuidv7PublicId": "IP2 part A. The default row public id, in a column named public_id. Time-ordered, so the unique index every lookup uses inserts at its edge. A separate, indexed, immutable column beside the internal key (IP1), never the primary key or a foreign key target.",
+    "uuidv4PublicId": "IP2 part A. A random row public id for a row whose creation time or rate is sensitive. A separate, indexed, immutable column named public_id beside the internal key (IP1), never the primary key or a foreign key target.",
+    "handle": "IP2 part A. A nanoid row public id, for an id a person types, in a column named public_id under a binary collation. The CHECK carries the nanoid pattern and refuses the display handle shape, so the column cannot admit a value the standard forbids.",
+    "displayHandle": "IP2 part B. A display handle shown to a person, in its own unique, immutable column beside the row public id. Never the primary key, a foreign key target or a row public id.",
     "instant": "IP4. An instant in time, stored UTC at the repository's pinned precision (three digits by default; six or nine where the repository's Conventions say so).",
     "date": "IP4. A calendar date with no time and no zone. Never an instant at midnight.",
     "moneyAmount": "IP5. Integer minor units. Travels with moneyCurrency; neither column is nullable when the other is present.",
@@ -13,8 +15,10 @@
   },
   "engines": {
     "postgres": {
-      "uuidv7PublicId": { "type": "uuid", "why": "Native 16-byte type with index support. A text UUID indexes at more than twice the width for no benefit." },
-      "handle": { "type": "text CHECK (col ~ '<IP2 pattern>')", "why": "An unconstrained text column admits anything; the CHECK makes the contract's pattern the column's." },
+      "uuidv7PublicId": { "type": "uuid", "why": "Native 16-byte type with index support. A text UUID indexes at more than twice the width for no benefit. The application mints it until the pinned engine has uuidv7()." },
+      "uuidv4PublicId": { "type": "uuid DEFAULT gen_random_uuid()", "why": "Native 16-byte type, and gen_random_uuid() generates a version-4 value on every supported release without an extension." },
+      "handle": { "type": "text COLLATE \"C\" CHECK (col ~ '<nanoid pattern>' AND col !~ '<display handle pattern>')", "why": "An unconstrained text column admits anything; the CHECK makes the contract's pattern the column's, and refuses a value shaped like a display handle. A locale collation compares ids as words; the C collation compares bytes." },
+      "displayHandle": { "type": "text CHECK (col ~ '<display handle pattern>')", "why": "The pattern belongs to the column, not to the code that writes it." },
       "instant": { "type": "timestamptz(3)", "why": "timestamptz stores an absolute instant. timestamp WITHOUT time zone stores a wall-clock reading and reinterprets it under whatever the session zone is - the exact trap IP4 names." },
       "date": { "type": "date", "why": "A calendar date. An instant at midnight is off by a day for half the planet." },
       "moneyAmount": { "type": "bigint NOT NULL", "why": "numeric invites fractional cents; float is the whole argument against floats." },
@@ -24,7 +28,9 @@
     },
     "mysql": {
       "uuidv7PublicId": { "type": "BINARY(16), or CHAR(36) where readability in the console outweighs the index cost", "why": "MySQL has no native uuid type; BINARY(16) is the compact form and CHAR(36) the readable one. Either is a deliberate choice, recorded in the repository's Conventions." },
-      "handle": { "type": "VARCHAR(n) with a CHECK on the IP2 pattern", "why": "As Postgres: the pattern belongs to the column, not to the code that writes it." },
+      "uuidv4PublicId": { "type": "BINARY(16), or CHAR(36) where readability in the console outweighs the index cost", "why": "As uuidv7PublicId. The application mints the value: MySQL's UUID() is version 1, which IP2 does not admit." },
+      "handle": { "type": "VARCHAR(n) CHARACTER SET ascii COLLATE ascii_bin with a CHECK on the nanoid pattern that refuses the display handle pattern", "why": "As Postgres: the pattern belongs to the column, not to the code that writes it, and a binary collation compares bytes." },
+      "displayHandle": { "type": "VARCHAR(n) with a CHECK on the display handle pattern", "why": "As Postgres." },
       "instant": { "type": "DATETIME(3) holding UTC", "why": "TIMESTAMP ends in 2038 and converts through the session zone; DATETIME stores what it is given, so the profile stores UTC and the session is pinned to UTC." },
       "date": { "type": "DATE", "why": "As Postgres." },
       "moneyAmount": { "type": "BIGINT NOT NULL", "why": "As Postgres." },

@@ -20,7 +20,7 @@
       "value": {
         "schema_version": 1,
         "user": {
-          "id": "usr_8fK2mQ7xW3pLzR"
+          "id": "8fK2mQ7xW3pLzR"
         },
         "permissions": [
           "invoice.read",
@@ -36,7 +36,7 @@
       "value": {
         "schema_version": 1,
         "user": {
-          "id": "usr_8fK2mQ7xW3pLzR",
+          "id": "8fK2mQ7xW3pLzR",
           "name": "Someone Example",
           "email": "someone@example.com",
           "email_verified": true,
@@ -64,7 +64,7 @@
       "value": {
         "schema_version": 1,
         "user": {
-          "id": "usr_8fK2mQ7xW3pLzR",
+          "id": "8fK2mQ7xW3pLzR",
           "editable_fields": [
             "displayName"
           ]
@@ -82,7 +82,7 @@
       "value": {
         "schema_version": 1,
         "user": {
-          "id": "usr_8fK2mQ7xW3pLzR"
+          "id": "8fK2mQ7xW3pLzR"
         },
         "permissions": [
           "Invoice.Approve"
@@ -97,7 +97,7 @@
       "value": {
         "schema_version": 1,
         "user": {
-          "id": "usr_8fK2mQ7xW3pLzR"
+          "id": "8fK2mQ7xW3pLzR"
         }
       },
       "valid": false,
@@ -111,7 +111,7 @@
         "options": [
           {
             "grant": {
-              "subject": "usr_8fK2mQ7xW3pLzR",
+              "subject": "8fK2mQ7xW3pLzR",
               "role": "tenant_admin",
               "scope": "tenant:northwind"
             },
@@ -132,7 +132,7 @@
         "options": [
           {
             "grant": {
-              "subject": "usr_8fK2mQ7xW3pLzR",
+              "subject": "8fK2mQ7xW3pLzR",
               "role": "tenant_admin",
               "scope": "tenant:northwind"
             },
@@ -154,7 +154,7 @@
         "options": [
           {
             "grant": {
-              "subject": "usr_8fK2mQ7xW3pLzR",
+              "subject": "8fK2mQ7xW3pLzR",
               "role": "tenant_admin",
               "scope": "tenant:northwind"
             },
@@ -176,7 +176,7 @@
         "options": [
           {
             "grant": {
-              "subject": "usr_8fK2mQ7xW3pLzR",
+              "subject": "8fK2mQ7xW3pLzR",
               "role": "tenant_admin",
               "scope": "tenant:northwind"
             },
@@ -198,7 +198,7 @@
         "options": [
           {
             "grant": {
-              "subject": "usr_8fK2mQ7xW3pLzR",
+              "subject": "8fK2mQ7xW3pLzR",
               "role": "tenant_admin",
               "scope": "tenant:northwind"
             },

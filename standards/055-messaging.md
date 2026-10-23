@@ -36,7 +36,7 @@ choices the specification leaves open are pinned as follows:
 | `id` | A UUIDv7 per [`020-identifiers.md`](020-identifiers.md) IP2, minted by the producer. |
 | `source` | A URI-reference naming the **producing service logically**, identical in every environment: `/invoicing`, never a hostname. Because `source + id` is the event's identity, a source that varies between staging and production would make one event two. |
 | `type` | `<resource>.<event>`, lowercase `snake_case` segments, past tense: `invoice.voided`, `user.invited`. The producing service is not repeated in the type because `source` already names it. A type's meaning never changes; a different meaning is a different type (PC6). |
-| `subject` | The public id of the entity the event is about, per IP1: `inv_9Kd2mQ…`, never an internal key. |
+| `subject` | The public id of the entity the event is about, per IP1: `9Kd2mQ7xW3pLzR`, never an internal key. |
 | `time` | When the occurrence happened, RFC 3339 UTC `Z` per IP4. Not when it was published. |
 | `datacontenttype` | `application/json`. |
 | `dataschema` | The URI of the JSON Schema `data` conforms to, carrying its version. This is how the payload evolves: additively under one URI, a breaking change under a new one, per PC6. |

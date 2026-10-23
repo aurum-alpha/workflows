@@ -29,7 +29,7 @@
       "case": "a-tenant-scoped-key-with-a-prefixed-handle-tenant-is-accepted",
       "valid": true,
       "why": "BS3: the tenant segment is any admitted IP2 format; a prefixed handle is one.",
-      "key": "cus_V1StGXR8Z5jd/invoice_attachments/01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99"
+      "key": "V1StGXR8Z5jd/invoice_attachments/01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99"
     },
     {
       "case": "an-unscoped-key-is-accepted",

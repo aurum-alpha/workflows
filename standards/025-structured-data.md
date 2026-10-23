@@ -323,9 +323,16 @@ in, and it is where that standard's deferrals resolve.
 
 **IP1 in schema form**: an externally addressable table carries an internal
 key that never leaves the service *and* a separate public id column. The
-public id column is unique, indexed and immutable, in an admitted IP2 format.
-The public id is not the primary key, so the format can change without a
-foreign-key migration rippling through the schema.
+internal key is the primary key and is named `id`. A reference to another
+table is an integer column named `<entity>_id`. The public id column is named
+`public_id`. It is unique, indexed and immutable, in an admitted IP2 part A
+format. No key is a public id, so the format can change without a foreign-key
+migration rippling through the schema.
+
+A display handle (IP2 part B) is a further column on the row that needs one,
+such as `account_ref`. It is unique, indexed and immutable, and it is not a
+key. The storage layer maps `public_id` to `id`, and `<entity>_id` to the
+referenced row's public id, on the way out (IP1).
 
 **The storage profile is per admitted engine.** This document does not
 mandate an engine. Postgres and MySQL are both admitted. It does say, for
@@ -334,12 +341,14 @@ how the identifiers rules fail silently:
 
 | Primitive | Postgres | MySQL | Why the obvious alternative is wrong |
 |---|---|---|---|
-| UUIDv7 public id | `uuid` | `BINARY(16)`, or `CHAR(36)` where readability outweighs the index cost | A `text` UUID indexes at twice the width for no benefit |
-| nanoid / prefixed handle | `text` with a `CHECK` on the IP2 pattern | `VARCHAR(n)` with the same check | An unconstrained text column admits anything |
+| UUIDv7 public id (the default) | `uuid`, minted by the application until the pinned engine has `uuidv7()` | `BINARY(16)`, or `CHAR(36)` where readability outweighs the index cost; the application mints it | A random value in the `public_id` index splits pages and keeps the whole index hot; an ordered one inserts at the edge |
+| UUIDv4 public id (creation time is sensitive) | `uuid DEFAULT gen_random_uuid()` | As the UUIDv7 row | A `text` UUID indexes at twice the width for no benefit |
+| nanoid public id (an id a person types) | `text COLLATE "C"` with a `CHECK` on the nanoid pattern that refuses the display handle pattern | `VARCHAR(n) CHARACTER SET ascii COLLATE ascii_bin` with the same check | An unconstrained text column admits anything; a locale collation compares ids as words |
+| Display handle | `text` with a `CHECK` on the display handle pattern | `VARCHAR(n)` with the same check | The pattern belongs to the column, not to the code that writes it |
 | Instant (IP4) | `timestamptz(3)` | `DATETIME(3)` holding UTC | Postgres `timestamp` *without* time zone stores a wall-clock reading and silently reinterprets it under a session zone; MySQL `TIMESTAMP` ends in 2038 and converts through the session zone. Both are the exact trap IP4 names |
 | Calendar date (IP4) | `date` | `DATE` | An instant at midnight is off by a day for half the planet |
 | Money (IP5) | `bigint` amount + `char(3)` currency, both `NOT NULL` | `BIGINT` + `CHAR(3)` | `numeric` invites fractional cents; `float` is the whole argument against floats |
-| Internal key | `bigint generated always as identity` | `BIGINT AUTO_INCREMENT` | A UUID primary key on a high-insert table fragments the index; the internal key is for joins and is never exposed |
+| Internal key (column `id`; references are `<entity>_id`) | `bigint generated always as identity` | `BIGINT AUTO_INCREMENT` | A UUID primary key on a high-insert table fragments the index; the internal key is for joins and is never exposed |
 
 A repository pinning six-digit precision per IP4 uses `timestamptz(6)` /
 `DATETIME(6)` and says so in its **Conventions**. An engine not in this table

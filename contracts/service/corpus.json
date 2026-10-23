@@ -234,7 +234,7 @@
         "service": "billing",
         "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
         "request_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99",
-        "tenant_id": "ten_8fK2mQ7xW3pLzR",
+        "tenant_id": "8fK2mQ7xW3pLzR",
         "error": {
           "type": "GatewayTimeout",
           "message": "upstream did not respond"
@@ -250,7 +250,7 @@
         "level": "error",
         "msg": "payment failed",
         "service": "billing",
-        "tenant_id": "ten_8fK2mQ7xW3pLzR",
+        "tenant_id": "8fK2mQ7xW3pLzR",
         "error": {
           "type": "GatewayTimeout",
           "message": "upstream did not respond"

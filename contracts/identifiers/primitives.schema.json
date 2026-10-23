@@ -9,24 +9,29 @@
     },
     "uuidv7": {
       "type": "string",
-      "description": "RFC 9562 UUIDv7, lowercase canonical hyphenated wire form (IP2).",
+      "description": "RFC 9562 UUIDv7, lowercase canonical hyphenated wire form. The default row public id (IP2 part A).",
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "uuidv4": {
+      "type": "string",
+      "description": "RFC 9562 UUIDv4, lowercase canonical hyphenated wire form. A row public id where the creation time is sensitive (IP2 part A).",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
     },
     "nanoid": {
       "type": "string",
-      "description": "Unprefixed user-facing handle: nanoid default alphabet, length >= 12 (IP2).",
+      "description": "Row public id for an id a person types (IP2 part A): nanoid default alphabet, length >= 12. The alphabet contains '_', so a display handle is also a valid nanoid by shape; the generator retries on that shape and the CHECK on a new table's public_id column refuses it.",
       "pattern": "^[A-Za-z0-9_-]{12,64}$"
     },
     "prefixedHandle": {
       "type": "string",
-      "description": "Type-prefixed handle: lowercase prefix, one underscore, base62 body >= 12 so the first underscore always delimits the prefix (IP2).",
+      "description": "Display handle (IP2 part B): a value shown to a person for support, integration or connectivity. Lowercase prefix, one underscore, base62 body >= 12 so the first underscore always delimits the prefix. An attribute of a row in its own column; never a row public id, key, URL segment, grant scope or audit target id.",
       "pattern": "^[a-z][a-z0-9]{0,7}_[A-Za-z0-9]{12,64}$"
     },
     "publicId": {
-      "description": "Any admitted public identifier format (IP2). Opaque to consumers (IP3).",
+      "description": "Any admitted row public id format (IP2 part A). Opaque to consumers (IP3). The display handle is not a member: a field that holds one references prefixedHandle directly.",
       "anyOf": [
         { "$ref": "#/$defs/uuidv7" },
-        { "$ref": "#/$defs/prefixedHandle" },
+        { "$ref": "#/$defs/uuidv4" },
         { "$ref": "#/$defs/nanoid" }
       ]
     },

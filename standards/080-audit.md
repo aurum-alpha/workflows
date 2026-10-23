@@ -277,6 +277,19 @@ in its **Conventions** and names which of the two it did. A chain with no
 external anchor is ceremony, and this standard would rather a product spend the
 effort on AE8.
 
+**The identifier migration is a one-time exception.** Some products hold
+events under id forms that [`020-identifiers.md`](020-identifiers.md) no
+longer admits. A
+product rewrites the identifier values in `audit_events` in one migration, run
+as the schema owner. The rewrite maps each old value to its new public id, one
+to one.
+
+Every other member of every row is byte-identical afterwards. The migration
+asserts it with row counts and a checksum of the untouched members. The
+application role still holds `INSERT` and `SELECT` alone. The product records
+the migration in its operations notes. The exception covers this migration
+only, and AE4 governs every later change.
+
 ### AE7. The product sets its retention period, and one operation applies it
 
 **Audit events are tenant-scoped data**, held under the same isolation rules as

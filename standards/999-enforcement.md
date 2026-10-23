@@ -238,8 +238,8 @@ Rules from [`020-identifiers.md`](020-identifiers.md).
 
 | # | Rule | Enforced by | Status |
 |---|---|---|---|
-| IP1 | Internal keys never leave the service | schema-level column check, buildable once the [structured-data standard](025-structured-data.md) defines a readable schema; until then the stated review question | **review only** |
-| IP2 | The public id format table | **schema-decided** under `job-contract-conformance`: thirty-five `validity` cases against `primitives.schema.json`; the `canonical` part needs an implementation and is the product suite's | gated¹⁰ |
+| IP1 | Internal keys never leave the service | schema-level column check, the proposed `check-storage-profile`: it flags a `uuid` or `text` primary key, a foreign key that targets `public_id`, and a `public_id` used as a key. Until it exists, the stated review question | **review only** |
+| IP2 | The public id format table | **schema-decided** under `job-contract-conformance`: the `validity` cases against `primitives.schema.json`; the `canonical` part needs an implementation and is the product suite's. A nanoid and a display handle can look alike, so that a row public id is not a display handle is held by the generator, the column `CHECK` (SD7) and review | gated¹⁰ |
 | IP3 | Ids are opaque | — resists honestly; review question on consumers | **review only** |
 | IP4 | Timestamps are RFC 3339 UTC, and a date is not a timestamp | corpus validity + canonical cases (proposed, same job) | **review only** |
 | IP5 | Money is integer minor units plus an explicit currency | corpus validity cases (proposed, same job) | **review only** |

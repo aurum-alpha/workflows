@@ -16,13 +16,17 @@
         "publicId": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/publicId",
         "timestamp": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestamp",
         "timestampInput": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/timestampInput",
+        "uuidv4": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/uuidv4",
         "uuidv7": "https://contracts.aurumalpha.dev/identifiers/primitives.schema.json#/$defs/uuidv7"
       }
     }
   },
   "validity": [
     { "id": "uuidv7-ok", "def": "uuidv7", "value": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99", "valid": true },
-    { "id": "uuidv7-rejects-v4", "def": "uuidv7", "value": "9b2edf3e-3b5a-4f0e-8f1d-2a6c4b8d9e0f", "valid": false, "note": "version nibble is 4 — UUIDv4 is not admitted under the uuidv7 def (IP2)" },
+    { "id": "uuidv7-rejects-v4", "def": "uuidv7", "value": "9b2edf3e-3b5a-4f0e-8f1d-2a6c4b8d9e0f", "valid": false, "note": "version nibble is 4 — a UUIDv4 is a row public id under the uuidv4 def, not a UUIDv7 (IP2)" },
+    { "id": "uuidv4-ok", "def": "uuidv4", "value": "9b2edf3e-3b5a-4f0e-8f1d-2a6c4b8d9e0f", "valid": true },
+    { "id": "uuidv4-rejects-v7", "def": "uuidv4", "value": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99", "valid": false, "note": "version nibble is 7 (IP2)" },
+    { "id": "uuidv4-rejects-unhyphenated", "def": "uuidv4", "value": "9b2edf3e3b5a4f0e8f1d2a6c4b8d9e0f", "valid": false, "note": "a UUID without its hyphens is neither a UUID nor a nanoid in the standard (IP2); the nanoid def cannot refuse it by shape" },
     { "id": "uuidv7-rejects-uppercase", "def": "uuidv7", "value": "01923E8A-7F4E-7CC3-9A2B-3F8D2C1B0A99", "valid": false, "note": "wire form is lowercase; one canonical string so byte equality is id equality (IP3)" },
     { "id": "uuidv7-rejects-unhyphenated", "def": "uuidv7", "value": "01923e8a7f4e7cc39a2b3f8d2c1b0a99", "valid": false, "note": "canonical hyphenated form only (IP2)" },
     { "id": "nanoid-ok", "def": "nanoid", "value": "V1StGXR8_Z5jdHi6B-my", "valid": true },
@@ -34,7 +38,8 @@
     { "id": "prefixed-rejects-uppercase-prefix", "def": "prefixedHandle", "value": "Cus_V1StGXR8Z5jd", "valid": false, "note": "prefix is lowercase [a-z][a-z0-9]{0,7} (IP2)" },
     { "id": "prefixed-rejects-long-prefix", "def": "prefixedHandle", "value": "customers_V1StGXR8Z5jd", "valid": false, "note": "prefix is at most 8 characters (IP2)" },
     { "id": "publicid-accepts-uuidv7", "def": "publicId", "value": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99", "valid": true },
-    { "id": "publicid-accepts-prefixed", "def": "publicId", "value": "ord_8fK2mQ7xW3pLzR", "valid": true },
+    { "id": "publicid-accepts-uuidv4", "def": "publicId", "value": "9b2edf3e-3b5a-4f0e-8f1d-2a6c4b8d9e0f", "valid": true },
+    { "id": "publicid-accepts-prefix-shaped-nanoid", "def": "publicId", "value": "ord_8fK2mQ7xW3pLzR", "valid": true, "note": "a display handle is not a row public id (IP2 part B), but the nanoid alphabet contains '_', so this value is a valid nanoid by shape. The schema cannot refuse it: about 0.7% of random 21-character nanoids look like this. The rule is held by the generator, the CHECK on a new table's public_id column (SD7) and review" },
     { "id": "publicid-rejects-integer-string", "def": "publicId", "value": "1048576", "valid": false, "note": "a sequential integer is not a public id (IP1)" },
     { "id": "timestamp-ok", "def": "timestamp", "value": "2026-08-31T14:07:02.417Z", "valid": true },
     { "id": "timestamp-rejects-offset", "def": "timestamp", "value": "2026-08-31T16:07:02.417+02:00", "valid": false, "note": "same instant, different string — canonical form is UTC Z (IP4)" },

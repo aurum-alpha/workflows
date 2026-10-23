@@ -33,28 +33,61 @@ key fixes the first rule to the letter and loses the point. The public id
 must be swappable without a schema migration rippling through every foreign
 key.
 
+**The public id is never the primary key and never the target of a foreign
+key.** Joins use the internal key. A public id is also never a credential. It
+names a row, and authorization decides whether the caller can touch that row.
+
+**At every boundary, `id` is the public id.** A boundary is a
+JSON or event member, a URL parameter or a log field. It is also an API type,
+a domain type, or a parameter outside the storage layer. A name that crosses one is
+either `id` (`ID` in Go, `$id` in PHP) or `<entity>_id`, a reference to
+another entity. It holds a public id of IP2 part A. Where the field is
+declared as one, it holds a display handle of IP2 part B. It never holds an
+internal key.
+
+Inside the database and the storage layer, the internal key keeps its
+conventional name, `id`, and integer references are `<entity>_id`. The public
+id column is `public_id`. The storage layer maps between the two. The integer
+never surfaces under the name `id`. Column types are SD7 of
+[`025-structured-data.md`](025-structured-data.md).
+
 ### IP2. The public id format table
 
-What the id is for decides which format a public id takes, not what the
-first library to hand generated. The admitted formats:
+What the id is for decides which format it takes, not what the first library
+to hand generated. There are three cases. Part A is the id that addresses a
+row. Part B is a display handle, a special case of public identifier that a
+person is meant to read. Part C is an issued credential, which is not an
+identifier at all.
+
+#### Part A. Row public ids
+
+A row public id addresses a row in a URL, a payload, an event or a grant scope.
 
 | Format | Use when | Profile |
 |---|---|---|
-| **UUIDv7** | The default for machine-scale entities: rows created at volume, referenced across services, stored in indexed columns. | RFC 9562. Wire form: lowercase, canonical hyphenated, e.g. `01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99`. |
-| **nanoid** | User-facing handles: ids a person sees, types, or shares in a URL, where 36 characters is hostile. | Alphabet `A-Za-z0-9_-` (the nanoid default), length ≥ 12, CSPRNG-generated, unique index plus insert-retry on collision. |
-| **Prefixed handle** | A nanoid that benefits from being self-describing in logs and support tickets, e.g. `cus_V1StGXR8Z5jd`. | `<prefix>_<body>`: prefix lowercase `[a-z][a-z0-9]{0,7}`, one underscore, body from the **base62 alphabet only** (`A-Za-z0-9`, no `_` or `-`), length ≥ 12. The first underscore therefore always delimits the prefix. One stable prefix per entity type, recorded in the owning service's docs. |
+| **UUIDv7** | The default. Any row addressed from outside, and every table that grows at volume. | RFC 9562. Wire form: lowercase, canonical hyphenated, e.g. `01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99`. A native `uuid` column. The application mints it until the pinned engine generates it natively. |
+| **UUIDv4** | A row whose creation time or creation order is itself sensitive: an account, an invitation, a record whose rate of creation is private. | RFC 9562, random, lowercase canonical hyphenated. Postgres generates it with `gen_random_uuid()`. A native `uuid` column. |
+| **nanoid** | Only an id a person types or reads aloud, where 36 characters is hostile. Never a high-volume table. | Alphabet `A-Za-z0-9_-` (the nanoid default), length ≥ 12, CSPRNG-generated, unique index plus insert-retry on collision. Stored under a binary collation. The generator also retries when its output has the shape of a display handle (`<prefix>_` then base62), so a row public id is never mistaken for one. |
 
-Why UUIDv7 and not UUIDv4: a v4 in an indexed column is random-insert index
-fragmentation bought for no benefit. The v7 timestamp prefix gives insert
-locality while staying a standard UUID to every driver and column type.
-**UUIDv4 is admitted only where an external system requires it or the value
-is never indexed**. A v4 in an indexed column needs a written defence in
-the owning repository.
+Why UUIDv7 and not a random id by default: `public_id` is how every request
+finds its row. It therefore carries a unique index that every insert writes to. A
+random value lands on a random leaf of that index, which splits pages,
+widens the index and keeps all of it hot. A UUIDv7 lands at the right edge, so
+recent rows stay cached and the index stays compact. Both engines recommend an
+ordered UUID for exactly this reason.
+
+What a UUIDv7 costs is that its first 48 bits are its creation time, and
+anyone holding the id can read them. For most rows that is nothing. Where the
+creation instant or the creation rate is itself private, the row takes a
+UUIDv4. The index cost then falls on a table that stays modest.
 
 Why nanoid and not a truncated UUID: the use case is a short handle. A
 truncated UUID is a nonstandard format wearing a standard's name, the worst
 of both. At ≥ 12 characters over a 64-symbol alphabet (~71 bits) with a
-unique index and insert-retry, collision is an engineering non-event.
+unique index and insert-retry, collision is an engineering non-event. A nanoid is random
+and wider than 16 bytes, so it is the slowest of the three to index. A UUID
+with its hyphens removed fails the same way. It is neither a nanoid nor a UUID,
+and it is not admitted.
 
 Three formats are **not admitted**. ULID is a second answer to the question
 UUIDv7 answers, per PC2: a spec with libraries, where UUIDv7 is an RFC with
@@ -62,13 +95,61 @@ native column types. Sequential integers as public ids are refused under
 IP1. UUIDv1/v3/v5 are refused: MAC leakage, name-derivation, and no use case
 here.
 
+A row public id carries no type. A prefix such as `lic_` on a location's
+address tells every caller what the id points at. It also invites any service
+that parses it to dispatch on the prefix (IP3). The type belongs in the route
+and in a field. An id is never derived from other data, such as an identity
+provider's subject. A derived id is as guessable as its source.
+
+The nanoid alphabet contains `_`, so a display handle is also a valid nanoid
+by shape, and a schema cannot tell the two apart. The rule is therefore kept
+at three points: the generator, the `CHECK` on a nanoid `public_id` column
+(SD7), and review.
+
+#### Part B. Display handles
+
+A display handle is a special case of public identifier. It is a value
+shown to a person on purpose, for support, integration or connectivity. Nobody
+then reads a nanoid or a UUID out of a URL. Examples are the account id
+on a settings page and an integration's connection id. The id of an API key
+is another, as distinct from its secret (part C). The prefix tells the reader
+what kind of thing the value names.
+
+| Format | Profile |
+|---|---|
+| **Display handle** | `<prefix>_<body>`: prefix lowercase `[a-z][a-z0-9]{0,7}`, one underscore, body from the **base62 alphabet only** (`A-Za-z0-9`, no `_` or `-`), length ≥ 12, CSPRNG-generated. The first underscore therefore always delimits the prefix. One stable prefix per concept, recorded in the owning service's docs. |
+
+A display handle is **an attribute of the row, beside its row public id**. It
+has its own column, such as `accounts.account_ref`. The column is unique,
+indexed and immutable, and the handle is minted at creation. It is never the
+primary key, the row public id, or the target of a foreign key. It is never a
+URL path segment, a grant scope, an audit `target.id`, an event `subject` or a
+log field.
+
+A person quotes the handle. A support or integration surface can resolve a row
+by it, and nothing else addresses a row by it. Quoting one proves nothing about
+the caller, so a surface that resolves by handle authenticates the caller
+another way.
+
+#### Part C. Issued credentials
+
+A credential a product issues to a caller, such as an API key, is neither a row
+public id nor a display handle. It is secret, and how it is stored, shown and
+revoked is not an identifier question. This standard covers only the
+identifier side.
+
+A credential can carry an issuer prefix, so a person or a secret scanner can
+tell which system it came from. The prefix is a label, and no service branches
+on it. A credential is never a row's public id and never a primary or foreign
+key. It never appears in a URL path, a grant scope or an audit `target.id`.
+
 ### IP3. Ids are opaque
 
 No consumer parses meaning out of an identifier. The timestamp inside a
 UUIDv7 is an index-locality property, not an API, and nothing reads it
-back. The prefix on a prefixed handle is for humans in logs. A service that
-switches behaviour on it has turned an id into a type field, and type
-belongs in a field. The one act permitted on a foreign id is equality
+back. The prefix on a display handle is for the person reading a screen. A
+service that switches behaviour on it has turned an id into a type field, and
+type belongs in a field. The one act permitted on a foreign id is equality
 comparison, byte for byte. That is also why wire forms are pinned to one
 case: a consumer that case-folds ids has invented a second equality.
 
@@ -170,8 +251,11 @@ Per PC3, the contract lives under
 [`contracts/identifiers/`](../contracts/identifiers/):
 
 - **`primitives.schema.json`**: JSON Schema (2020-12) `$defs` for
-  `uuidv7`, `nanoid`, `prefixedHandle`, `publicId` (the union), `timestamp`,
-  `timestampInput`, `date`, `duration`, `money`, `currency`. Every other contract's
+  `uuidv7`, `uuidv4`, `nanoid`, `prefixedHandle`, `publicId` (the row union),
+  `timestamp`, `timestampInput`, `date`, `duration`, `money`, `currency`.
+  `prefixedHandle` is the display handle of part B.
+
+  Every other contract's
   schema references these by `$ref` rather than restating a pattern: one
   source of truth per primitive, mechanically. The two timestamp defs carry
   IP4's direction. Request-side schemas reference `timestampInput` (any

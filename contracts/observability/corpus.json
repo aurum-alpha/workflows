@@ -30,7 +30,7 @@
     { "id": "requestid-ok", "def": "requestId", "value": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99", "valid": true, "note": "UUIDv7 per the identifiers standard (OC2)" },
     { "id": "requestid-rejects-v4", "def": "requestId", "value": "9b2edf3e-3b5a-4f0e-8f1d-2a6c4b8d9e0f", "valid": false },
     { "id": "context-ok-minimal", "def": "contextFields", "value": { "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736", "request_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99" }, "valid": true, "note": "trace_id and request_id are the floor; span_id and tenant_id appear where they exist (OC4)" },
-    { "id": "context-ok-full", "def": "contextFields", "value": { "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736", "span_id": "00f067aa0ba902b7", "request_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99", "tenant_id": "ten_8fK2mQ7xW3pLzR" }, "valid": true },
+    { "id": "context-ok-full", "def": "contextFields", "value": { "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736", "span_id": "00f067aa0ba902b7", "request_id": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99", "tenant_id": "8fK2mQ7xW3pLzR" }, "valid": true },
     { "id": "context-rejects-missing-request-id", "def": "contextFields", "value": { "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736" }, "valid": false, "note": "within request context both floor fields are required (OC4)" },
     { "id": "context-rejects-camelcase", "def": "contextFields", "value": { "traceId": "4bf92f3577b34da6a3ce929d0e0e4736", "requestId": "01923e8a-7f4e-7cc3-9a2b-3f8d2c1b0a99" }, "valid": false, "note": "one vocabulary: snake_case field names, identical in every language (OC2)" }
   ],

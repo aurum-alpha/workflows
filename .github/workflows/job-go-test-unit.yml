@@ -25,7 +25,8 @@ on:
       runner:
         description: >-
           Override runs-on. Leave empty for the standard default, which resolves
-          vars.RUNNER. Set a literal label only where that one job has a reason to
+          vars.RUNNER_LARGE and then vars.RUNNER (CI_STANDARD Principle 4).
+          Set a literal label only where that one job has a reason to
           bypass the standard runner, and say the reason in a comment beside it
           (CI_STANDARD Principle 4).
         type: string
@@ -69,7 +70,9 @@ on:
 
 jobs:
   test-unit:
-    runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-26.04' }}
+    # The large runners where vars.RUNNER_LARGE names them: `go test -race`
+    # is CPU-bound and sizes itself to the container's limit (010 Principle 4).
+    runs-on: ${{ inputs.runner || vars.RUNNER_LARGE || vars.RUNNER || 'ubuntu-26.04' }}
     timeout-minutes: 20
     permissions:
       contents: read

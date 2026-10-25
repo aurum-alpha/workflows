@@ -376,10 +376,11 @@ to satisfy. Add the number to the list above.
 - `tools/check-*`: the conformance checkers. Each runs both inside a
   repository's own CI and as a portfolio-wide sweep, from one source.
 - `config/`, `setup/`: shared configuration and composite actions.
-- `dependency-versions.json`: the package versions every adopting repository
-  is held to. It names the package manager, the dev/build toolchain, and the
-  handful of runtime packages that have converged. It names versions, never
-  repositories.
+- `dependency-versions.json`: the versions every adopting repository is held
+  to. It names the package manager, the dev/build toolchain, and the handful
+  of runtime packages that have converged. It also names the language
+  runtimes and the tags of converged third-party images. It names versions,
+  never repositories.
 
 ## Adding or changing a standard
 

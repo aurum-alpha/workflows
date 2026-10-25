@@ -248,14 +248,33 @@ jobs:
           docker compose -f "$COMPOSE_FILE" -f "$OVERRIDE" up --wait --no-build -d
           docker compose -f "$COMPOSE_FILE" -f "$OVERRIDE" ps
 
+      # Through the LAN registry cache where the runner image names one
+      # (GHR_REGISTRY_CACHE; MCR sits at its root), by the same digest, so the
+      # bytes are the pin's whoever served them. The sidecar's registry mirror
+      # covers Docker Hub alone, so this pull would otherwise cross the
+      # internet on every run. A runner without the variable, or a cache that
+      # fails, pulls from MCR as before.
       - name: Pull the Playwright image
-        run: docker pull -q "$PLAYWRIGHT_IMAGE"
+        id: playwright
+        run: |
+          set -euo pipefail
+          if [ -n "${GHR_REGISTRY_CACHE:-}" ]; then
+            cached="${GHR_REGISTRY_CACHE}/${PLAYWRIGHT_IMAGE#mcr.microsoft.com/}"
+            if docker pull -q "$cached"; then
+              echo "image=$cached" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::notice::the registry cache did not serve $cached; pulling from MCR"
+          fi
+          docker pull -q "$PLAYWRIGHT_IMAGE"
+          echo "image=$PLAYWRIGHT_IMAGE" >> "$GITHUB_OUTPUT"
 
       - name: End-to-end tests
         env:
           WD: ${{ inputs.workdir }}
           BASE_URL: ${{ steps.stack.outputs.base_url }}
           MAIL_UI_URL: ${{ steps.stack.outputs.mail_ui_url }}
+          PLAYWRIGHT_IMAGE: ${{ steps.playwright.outputs.image }}
         run: |
           set -euo pipefail
           # The canonical command is pnpm test:e2e (015 DC2). The Playwright

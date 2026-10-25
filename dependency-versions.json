@@ -399,5 +399,52 @@
   "dependencies": {
     "react": "19.2.8",
     "react-dom": "19.2.8"
+  },
+  "$runtimes_comment": [
+    "The language runtimes, compared against the pin file each toolchain reads:",
+    "`node` against .node-version, `go` against the `go` line of go.mod, `php`",
+    "against .php-version, `python` against .python-version. Every such file",
+    "within two levels of a repository's root is checked, so a dual-stack",
+    "repository is held on both stacks and a repository with neither file is",
+    "not failed for it.",
+    "",
+    "A value names a PRECISION, and a pin file agrees with it on every component",
+    "it names. `node: 26` admits `26` and `26.7.0` and refuses `24`; `go: 1.26`",
+    "admits `1.26.10` and refuses `1.27.0`. A pin file less precise than the",
+    "record fails: `1.26` does not satisfy `1.26.10`, because it lets the",
+    "toolchain choose the patch. So a value here is as precise as the fleet has",
+    "converged, and a wave that converges a patch tightens it.",
+    "",
+    "Every caller reads this file from the catalog's main branch. A value moves",
+    "in the change that completes its wave, or in the one that starts it, never",
+    "ahead of the repositories that would then fail (aurum-alpha/workflows#692)."
+  ],
+  "runtimes": {
+    "go": "1.26",
+    "node": "26",
+    "php": "8.4",
+    "python": "3.13"
+  },
+  "$images_comment": [
+    "Third-party images, by repository, with the exact tag every reference must",
+    "carry. A reference is an image named in a Dockerfile, a compose file or a",
+    "workflow file: a FROM line, an image: key, an ARG default or a YAML anchor.",
+    "The registry mirror prefix (public.ecr.aws/docker/library/, docker.io) is",
+    "ignored, and so is a digest, because the digest moves with its tag and a",
+    "different digest under one tag is Dependabot's to raise. A tag built from",
+    "a variable is not read, and neither is a commented line.",
+    "",
+    "Asserted where present, like the npm blocks. A repository that runs no",
+    "Mailpit is not failed for it; one that runs Mailpit at another tag is.",
+    "",
+    "An image enters this block when every repository carrying it carries one",
+    "tag, or in the change that starts the wave converging it. The tag decides",
+    "the variant too: postgres 17.11-alpine and 17.11 are different entries.",
+    "An image reached only through Go or TypeScript source, such as a",
+    "testcontainers reference, is outside what this reads."
+  ],
+  "images": {
+    "alpine/socat": "1.8.1.3",
+    "axllent/mailpit": "v1.27.0"
   }
 }

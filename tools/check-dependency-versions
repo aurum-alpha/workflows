@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify every Node app in the portfolio pins the same toolchain versions.
+"""Verify every repository pins the portfolio's runtimes, images and Node toolchain.
 
 The version each repo actually uses comes from package.json's packageManager
 field. pnpm/action-setup reads it in the shared jobs, and the npm install of
@@ -20,11 +20,18 @@ that only runs when someone remembers to run it from a workstation. Naming a
 repo with no Node app is a pass, not an error, so every caller can wire this up
 unconditionally without first knowing whether it is a Node repo.
 
-It checks THREE things, for the same reason and against the same file:
+It checks FIVE things, for the same reason and against the same file:
 
   packageManager   one pnpm across the portfolio
   devDependencies  one version of each converged build-time package
   dependencies     one version of each converged RUNTIME package
+  runtimes         one Node, Go, PHP and Python, read from each pin file
+  images           one tag for each converged third-party image
+
+The last two reach every repository, not only those with a Node unit. Go,
+PHP and Python pin themselves in their own files, and an image is named in a
+Dockerfile or a compose file whatever the stack, so a check confined to
+package.json would leave all of them free to drift.
 
 The second half exists because the first was the whole check while eight
 packages were converged by hand across nine repos and NOTHING held them there.
@@ -56,7 +63,9 @@ fail is a check nobody reads.
 
 import argparse
 import json
+import os
 import pathlib
+import re
 import sys
 
 # How deep to look for a Node unit, and what never holds one.
@@ -124,6 +133,146 @@ def node_units(root, repo):
     return sorted(found)
 
 
+def pin_files(root: pathlib.Path, repo: str, name: str) -> list[str]:
+    """Paths of every file called `name` within MAX_DEPTH of the repo root.
+
+    Unlike node_units this does not stop at a package.json: client-manager
+    carries go.mod at the root and .node-version both there and in client/,
+    and each is a pin the toolchain reads.
+    """
+    base = root / repo
+    if not base.is_dir():
+        return []
+
+    found = []
+
+    def walk(d: pathlib.Path, depth: int) -> None:
+        if (d / name).is_file():
+            found.append((d / name).relative_to(base).as_posix())
+        if depth == MAX_DEPTH:
+            return
+        for child in sorted(d.iterdir()):
+            if child.is_dir() and not child.name.startswith(".") \
+                    and child.name not in PRUNE:
+                walk(child, depth + 1)
+
+    walk(base, 0)
+    return sorted(found)
+
+
+def read_go_directive(path: pathlib.Path) -> str | None:
+    for line in path.read_text().splitlines():
+        parts = line.split("//", 1)[0].split()
+        if len(parts) == 2 and parts[0] == "go":
+            return parts[1]
+    return None
+
+
+def read_version_file(path: pathlib.Path) -> str | None:
+    lines = [l.strip() for l in path.read_text().splitlines() if l.strip()]
+    return lines[0] if lines else None
+
+
+# Each runtime, the file its toolchain reads, and how to get the version out.
+RUNTIME_FILES = {
+    "go": ("go.mod", read_go_directive),
+    "node": (".node-version", read_version_file),
+    "php": (".php-version", read_version_file),
+    "python": (".python-version", read_version_file),
+}
+
+
+def agrees(got: str, want: str) -> bool:
+    """`got` names every component of `want`, and each one is equal.
+
+    A leading `v` is dropped, because .node-version admits `v26`.
+    """
+    g = got.lstrip("v").split(".")
+    w = want.split(".")
+    return len(g) >= len(w) and g[:len(w)] == w
+
+
+def check_runtimes(
+    root: pathlib.Path, repo: str, want: dict[str, str]
+) -> tuple[int, int]:
+    """Returns (failures, pin files checked)."""
+    failures = 0
+    checked = 0
+    for runtime, version in sorted(want.items()):
+        filename, read = RUNTIME_FILES[runtime]
+        for rel in pin_files(root, repo, filename):
+            checked += 1
+            got = read(root / repo / rel)
+            if got is None:
+                print(f"{repo}/{rel}: names no {runtime} version, "
+                      f"Aurum Alpha standard is {version}")
+                failures += 1
+            elif not agrees(got, version):
+                print(f"{repo}/{rel}: {runtime} is {got}, "
+                      f"Aurum Alpha standard is {version}")
+                failures += 1
+            else:
+                print(f"{repo}/{rel}: {runtime} {got}")
+    return failures, checked
+
+
+# Which files can name an image. A workflow's service container is an image
+# too, so .github is walked; .git is not.
+def is_image_file(name: str) -> bool:
+    return name.startswith("Dockerfile") or name.endswith((".yml", ".yaml"))
+
+
+# A mirror of Docker Hub's official images names the same image.
+MIRRORS = r"(?:public\.ecr\.aws/docker/library/|(?:index\.)?docker\.io/(?:library/)?)?"
+
+
+def image_pattern(name: str) -> re.Pattern[str]:
+    # The lookbehind keeps `nginx` from matching `nginxinc/nginx-unprivileged`
+    # or `alpine` from matching inside `alpine/socat`. The tag stops at `@`,
+    # so a digest is not part of it, and cannot start with `$`, so a tag built
+    # from a variable is not read at all.
+    return re.compile(
+        rf"(?<![\w./-]){MIRRORS}{re.escape(name)}:([A-Za-z0-9_][\w.-]*)"
+    )
+
+
+def check_images(
+    root: pathlib.Path, repo: str, want: dict[str, str]
+) -> tuple[int, int]:
+    """Returns (failures, references checked)."""
+    base = root / repo
+    if not base.is_dir() or not want:
+        return 0, 0
+    patterns = {name: image_pattern(name) for name in want}
+    failures = 0
+    checked = 0
+    for dirpath, dirnames, filenames in os.walk(base):
+        dirnames[:] = sorted(
+            d for d in dirnames if d != ".git" and d not in PRUNE
+        )
+        for fname in sorted(filenames):
+            if not is_image_file(fname):
+                continue
+            path = pathlib.Path(dirpath) / fname
+            try:
+                text = path.read_text()
+            except (UnicodeDecodeError, OSError):
+                continue
+            rel = path.relative_to(base).as_posix()
+            for lineno, line in enumerate(text.splitlines(), 1):
+                if line.lstrip().startswith("#"):
+                    continue
+                for name, pattern in patterns.items():
+                    for m in pattern.finditer(line):
+                        checked += 1
+                        if m.group(1) != want[name]:
+                            print(f"{repo}/{rel}:{lineno}: {name} is "
+                                  f"{m.group(1)}, Aurum Alpha standard is "
+                                  f"{want[name]}")
+                            failures += 1
+    return failures, checked
+
+
 def load_expected(
     repo_root: pathlib.Path,
 ) -> tuple[str, dict[str, str], dict[str, str]]:
@@ -141,6 +290,21 @@ def load_expected(
         data.get("devDependencies", {}),
         data.get("dependencies", {}),
     )
+
+
+def load_fleet_pins(
+    repo_root: pathlib.Path,
+) -> tuple[dict[str, str], dict[str, str]]:
+    data = json.loads((repo_root / "dependency-versions.json").read_text())
+    runtimes = data.get("runtimes", {})
+    unknown = set(runtimes) - set(RUNTIME_FILES)
+    if unknown:
+        # A runtime this checker cannot read would be asserted by nothing.
+        raise SystemExit(
+            f"dependency-versions.json names runtime(s) this checker does not "
+            f"read: {', '.join(sorted(unknown))}"
+        )
+    return runtimes, data.get("images", {})
 
 
 def check_section(
@@ -220,6 +384,7 @@ def main() -> int:
 
     here = pathlib.Path(__file__).resolve().parent.parent
     expected, want_dev, want_deps = load_expected(here)
+    want_runtimes, want_images = load_fleet_pins(here)
     want = f"pnpm@{expected}"
 
     if args.repo:
@@ -227,6 +392,25 @@ def main() -> int:
     else:
         names = sorted(p.name for p in args.root.iterdir() if p.is_dir()
                        and not p.name.startswith("."))
+
+    # Runtimes and images first, for every repository: neither depends on
+    # whether the repository has a Node unit.
+    pin_failures = 0
+    pins_checked = 0
+    refs_checked = 0
+    for r in names:
+        f, n = check_runtimes(args.root, r, want_runtimes)
+        pin_failures += f
+        pins_checked += n
+        f, n = check_images(args.root, r, want_images)
+        pin_failures += f
+        refs_checked += n
+
+    pin_summary = (
+        f"{pins_checked} runtime pin file(s) against "
+        f"{len(want_runtimes)} runtime(s), {refs_checked} image reference(s) "
+        f"against {len(want_images)} image(s)"
+    )
 
     # (repo, subdir) for every Node unit found, discovered rather than listed.
     # A repo with no package.json in either place contributes none and is
@@ -252,10 +436,14 @@ def main() -> int:
             for r in names:
                 print(f"{r}: no Node unit (no package.json within {MAX_DEPTH} "
                       f"level(s)) — nothing to check")
-        print("\nPASS: no Node unit to check")
+        if pin_failures:
+            print(f"\nFAIL: {pin_failures} runtime or image pin(s) disagree "
+                  "with dependency-versions.json")
+            return 1
+        print(f"\nPASS: no Node unit to check; {pin_summary} agree")
         return 0
 
-    failures = 0
+    failures = pin_failures
     for repo, subdir in selected:
         pkg = args.root / repo / subdir / "package.json"
         manifest = json.loads(pkg.read_text())
@@ -292,7 +480,7 @@ def main() -> int:
     print(
         f"\nPASS: all {len(selected)} Node unit(s) pin {want}; "
         f"{len(want_dev)} devDependencies and {len(want_deps)} dependencies "
-        f"asserted where present"
+        f"asserted where present; {pin_summary} agree"
     )
     return 0
 

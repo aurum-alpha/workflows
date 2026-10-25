@@ -25,3 +25,15 @@ updates:
     groups:
       actions-minor-patch:
         update-types: [minor, patch]
+
+  # devkit/compose/auth.compose.yaml pins the edge, the relying party, Keycloak
+  # and Mailpit for every product that renders the devkit. A bump here is the
+  # start of a wave: each product re-renders, and dependency-versions.json's
+  # `images` block moves with it.
+  - package-ecosystem: docker-compose
+    directory: /devkit/compose
+    schedule:
+      interval: weekly
+    groups:
+      devkit-images-minor-patch:
+        update-types: [minor, patch]

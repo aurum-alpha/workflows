@@ -433,7 +433,7 @@
   "runtimes": {
     "go": "1.26",
     "node": "26",
-    "php": "8.4",
+    "php": "8.5",
     "python": "3.13"
   },
   "$images_comment": [

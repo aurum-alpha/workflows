@@ -90,7 +90,7 @@ services:
   # on 1025 and shows it on a UI, so a person can complete a flow that mails
   # a link without a real mailbox (016-local-development.md, offsets +10/+11).
   mail:
-    image: axllent/mailpit:v1.31.6
+    image: axllent/mailpit:v1.32.0
     restart: unless-stopped
     ports:
       - "__PORT_MAIL_SMTP__:1025"

@@ -64,6 +64,7 @@ can disagree eventually will.
 | — | A merged pull request's head branch is deleted | — | **review only**⁸ |
 | — | The `ci-ok` body is the one the pull request ships | — | **review only** |
 | — | Standard pnpm version | `check-dependency-versions` | gated¹ |
+| — | Every Node unit carries its own `.node-version` | `check-dependency-versions` | gated¹ |
 | — | Standard Node, Go, PHP and Python versions, read from each pin file | `check-dependency-versions` | gated¹ |
 | — | Standard tag for each converged third-party image | `check-dependency-versions` | gated¹ |
 | — | Shared lint and format configs unedited (`.oxlintrc.json`, `.prettierrc.yaml`) | `check-lint-configs` | gated¹ |

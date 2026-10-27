@@ -22,7 +22,8 @@ unconditionally without first knowing whether it is a Node repo.
 
 It checks FIVE things, for the same reason and against the same file:
 
-  packageManager   one pnpm across the portfolio
+  packageManager   one pnpm across the portfolio, and a .node-version
+                   beside every package.json
   devDependencies  one version of each converged build-time package
   dependencies     one version of each converged RUNTIME package
   runtimes         one Node, Go, PHP and Python, read from each pin file
@@ -451,6 +452,17 @@ def main() -> int:
         # unit today and could have two tomorrow, and "client-manager: ..."
         # would not say which one disagreed.
         repo = repo if subdir == "." else f"{repo}/{subdir}"
+
+        # PRESENCE, which check_runtimes above cannot assert: it only reads
+        # the pin files it finds. Each shared Node job hands setup-node
+        # `<workdir>/.node-version`, so a unit without one has no Node the
+        # catalog can install. The pin
+        # sits in the unit's own directory, never only in an ancestor:
+        # that is where the jobs look (010 Principle 1).
+        if not (pkg.parent / ".node-version").is_file():
+            print(f"{repo}: no .node-version beside package.json — must "
+                  f"name Node {want_runtimes.get('node', '(unset)')}")
+            failures += 1
 
         declared = manifest.get("packageManager")
         if declared is None:

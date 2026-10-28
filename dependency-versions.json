@@ -430,10 +430,16 @@
     "",
     "Every caller reads this file from the catalog's main branch. A value moves",
     "in the change that completes its wave, or in the one that starts it, never",
-    "ahead of the repositories that would then fail (aurum-alpha/workflows#692)."
+    "ahead of the repositories that would then fail (aurum-alpha/workflows#692).",
+    "",
+    "While a wave moves a runtime, its value is the precision the old and the",
+    "new version share, so a repository passes on either side of the move.",
+    "`go: 1` admits 1.26.10 and 1.27.3 while the Go 1.27 wave",
+    "(aurum-alpha/workflows#698) moves each repository. The change that",
+    "completes the wave sets it to the patch every repository then carries."
   ],
   "runtimes": {
-    "go": "1.26",
+    "go": "1",
     "node": "26",
     "php": "8.5",
     "python": "3.13"

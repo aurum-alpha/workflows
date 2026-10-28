@@ -14,7 +14,7 @@
 # refuses to analyze a module whose Go version is newer than its own build
 # ("the Go language version used to build golangci-lint is lower than the
 # targeted Go version"). Building from source with the repo's own toolchain
-# is the only way to lint Go 1.26 modules today. This is the same class of
+# is the only way to lint a module on the portfolio's Go. This is the same class of
 # failure that made client-manager hand-roll tools/check-pgxpool after
 # forbidigo panicked on Go 1.26 export data.
 name: job-go-lint

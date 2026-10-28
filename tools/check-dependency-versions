@@ -22,8 +22,9 @@ unconditionally without first knowing whether it is a Node repo.
 
 It checks FIVE things, for the same reason and against the same file:
 
-  packageManager   one pnpm across the portfolio, and a .node-version
-                   beside every package.json
+  packageManager   one pnpm across the portfolio, a .node-version beside
+                   every package.json, and a .npmrc routing @aurum-alpha
+                   beside every package.json that installs from it
   devDependencies  one version of each converged build-time package
   dependencies     one version of each converged RUNTIME package
   runtimes         one Node, Go, PHP and Python, read from each pin file
@@ -274,6 +275,73 @@ def check_images(
     return failures, checked
 
 
+# The private scope and the two registries a unit resolves from.
+SCOPE = "@aurum-alpha"
+SCOPE_REGISTRY = "https://npm.pkg.github.com"
+DEFAULT_REGISTRY = "https://registry.npmjs.org"
+INSTALLED = ("dependencies", "devDependencies", "optionalDependencies",
+             "peerDependencies")
+# A credential in a project .npmrc: pnpm 10 ignores it, and git keeps it.
+AUTH_KEY = re.compile(r"(?:^|:)_(?:authToken|auth|password)$")
+
+
+def read_npmrc(path: pathlib.Path) -> dict[str, str]:
+    """key -> value for every setting line, last one winning, as npm reads."""
+    settings: dict[str, str] = {}
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line[0] in "#;" or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        settings[key.strip()] = value.strip()
+    return settings
+
+
+def check_npmrc(label: str, unit: pathlib.Path, manifest: dict) -> int:
+    """A unit that installs @aurum-alpha/* routes the scope in its own .npmrc.
+
+    Every place that installs on a person's behalf already learns the scope
+    from somewhere else: ./dx host, the shared jobs' setup-node, the images'
+    own ~/.npmrc. Dependabot does not. It reads the repository alone, so a
+    unit with no project .npmrc sends @aurum-alpha/* to npmjs and gets 404.
+    The default registry is named too, because with none declared Dependabot
+    makes GitHub Packages the default, and that serves a stale subset of npm.
+
+    No .npmrc may carry a credential, consumer or not (010 Principle 11).
+    """
+    path = unit / ".npmrc"
+    failures = 0
+    settings = read_npmrc(path) if path.is_file() else {}
+    for key in sorted(settings):
+        if AUTH_KEY.search(key):
+            print(f"{label}/.npmrc: carries credential {key} — a token "
+                  f"lives in the user-level ~/.npmrc, never the project's")
+            failures += 1
+
+    consumes = sorted({
+        name for section in INSTALLED
+        for name in manifest.get(section, {})
+        if name.startswith(SCOPE + "/")
+    })
+    if not consumes:
+        return failures
+    if not path.is_file():
+        print(f"{label}: installs {', '.join(consumes)} and has no .npmrc "
+              f"beside package.json — must route {SCOPE} to {SCOPE_REGISTRY}")
+        return failures + 1
+
+    want = {f"{SCOPE}:registry": SCOPE_REGISTRY, "registry": DEFAULT_REGISTRY}
+    for key, value in want.items():
+        got = settings.get(key)
+        if got is None or got.rstrip("/") != value:
+            print(f"{label}/.npmrc: {key} is {got or 'unset'}, "
+                  f"Aurum Alpha standard is {value}/")
+            failures += 1
+    if not failures:
+        print(f"{label}/.npmrc: {SCOPE} from {SCOPE_REGISTRY}")
+    return failures
+
+
 def load_expected(
     repo_root: pathlib.Path,
 ) -> tuple[str, dict[str, str], dict[str, str]]:
@@ -463,6 +531,8 @@ def main() -> int:
             print(f"{repo}: no .node-version beside package.json — must "
                   f"name Node {want_runtimes.get('node', '(unset)')}")
             failures += 1
+
+        failures += check_npmrc(repo, pkg.parent, manifest)
 
         declared = manifest.get("packageManager")
         if declared is None:

@@ -36,7 +36,8 @@ can disagree eventually will.
 | 8 | No multi-stage prod Dockerfiles | — | **review only** |
 | 9 | Canonical script names | `check-package-scripts` | gated¹ |
 | 10 | Lint output through standard channels | — | **review only** |
-| 11 | Registry auth in user-level npmrc | — | **review only** |
+| 11 | Registry auth in user-level npmrc | `check-dependency-versions` refuses a credential in a unit's `.npmrc` | gated¹ |
+| 11 | A unit installing `@aurum-alpha/*` routes the scope in its own `.npmrc` | `check-dependency-versions` | gated¹ |
 | 12 | One way per capability | `check-ci-conformance` | gated¹ |
 | 13 | Provenance in every artifact | — | **review only** |
 | 14 | A version is a commit, not a tag | `job-version-gate` + `job-version-release` (partly) | mixed² |

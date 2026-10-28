@@ -43,7 +43,7 @@ on:
       golangci_version:
         description: golangci-lint version to build from source.
         type: string
-        default: "v2.12.2"
+        default: "v2.15.0"
       warn_only:
         description: >-
           Report findings without failing the job. This is a documented

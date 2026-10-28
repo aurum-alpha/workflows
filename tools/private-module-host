@@ -4,7 +4,7 @@
 # A product's tools/repo-setup names the modes that product needs:
 #
 #   go        GOPRIVATE includes github.com/aurum-alpha/*
-#   npm       ~/.npmrc sends @aurum-alpha to GitHub Packages
+#   npm       ~/.npmrc authenticates to GitHub Packages
 #   composer  Composer github-oauth, when composer is on PATH
 #
 # npm and composer read NODE_AUTH_TOKEN. The token needs repo and
@@ -52,15 +52,16 @@ ensure_go() {
   echo "GOPRIVATE includes ${prefix}"
 }
 
+# The token only. Where @aurum-alpha resolves from is each unit's own
+# .npmrc, which check-dependency-versions requires, so a scope line here
+# would be a second answer. One written by an earlier version is removed.
 ensure_npm() {
   require_token
   npmrc=${HOME}/.npmrc
   touch "$npmrc"
   tmp=$(mktemp)
   grep -v -e '^@aurum-alpha:registry=' -e '^//npm.pkg.github.com/:_authToken=' "$npmrc" >"$tmp" || true
-  printf '%s\n%s\n' \
-    '@aurum-alpha:registry=https://npm.pkg.github.com' \
-    '//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}' >>"$tmp"
+  printf '%s\n' '//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}' >>"$tmp"
   mv "$tmp" "$npmrc"
 }
 

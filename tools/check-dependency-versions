@@ -88,6 +88,15 @@ MAX_DEPTH = 2
 PRUNE = {"node_modules", "vendor", "dist", "build", "coverage", "testdata"}
 
 
+WORKSPACE_PACKAGES = re.compile(r"^packages\s*:", re.MULTILINE)
+
+
+def declares_workspace(d: pathlib.Path) -> bool:
+    """`d` holds a pnpm-workspace.yaml naming member packages."""
+    f = d / "pnpm-workspace.yaml"
+    return f.is_file() and bool(WORKSPACE_PACKAGES.search(f.read_text()))
+
+
 def node_units(root, repo):
     """Directories under `repo` holding a package.json, nearest first.
 
@@ -121,9 +130,14 @@ def node_units(root, repo):
         if (d / "package.json").is_file():
             rel = d.relative_to(base).as_posix()
             found.append(rel if rel != "." else ".")
-            # A pnpm project inside a pnpm project is a workspace package, not
-            # a second unit -- its versions come from the root manifest. Stop.
-            return
+            # A package.json below a pnpm workspace is a member, not a second
+            # unit: its versions come from the workspace root. Stop there.
+            # Below any other unit it is a project of its own, with its own
+            # lockfile and its own pins, and the walk goes on to find it.
+            # pnpm-workspace.yaml also holds plain settings, so only one that
+            # declares `packages` makes a workspace.
+            if declares_workspace(d):
+                return
         if depth == MAX_DEPTH:
             return
         for child in sorted(d.iterdir()):

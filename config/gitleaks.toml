@@ -63,3 +63,18 @@ regexTarget = "line"
 regexes = [
   '''^\s*(image:\s|FROM\s)''',
 ]
+
+# The same pin in dependency-versions.json's images block: an image name and
+# its tag, one per line. gitleaks reads `auth` in `oauth2-proxy` the same
+# way. Scoped to that file and to that one line shape, a quoted image path
+# with at least one slash, then a tag that starts with a digit, or v and a digit.
+[[allowlists]]
+description = "085 SB1: an image pin in dependency-versions.json's images block is a pin, not a value"
+condition = "AND"
+paths = [
+  '''^dependency-versions\.json$''',
+]
+regexTarget = "line"
+regexes = [
+  '''^\s*"[a-z0-9][a-z0-9._-]*(/[a-z0-9][a-z0-9._-]*)+":\s*"v?[0-9][A-Za-z0-9_.-]*",?\s*$''',
+]

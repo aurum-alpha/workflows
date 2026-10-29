@@ -467,6 +467,7 @@
     "mysql": "9.1.0",
     "pgvector/pgvector": "0.8.6-pg17",
     "postgres": "17.11-alpine",
-    "quay.io/keycloak/keycloak": "26.8.1-1"
+    "quay.io/keycloak/keycloak": "26.8.1-1",
+    "quay.io/oauth2-proxy/oauth2-proxy": "v7.15.5-alpine"
   }
 }

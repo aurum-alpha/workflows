@@ -268,23 +268,23 @@ jobs:
         run: |
           set -euo pipefail
           version="$(node -p "require('./${WD}/package.json').devDependencies?.['@playwright/test'] ?? ''")"
-          PLAYWRIGHT_IMAGE="$(awk -v v="$version" '$1 == v { print $2 }' <<< "$PLAYWRIGHT_IMAGES")"
-          if [ -z "$PLAYWRIGHT_IMAGE" ]; then
+          pinned="$(awk -v v="$version" '$1 == v { print $2 }' <<< "$PLAYWRIGHT_IMAGES")"
+          if [ -z "$pinned" ]; then
             echo "::error::${WD}/package.json declares @playwright/test" \
                  "'${version}', and this job carries no image for it." \
                  "It runs: $(awk '{ print $1 }' <<< "$PLAYWRIGHT_IMAGES" | xargs)."
             exit 1
           fi
           if [ -n "${GHR_REGISTRY_CACHE:-}" ]; then
-            cached="${GHR_REGISTRY_CACHE}/${PLAYWRIGHT_IMAGE#mcr.microsoft.com/}"
+            cached="${GHR_REGISTRY_CACHE}/${pinned#mcr.microsoft.com/}"
             if docker pull -q "$cached"; then
               echo "image=$cached" >> "$GITHUB_OUTPUT"
               exit 0
             fi
             echo "::notice::the registry cache did not serve $cached; pulling from MCR"
           fi
-          docker pull -q "$PLAYWRIGHT_IMAGE"
-          echo "image=$PLAYWRIGHT_IMAGE" >> "$GITHUB_OUTPUT"
+          docker pull -q "$pinned"
+          echo "image=$pinned" >> "$GITHUB_OUTPUT"
 
       - name: End-to-end tests
         env:

@@ -348,7 +348,14 @@
     "@playwright/test is asserted where present for job-test-e2e-playwright.",
     "The job runs the suite inside the Playwright Docker image at the same",
     "version, pinned by digest in the workflow. Bump the package here and the",
-    "image pin in the job together."
+    "image pin in the job together.",
+    "",
+    "WAVE 14 MOVES oxlint TO 1.90.0, AND oxlint IS UNASSERTED WHILE IT MOVES.",
+    "Dependabot's npm groups carry 1.90.0 one repository at a time, and an",
+    "exact pin would fail each one on either side of its move. So the pin is",
+    "out of devDependencies until every unit declares 1.90.0, and the change",
+    "that completes the wave puts it back at that version. oxlint-tsgolint",
+    "stays asserted at 7.0.2005: oxlint 1.90.0 peers it at >=7.0.2005."
   ],
   "devDependencies": {
     "@playwright/test": "1.64.1",
@@ -370,7 +377,6 @@
     "esbuild": "0.28.2",
     "eslint-plugin-react-hooks": "7.1.1",
     "eslint-plugin-react-refresh": "0.5.7",
-    "oxlint": "1.89.0",
     "oxlint-tsgolint": "7.0.2005",
     "postcss": "8.5.30",
     "prettier": "3.9.10",

@@ -123,6 +123,12 @@ jobs:
       - name: Test the go-caches script
         run: tools/test-go-caches
 
+      # check-dependency-versions runs in every caller's ci-conformance, and
+      # raise-dependency-floors rewrites the fleet's record. Neither has a
+      # caller here that exercises a failing case, so both are tested here.
+      - name: Test the dependency version windows
+        run: tools/test-dependency-versions
+
   contract-conformance:
     uses: ./.github/workflows/job-contract-conformance.yml
 

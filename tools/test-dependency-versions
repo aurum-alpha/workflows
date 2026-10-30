@@ -1,0 +1,152 @@
+#!/usr/bin/env python3
+"""Tests check-dependency-versions' windows and raise-dependency-floors.
+
+Both tools run in every caller's ci-conformance and on the fleet's record, and
+neither has a caller here that exercises a failing case. Each case below builds
+a throwaway fleet and a throwaway record, runs the tool, and holds it to an
+exit status and a line of output.
+"""
+
+import json
+import pathlib
+import subprocess
+import sys
+import tempfile
+
+TOOLS = pathlib.Path(__file__).resolve().parent
+CHECK = TOOLS / "check-dependency-versions"
+RAISE = TOOLS / "raise-dependency-floors"
+
+RECORD = {
+    "pnpm": "10.34.6",
+    "devDependencies": {
+        "@playwright/test": "1.64.1",
+        "oxlint": {"min": "1.89.0", "below": "1.91"},
+        "vite": {"min": "8.3.5", "below": "9"},
+        "vitest": {"min": "4.1.12", "below": "5"},
+        "@vitest/coverage-v8": {"min": "4.1.12", "below": "5",
+                                "same_as": "vitest"},
+    },
+    "dependencies": {},
+    "runtimes": {"node": "26"},
+    "images": {},
+}
+
+failures = 0
+
+
+def fleet(tmp: pathlib.Path, units: dict[str, dict]) -> pathlib.Path:
+    """One repository per entry, each a Node unit declaring those devDependencies."""
+    root = tmp / "fleet"
+    for repo, dev in units.items():
+        d = root / repo
+        d.mkdir(parents=True)
+        (d / "package.json").write_text(json.dumps(
+            {"packageManager": "pnpm@10.34.6", "devDependencies": dev}))
+        (d / ".node-version").write_text("26\n")
+    return root
+
+
+def record(tmp: pathlib.Path, data: dict) -> pathlib.Path:
+    path = tmp / "dependency-versions.json"
+    path.write_text(json.dumps(data, indent=2) + "\n")
+    return path
+
+
+def run(tool, *args) -> tuple[int, str]:
+    p = subprocess.run([sys.executable, str(tool), *map(str, args)],
+                       capture_output=True, text=True)
+    return p.returncode, p.stdout + p.stderr
+
+
+def case(name, units, want_rc, want_text, data=RECORD):
+    global failures
+    with tempfile.TemporaryDirectory() as t:
+        tmp = pathlib.Path(t)
+        rc, out = run(CHECK, "--root", fleet(tmp, units),
+                      "--versions", record(tmp, data))
+    if rc == want_rc and want_text in out:
+        print(f"  ok  {name}")
+    else:
+        print(f"FAIL  {name}: exit {rc}, wanted {want_rc} with {want_text!r}")
+        print("      " + out.replace("\n", "\n      "))
+        failures += 1
+
+
+case("a version inside the window passes",
+     {"a": {"oxlint": "1.90.0"}}, 0, "PASS")
+case("the floor itself passes",
+     {"a": {"oxlint": "1.89.0"}}, 0, "PASS")
+case("below the floor fails",
+     {"a": {"oxlint": "1.88.4"}}, 1,
+     "oxlint is 1.88.4 in devDependencies, Aurum Alpha standard is >=1.89.0 <1.91")
+case("the ceiling itself fails",
+     {"a": {"oxlint": "1.91.0"}}, 1, "Aurum Alpha standard is >=1.89.0 <1.91")
+case("a next major fails",
+     {"a": {"vite": "9.0.0"}}, 1, "vite is 9.0.0")
+case("a caret inside the window still fails",
+     {"a": {"vite": "^8.4.0"}}, 1, "(a range, not a pin)")
+case("an exact entry still demands equality",
+     {"a": {"@playwright/test": "1.64.2"}}, 1,
+     "Aurum Alpha standard is 1.64.1")
+case("a lockstep pair at one version passes",
+     {"a": {"vitest": "4.1.13", "@vitest/coverage-v8": "4.1.13"}}, 0, "PASS")
+case("a lockstep pair split inside the window fails",
+     {"a": {"vitest": "4.1.13", "@vitest/coverage-v8": "4.1.12"}}, 1,
+     "must match")
+case("each repository moves on its own",
+     {"a": {"oxlint": "1.89.0"}, "b": {"oxlint": "1.90.0"}}, 0, "PASS")
+case("a window whose floor is not below its ceiling is refused",
+     {"a": {"oxlint": "1.90.0"}}, 1, "is not below",
+     data={**RECORD, "devDependencies": {
+         "oxlint": {"min": "1.91.0", "below": "1.91"}}})
+case("a window with an unknown key is refused",
+     {"a": {"oxlint": "1.90.0"}}, 1, "a window is",
+     data={**RECORD, "devDependencies": {
+         "oxlint": {"min": "1.89.0", "below": "1.91", "max": "2"}}})
+
+
+def raise_case(name, units, want_min, write=True):
+    global failures
+    with tempfile.TemporaryDirectory() as t:
+        tmp = pathlib.Path(t)
+        path = record(tmp, RECORD)
+        args = ["--root", fleet(tmp, units), "--versions", path]
+        rc, out = run(RAISE, *args, *(["--write"] if write else []))
+        got = json.loads(path.read_text())["devDependencies"]["oxlint"]["min"]
+    if rc == 0 and got == want_min:
+        print(f"  ok  {name}")
+    else:
+        print(f"FAIL  {name}: exit {rc}, oxlint.min {got}, wanted {want_min}")
+        print("      " + out.replace("\n", "\n      "))
+        failures += 1
+
+
+raise_case("the floor rises to the lowest version the fleet declares",
+           {"a": {"oxlint": "1.90.1"}, "b": {"oxlint": "1.90.0"}}, "1.90.0")
+raise_case("one repository at the floor holds it",
+           {"a": {"oxlint": "1.90.1"}, "b": {"oxlint": "1.89.0"}}, "1.89.0")
+raise_case("a repository that does not declare the package does not hold it",
+           {"a": {"oxlint": "1.90.0"}, "b": {"vite": "8.3.5"}}, "1.90.0")
+raise_case("without --write the record is left alone",
+           {"a": {"oxlint": "1.90.0"}}, "1.89.0", write=False)
+raise_case("a fleet past the ceiling does not drag the floor there",
+           {"a": {"oxlint": "1.91.2"}}, "1.89.0")
+
+with tempfile.TemporaryDirectory() as t:
+    tmp = pathlib.Path(t)
+    path = record(tmp, RECORD)
+    run(RAISE, "--root", fleet(tmp, {"a": {"oxlint": "1.90.0"}}),
+        "--versions", path, "--write")
+    rewritten = json.loads(path.read_text())
+    exact = rewritten["devDependencies"]["@playwright/test"]
+    if exact == "1.64.1":
+        print("  ok  an exact entry is never rewritten")
+    else:
+        print(f"FAIL  an exact entry is never rewritten: became {exact}")
+        failures += 1
+
+if failures:
+    print(f"\nFAIL: {failures} case(s)")
+    sys.exit(1)
+print("\nPASS")

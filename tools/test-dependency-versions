@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests check-dependency-versions' windows and raise-dependency-floors.
+"""Tests check-dependency-versions' intervals and raise-dependency-floors.
 
 Both tools run in every caller's ci-conformance and on the fleet's record, and
 neither has a caller here that exercises a failing case. Each case below builds
@@ -20,11 +20,11 @@ RAISE = TOOLS / "raise-dependency-floors"
 RECORD = {
     "pnpm": "10.34.6",
     "devDependencies": {
-        "@playwright/test": "1.64.1",
-        "oxlint": {"min": "1.89.0", "below": "1.91"},
-        "vite": {"min": "8.3.5", "below": "9"},
-        "vitest": {"min": "4.1.12", "below": "5"},
-        "@vitest/coverage-v8": {"min": "4.1.12", "below": "5",
+        "@playwright/test": {"min": "1.64.1", "max": "1.64.1"},
+        "oxlint": {"min": "1.89.0", "max": "1.90"},
+        "vite": {"min": "8.3.5", "max": "8"},
+        "vitest": {"min": "4.1.12", "max": "4"},
+        "@vitest/coverage-v8": {"min": "4.1.12", "max": "4",
                                 "same_as": "vitest"},
     },
     "dependencies": {},
@@ -73,37 +73,49 @@ def case(name, units, want_rc, want_text, data=RECORD):
         failures += 1
 
 
-case("a version inside the window passes",
+case("a version inside the interval passes",
      {"a": {"oxlint": "1.90.0"}}, 0, "PASS")
+case("a patch of the max minor passes",
+     {"a": {"oxlint": "1.90.7"}}, 0, "PASS")
+case("a later minor of the max major passes",
+     {"a": {"vite": "8.9.0"}}, 0, "PASS")
 case("the floor itself passes",
      {"a": {"oxlint": "1.89.0"}}, 0, "PASS")
 case("below the floor fails",
      {"a": {"oxlint": "1.88.4"}}, 1,
-     "oxlint is 1.88.4 in devDependencies, Aurum Alpha standard is >=1.89.0 <1.91")
-case("the ceiling itself fails",
-     {"a": {"oxlint": "1.91.0"}}, 1, "Aurum Alpha standard is >=1.89.0 <1.91")
+     "oxlint is 1.88.4 in devDependencies, Aurum Alpha standard is [1.89.0, 1.90]")
+case("the minor past max fails",
+     {"a": {"oxlint": "1.91.0"}}, 1, "Aurum Alpha standard is [1.89.0, 1.90]")
 case("a next major fails",
      {"a": {"vite": "9.0.0"}}, 1, "vite is 9.0.0")
-case("a caret inside the window still fails",
+case("a caret inside the interval still fails",
      {"a": {"vite": "^8.4.0"}}, 1, "(a range, not a pin)")
-case("an exact entry still demands equality",
+case("min equal to max demands that version",
      {"a": {"@playwright/test": "1.64.2"}}, 1,
-     "Aurum Alpha standard is 1.64.1")
+     "Aurum Alpha standard is [1.64.1, 1.64.1]")
+case("a pinned package moving to its next version admits both",
+     {"a": {"@playwright/test": "1.64.1"}, "b": {"@playwright/test": "1.65.0"}},
+     0, "PASS",
+     data={**RECORD, "devDependencies": {
+         "@playwright/test": {"min": "1.64.1", "max": "1.65.0"}}})
 case("a lockstep pair at one version passes",
      {"a": {"vitest": "4.1.13", "@vitest/coverage-v8": "4.1.13"}}, 0, "PASS")
-case("a lockstep pair split inside the window fails",
+case("a lockstep pair split inside the interval fails",
      {"a": {"vitest": "4.1.13", "@vitest/coverage-v8": "4.1.12"}}, 1,
      "must match")
 case("each repository moves on its own",
      {"a": {"oxlint": "1.89.0"}, "b": {"oxlint": "1.90.0"}}, 0, "PASS")
-case("a window whose floor is not below its ceiling is refused",
-     {"a": {"oxlint": "1.90.0"}}, 1, "is not below",
+case("an interval whose min is above its max is refused",
+     {"a": {"oxlint": "1.90.0"}}, 1, "is above max",
      data={**RECORD, "devDependencies": {
-         "oxlint": {"min": "1.91.0", "below": "1.91"}}})
-case("a window with an unknown key is refused",
-     {"a": {"oxlint": "1.90.0"}}, 1, "a window is",
+         "oxlint": {"min": "1.91.0", "max": "1.90"}}})
+case("an entry with an unknown key is refused",
+     {"a": {"oxlint": "1.90.0"}}, 1, "an entry is",
      data={**RECORD, "devDependencies": {
-         "oxlint": {"min": "1.89.0", "below": "1.91", "max": "2"}}})
+         "oxlint": {"min": "1.89.0", "max": "1.90", "below": "2"}}})
+case("a bare version string is refused",
+     {"a": {"oxlint": "1.90.0"}}, 1, "an entry is",
+     data={**RECORD, "devDependencies": {"oxlint": "1.90.0"}})
 
 
 def raise_case(name, units, want_min, write=True):
@@ -130,21 +142,28 @@ raise_case("a repository that does not declare the package does not hold it",
            {"a": {"oxlint": "1.90.0"}, "b": {"vite": "8.3.5"}}, "1.90.0")
 raise_case("without --write the record is left alone",
            {"a": {"oxlint": "1.90.0"}}, "1.89.0", write=False)
-raise_case("a fleet past the ceiling does not drag the floor there",
+raise_case("a fleet past max does not drag the floor there",
            {"a": {"oxlint": "1.91.2"}}, "1.89.0")
+raise_case("the floor rises to max, which ends the move",
+           {"a": {"oxlint": "1.90.4"}}, "1.90.4")
 
-with tempfile.TemporaryDirectory() as t:
-    tmp = pathlib.Path(t)
-    path = record(tmp, RECORD)
-    run(RAISE, "--root", fleet(tmp, {"a": {"oxlint": "1.90.0"}}),
-        "--versions", path, "--write")
-    rewritten = json.loads(path.read_text())
-    exact = rewritten["devDependencies"]["@playwright/test"]
-    if exact == "1.64.1":
-        print("  ok  an exact entry is never rewritten")
-    else:
-        print(f"FAIL  an exact entry is never rewritten: became {exact}")
-        failures += 1
+# The e2e job runs each @playwright/test release in its own image. Every
+# version the record admits at either end of the interval needs a line there,
+# or the first repository to move fails in the job rather than here.
+REPO = TOOLS.parent
+job = (REPO / ".github/workflows/job-test-e2e-playwright.yml").read_text()
+table = job.split("PLAYWRIGHT_IMAGES: |", 1)[1].split("\n    steps:", 1)[0]
+images = {line.split()[0] for line in table.strip().splitlines()}
+spec = json.loads((REPO / "dependency-versions.json").read_text()
+                  )["devDependencies"]["@playwright/test"]
+missing = sorted({spec["min"], spec["max"]} - images)
+if missing:
+    print(f"FAIL  job-test-e2e-playwright carries an image for every "
+          f"@playwright/test version the record names: missing {missing}")
+    failures += 1
+else:
+    print("  ok  job-test-e2e-playwright carries an image for every "
+          "@playwright/test version the record names")
 
 if failures:
     print(f"\nFAIL: {failures} case(s)")

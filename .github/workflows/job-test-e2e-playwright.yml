@@ -14,7 +14,7 @@
 # version in band (085 SB1). That image is chosen over installing browsers on
 # the runner because (1) the browser binaries and system libraries are the
 # ones Microsoft ships for that exact @playwright/test release, (2) the pin
-# is one line to bump with the package, and (3) self-hosted runners stay free
+# is one line per release beside the package, and (3) self-hosted runners stay free
 # of --with-deps root installs that differ between hosts. The suite still runs
 # as `pnpm test:e2e`, the canonical command (015-commands.md DC2), inside that
 # container on the host network so it reaches the edge at offset zero (LD4).
@@ -83,9 +83,15 @@ jobs:
       # install. The job-level block replaces the caller's token grant.
       packages: read
     env:
-      # Pin matches dependency-versions.json's @playwright/test. Bump both in
-      # one change. Digest is the pin; the tag is the version comment (SB1).
-      PLAYWRIGHT_IMAGE: mcr.microsoft.com/playwright:v1.64.1-jammy@sha256:7e9f074b4b69f7c746865936ac7840733cf5dfc957f265a547f331e7b83922d7 # v1.64.1
+      # One image per @playwright/test release dependency-versions.json
+      # admits, as `version image`. A repository runs the image for the
+      # version its own package.json declares, so moving @playwright/test is
+      # adding the next release's line here and raising `max` there; the old
+      # line leaves once `min` passes it. Digest is the pin; the tag is the
+      # version in band (085 SB1). tools/test-dependency-versions fails a
+      # version the record admits that has no line here.
+      PLAYWRIGHT_IMAGES: |
+        1.64.1 mcr.microsoft.com/playwright:v1.64.1-jammy@sha256:7e9f074b4b69f7c746865936ac7840733cf5dfc957f265a547f331e7b83922d7
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -257,8 +263,18 @@ jobs:
       # fails, pulls from MCR as before.
       - name: Pull the Playwright image
         id: playwright
+        env:
+          WD: ${{ inputs.workdir }}
         run: |
           set -euo pipefail
+          version="$(node -p "require('./${WD}/package.json').devDependencies?.['@playwright/test'] ?? ''")"
+          PLAYWRIGHT_IMAGE="$(awk -v v="$version" '$1 == v { print $2 }' <<< "$PLAYWRIGHT_IMAGES")"
+          if [ -z "$PLAYWRIGHT_IMAGE" ]; then
+            echo "::error::${WD}/package.json declares @playwright/test" \
+                 "'${version}', and this job carries no image for it." \
+                 "It runs: $(awk '{ print $1 }' <<< "$PLAYWRIGHT_IMAGES" | xargs)."
+            exit 1
+          fi
           if [ -n "${GHR_REGISTRY_CACHE:-}" ]; then
             cached="${GHR_REGISTRY_CACHE}/${PLAYWRIGHT_IMAGE#mcr.microsoft.com/}"
             if docker pull -q "$cached"; then

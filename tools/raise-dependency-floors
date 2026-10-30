@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Raise each window's floor in dependency-versions.json to where the fleet is.
+"""Raise each floor in dependency-versions.json to where the fleet is.
 
-A window in dependency-versions.json admits any exact version from `min` up to
-`below`, so Dependabot moves one repository at a time without failing the
-others. What a window does not do on its own is keep the fleet current: a
+An entry in dependency-versions.json admits any exact version from `min`
+through `max`, so Dependabot moves one repository at a time without failing
+the others. What an interval does not do on its own is keep the fleet current: a
 repository can sit on `min` for as long as nobody looks. This tool is the
 looking. Over a directory holding every repository at its default branch, it
-finds the lowest version any Node unit declares for each windowed package and
-raises `min` to it. The floor only ever moves to a version every repository
+finds the lowest version any Node unit declares for each package and raises
+`min` to it. Once `min` reaches `max`, the move that `max` started is done. The floor only ever moves to a version every repository
 already runs, so raising it fails no one.
 
 Run against local clones:
@@ -16,9 +16,9 @@ Run against local clones:
 
 `--root` must hold EVERY repository that calls job-ci-conformance. A repository
 missing from it is a repository the new floor may fail, and nothing here can
-tell an absent repository from one that does not declare the package. Exact
-entries are not touched: equality has no floor to raise. A package no unit
-declares keeps its floor, since there is no evidence to raise it on.
+tell an absent repository from one that does not declare the package. A
+package no unit declares keeps its floor, since there is no evidence to raise
+it on.
 
 Exit status is 0 whether or not a floor can move, and non-zero for a usage
 error or a record the checker would refuse.
@@ -79,24 +79,24 @@ def main() -> int:
         cdv.validate_specs(section, specs)
         lowest = lowest_declared(cdv, args.root, section)
         for name, spec in sorted(specs.items()):
-            if isinstance(spec, str) or name not in lowest:
+            if name not in lowest:
                 continue
             fleet = lowest[name]
             if cdv.version_key(fleet) <= cdv.version_key(spec["min"]):
                 continue
-            if cdv.version_key(fleet) >= cdv.version_key(spec["below"]):
+            if not cdv.within_max(fleet, spec["max"]):
                 # The checker fails such a unit, so a fleet that got here is
                 # one the checker has not run over. Say so and leave it.
-                print(f"{section}.{name}: lowest declared {fleet} is not "
-                      f"below {spec['below']}; floor left at {spec['min']}")
+                print(f"{section}.{name}: lowest declared {fleet} is above "
+                      f"max {spec['max']}; floor left at {spec['min']}")
                 continue
             print(f"{section}.{name}: min {spec['min']} -> {fleet}")
             spec["min"] = fleet
             raised += 1
 
     if not raised:
-        print("No floor can rise: some repository declares each windowed "
-              "package at its floor.")
+        print("No floor can rise: some repository declares each package at "
+              "its floor.")
         return 0
     if args.write:
         args.versions.write_text(json.dumps(data, indent=2) + "\n")

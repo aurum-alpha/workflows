@@ -13,9 +13,9 @@
     "developer's machine and in an image. This file is what those per-repo",
     "pins are checked AGAINST: tools/check-dependency-versions compares every",
     "repo to the values here, so drift is a failing check rather than",
-    "something noticed months later. Most entries are a window, so a",
-    "repository moves inside it on its own; moving the window is a change here,",
-    "and every repository already inside the new window passes unchanged."
+    "something noticed months later. Each entry is an interval, so a",
+    "repository moves inside it on its own; moving an interval is a change here,",
+    "and every repository already inside the new interval passes unchanged."
   ],
   "$packageManager_comment": [
     "Compared against package.json's `packageManager` field. pnpm/action-setup",
@@ -27,24 +27,26 @@
     "Compared against package.json's `devDependencies`. The manifest names an",
     "EXACT version -- a caret or tilde is a failure, not a near miss, because",
     "two repos declaring ^7.3.0 can resolve to different versions on different",
-    "days. What that exact version must be is the entry here, in one of two",
-    "shapes:",
+    "days. What that exact version must be is the entry here: a closed interval,",
+    "{\"min\", \"max\"}, with an optional \"same_as\".",
     "",
-    "A string is equality. It is kept where the version must match something",
-    "outside the manifest: @playwright/test runs inside the Playwright image the",
-    "e2e job pins by digest, at the same version.",
+    "`min` is the version every repository has reached. `max` is the furthest a",
+    "repository may move to, and it matches on the components it names: \"8\"",
+    "admits every 8.x.y, \"1.90\" every 1.90.x, \"1.65.0\" that release alone. So",
+    "Dependabot's patch and minor bumps land one repository at a time inside the",
+    "interval, and nothing else moves.",
     "",
-    "An object is a window: {\"min\", \"below\"}, with an optional \"same_as\".",
-    "The declared version is at least `min` and below `below`, so Dependabot's",
-    "patch and minor bumps land one repository at a time with nothing else",
-    "moving. `below` is the next major, or the next minor of a 0.x package,",
-    "since a 0.x minor may break. oxlint, oxlint-tsgolint and prettier are",
-    "held to the next minor instead: the shared .oxlintrc.json and",
-    ".prettierrc.yaml decide their output, so a minor reaches the fleet only",
-    "after the window moves for it. `min` is raised by",
-    "tools/raise-dependency-floors once every repository is past it, so the",
-    "fleet cannot trail. `same_as` names a package a unit must declare at the",
-    "same version: @vitest/coverage-v8 with vitest, react-dom with react.",
+    "Most entries end at the current major, or the current minor of a 0.x",
+    "package, since a 0.x minor may break. oxlint, oxlint-tsgolint and prettier",
+    "end at a named minor, because the shared .oxlintrc.json and",
+    ".prettierrc.yaml decide their output: raising `max` to the next minor is the",
+    "change that admits it. @playwright/test is exact, min equal to max, because",
+    "job-test-e2e-playwright runs each version in its own pinned image. Moving it",
+    "is setting `max` to the next version once the job carries that image.",
+    "",
+    "tools/raise-dependency-floors raises `min` once every repository is past it,",
+    "so no repository trails. `same_as` names a package a unit must declare at",
+    "the same version: @vitest/coverage-v8 with vitest, react-dom with react.",
     "",
     "ASSERTED WHERE PRESENT, as of wave 7. A unit that does not declare a",
     "package below is not failed for it; a unit that declares it at another",
@@ -368,121 +370,124 @@
     "image pin in the job together."
   ],
   "devDependencies": {
-    "@playwright/test": "1.64.1",
+    "@playwright/test": {
+      "min": "1.64.1",
+      "max": "1.64.1"
+    },
     "@tailwindcss/typography": {
       "min": "0.5.20",
-      "below": "0.6"
+      "max": "0.5"
     },
     "@tailwindcss/vite": {
       "min": "4.3.3",
-      "below": "5"
+      "max": "4"
     },
     "@types/memoizee": {
       "min": "0.4.12",
-      "below": "0.5"
+      "max": "0.4"
     },
     "@types/multer": {
       "min": "2.3.0",
-      "below": "3"
+      "max": "2"
     },
     "@types/node": {
       "min": "26.6.5",
-      "below": "27"
+      "max": "26"
     },
     "@types/passport": {
       "min": "1.0.17",
-      "below": "2"
+      "max": "1"
     },
     "@types/passport-local": {
       "min": "1.0.38",
-      "below": "2"
+      "max": "1"
     },
     "@types/pg": {
       "min": "8.23.1",
-      "below": "9"
+      "max": "8"
     },
     "@types/react": {
       "min": "19.3.0",
-      "below": "20"
+      "max": "19"
     },
     "@types/react-dom": {
       "min": "19.3.0",
-      "below": "20"
+      "max": "19"
     },
     "@vitejs/plugin-react": {
       "min": "6.1.2",
-      "below": "7"
+      "max": "6"
     },
     "@vitest/coverage-v8": {
       "min": "4.1.12",
-      "below": "5",
+      "max": "4",
       "same_as": "vitest"
     },
     "autoprefixer": {
       "min": "10.6.1",
-      "below": "11"
+      "max": "10"
     },
     "concurrently": {
       "min": "10.0.6",
-      "below": "11"
+      "max": "10"
     },
     "drizzle-kit": {
       "min": "0.31.11",
-      "below": "0.32"
+      "max": "0.31"
     },
     "esbuild": {
       "min": "0.28.2",
-      "below": "0.29"
+      "max": "0.28"
     },
     "eslint-plugin-react-hooks": {
       "min": "7.1.1",
-      "below": "8"
+      "max": "7"
     },
     "eslint-plugin-react-refresh": {
       "min": "0.5.7",
-      "below": "0.6"
+      "max": "0.5"
     },
     "oxlint": {
       "min": "1.89.0",
-      "below": "1.91"
+      "max": "1.90"
     },
     "oxlint-tsgolint": {
       "min": "7.0.2005",
-      "below": "7.1"
+      "max": "7.0"
     },
     "postcss": {
       "min": "8.5.30",
-      "below": "9"
+      "max": "8"
     },
     "prettier": {
       "min": "3.9.10",
-      "below": "3.10"
+      "max": "3.9"
     },
     "tailwindcss": {
       "min": "4.3.3",
-      "below": "5"
+      "max": "4"
     },
     "tsx": {
       "min": "4.23.15",
-      "below": "5"
+      "max": "4"
     },
     "typescript": {
       "min": "7.0.2",
-      "below": "8"
+      "max": "7"
     },
     "vite": {
       "min": "8.3.5",
-      "below": "9"
+      "max": "8"
     },
     "vitest": {
       "min": "4.1.12",
-      "below": "5"
+      "max": "4"
     }
   },
   "$dependencies_comment": [
     "Compared against package.json's `dependencies` -- RUNTIME packages, the",
     "ones that ship. Same rule as devDependencies above: an exact version in",
-    "the manifest, inside the entry's window.",
+    "the manifest, inside the entry's interval.",
     "",
     "The section is part of what is asserted, not incidental to it. A package",
     "listed here must be in `dependencies` and a package listed above must be",
@@ -509,11 +514,11 @@
   "dependencies": {
     "react": {
       "min": "19.3.1",
-      "below": "20"
+      "max": "19"
     },
     "react-dom": {
       "min": "19.3.1",
-      "below": "20",
+      "max": "19",
       "same_as": "react"
     }
   },

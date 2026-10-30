@@ -55,12 +55,23 @@ package parked in dependencies ships nothing but noise, and jewelry-factory
 carried exactly that until aurum-alpha/jewelry-factory#52. A checker that
 accepted either section would have called both of those fine.
 
-Versions are compared EXACTLY. A caret or tilde fails: `^7.3.0` in two repos
-can resolve to different versions on different days, so a range is not a pin
-and cannot be a Aurum Alpha standard. That is also why a package mid-wave is absent
-from dependency-versions.json rather than listed with a target -- listing it
-would fail every repo whose turn has not come, and a check that is expected to
-fail is a check nobody reads.
+A manifest declares an EXACT version, always. A caret or tilde fails: `^7.3.0`
+in two repos can resolve to different versions on different days, so a range
+in a manifest is not a pin.
+
+What the fleet record asserts about that exact version is one of two things.
+A plain string is equality: every unit declaring the package declares that
+version. It is kept for a package whose version must match something outside
+the manifest, such as @playwright/test and the image the e2e job runs. An
+object is a window, {"min": "1.89.0", "below": "1.91"}: the declared version
+is at least `min` and below `below`. A window lets Dependabot move one
+repository at a time inside it, where equality failed every repository on one
+side of each move. `below` keeps a major, or a minor for a tool whose output
+the shared config decides, from arriving unreviewed. `min` keeps the fleet
+from trailing: tools/raise-dependency-floors raises it once every repository
+has moved past it. `same_as` names a package a unit must declare at the same
+version, for a pair that ships in lockstep such as vitest and its coverage
+provider.
 """
 
 import argparse
@@ -356,10 +367,58 @@ def check_npmrc(label: str, unit: pathlib.Path, manifest: dict) -> int:
     return failures
 
 
+VERSION = re.compile(r"^\d+(\.\d+)*$")
+WINDOW_KEYS = {"min", "below", "same_as"}
+
+
+def version_key(v: str) -> tuple[int, ...]:
+    """A release version as a tuple, padded so 1.91 compares as 1.91.0."""
+    parts = tuple(int(p) for p in v.split("."))
+    return parts + (0,) * (3 - len(parts))
+
+
+def describe(spec: str | dict) -> str:
+    if isinstance(spec, str):
+        return spec
+    return f">={spec['min']} <{spec['below']}"
+
+
+def validate_specs(section: str, specs: dict) -> None:
+    """Refuse a record this checker would read wrongly."""
+    for name, spec in specs.items():
+        if isinstance(spec, str):
+            if not VERSION.match(spec):
+                raise SystemExit(f"dependency-versions.json {section}.{name}: "
+                                 f"{spec!r} is not a version")
+            continue
+        if not isinstance(spec, dict) or set(spec) - WINDOW_KEYS \
+                or not {"min", "below"} <= set(spec):
+            raise SystemExit(f"dependency-versions.json {section}.{name}: a "
+                             f"window is {{min, below[, same_as]}}")
+        for key in ("min", "below"):
+            if not VERSION.match(spec[key]):
+                raise SystemExit(f"dependency-versions.json {section}.{name}."
+                                 f"{key}: {spec[key]!r} is not a version")
+        if version_key(spec["min"]) >= version_key(spec["below"]):
+            raise SystemExit(f"dependency-versions.json {section}.{name}: "
+                             f"min {spec['min']} is not below {spec['below']}")
+
+
+def satisfies(got: str, spec: str | dict) -> bool:
+    if isinstance(spec, str):
+        return got == spec
+    if not VERSION.match(got):
+        return False
+    return (version_key(spec["min"]) <= version_key(got)
+            < version_key(spec["below"]))
+
+
 def load_expected(
-    repo_root: pathlib.Path,
-) -> tuple[str, dict[str, str], dict[str, str]]:
-    data = json.loads((repo_root / "dependency-versions.json").read_text())
+    versions: pathlib.Path,
+) -> tuple[str, dict, dict]:
+    data = json.loads(versions.read_text())
+    validate_specs("devDependencies", data.get("devDependencies", {}))
+    validate_specs("dependencies", data.get("dependencies", {}))
     # Both dependency blocks are optional. This is defensive rather than a
     # rollout mechanism, and it is worth being exact about which:
     # dependency-versions.json is read from the checker's OWN repo root, so
@@ -376,9 +435,9 @@ def load_expected(
 
 
 def load_fleet_pins(
-    repo_root: pathlib.Path,
+    versions: pathlib.Path,
 ) -> tuple[dict[str, str], dict[str, str]]:
-    data = json.loads((repo_root / "dependency-versions.json").read_text())
+    data = json.loads(versions.read_text())
     runtimes = data.get("runtimes", {})
     unknown = set(runtimes) - set(RUNTIME_FILES)
     if unknown:
@@ -393,7 +452,7 @@ def load_fleet_pins(
 def check_section(
     repo: str,
     manifest: dict,
-    want: dict[str, str],
+    want: dict,
     section: str,
     other: str,
 ) -> int:
@@ -413,7 +472,8 @@ def check_section(
     # forgot to look", and only one of those is a fact about the unit.
     skipped: list[str] = []
 
-    for name, version in sorted(want.items()):
+    for name, spec in sorted(want.items()):
+        version = describe(spec)
         got = declared.get(name)
         if got is None:
             if name in sibling:
@@ -442,7 +502,7 @@ def check_section(
                 skipped.append(name)
                 continue
             failures += 1
-        elif got != version:
+        elif not satisfies(got, spec):
             # Names the range case explicitly: "^10.9.1 is not 10.9.1" reads
             # like a checker being pedantic unless it says why.
             hint = " (a range, not a pin)" if got[:1] in "^~><=" else ""
@@ -451,6 +511,15 @@ def check_section(
                 f"Aurum Alpha standard is {version}"
             )
             failures += 1
+        elif isinstance(spec, dict) and "same_as" in spec:
+            # A window admits two versions of a lockstep pair that each sit
+            # inside it, and the pair would install mismatched.
+            partner = spec["same_as"]
+            theirs = declared.get(partner, sibling.get(partner))
+            if theirs is not None and theirs != got:
+                print(f"{repo}: {name} is {got} and {partner} is {theirs}; "
+                      f"the two ship in lockstep and must match")
+                failures += 1
 
     if skipped:
         print(f"{repo}: not declared in {section}, so not asserted — "
@@ -463,11 +532,14 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", default="/workspace", type=pathlib.Path)
     ap.add_argument("--repo", action="append", help="limit to specific repo(s)")
+    # The record beside this checker, unless a test hands it a fixture.
+    ap.add_argument("--versions", type=pathlib.Path,
+                    default=pathlib.Path(__file__).resolve().parent.parent
+                    / "dependency-versions.json")
     args = ap.parse_args()
 
-    here = pathlib.Path(__file__).resolve().parent.parent
-    expected, want_dev, want_deps = load_expected(here)
-    want_runtimes, want_images = load_fleet_pins(here)
+    expected, want_dev, want_deps = load_expected(args.versions)
+    want_runtimes, want_images = load_fleet_pins(args.versions)
     want = f"pnpm@{expected}"
 
     if args.repo:
@@ -568,8 +640,8 @@ def main() -> int:
     if failures:
         print(
             f"\nFAIL: {failures} repo(s) disagree with "
-            "dependency-versions.json. Either bring the repo to the standard "
-            "version, or bump dependency-versions.json and roll every repo."
+            "dependency-versions.json. Either bring the repo inside the "
+            "standard's window, or move the window in dependency-versions.json."
         )
         return 1
 

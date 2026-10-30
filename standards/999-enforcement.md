@@ -68,6 +68,8 @@ can disagree eventually will.
 | — | Every Node unit carries its own `.node-version` | `check-dependency-versions` | gated¹ |
 | — | Standard Node, Go, PHP and Python versions, read from each pin file | `check-dependency-versions` | gated¹ |
 | — | Standard tag for each converged third-party image | `check-dependency-versions` | gated¹ |
+| — | Each converged package declared at an exact version inside its window | `check-dependency-versions` | gated¹ |
+| — | A window's floor rises to the lowest version any repository declares | `raise-dependency-floors` | **run by hand**¹³ |
 | — | Shared lint and format configs unedited (`.oxlintrc.json`, `.prettierrc.yaml`) | `check-lint-configs` | gated¹ |
 | — | Caller `with:` matches the shared job's inputs | `check-ci-conformance` IN | gated |
 | — | One shared `ci-ok` rollup, not eleven copies | `check-ci-conformance` RU | gated |
@@ -167,6 +169,10 @@ the repository root is judged by the build job in its own directory.
 ¹² Gated in every repository whose `ci.yml` calls `job-freshness-gate` with
 its graph roots waiting on it. A repository that calls it with nothing
 waiting on it fails red on a stale push and still spends the runners.
+
+¹³ `tools/raise-dependency-floors` needs every repository at its default
+branch, and no job here holds a clone of every repository. Until one does, a person
+runs it over local clones and opens the pull request it writes.
 
 Each platform module still executes `check()` itself. Each product that
 answers for billing still executes `entitlementsFor()` itself. The behaviour

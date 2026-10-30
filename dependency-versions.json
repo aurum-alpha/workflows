@@ -13,9 +13,9 @@
     "developer's machine and in an image. This file is what those per-repo",
     "pins are checked AGAINST: tools/check-dependency-versions compares every",
     "repo to the values here, so drift is a failing check rather than",
-    "something noticed months later. Bumping a version here is the start of a",
-    "wave, not the end: update the value, then update every repo's own pin to",
-    "match."
+    "something noticed months later. Most entries are a window, so a",
+    "repository moves inside it on its own; moving the window is a change here,",
+    "and every repository already inside the new window passes unchanged."
   ],
   "$packageManager_comment": [
     "Compared against package.json's `packageManager` field. pnpm/action-setup",
@@ -24,10 +24,27 @@
   ],
   "pnpm": "10.34.6",
   "$devDependencies_comment": [
-    "Compared against package.json's `devDependencies`, EXACTLY -- a caret or",
-    "tilde is a failure, not a near miss. A range is not a pin: two repos",
-    "declaring ^7.3.0 can resolve to different vite versions on different days,",
-    "which is the drift this file exists to stop.",
+    "Compared against package.json's `devDependencies`. The manifest names an",
+    "EXACT version -- a caret or tilde is a failure, not a near miss, because",
+    "two repos declaring ^7.3.0 can resolve to different versions on different",
+    "days. What that exact version must be is the entry here, in one of two",
+    "shapes:",
+    "",
+    "A string is equality. It is kept where the version must match something",
+    "outside the manifest: @playwright/test runs inside the Playwright image the",
+    "e2e job pins by digest, at the same version.",
+    "",
+    "An object is a window: {\"min\", \"below\"}, with an optional \"same_as\".",
+    "The declared version is at least `min` and below `below`, so Dependabot's",
+    "patch and minor bumps land one repository at a time with nothing else",
+    "moving. `below` is the next major, or the next minor of a 0.x package,",
+    "since a 0.x minor may break. oxlint, oxlint-tsgolint and prettier are",
+    "held to the next minor instead: the shared .oxlintrc.json and",
+    ".prettierrc.yaml decide their output, so a minor reaches the fleet only",
+    "after the window moves for it. `min` is raised by",
+    "tools/raise-dependency-floors once every repository is past it, so the",
+    "fleet cannot trail. `same_as` names a package a unit must declare at the",
+    "same version: @vitest/coverage-v8 with vitest, react-dom with react.",
     "",
     "ASSERTED WHERE PRESENT, as of wave 7. A unit that does not declare a",
     "package below is not failed for it; a unit that declares it at another",
@@ -348,48 +365,124 @@
     "@playwright/test is asserted where present for job-test-e2e-playwright.",
     "The job runs the suite inside the Playwright Docker image at the same",
     "version, pinned by digest in the workflow. Bump the package here and the",
-    "image pin in the job together.",
-    "",
-    "WAVE 14 MOVES oxlint TO 1.90.0, AND oxlint IS UNASSERTED WHILE IT MOVES.",
-    "Dependabot's npm groups carry 1.90.0 one repository at a time, and an",
-    "exact pin would fail each one on either side of its move. So the pin is",
-    "out of devDependencies until every unit declares 1.90.0, and the change",
-    "that completes the wave puts it back at that version. oxlint-tsgolint",
-    "stays asserted at 7.0.2005: oxlint 1.90.0 peers it at >=7.0.2005."
+    "image pin in the job together."
   ],
   "devDependencies": {
     "@playwright/test": "1.64.1",
-    "@tailwindcss/typography": "0.5.20",
-    "@tailwindcss/vite": "4.3.3",
-    "@types/memoizee": "0.4.12",
-    "@types/multer": "2.3.0",
-    "@types/node": "26.6.5",
-    "@types/passport": "1.0.17",
-    "@types/passport-local": "1.0.38",
-    "@types/pg": "8.23.1",
-    "@types/react": "19.3.0",
-    "@types/react-dom": "19.3.0",
-    "@vitejs/plugin-react": "6.1.2",
-    "@vitest/coverage-v8": "4.1.12",
-    "autoprefixer": "10.6.1",
-    "concurrently": "10.0.6",
-    "drizzle-kit": "0.31.11",
-    "esbuild": "0.28.2",
-    "eslint-plugin-react-hooks": "7.1.1",
-    "eslint-plugin-react-refresh": "0.5.7",
-    "oxlint-tsgolint": "7.0.2005",
-    "postcss": "8.5.30",
-    "prettier": "3.9.10",
-    "tailwindcss": "4.3.3",
-    "tsx": "4.23.15",
-    "typescript": "7.0.2",
-    "vite": "8.3.5",
-    "vitest": "4.1.12"
+    "@tailwindcss/typography": {
+      "min": "0.5.20",
+      "below": "0.6"
+    },
+    "@tailwindcss/vite": {
+      "min": "4.3.3",
+      "below": "5"
+    },
+    "@types/memoizee": {
+      "min": "0.4.12",
+      "below": "0.5"
+    },
+    "@types/multer": {
+      "min": "2.3.0",
+      "below": "3"
+    },
+    "@types/node": {
+      "min": "26.6.5",
+      "below": "27"
+    },
+    "@types/passport": {
+      "min": "1.0.17",
+      "below": "2"
+    },
+    "@types/passport-local": {
+      "min": "1.0.38",
+      "below": "2"
+    },
+    "@types/pg": {
+      "min": "8.23.1",
+      "below": "9"
+    },
+    "@types/react": {
+      "min": "19.3.0",
+      "below": "20"
+    },
+    "@types/react-dom": {
+      "min": "19.3.0",
+      "below": "20"
+    },
+    "@vitejs/plugin-react": {
+      "min": "6.1.2",
+      "below": "7"
+    },
+    "@vitest/coverage-v8": {
+      "min": "4.1.12",
+      "below": "5",
+      "same_as": "vitest"
+    },
+    "autoprefixer": {
+      "min": "10.6.1",
+      "below": "11"
+    },
+    "concurrently": {
+      "min": "10.0.6",
+      "below": "11"
+    },
+    "drizzle-kit": {
+      "min": "0.31.11",
+      "below": "0.32"
+    },
+    "esbuild": {
+      "min": "0.28.2",
+      "below": "0.29"
+    },
+    "eslint-plugin-react-hooks": {
+      "min": "7.1.1",
+      "below": "8"
+    },
+    "eslint-plugin-react-refresh": {
+      "min": "0.5.7",
+      "below": "0.6"
+    },
+    "oxlint": {
+      "min": "1.89.0",
+      "below": "1.91"
+    },
+    "oxlint-tsgolint": {
+      "min": "7.0.2005",
+      "below": "7.1"
+    },
+    "postcss": {
+      "min": "8.5.30",
+      "below": "9"
+    },
+    "prettier": {
+      "min": "3.9.10",
+      "below": "3.10"
+    },
+    "tailwindcss": {
+      "min": "4.3.3",
+      "below": "5"
+    },
+    "tsx": {
+      "min": "4.23.15",
+      "below": "5"
+    },
+    "typescript": {
+      "min": "7.0.2",
+      "below": "8"
+    },
+    "vite": {
+      "min": "8.3.5",
+      "below": "9"
+    },
+    "vitest": {
+      "min": "4.1.12",
+      "below": "5"
+    }
   },
   "$dependencies_comment": [
     "Compared against package.json's `dependencies` -- RUNTIME packages, the",
-    "ones that ship. Same exactness rule as devDependencies above: a caret or",
-    "tilde is a failure.",
+    "ones that ship. Same rule as devDependencies above: an exact version in",
+    "the manifest, inside the entry's window.",
     "",
     "The section is part of what is asserted, not incidental to it. A package",
     "listed here must be in `dependencies` and a package listed above must be",
@@ -414,8 +507,15 @@
     "lockfile is what proves the bump took."
   ],
   "dependencies": {
-    "react": "19.3.1",
-    "react-dom": "19.3.1"
+    "react": {
+      "min": "19.3.1",
+      "below": "20"
+    },
+    "react-dom": {
+      "min": "19.3.1",
+      "below": "20",
+      "same_as": "react"
+    }
   },
   "$runtimes_comment": [
     "The language runtimes, compared against the pin file each toolchain reads:",

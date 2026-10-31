@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+# Decides, at job start, whether this job builds on the shared build farm or
+# on a local builder inside the runner's own dind, and writes the local
+# builder's mirror config when the registry cache answers.
+#
+# Fail-open: any doubt means local, never a red build. Every input comes from
+# the runner controller through the runner's environment, so a runner the
+# controller did not set up for the farm is local without asking anything:
+#
+#   GHR_BUILDKIT_ENDPOINT    tcp://<farm>:<port>
+#   GHR_BUILDKIT_SERVERNAME  the name the farm's certificate carries
+#   GHR_BUILDKIT_CERTS       a read-only directory: ca.pem client.pem client-key.pem
+#   GHR_REGISTRY_CACHE       https://<host>, no path
+#
+# The action's inputs (ENDPOINT, SERVERNAME, CERTS, REGISTRY_CACHE) override
+# them; an empty input falls back to the environment.
+#
+# tools/test-setup-builder runs this script under each combination, because
+# the image jobs that run it never run in the catalog's own CI.
+set -uo pipefail
+
+ENDPOINT="${ENDPOINT:-${GHR_BUILDKIT_ENDPOINT:-}}"
+SERVERNAME="${SERVERNAME:-${GHR_BUILDKIT_SERVERNAME:-}}"
+CERTS="${CERTS:-${GHR_BUILDKIT_CERTS:-/etc/aj78/buildkit-client}}"
+REGISTRY_CACHE="${REGISTRY_CACHE:-${GHR_REGISTRY_CACHE:-}}"
+PLATFORMS="${PLATFORMS:-linux/amd64}"
+FORK="${FORK:-false}"
+PROBE_TIMEOUT="${PROBE_TIMEOUT:-8}"
+GITHUB_OUTPUT="${GITHUB_OUTPUT:-/dev/stdout}"
+GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/stderr}"
+RUNNER_TEMP="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
+
+mode=local
+# Set when a farm was expected and could not be used. A runner never given a
+# farm is local by design and a fork by policy, so neither says anything.
+# A platform the farm lacks is a notice rather than a warning: it is local by
+# design too, and an arm64 leg would otherwise warn on every run.
+level=""
+if [ "$FORK" = true ]; then
+  reason="pull request from a fork"
+elif [ -z "$ENDPOINT" ]; then
+  reason="this runner was not given a build farm (no GHR_BUILDKIT_ENDPOINT)"
+elif [ ! -r "$CERTS/client-key.pem" ] || [ ! -r "$CERTS/client.pem" ] || [ ! -r "$CERTS/ca.pem" ]; then
+  reason="no readable client certificate in $CERTS"
+  level=warning
+elif [ -e "${BUILDX_CONFIG:-${HOME:-}/.docker/buildx}/buildkitd.default.toml" ]; then
+  # buildx loads this file into every builder it creates and refuses to
+  # create a remote one while it exists ("setting config file is not
+  # supported for remote driver"). A runner image from before the farm
+  # carries it; gha-runner-controller#608 took it out.
+  reason="this runner's image carries ~/.docker/buildx/buildkitd.default.toml, which buildx refuses for a remote builder"
+  level=warning
+else
+  hostport="${ENDPOINT#tcp://}"; host="${hostport%:*}"; port="${hostport##*:}"
+  [ -n "$SERVERNAME" ] || SERVERNAME="$host"
+  if ! timeout 3 bash -c "exec 3<>/dev/tcp/$host/$port" 2>/dev/null; then
+    # A cheap reachability gate. Without it a black-holed host costs about
+    # 20s, because `buildx create --driver remote` dials the endpoint with
+    # its own long timeout before the bootstrap check starts.
+    reason="build farm $host:$port did not accept a connection within 3s"
+    level=warning
+  else
+    probe="setup-builder-probe-$$"
+    docker buildx rm "$probe" >/dev/null 2>&1 || true
+    # buildx's own last line goes into the reason: a refusal here is a fact
+    # about this runner that the summary should name, not a mystery.
+    if ! err=$(timeout "$PROBE_TIMEOUT" docker buildx create --name "$probe" --driver remote \
+         --driver-opt "cacert=$CERTS/ca.pem,cert=$CERTS/client.pem,key=$CERTS/client-key.pem,servername=$SERVERNAME" \
+         "$ENDPOINT" 2>&1 >/dev/null); then
+      reason="could not define a remote builder for $ENDPOINT: $(printf '%s\n' "$err" | tail -n 1)"
+      level=warning
+    elif ! info=$(timeout "$PROBE_TIMEOUT" docker buildx inspect --bootstrap "$probe" 2>/dev/null); then
+      # --bootstrap dials the daemon and completes the mTLS handshake.
+      reason="build farm refused this runner's client certificate or did not answer within ${PROBE_TIMEOUT}s"
+      level=warning
+    else
+      # The farm builds only what its workers list; a platform it lacks would
+      # need emulation it does not have.
+      have=$(printf '%s\n' "$info" | sed -n 's/^Platforms:[[:space:]]*//p' | head -n 1 \
+        | tr -d ' ' | tr ',' '\n' | sed 's/\*$//')
+      missing=""
+      IFS=, read -ra want <<< "$PLATFORMS"
+      for p in "${want[@]}"; do
+        p="${p// /}"; [ -n "$p" ] || continue
+        printf '%s\n' "$have" | grep -qxF "$p" || missing="$missing $p"
+      done
+      if [ -n "$missing" ]; then
+        reason="build farm has no worker for:${missing}"
+        level=notice
+      else
+        mode=remote reason="build farm at $host:$port"
+      fi
+    fi
+    docker buildx rm "$probe" >/dev/null 2>&1 || true
+  fi
+fi
+
+# A local builder pulls base images through the registry cache only while it
+# answers: a dead cache host would otherwise cost a connect timeout per fetch
+# before BuildKit falls through to the origin. Only https://<host> qualifies.
+# BuildKit mirror entries carry no scheme and are https, and a bare host or an
+# http URL would be checked over plain http, where a redirect passes curl -f
+# and turns on mirrors nothing checked.
+config=""
+mirrors=false
+if [ "$mode" = local ] && [[ "$REGISTRY_CACHE" =~ ^https://[^/]+/?$ ]] \
+   && curl -fsS -o /dev/null --connect-timeout 2 --max-time 3 "${REGISTRY_CACHE%/}/healthz" 2>/dev/null; then
+  cache_host="${REGISTRY_CACHE#https://}"; cache_host="${cache_host%/}"
+  config="$RUNNER_TEMP/setup-builder-buildkitd.toml"
+  # The namespaces are the cache's layout, the same ones the controller
+  # writes into each dind's hosts.toml.
+  cat > "$config" <<EOF
+# Written by setup-builder: the registry cache answered /healthz at job start.
+[registry."docker.io"]
+  mirrors = ["$cache_host"]
+[registry."ghcr.io"]
+  mirrors = ["$cache_host/ghcr"]
+[registry."quay.io"]
+  mirrors = ["$cache_host/quay"]
+[registry."mcr.microsoft.com"]
+  mirrors = ["$cache_host/mcr"]
+EOF
+  mirrors=true
+fi
+
+{
+  echo "mode=$mode"
+  echo "reason=$reason"
+  echo "mirrors=$mirrors"
+  echo "buildkitd_config=$config"
+  # What the probe verified, so the remote step is given exactly that.
+  echo "endpoint=$ENDPOINT"
+  echo "servername=$SERVERNAME"
+  echo "certs=$CERTS"
+} >> "$GITHUB_OUTPUT"
+{
+  echo "### Builder: \`$mode\`"
+  echo "- $reason"
+  if [ "$mode" = local ]; then
+    echo "- base images through the registry cache: $([ "$mirrors" = true ] && echo yes || echo no)"
+  fi
+} >> "$GITHUB_STEP_SUMMARY"
+if [ -n "$level" ]; then
+  echo "::${level} title=Build farm not used::${reason}; building locally on $(hostname)"
+fi
+exit 0

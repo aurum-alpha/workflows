@@ -123,11 +123,192 @@ jobs:
       - name: Test the go-caches script
         run: tools/test-go-caches
 
+      # setup-builder runs inside every image job, and those jobs never build
+      # here. Every decision it makes before creating a builder is held here,
+      # each with a time bound; the farm half is setup-builder-farm below.
+      - name: Test the setup-builder decisions
+        run: tools/test-setup-builder
+
       # check-dependency-versions runs in every caller's ci-conformance, and
       # raise-dependency-floors rewrites the fleet's record. Neither has a
       # caller here that exercises a failing case, so both are tested here.
       - name: Test the dependency version windows
         run: tools/test-dependency-versions
+
+  # setup-builder against a real BuildKit daemon with mTLS, which
+  # tools/test-setup-builder cannot stand up: a throwaway CA, a stand-in farm,
+  # and the three answers the action has to give. The job's docker CLI talks
+  # to the runner's dind, and the runner shares the dind's network namespace,
+  # so a port the stand-in publishes on 127.0.0.1 is reachable as localhost.
+  # It shares no filesystem, which is why the certificates go in with docker
+  # cp rather than a bind mount.
+  setup-builder-farm:
+    runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
+    timeout-minutes: 15
+    env:
+      # The daemon the farm runs; a stand-in of another version would prove
+      # the handshake against a server the fleet does not have.
+      BUILDKIT_IMAGE: moby/buildkit:v0.34.1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Two CAs. The good client certificate chains to the one the stand-in
+      # trusts; the foreign one chains to the other, beside the right ca.pem,
+      # so the only thing wrong with it is who signed it.
+      - name: Make throwaway certificates
+        id: pki
+        run: |
+          set -euo pipefail
+          d="${RUNNER_TEMP}/pki"
+          mkdir -p "${d}/server" "${d}/good" "${d}/foreign"
+          cd "$d"
+          for ca in ca ca2; do
+            openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=setup-builder test ${ca}" \
+              -keyout "${ca}-key.pem" -out "${ca}.pem" 2>/dev/null
+          done
+          openssl req -newkey rsa:2048 -nodes -subj /CN=localhost \
+            -keyout server/server-key.pem -out server.csr 2>/dev/null
+          printf 'subjectAltName=DNS:localhost,IP:127.0.0.1\nextendedKeyUsage=serverAuth\n' > server.ext
+          openssl x509 -req -in server.csr -CA ca.pem -CAkey ca-key.pem -CAcreateserial -days 1 \
+            -extfile server.ext -out server/server.pem 2>/dev/null
+          cp ca.pem server/ca.pem
+          printf 'extendedKeyUsage=clientAuth\n' > client.ext
+          for pair in ca:good ca2:foreign; do
+            signer="${pair%%:*}" dir="${pair##*:}"
+            openssl req -newkey rsa:2048 -nodes -subj /CN=runner \
+              -keyout "${dir}/client-key.pem" -out "${dir}.csr" 2>/dev/null
+            openssl x509 -req -in "${dir}.csr" -CA "${signer}.pem" -CAkey "${signer}-key.pem" \
+              -CAcreateserial -days 1 -extfile client.ext -out "${dir}/client.pem" 2>/dev/null
+            cp ca.pem "${dir}/ca.pem"
+          done
+          echo "dir=${d}" >> "$GITHUB_OUTPUT"
+
+      - name: Start the stand-in farm
+        env:
+          PKI: ${{ steps.pki.outputs.dir }}
+        run: |
+          set -euo pipefail
+          docker create --name setup-builder-farm --privileged -p 127.0.0.1:1234:1234 "$BUILDKIT_IMAGE" \
+            --addr tcp://0.0.0.0:1234 \
+            --tlscacert /certs/ca.pem --tlscert /certs/server.pem --tlskey /certs/server-key.pem >/dev/null
+          docker cp "${PKI}/server/." setup-builder-farm:/certs/
+          docker start setup-builder-farm >/dev/null
+          for _ in $(seq 60); do
+            if timeout 1 bash -c 'exec 3<>/dev/tcp/127.0.0.1/1234' 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          docker logs setup-builder-farm
+          echo "::error::The stand-in farm never listened on 127.0.0.1:1234."
+          exit 1
+
+      # buildx refuses to create a remote builder while this file exists.
+      # gha-runner-controller#608 takes it out of the runner image; this
+      # step puts a runner from before that image in the state the farm
+      # needs, and does nothing on one after it. The probe's own handling
+      # of the file is held by tools/test-setup-builder.
+      - name: Take the runner image's default BuildKit config out of the way
+        run: rm -f "${HOME}/.docker/buildx/buildkitd.default.toml"
+
+      - id: remote
+        uses: ./.github/actions/setup-builder
+        with:
+          endpoint: tcp://localhost:1234
+          servername: localhost
+          certs-dir: ${{ steps.pki.outputs.dir }}/good
+          platforms: ${{ runner.arch == 'ARM64' && 'linux/arm64' || 'linux/amd64' }}
+
+      - name: Good certificate, a platform it lists → remote
+        env:
+          MODE: ${{ steps.remote.outputs.mode }}
+          REASON: ${{ steps.remote.outputs.reason }}
+        run: |
+          if [ "$MODE" != remote ]; then
+            echo "::error::Expected remote, got ${MODE}: ${REASON}"
+            exit 1
+          fi
+
+      # The point of a farm: the second build of the same context runs no
+      # step. Only the RUN and COPY steps are held to it, because how a FROM
+      # step reports a resolved base varies between BuildKit releases.
+      - name: Build twice on the stand-in; the second build runs nothing
+        run: |
+          set -euo pipefail
+          ctx="${RUNNER_TEMP}/fixture"
+          mkdir -p "$ctx"
+          printf 'FROM busybox:1.37.0\nRUN echo built > /built\nCOPY Dockerfile /Dockerfile.copy\n' > "${ctx}/Dockerfile"
+          for pass in first second; do
+            docker buildx build --builder build-farm --progress plain --output type=cacheonly "$ctx" \
+              > "${RUNNER_TEMP}/${pass}.log" 2>&1 || { cat "${RUNNER_TEMP}/${pass}.log"; exit 1; }
+          done
+          cat "${RUNNER_TEMP}/second.log"
+          steps="$(grep -oE '^#[0-9]+ \[[0-9]+/[0-9]+\] (RUN|COPY) ' "${RUNNER_TEMP}/second.log" | awk '{print $1}' | sort -u)"
+          if [ -z "$steps" ]; then
+            echo "::error::The second build's log names no RUN or COPY step to check."
+            exit 1
+          fi
+          for s in $steps; do
+            if ! grep -qx "${s} CACHED" "${RUNNER_TEMP}/second.log"; then
+              echo "::error::Step ${s} ran again on the second build."
+              exit 1
+            fi
+          done
+
+      - id: foreign
+        uses: ./.github/actions/setup-builder
+        with:
+          endpoint: tcp://localhost:1234
+          servername: localhost
+          certs-dir: ${{ steps.pki.outputs.dir }}/foreign
+
+      - name: Client certificate from another CA → local
+        env:
+          MODE: ${{ steps.foreign.outputs.mode }}
+          REASON: ${{ steps.foreign.outputs.reason }}
+        run: |
+          if [ "$MODE" != local ]; then
+            echo "::error::Expected local, got ${MODE}: ${REASON}"
+            exit 1
+          fi
+
+      # The platform is whichever the stand-in does not list, rather than a
+      # fixed arm64: a host with QEMU registered in its kernel makes BuildKit
+      # list the emulated platforms too.
+      - name: Pick a platform the stand-in has no worker for
+        id: absent
+        run: |
+          set -euo pipefail
+          listed="$(docker buildx inspect build-farm | sed -n 's/^Platforms:[[:space:]]*//p' | head -n 1 \
+            | tr -d ' ' | tr ',' '\n' | sed 's/\*$//')"
+          for p in linux/arm64 linux/riscv64 linux/s390x linux/ppc64le linux/mips64le; do
+            if ! printf '%s\n' "$listed" | grep -qxF "$p"; then
+              echo "platform=${p}" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "::error::The stand-in lists every candidate platform: ${listed}"
+          exit 1
+
+      - id: platform
+        uses: ./.github/actions/setup-builder
+        with:
+          endpoint: tcp://localhost:1234
+          servername: localhost
+          certs-dir: ${{ steps.pki.outputs.dir }}/good
+          platforms: ${{ steps.absent.outputs.platform }}
+
+      - name: A platform the farm lacks → local
+        env:
+          MODE: ${{ steps.platform.outputs.mode }}
+          REASON: ${{ steps.platform.outputs.reason }}
+        run: |
+          if [ "$MODE" != local ]; then
+            echo "::error::Expected local, got ${MODE}: ${REASON}"
+            exit 1
+          fi
+
+      - name: Remove the stand-in farm
+        if: always()
+        run: docker rm -f setup-builder-farm >/dev/null 2>&1 || true
 
   contract-conformance:
     uses: ./.github/workflows/job-contract-conformance.yml
@@ -284,7 +465,7 @@ jobs:
     # version_changed, and the release that did not happen would be reported
     # as fine (rule D6). version-release is in here so a failed tag on the
     # default branch turns this check red. A pull request does not count it.
-    needs: [lint, conformance, contract-conformance, secret-scan, version-gate, version-read, version-release]
+    needs: [lint, conformance, setup-builder-farm, contract-conformance, secret-scan, version-gate, version-read, version-release]
     if: always()
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
     steps:

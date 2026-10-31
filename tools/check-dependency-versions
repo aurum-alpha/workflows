@@ -28,7 +28,8 @@ It checks FIVE things, for the same reason and against the same file:
   devDependencies  one version of each converged build-time package
   dependencies     one version of each converged RUNTIME package
   runtimes         one Node, Go, PHP and Python, read from each pin file
-  images           one tag for each converged third-party image
+  images           one tag for each converged third-party image, or a
+                   {min, max} interval while one moves
 
 The last two reach every repository, not only those with a Node unit. Go,
 PHP and Python pin themselves in their own files, and an image is named in a
@@ -291,12 +292,42 @@ def check_images(
                 for name, pattern in patterns.items():
                     for m in pattern.finditer(line):
                         checked += 1
-                        if m.group(1) != want[name]:
+                        if not image_admits(want[name], m.group(1)):
                             print(f"{repo}/{rel}:{lineno}: {name} is "
                                   f"{m.group(1)}, Aurum Alpha standard is "
-                                  f"{want[name]}")
+                                  f"{describe_image(want[name])}")
                             failures += 1
     return failures, checked
+
+
+def image_admits(spec: "str | dict", tag: str) -> bool:
+    """An image entry is one tag, or a {min, max} interval of plain versions
+    for an image moving from one release to the next."""
+    if isinstance(spec, str):
+        return tag == spec
+    return bool(VERSION.match(tag)) and \
+        version_key(tag) >= version_key(spec["min"]) and \
+        within_max(tag, spec["max"])
+
+
+def describe_image(spec: "str | dict") -> str:
+    return spec if isinstance(spec, str) else f"[{spec['min']}, {spec['max']}]"
+
+
+def validate_images(images: dict) -> None:
+    """Refuse an image interval this checker would read wrongly."""
+    for name, spec in images.items():
+        where = f"dependency-versions.json images.{name}"
+        if isinstance(spec, str):
+            continue
+        if not isinstance(spec, dict) or set(spec) != {"min", "max"} \
+                or not all(isinstance(v, str) and VERSION.match(v)
+                           for v in spec.values()):
+            raise SystemExit(f"{where}: an entry is a tag, or {{min, max}} "
+                             f"of plain versions")
+        if not within_max(spec["min"], spec["max"]):
+            raise SystemExit(f"{where}: min {spec['min']} is above max "
+                             f"{spec['max']}")
 
 
 # The private scope and the two registries a unit resolves from.
@@ -446,7 +477,9 @@ def load_fleet_pins(
             f"dependency-versions.json names runtime(s) this checker does not "
             f"read: {', '.join(sorted(unknown))}"
         )
-    return runtimes, data.get("images", {})
+    images = data.get("images", {})
+    validate_images(images)
+    return runtimes, images
 
 
 def check_section(

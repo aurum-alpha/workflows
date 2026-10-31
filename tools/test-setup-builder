@@ -67,6 +67,14 @@ j="$(run GHR_BUILDKIT_ENDPOINT="tcp://192.0.2.1:1234" GHR_BUILDKIT_CERTS="$certs
 if [ "$(out "$j" mode)" = local ] && grep -q '::warning' "${j}/log" && [ "$(cat "${j}/seconds")" -lt 5 ]; then
   pass "black-holed farm: local in $(cat "${j}/seconds")s, warning"; else fail "black-holed farm ($(cat "${j}/seconds")s)"; cat "${j}/log" "${j}/out"; fi
 
+# 4b. A runner image carrying buildx's default config can never create a
+#     remote builder, so it is local with the file named, before any dial.
+mkdir -p "${work}/buildx-with-default"; : > "${work}/buildx-with-default/buildkitd.default.toml"
+j="$(run GHR_BUILDKIT_ENDPOINT="tcp://192.0.2.1:1234" GHR_BUILDKIT_CERTS="$certs" BUILDX_CONFIG="${work}/buildx-with-default")"
+if [ "$(out "$j" mode)" = local ] && grep -q 'buildkitd.default.toml' "${j}/out" && grep -q '::warning' "${j}/log" \
+   && [ "$(cat "${j}/seconds")" -le 1 ]; then
+  pass "buildkitd.default.toml present: local, file named"; else fail "default config"; cat "${j}/log" "${j}/out"; fi
+
 # 5. A cache that refuses: no mirrors.
 j="$(run GHR_REGISTRY_CACHE="https://127.0.0.1:${closed_port}")"
 if [ "$(out "$j" mirrors)" = false ] && ! config_written "$j" && [ "$(cat "${j}/seconds")" -le 3 ]; then

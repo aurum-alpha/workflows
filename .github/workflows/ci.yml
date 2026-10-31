@@ -201,6 +201,14 @@ jobs:
           echo "::error::The stand-in farm never listened on 127.0.0.1:1234."
           exit 1
 
+      # buildx refuses to create a remote builder while this file exists.
+      # gha-runner-controller#608 takes it out of the runner image; this
+      # step puts a runner from before that image in the state the farm
+      # needs, and does nothing on one after it. The probe's own handling
+      # of the file is held by tools/test-setup-builder.
+      - name: Take the runner image's default BuildKit config out of the way
+        run: rm -f "${HOME}/.docker/buildx/buildkitd.default.toml"
+
       - id: remote
         uses: ./.github/actions/setup-builder
         with:

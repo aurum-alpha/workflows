@@ -43,6 +43,13 @@ elif [ -z "$ENDPOINT" ]; then
 elif [ ! -r "$CERTS/client-key.pem" ] || [ ! -r "$CERTS/client.pem" ] || [ ! -r "$CERTS/ca.pem" ]; then
   reason="no readable client certificate in $CERTS"
   level=warning
+elif [ -e "${BUILDX_CONFIG:-${HOME:-}/.docker/buildx}/buildkitd.default.toml" ]; then
+  # buildx loads this file into every builder it creates and refuses to
+  # create a remote one while it exists ("setting config file is not
+  # supported for remote driver"). A runner image from before the farm
+  # carries it; gha-runner-controller#608 took it out.
+  reason="this runner's image carries ~/.docker/buildx/buildkitd.default.toml, which buildx refuses for a remote builder"
+  level=warning
 else
   hostport="${ENDPOINT#tcp://}"; host="${hostport%:*}"; port="${hostport##*:}"
   [ -n "$SERVERNAME" ] || SERVERNAME="$host"
@@ -55,10 +62,12 @@ else
   else
     probe="setup-builder-probe-$$"
     docker buildx rm "$probe" >/dev/null 2>&1 || true
-    if ! timeout "$PROBE_TIMEOUT" docker buildx create --name "$probe" --driver remote \
+    # buildx's own last line goes into the reason: a refusal here is a fact
+    # about this runner that the summary should name, not a mystery.
+    if ! err=$(timeout "$PROBE_TIMEOUT" docker buildx create --name "$probe" --driver remote \
          --driver-opt "cacert=$CERTS/ca.pem,cert=$CERTS/client.pem,key=$CERTS/client-key.pem,servername=$SERVERNAME" \
-         "$ENDPOINT" >/dev/null 2>&1; then
-      reason="could not define a remote builder for $ENDPOINT"
+         "$ENDPOINT" 2>&1 >/dev/null); then
+      reason="could not define a remote builder for $ENDPOINT: $(printf '%s\n' "$err" | tail -n 1)"
       level=warning
     elif ! info=$(timeout "$PROBE_TIMEOUT" docker buildx inspect --bootstrap "$probe" 2>/dev/null); then
       # --bootstrap dials the daemon and completes the mTLS handshake.

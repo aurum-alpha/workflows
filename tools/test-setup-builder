@@ -56,10 +56,30 @@ j="$(run FORK=true GHR_BUILDKIT_ENDPOINT="tcp://127.0.0.1:${closed_port}" GHR_BU
 if [ "$(out "$j" mode)" = local ] && grep -q 'fork' "${j}/out" && ! grep -q '::warning' "${j}/log"; then
   pass "fork: local, no warning"; else fail "fork"; cat "${j}/log" "${j}/out"; fi
 
-# 3. Given a farm but no certificate to present: local, with a warning.
-j="$(run GHR_BUILDKIT_ENDPOINT="tcp://127.0.0.1:${closed_port}" GHR_BUILDKIT_CERTS="${work}/no-such-dir")"
-if [ "$(out "$j" mode)" = local ] && grep -q '::warning' "${j}/log" && grep -q 'client certificate' "${j}/out"; then
-  pass "certs missing: local, warning"; else fail "certs missing"; cat "${j}/log" "${j}/out"; fi
+# 3. Given a farm but no certificate to present within the wait: local, with
+#    a warning, after the wait and not before.
+j="$(run CERTS_WAIT=1 GHR_BUILDKIT_ENDPOINT="tcp://127.0.0.1:${closed_port}" GHR_BUILDKIT_CERTS="${work}/no-such-dir")"
+if [ "$(out "$j" mode)" = local ] && grep -q '::warning' "${j}/log" && grep -q 'client certificate' "${j}/out" \
+   && [ "$(cat "${j}/seconds")" -ge 1 ] && [ "$(cat "${j}/seconds")" -le 3 ]; then
+  pass "certs missing: local, warning, after the wait"; else fail "certs missing"; cat "${j}/log" "${j}/out"; fi
+
+# 3b. The controller withheld the key (a public repository's job): local at
+#     once, with a notice naming why and no warning.
+denied="${work}/denied"; mkdir -p "$denied"; echo "public repository" > "${denied}/denied"
+j="$(run GHR_BUILDKIT_ENDPOINT="tcp://127.0.0.1:${closed_port}" GHR_BUILDKIT_CERTS="$denied")"
+if [ "$(out "$j" mode)" = local ] && grep -q 'withheld: public repository' "${j}/out" \
+   && grep -q '::notice' "${j}/log" && ! grep -q '::warning' "${j}/log" && [ "$(cat "${j}/seconds")" -le 1 ]; then
+  pass "key withheld: local, notice, no wait"; else fail "key withheld"; cat "${j}/log" "${j}/out"; fi
+
+# 3c. The key lands after the step has started: the step waits for it and
+#     goes on to the farm, here a closed port, which is a connection reason
+#     and not a missing certificate.
+late="${work}/late"; mkdir -p "$late"
+( sleep 1; : > "${late}/ca.pem"; : > "${late}/client.pem"; : > "${late}/client-key.pem" ) &
+j="$(run CERTS_WAIT=5 GHR_BUILDKIT_ENDPOINT="tcp://127.0.0.1:${closed_port}" GHR_BUILDKIT_CERTS="$late")"
+wait
+if [ "$(out "$j" mode)" = local ] && grep -q 'did not accept a connection' "${j}/out" && ! grep -q 'client certificate' "${j}/out"; then
+  pass "key arrives late: waited for it"; else fail "key arrives late"; cat "${j}/log" "${j}/out"; fi
 
 # 4. A black-holed farm (TEST-NET-1 never routes): local within the 3s TCP
 #    gate, never the remote driver's own long dial.

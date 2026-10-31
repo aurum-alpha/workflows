@@ -36,7 +36,7 @@ inputs:
     required: false
     default: ""
   certs-dir:
-    description: Overrides GHR_BUILDKIT_CERTS, the directory holding ca.pem, client.pem and client-key.pem.
+    description: Overrides GHR_BUILDKIT_CERTS, the directory the runner controller fills once the job has started, with ca.pem, client.pem and client-key.pem, or with `denied` when this job gets no key.
     required: false
     default: ""
   registry-cache:
@@ -49,6 +49,10 @@ inputs:
     description: Seconds allowed for each step of the farm's mTLS bootstrap check.
     required: false
     default: "8"
+  certs-wait:
+    description: Seconds to wait for the runner controller to give this job its client certificate, or say it gets none.
+    required: false
+    default: "20"
 
 outputs:
   mode:
@@ -73,6 +77,7 @@ runs:
         REGISTRY_CACHE: ${{ inputs.registry-cache }}
         PLATFORMS: ${{ inputs.platforms }}
         PROBE_TIMEOUT: ${{ inputs.probe-timeout }}
+        CERTS_WAIT: ${{ inputs.certs-wait }}
         # A fork's code never reaches the shared daemon or its cache.
         FORK: ${{ github.event.pull_request.head.repo.fork == true }}
       run: '"${GITHUB_ACTION_PATH}/setup-builder"'

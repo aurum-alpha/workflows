@@ -9,7 +9,10 @@
 #
 #   GHR_BUILDKIT_ENDPOINT    tcp://<farm>:<port>
 #   GHR_BUILDKIT_SERVERNAME  the name the farm's certificate carries
-#   GHR_BUILDKIT_CERTS       a read-only directory: ca.pem client.pem client-key.pem
+#   GHR_BUILDKIT_CERTS       a directory the controller fills once the job has
+#                            started: ca.pem client.pem client-key.pem for a
+#                            private repository's job, or `denied` holding why
+#                            this job gets no key (gha-runner-controller#620)
 #   GHR_REGISTRY_CACHE       https://<host>, no path
 #
 # The action's inputs (ENDPOINT, SERVERNAME, CERTS, REGISTRY_CACHE) override
@@ -26,9 +29,27 @@ REGISTRY_CACHE="${REGISTRY_CACHE:-${GHR_REGISTRY_CACHE:-}}"
 PLATFORMS="${PLATFORMS:-linux/amd64}"
 FORK="${FORK:-false}"
 PROBE_TIMEOUT="${PROBE_TIMEOUT:-8}"
+CERTS_WAIT="${CERTS_WAIT:-20}"
 GITHUB_OUTPUT="${GITHUB_OUTPUT:-/dev/stdout}"
 GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/stderr}"
 RUNNER_TEMP="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
+
+# certs_arrived waits up to CERTS_WAIT seconds for the controller to fill
+# CERTS: the three files, or `denied`. It does so once the job has started,
+# which is moments before this step runs, and seldom after it.
+certs_arrived() {
+  local deadline=$((SECONDS + CERTS_WAIT))
+  while :; do
+    if [ -e "$CERTS/denied" ] || [ -e "$CERTS/client-key.pem" ]; then
+      # The controller copies the files in one archive; give the last a
+      # moment to land.
+      sleep 0.2
+      return 0
+    fi
+    [ "$SECONDS" -lt "$deadline" ] || return 1
+    sleep 0.5
+  done
+}
 
 mode=local
 # Set when a farm was expected and could not be used. A runner never given a
@@ -40,6 +61,14 @@ if [ "$FORK" = true ]; then
   reason="pull request from a fork"
 elif [ -z "$ENDPOINT" ]; then
   reason="this runner was not given a build farm (no GHR_BUILDKIT_ENDPOINT)"
+elif ! certs_arrived; then
+  reason="no readable client certificate in $CERTS after ${CERTS_WAIT}s"
+  level=warning
+elif [ -e "$CERTS/denied" ]; then
+  # The controller withholds the key from a public repository's job, by
+  # design, so this is a notice and not a warning.
+  reason="build farm access withheld: $(head -n 1 "$CERTS/denied")"
+  level=notice
 elif [ ! -r "$CERTS/client-key.pem" ] || [ ! -r "$CERTS/client.pem" ] || [ ! -r "$CERTS/ca.pem" ]; then
   reason="no readable client certificate in $CERTS"
   level=warning

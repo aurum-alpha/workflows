@@ -1,0 +1,144 @@
+#!/usr/bin/env bash
+# Tests .github/actions/setup-builder/setup-builder, the builder decision every
+# image job runs. The catalog's own CI never runs those jobs' build legs on the
+# farm's environment, so this is where the script's decisions are held, each
+# with a bound on how long it took. Needs bash, curl, openssl and python3; no
+# Docker, because every case decides before a builder would be created. The
+# farm itself is exercised by ci.yml's setup-builder-farm job.
+set -euo pipefail
+
+root="$(cd "$(dirname "$0")/.." && pwd)"
+script="${root}/.github/actions/setup-builder/setup-builder"
+work="$(mktemp -d)"
+pids=()
+cleanup() { for p in "${pids[@]}"; do kill "$p" 2>/dev/null || true; done; rm -rf "$work"; }
+trap cleanup EXIT
+
+fails=0
+pass() { echo "  ok  $1"; }
+fail() { echo "FAIL  $1"; fails=$((fails + 1)); }
+
+# run [VAR=value ...]: run the script for one simulated job with its own
+# RUNNER_TEMP, GITHUB_OUTPUT and GITHUB_STEP_SUMMARY. Prints the job dir;
+# the elapsed whole seconds are in <job>/seconds.
+run() {
+  local job; job="$(mktemp -d "${work}/job-XXXX")"
+  mkdir -p "${job}/temp"
+  : > "${job}/out"; : > "${job}/summary"
+  local start; start=$(date +%s)
+  env -i PATH="$PATH" HOME="$job" \
+    RUNNER_TEMP="${job}/temp" GITHUB_OUTPUT="${job}/out" GITHUB_STEP_SUMMARY="${job}/summary" \
+    SSL_CERT_FILE="${ca_file:-}" CURL_CA_BUNDLE="${ca_file:-}" \
+    "$@" "$script" > "${job}/log" 2>&1
+  echo $(( $(date +%s) - start )) > "${job}/seconds"
+  echo "$job"
+}
+
+out() { sed -n "s/^$2=//p" "$1/out"; }
+config_written() { [ -n "$(out "$1" buildkitd_config)" ] && [ -s "$(out "$1" buildkitd_config)" ]; }
+
+# Dummy key material: the cases that reach the network fail before anything
+# reads it.
+certs="${work}/certs"
+mkdir -p "$certs"
+: > "${certs}/ca.pem"; : > "${certs}/client.pem"; : > "${certs}/client-key.pem"
+
+# A closed local port: something that refuses at once.
+closed_port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
+
+# 1. A runner never given a farm: local, and nothing to warn about.
+j="$(run)"
+if [ "$(out "$j" mode)" = local ] && ! grep -q '::warning' "${j}/log" && [ "$(cat "${j}/seconds")" -le 1 ]; then
+  pass "no GHR_BUILDKIT_ENDPOINT: local, no warning"; else fail "no endpoint"; cat "${j}/log" "${j}/out"; fi
+
+# 2. A fork never reaches the farm, and is local by policy, so no warning.
+j="$(run FORK=true GHR_BUILDKIT_ENDPOINT="tcp://127.0.0.1:${closed_port}" GHR_BUILDKIT_CERTS="$certs")"
+if [ "$(out "$j" mode)" = local ] && grep -q 'fork' "${j}/out" && ! grep -q '::warning' "${j}/log"; then
+  pass "fork: local, no warning"; else fail "fork"; cat "${j}/log" "${j}/out"; fi
+
+# 3. Given a farm but no certificate to present: local, with a warning.
+j="$(run GHR_BUILDKIT_ENDPOINT="tcp://127.0.0.1:${closed_port}" GHR_BUILDKIT_CERTS="${work}/no-such-dir")"
+if [ "$(out "$j" mode)" = local ] && grep -q '::warning' "${j}/log" && grep -q 'client certificate' "${j}/out"; then
+  pass "certs missing: local, warning"; else fail "certs missing"; cat "${j}/log" "${j}/out"; fi
+
+# 4. A black-holed farm (TEST-NET-1 never routes): local within the 3s TCP
+#    gate, never the remote driver's own long dial.
+j="$(run GHR_BUILDKIT_ENDPOINT="tcp://192.0.2.1:1234" GHR_BUILDKIT_CERTS="$certs")"
+if [ "$(out "$j" mode)" = local ] && grep -q '::warning' "${j}/log" && [ "$(cat "${j}/seconds")" -lt 5 ]; then
+  pass "black-holed farm: local in $(cat "${j}/seconds")s, warning"; else fail "black-holed farm ($(cat "${j}/seconds")s)"; cat "${j}/log" "${j}/out"; fi
+
+# 5. A cache that refuses: no mirrors.
+j="$(run GHR_REGISTRY_CACHE="https://127.0.0.1:${closed_port}")"
+if [ "$(out "$j" mirrors)" = false ] && ! config_written "$j" && [ "$(cat "${j}/seconds")" -le 3 ]; then
+  pass "cache refusing: no mirrors"; else fail "cache refusing"; cat "${j}/log" "${j}/out"; fi
+
+# A cache that answers /healthz, over https and over plain http.
+openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=127.0.0.1 \
+  -addext "subjectAltName=IP:127.0.0.1" \
+  -keyout "${work}/cache-key.pem" -out "${work}/cache.pem" >/dev/null 2>&1
+cat > "${work}/cache.py" <<'EOF'
+import http.server, ssl, sys
+class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200 if self.path == "/healthz" else 404); self.end_headers()
+    def log_message(self, *a): pass
+srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+if sys.argv[1] == "https":
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER); ctx.load_cert_chain(sys.argv[2], sys.argv[3])
+    srv.socket = ctx.wrap_socket(srv.socket, server_side=True)
+print(srv.server_address[1], flush=True)
+srv.serve_forever()
+EOF
+# Started in this shell rather than in a $(...) subshell, so the trap knows
+# their pids; each server's stderr goes to a file so it holds no pipe of the
+# caller's open.
+start_cache() {
+  python3 "${work}/cache.py" "$1" "${work}/cache.pem" "${work}/cache-key.pem" \
+    > "${work}/$1.port" 2> "${work}/$1.err" < /dev/null &
+  pids+=("$!")
+  for _ in $(seq 50); do [ -s "${work}/$1.port" ] && break; sleep 0.1; done
+}
+start_cache https; https_port="$(cat "${work}/https.port")"
+start_cache http; http_port="$(cat "${work}/http.port")"
+
+# 6. A healthy https cache: exactly the four mirrors, on the cache's layout.
+ca_file="${work}/cache.pem"
+j="$(run GHR_REGISTRY_CACHE="https://127.0.0.1:${https_port}")"
+cfg="$(out "$j" buildkitd_config)"
+expect="$(printf '%s\n' \
+  '[registry."docker.io"]' "  mirrors = [\"127.0.0.1:${https_port}\"]" \
+  '[registry."ghcr.io"]' "  mirrors = [\"127.0.0.1:${https_port}/ghcr\"]" \
+  '[registry."quay.io"]' "  mirrors = [\"127.0.0.1:${https_port}/quay\"]" \
+  '[registry."mcr.microsoft.com"]' "  mirrors = [\"127.0.0.1:${https_port}/mcr\"]")"
+if [ "$(out "$j" mirrors)" = true ] && config_written "$j" && [ "$(grep -v '^#' "$cfg")" = "$expect" ]; then
+  pass "healthy cache: the four mirrors"; else fail "healthy cache"; cat "${j}/log" "${j}/out" "$cfg" 2>/dev/null; fi
+
+# 7. A trailing slash is the same cache.
+j="$(run GHR_REGISTRY_CACHE="https://127.0.0.1:${https_port}/")"
+if [ "$(out "$j" mirrors)" = true ] && grep -qF "\"127.0.0.1:${https_port}/ghcr\"" "$(out "$j" buildkitd_config)"; then
+  pass "trailing slash: same mirrors"; else fail "trailing slash"; cat "${j}/log" "${j}/out"; fi
+unset ca_file
+
+# 8. Anything but https://<host> means no mirrors, even with a cache answering
+#    on that address: plain http, a bare host, and a URL with a path.
+for v in "http://127.0.0.1:${http_port}" "127.0.0.1:${http_port}" "https://127.0.0.1:${https_port}/zot"; do
+  j="$(run GHR_REGISTRY_CACHE="$v")"
+  if [ "$(out "$j" mirrors)" = false ] && ! config_written "$j"; then
+    pass "'${v}': no mirrors"; else fail "'${v}' turned mirrors on"; cat "${j}/log" "${j}/out"; fi
+done
+
+# 9. An input overrides the environment.
+j="$(run GHR_REGISTRY_CACHE="https://127.0.0.1:${closed_port}" REGISTRY_CACHE="")"
+k="$(run GHR_BUILDKIT_ENDPOINT="tcp://192.0.2.1:1234" ENDPOINT="" FORK=true)"
+if [ "$(out "$j" mirrors)" = false ] && [ "$(out "$k" endpoint)" = "tcp://192.0.2.1:1234" ]; then
+  pass "empty inputs fall back to the environment"; else fail "fallback"; fi
+
+# 10. The script never fails the job.
+if bash -c "env -i PATH=\"$PATH\" GITHUB_OUTPUT=/dev/null GITHUB_STEP_SUMMARY=/dev/null GHR_BUILDKIT_ENDPOINT=tcp://192.0.2.1:1 GHR_BUILDKIT_CERTS=$certs \"$script\" >/dev/null 2>&1"; then
+  pass "exit 0 when the farm is unusable"; else fail "non-zero exit"; fi
+
+if [ "$fails" -gt 0 ]; then
+  echo "${fails} case(s) failed"
+  exit 1
+fi
+echo "all cases passed"

@@ -1,0 +1,105 @@
+# Portfolio capability: the BuildKit builder an image job builds on. The image
+# jobs run this in place of docker/setup-buildx-action.
+#
+# Remote when the runner controller gave this runner the shared build farm,
+# the farm completes mTLS with this runner's client certificate, and it lists
+# a worker for every platform the build needs. Local otherwise: the same
+# docker-container builder in the runner's own dind that every image job used
+# before this action existed. Any doubt is local, never a red build.
+#
+# The farm keeps layers between jobs. A local builder starts empty every job,
+# and its only reuse is the caller's type=gha cache, over the internet.
+#
+# Everything comes from the runner's environment, which the controller sets
+# per scale set (aurum-alpha/workflows#756 holds the contract), so no host is
+# named here. The setup-builder script beside this file says how it decides.
+#
+# A composite action rather than steps copied into each image job, for the
+# reason go-caches is one: the decision had no business differing.
+name: setup-builder
+description: Build on the shared BuildKit farm when this runner was given one and it can build every requested platform; otherwise set up today's local docker-container builder. Never fails the job.
+
+inputs:
+  platforms:
+    description: >-
+      Comma-separated platforms the build needs. The farm is used only when it
+      lists a worker for each, because it has no emulation; anything else
+      builds locally, where the caller's QEMU step applies.
+    required: false
+    default: linux/amd64
+  endpoint:
+    description: Overrides GHR_BUILDKIT_ENDPOINT, the farm's tcp:// address.
+    required: false
+    default: ""
+  servername:
+    description: Overrides GHR_BUILDKIT_SERVERNAME, the name the farm's certificate carries.
+    required: false
+    default: ""
+  certs-dir:
+    description: Overrides GHR_BUILDKIT_CERTS, the directory holding ca.pem, client.pem and client-key.pem.
+    required: false
+    default: ""
+  registry-cache:
+    description: >-
+      Overrides GHR_REGISTRY_CACHE, the registry cache a local builder mirrors
+      through: https://<host>, no path. Anything else means no mirrors.
+    required: false
+    default: ""
+  probe-timeout:
+    description: Seconds allowed for each step of the farm's mTLS bootstrap check.
+    required: false
+    default: "8"
+
+outputs:
+  mode:
+    description: '"remote" on the build farm, "local" on the runner''s own dind.'
+    value: ${{ steps.probe.outputs.mode }}
+  reason:
+    description: Why that mode, in words, for a step summary.
+    value: ${{ steps.probe.outputs.reason }}
+  mirrors:
+    description: '"true" when a local builder pulls base images through the registry cache.'
+    value: ${{ steps.probe.outputs.mirrors }}
+
+runs:
+  using: composite
+  steps:
+    - id: probe
+      shell: bash
+      env:
+        ENDPOINT: ${{ inputs.endpoint }}
+        SERVERNAME: ${{ inputs.servername }}
+        CERTS: ${{ inputs.certs-dir }}
+        REGISTRY_CACHE: ${{ inputs.registry-cache }}
+        PLATFORMS: ${{ inputs.platforms }}
+        PROBE_TIMEOUT: ${{ inputs.probe-timeout }}
+        # A fork's code never reaches the shared daemon or its cache.
+        FORK: ${{ github.event.pull_request.head.repo.fork == true }}
+      run: '"${GITHUB_ACTION_PATH}/setup-builder"'
+
+    # The values the probe verified, not the inputs read again: what was
+    # proven to complete mTLS is exactly what the builder is given.
+    - name: Build farm (remote BuildKit)
+      if: steps.probe.outputs.mode == 'remote'
+      uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      with:
+        name: build-farm
+        driver: remote
+        endpoint: ${{ steps.probe.outputs.endpoint }}
+        driver-opts: |
+          cacert=${{ steps.probe.outputs.certs }}/ca.pem
+          cert=${{ steps.probe.outputs.certs }}/client.pem
+          key=${{ steps.probe.outputs.certs }}/client-key.pem
+          servername=${{ steps.probe.outputs.servername }}
+
+    # docker-container is setup-buildx-action's default driver, named so the
+    # local builder reads as what it is. buildkitd-config is empty unless the
+    # registry cache answered at job start, and empty means BuildKit pulls
+    # from the origins: the runner image carries no default config, so a
+    # cache that is down costs no connect timeouts.
+    - name: Local builder
+      if: steps.probe.outputs.mode == 'local'
+      uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      with:
+        driver: docker-container
+        buildkitd-config: ${{ steps.probe.outputs.buildkitd_config }}

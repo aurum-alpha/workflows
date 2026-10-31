@@ -144,7 +144,10 @@ jobs:
   # cp rather than a bind mount.
   setup-builder-farm:
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
-    timeout-minutes: 15
+    # Three of its cases end in a local builder, and each boots BuildKit in
+    # the runner's dind from a Docker Hub pull. A slow pull costs over a
+    # minute per boot, which 15 minutes did not hold.
+    timeout-minutes: 30
     env:
       # The daemon the farm runs; a stand-in of another version would prove
       # the handshake against a server the fleet does not have.

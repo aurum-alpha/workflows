@@ -254,13 +254,20 @@ jobs:
           docker compose -f "$COMPOSE_FILE" -f "$OVERRIDE" up --wait --no-build -d
           docker compose -f "$COMPOSE_FILE" -f "$OVERRIDE" ps
 
-      # Through the LAN registry cache where the runner names one
-      # (GHR_REGISTRY_CACHE, which gha-runner-controller sets from its
-      # runners.caches.oci; MCR sits at its root), by the same digest, so the
-      # bytes are the pin's whoever served them. The sidecar's registry mirror
-      # covers Docker Hub alone, so this pull would otherwise cross the
-      # internet on every run. A runner without the variable, or a cache that
-      # fails, pulls from MCR as before.
+      # Through the LAN registry cache, by the same digest, so the bytes are
+      # the pin's whoever served them. GHR_REGISTRY_CACHE comes in two forms:
+      #
+      # - https://<host>, from gha-runner-controller's runners.registry_cache.
+      #   The controller then writes a hosts.toml for mcr.microsoft.com into
+      #   the dind, and takes it away while the cache is down, so pulling the
+      #   pinned MCR reference already goes through the cache. Nothing here
+      #   names the cache's layout.
+      # - a bare host, from runners.caches.oci on a controller before 0.53,
+      #   where the dind mirrors Docker Hub alone. The pull names the cache
+      #   itself, with MCR at its root, and falls back to MCR when it does
+      #   not answer.
+      #
+      # A runner without the variable pulls from MCR as before.
       - name: Pull the Playwright image
         id: playwright
         env:
@@ -275,8 +282,8 @@ jobs:
                  "It runs: $(awk '{ print $1 }' <<< "$PLAYWRIGHT_IMAGES" | xargs)."
             exit 1
           fi
-          if [ -n "${GHR_REGISTRY_CACHE:-}" ]; then
-            cached="${GHR_REGISTRY_CACHE}/${pinned#mcr.microsoft.com/}"
+          if [ -n "${GHR_REGISTRY_CACHE:-}" ] && [[ "$GHR_REGISTRY_CACHE" != *://* ]]; then
+            cached="${GHR_REGISTRY_CACHE%/}/${pinned#mcr.microsoft.com/}"
             if docker pull -q "$cached"; then
               echo "image=$cached" >> "$GITHUB_OUTPUT"
               exit 0

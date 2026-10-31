@@ -55,7 +55,15 @@ jobs:
         with:
           fetch-depth: 0 # full history for change comparison
 
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # The shared build farm when the runner controller gave this runner one,
+      # otherwise the local docker-container builder this step set up before.
+      # The registry cache below is the same in both modes: the farm reads and
+      # writes the same ghcr refs. Referenced at @main, as job-image-build
+      # does, because a reusable workflow resolves an action path against the
+      # caller's checkout.
+      - uses: aurum-alpha/workflows/.github/actions/setup-builder@main
+        with:
+          platforms: linux/amd64
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0

@@ -310,6 +310,35 @@ jobs:
         if: always()
         run: docker rm -f setup-builder-farm >/dev/null 2>&1 || true
 
+  # The real job-image-build, called the way every image repo calls it, on a
+  # fixture image: setup-builder inside it, the cache expressions and the
+  # staging by digest, end to end. It builds locally until the controller
+  # gives the fleet's runners the build farm, and remotely after that with no
+  # change here; the build leg's summary says which ("builder: …").
+  workflows-canary:
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/job-image-build.yml
+    with:
+      image_name: workflows-canary
+      context: tools/testdata/workflows-canary
+      dockerfile: tools/testdata/workflows-canary/Dockerfile
+    secrets: inherit
+
+  # The canary starts as an image repo's does: by digest, probed on its port.
+  # It proves the image whichever builder made it is an image that runs.
+  workflows-canary-starts:
+    needs: [workflows-canary]
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/job-image-starts.yml
+    with:
+      image: ${{ needs.workflows-canary.outputs.image }}
+      digest: ${{ needs.workflows-canary.outputs.digest }}
+    secrets: inherit
+
   contract-conformance:
     uses: ./.github/workflows/job-contract-conformance.yml
 
@@ -465,7 +494,7 @@ jobs:
     # version_changed, and the release that did not happen would be reported
     # as fine (rule D6). version-release is in here so a failed tag on the
     # default branch turns this check red. A pull request does not count it.
-    needs: [lint, conformance, setup-builder-farm, contract-conformance, secret-scan, version-gate, version-read, version-release]
+    needs: [lint, conformance, setup-builder-farm, workflows-canary, workflows-canary-starts, contract-conformance, secret-scan, version-gate, version-read, version-release]
     if: always()
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
     steps:
@@ -478,3 +507,17 @@ jobs:
           needs_json: ${{ toJSON(needs) }}
           main_only_jobs: version-release
           on_default_branch: ${{ github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+
+  # The canary stages a digest on every run and nothing promotes it, so its
+  # package is swept like any image repo's: after ci-ok, on main, outside the
+  # rollup.
+  workflows-canary-prune:
+    needs: [ci-ok]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.ci-ok.result == 'success'
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/job-image-prune.yml
+    with:
+      image_name: workflows-canary
+    secrets: inherit

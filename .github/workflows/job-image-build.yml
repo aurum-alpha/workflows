@@ -442,8 +442,8 @@ jobs:
       # ship one architecture skip it entirely, and so does each leg of a split
       # build, which runs on its own platform's hardware.
       #
-      # It has to precede setup-buildx-action: binfmt is registered on the host
-      # and the builder inherits what is already there.
+      # It has to precede setup-builder: binfmt is registered on the host and
+      # the local builder inherits what is already there.
       #
       # A RUN-free runtime stage never reaches this — an upstream multi-arch
       # base plus COPY --from executes nothing, so there is nothing to emulate.
@@ -454,7 +454,17 @@ jobs:
         if: contains(matrix.leg.platform, ',')
         uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
 
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # The shared build farm when the runner controller gave this runner one
+      # and it lists a worker for this leg's platform; otherwise the same local
+      # docker-container builder this step set up before (setup-builder says
+      # how it decides). A multi-platform leg never qualifies, because the farm
+      # has no emulation, so it builds locally with the QEMU above as always.
+      # Referenced at @main, as the go jobs reference go-caches: a reusable
+      # workflow resolves an action path against the caller's checkout.
+      - id: builder
+        uses: aurum-alpha/workflows/.github/actions/setup-builder@main
+        with:
+          platforms: ${{ matrix.leg.platform }}
 
       # Unconditional, unlike the old job's main-gated login: staging happens on
       # every run, so the credential is needed on every run.
@@ -528,6 +538,13 @@ jobs:
       # A split build's legs cache under their own scope. Left on the default,
       # the two would write the one scope in turn, and each would start every
       # run from the other platform's layers.
+      #
+      # On the farm the layers stay on the farm, so the gha export is kept
+      # only on a push to the default branch: the cache-from below then stays
+      # warm for the day a job builds locally again, and no pull request pays
+      # for a mode=max export the farm does not read. cache-from is the same in
+      # both modes, a cheap safety net when the farm's own cache was wiped. A
+      # local build exports exactly as it always has.
       - id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
@@ -544,13 +561,15 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           outputs: type=image,name=${{ steps.name.outputs.image }},push-by-digest=true,name-canonical=true,push=true
           cache-from: ${{ matrix.leg.arch != '' && format('type=gha,scope={0}-{1}', steps.name.outputs.slug, matrix.leg.arch) || 'type=gha' }}
-          cache-to: ${{ matrix.leg.arch != '' && format('type=gha,mode=max,scope={0}-{1}', steps.name.outputs.slug, matrix.leg.arch) || 'type=gha,mode=max' }}
+          cache-to: ${{ (steps.builder.outputs.mode != 'remote' || (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch))) && (matrix.leg.arch != '' && format('type=gha,mode=max,scope={0}-{1}', steps.name.outputs.slug, matrix.leg.arch) || 'type=gha,mode=max') || '' }}
 
       - name: Report the staged digest
         env:
           IMAGE: ${{ steps.name.outputs.image }}
           DIGEST: ${{ steps.build.outputs.digest }}
           ARCH: ${{ matrix.leg.arch }}
+          BUILDER_MODE: ${{ steps.builder.outputs.mode }}
+          BUILDER_REASON: ${{ steps.builder.outputs.reason }}
         run: |
           set -euo pipefail
           if [ -z "$DIGEST" ]; then
@@ -568,6 +587,7 @@ jobs:
             echo '```'
             echo "${IMAGE}@${DIGEST}"
             echo '```'
+            echo "builder: ${BUILDER_MODE} — ${BUILDER_REASON}"
           } >> "$GITHUB_STEP_SUMMARY"
 
       # A matrix job has one set of outputs, which the last leg to finish

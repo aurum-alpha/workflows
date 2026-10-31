@@ -147,6 +147,40 @@ raise_case("a fleet past max does not drag the floor there",
 raise_case("the floor rises to max, which ends the move",
            {"a": {"oxlint": "1.90.4"}}, "1.90.4")
 
+def image_case(name, tag, want_rc, want_text, spec):
+    global failures
+    with tempfile.TemporaryDirectory() as t:
+        tmp = pathlib.Path(t)
+        root = fleet(tmp, {"a": {}})
+        (root / "a" / "compose.yaml").write_text(
+            f"services:\n  db:\n    image: mysql:{tag}\n")
+        rc, out = run(CHECK, "--root", root, "--versions",
+                      record(tmp, {**RECORD, "images": {"mysql": spec}}))
+    if rc == want_rc and want_text in out:
+        print(f"  ok  {name}")
+    else:
+        print(f"FAIL  {name}: exit {rc}, wanted {want_rc} with {want_text!r}")
+        print("      " + out.replace("\n", "\n      "))
+        failures += 1
+
+
+MOVING = {"min": "9.1.0", "max": "9.7.4"}
+image_case("an image at its one tag passes", "9.1.0", 0, "PASS", "9.1.0")
+image_case("an image off its one tag fails", "9.7.4", 1,
+           "mysql is 9.7.4, Aurum Alpha standard is 9.1.0", "9.1.0")
+image_case("an image interval admits its floor", "9.1.0", 0, "PASS", MOVING)
+image_case("an image interval admits its max", "9.7.4", 0, "PASS", MOVING)
+image_case("an image past its interval fails", "9.7.5", 1,
+           "Aurum Alpha standard is [9.1.0, 9.7.4]", MOVING)
+image_case("an image below its interval fails", "8.4.13", 1,
+           "Aurum Alpha standard is [9.1.0, 9.7.4]", MOVING)
+image_case("a suffixed tag is outside a version interval", "9.7.4-oracle", 1,
+           "Aurum Alpha standard is [9.1.0, 9.7.4]", MOVING)
+image_case("an image interval whose min is above its max is refused", "9.1.0",
+           1, "is above max", {"min": "9.7.4", "max": "9.1.0"})
+image_case("an image interval of a suffixed tag is refused", "9.1.0", 1,
+           "of plain versions", {"min": "9.1.0", "max": "9.7.4-oracle"})
+
 # The e2e job runs each @playwright/test release in its own image. Every
 # version the record admits at either end of the interval needs a line there,
 # or the first repository to move fails in the job rather than here.

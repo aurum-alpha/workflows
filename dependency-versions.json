@@ -509,9 +509,17 @@
     "declares `react: >=18.0.0` -- which admits 19 and is a lie -- while",
     "bundling react-reconciler ~0.29.0, React 18's. Only 19.2.5 bundles 0.33.0.",
     "The peer range will not catch that; the resolved react-reconciler in the",
-    "lockfile is what proves the bump took."
+    "lockfile is what proves the bump took.",
+    "",
+    "@aurum-alpha/platform-ts is the first platform module asserted here, at",
+    "0.14.0 (wave 2b, aurum-alpha/workflows#703). It ends at the 0.14 minor,",
+    "since a 0.x minor may break."
   ],
   "dependencies": {
+    "@aurum-alpha/platform-ts": {
+      "min": "0.14.0",
+      "max": "0.14"
+    },
     "react": {
       "min": "19.3.1",
       "max": "19"

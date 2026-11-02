@@ -29,14 +29,16 @@ REGISTRY_CACHE="${REGISTRY_CACHE:-${GHR_REGISTRY_CACHE:-}}"
 PLATFORMS="${PLATFORMS:-linux/amd64}"
 FORK="${FORK:-false}"
 PROBE_TIMEOUT="${PROBE_TIMEOUT:-8}"
-CERTS_WAIT="${CERTS_WAIT:-20}"
+CERTS_WAIT="${CERTS_WAIT:-75}"
 GITHUB_OUTPUT="${GITHUB_OUTPUT:-/dev/stdout}"
 GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/stderr}"
 RUNNER_TEMP="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
 
 # certs_arrived waits up to CERTS_WAIT seconds for the controller to fill
-# CERTS: the three files, or `denied`. It does so once the job has started,
-# which is moments before this step runs, and seldom after it.
+# CERTS: the three files, or `denied`. It does so when GitHub's job-started
+# message reaches it, which can be most of a minute after the job began:
+# one empty 50-second poll, then the message (gha-runner-controller#656).
+# Waiting that out costs less than setting up a local builder.
 certs_arrived() {
   local deadline=$((SECONDS + CERTS_WAIT))
   while :; do

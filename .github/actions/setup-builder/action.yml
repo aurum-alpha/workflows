@@ -50,9 +50,9 @@ inputs:
     required: false
     default: "8"
   certs-wait:
-    description: Seconds to wait for the runner controller to give this job its client certificate, or say it gets none.
+    description: Seconds to wait for the runner controller to give this job its client certificate, or say it gets none. Long enough to outlast one empty 50-second poll of GitHub's job messages.
     required: false
-    default: "20"
+    default: "75"
 
 outputs:
   mode:

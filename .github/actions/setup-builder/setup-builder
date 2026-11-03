@@ -14,6 +14,10 @@
 #                            private repository's job, or `denied` holding why
 #                            this job gets no key (gha-runner-controller#620)
 #   GHR_REGISTRY_CACHE       https://<host>, no path
+#   GHR_BUILDKIT_REQUEST_URL where this job may ask the controller for its
+#                            key instead of waiting for the files
+#   GHR_BUILDKIT_REQUEST_KEY this runner's own key to ask with
+#                            (gha-runner-controller#657)
 #
 # The action's inputs (ENDPOINT, SERVERNAME, CERTS, REGISTRY_CACHE) override
 # them; an empty input falls back to the environment.
@@ -33,6 +37,13 @@ CERTS_WAIT="${CERTS_WAIT:-75}"
 GITHUB_OUTPUT="${GITHUB_OUTPUT:-/dev/stdout}"
 GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/stderr}"
 RUNNER_TEMP="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
+REQUEST_URL="${GHR_BUILDKIT_REQUEST_URL:-}"
+REQUEST_KEY="${GHR_BUILDKIT_REQUEST_KEY:-}"
+# The one wait for the key, shared by asking and by watching for the files.
+key_deadline=$((SECONDS + CERTS_WAIT))
+# What asking the controller came to, for the step summary. Empty when the
+# runner was given nowhere to ask.
+asked=""
 
 # certs_arrived waits up to CERTS_WAIT seconds for the controller to fill
 # CERTS: the three files, or `denied`. It does so when GitHub's job-started
@@ -40,7 +51,7 @@ RUNNER_TEMP="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
 # one empty 50-second poll, then the message (gha-runner-controller#656).
 # Waiting that out costs less than setting up a local builder.
 certs_arrived() {
-  local deadline=$((SECONDS + CERTS_WAIT))
+  local deadline=$key_deadline
   while :; do
     if [ -e "$CERTS/denied" ] || [ -e "$CERTS/client-key.pem" ]; then
       # The controller copies the files in one archive; give the last a
@@ -53,6 +64,59 @@ certs_arrived() {
   done
 }
 
+# json_field NAME FILE prints one string field of the controller's flat JSON
+# answer with its \n escapes undone. The PEMs and the reasons it sends hold
+# no quote or other escape, and the runner image promises no jq.
+json_field() {
+  local v
+  v=$(sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$2" | head -n 1)
+  printf '%b' "$v"
+}
+
+# ask_for_key asks the controller for this job's key, when the runner was
+# told where to ask, rather than waiting for GitHub's job-started message to
+# reach it. Its answer goes into a directory of this job's own, which CERTS
+# then names: the three files on 200, `denied` with the reason on 403. Any
+# other answer leaves CERTS alone, and the wait for the files goes on.
+ask_for_key() {
+  [ -n "$REQUEST_URL" ] && [ -n "$REQUEST_KEY" ] || return 1
+  # The controller already filled the directory: nothing to ask for.
+  if [ -e "$CERTS/client-key.pem" ] || [ -e "$CERTS/denied" ]; then return 1; fi
+  local dir="$RUNNER_TEMP/setup-builder-certs" body="$RUNNER_TEMP/setup-builder-key.json"
+  local hdr="$RUNNER_TEMP/setup-builder-key.headers" code started=$SECONDS left
+  rm -rf "$dir"
+  (umask 077; mkdir -p "$dir"; printf 'Authorization: Bearer %s\n' "$REQUEST_KEY" > "$hdr")
+  left=$((key_deadline - SECONDS)); [ "$left" -ge 1 ] || left=1
+  # The bearer goes from a file, so no process listing shows it.
+  code=$(curl -sS -o "$body" -w '%{http_code}' --connect-timeout 5 --max-time "$left" \
+      -X POST -H "@$hdr" -H 'Content-Type: application/json' \
+      --data "{\"repository\":\"${GITHUB_REPOSITORY:-}\",\"run_id\":${GITHUB_RUN_ID:-0}}" \
+      "${REQUEST_URL%/}/api/v1/buildkit/client-key" 2>/dev/null) || code=000
+  rm -f "$hdr"
+  case "$code" in
+    200)
+      local f field
+      for f in ca.pem:ca_pem client.pem:client_cert_pem client-key.pem:client_key_pem; do
+        field="${f#*:}"; f="${f%%:*}"
+        (umask 077; json_field "$field" "$body" > "$dir/$f")
+        if ! grep -q -- '-----BEGIN ' "$dir/$f"; then
+          rm -f "$body"; asked="the controller's answer carried no $field"; return 1
+        fi
+      done
+      rm -f "$body"
+      CERTS="$dir"; asked="given by the controller in $((SECONDS - started))s"
+      return 0 ;;
+    403)
+      json_field error "$body" > "$dir/denied"; rm -f "$body"
+      CERTS="$dir"; asked="refused by the controller"
+      return 0 ;;
+    000) asked="the controller at $REQUEST_URL did not answer" ;;
+    *) asked="the controller answered $code: $(json_field error "$body")" ;;
+  esac
+  rm -f "$body"
+  return 1
+}
+
 mode=local
 # Set when a farm was expected and could not be used. A runner never given a
 # farm is local by design and a fork by policy, so neither says anything.
@@ -63,7 +127,7 @@ if [ "$FORK" = true ]; then
   reason="pull request from a fork"
 elif [ -z "$ENDPOINT" ]; then
   reason="this runner was not given a build farm (no GHR_BUILDKIT_ENDPOINT)"
-elif ! certs_arrived; then
+elif ! { ask_for_key || certs_arrived; }; then
   reason="no readable client certificate in $CERTS after ${CERTS_WAIT}s"
   level=warning
 elif [ -e "$CERTS/denied" ]; then
@@ -167,6 +231,9 @@ fi
 {
   echo "### Builder: \`$mode\`"
   echo "- $reason"
+  if [ -n "$asked" ]; then
+    echo "- client key: $asked"
+  fi
   if [ "$mode" = local ]; then
     echo "- base images through the registry cache: $([ "$mirrors" = true ] && echo yes || echo no)"
   fi

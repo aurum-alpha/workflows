@@ -36,7 +36,7 @@ inputs:
     required: false
     default: ""
   certs-dir:
-    description: Overrides GHR_BUILDKIT_CERTS, the directory the runner controller fills once the job has started, with ca.pem, client.pem and client-key.pem, or with `denied` when this job gets no key.
+    description: Overrides GHR_BUILDKIT_CERTS, the directory the runner controller fills once the job has started, with ca.pem, client.pem and client-key.pem, or with `denied` when this job gets no key. A runner given GHR_BUILDKIT_REQUEST_URL and GHR_BUILDKIT_REQUEST_KEY asks the controller instead, and the answer goes into a directory of the job's own under RUNNER_TEMP.
     required: false
     default: ""
   registry-cache:
@@ -50,7 +50,7 @@ inputs:
     required: false
     default: "8"
   certs-wait:
-    description: Seconds to wait for the runner controller to give this job its client certificate, or say it gets none. Long enough to outlast one empty 50-second poll of GitHub's job messages.
+    description: Seconds to wait for the runner controller to give this job its client certificate, or say it gets none, by asking it or by waiting for the files. Long enough to outlast one empty 50-second poll of GitHub's job messages.
     required: false
     default: "75"
 

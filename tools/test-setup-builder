@@ -165,6 +165,76 @@ if [ "$(out "$j" mirrors)" = false ] && [ "$(out "$k" endpoint)" = "tcp://192.0.
 if bash -c "env -i PATH=\"$PATH\" GITHUB_OUTPUT=/dev/null GITHUB_STEP_SUMMARY=/dev/null GHR_BUILDKIT_ENDPOINT=tcp://192.0.2.1:1 GHR_BUILDKIT_CERTS=$certs \"$script\" >/dev/null 2>&1"; then
   pass "exit 0 when the farm is unusable"; else fail "non-zero exit"; fi
 
+# 11. Asking the controller for the key (gha-runner-controller#657). A fake
+#     controller answers each request key its own way, and records what it
+#     was sent.
+cat > "${work}/controller.py" <<'EOF2'
+import http.server, json, sys
+PEM = "-----BEGIN %s-----\nAAAA\n-----END %s-----\n"
+class H(http.server.BaseHTTPRequestHandler):
+    def do_POST(self):
+        body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        with open(sys.argv[1], "a") as f:
+            f.write(self.path + " " + self.headers.get("Authorization", "") + " " + body.decode() + "\n")
+        key = self.headers.get("Authorization", "").removeprefix("Bearer ")
+        code, answer = {
+            "given": (200, {"ca_pem": PEM % ("CERTIFICATE", "CERTIFICATE"),
+                            "client_cert_pem": PEM % ("CERTIFICATE", "CERTIFICATE"),
+                            "client_key_pem": PEM % ("PRIVATE KEY", "PRIVATE KEY")}),
+            "refused": (403, {"error": "o/site is a public repository"}),
+        }.get(key, (401, {"error": "no runner holds this key"}))
+        data = json.dumps(answer).encode()
+        self.send_response(code); self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+    def log_message(self, *a): pass
+srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+print(srv.server_address[1], flush=True)
+srv.serve_forever()
+EOF2
+python3 "${work}/controller.py" "${work}/controller.log" > "${work}/controller.port" 2> "${work}/controller.err" < /dev/null &
+pids+=("$!")
+for _ in $(seq 50); do [ -s "${work}/controller.port" ] && break; sleep 0.1; done
+ctl="http://127.0.0.1:$(cat "${work}/controller.port")"
+ask() { run CERTS_WAIT=2 GHR_BUILDKIT_ENDPOINT="tcp://127.0.0.1:${closed_port}" \
+  GHR_BUILDKIT_CERTS="${work}/never-filled" GHR_BUILDKIT_REQUEST_URL="$ctl" \
+  GITHUB_REPOSITORY=o/app GITHUB_RUN_ID=42 "$@"; }
+
+# 11a. Given: the key is written to this job's own directory, which the step
+#      hands on, and the step goes on to the farm at once.
+j="$(ask GHR_BUILDKIT_REQUEST_KEY=given)"
+d="$(out "$j" certs)"
+if grep -q 'did not accept a connection' "${j}/out" && [ "$d" = "${j}/temp/setup-builder-certs" ] \
+   && grep -q 'BEGIN PRIVATE KEY' "${d}/client-key.pem" && grep -q 'BEGIN CERTIFICATE' "${d}/ca.pem" \
+   && [ "$(stat -c %a "${d}/client-key.pem")" = 600 ] && grep -q 'given by the controller' "${j}/summary" \
+   && [ "$(cat "${j}/seconds")" -le 1 ] \
+   && grep -qF '/api/v1/buildkit/client-key Bearer given {"repository":"o/app","run_id":42}' "${work}/controller.log" \
+   && ! ls "${j}/temp" | grep -q 'key.headers'; then
+  pass "asked and given: key in the job's own dir, no wait"; else fail "asked and given"; cat "${j}/log" "${j}/out" "${j}/summary"; fi
+
+# 11b. Refused: local at once, with the controller's reason as a notice.
+j="$(ask GHR_BUILDKIT_REQUEST_KEY=refused)"
+if [ "$(out "$j" mode)" = local ] && grep -q 'withheld: o/site is a public repository' "${j}/out" \
+   && grep -q '::notice' "${j}/log" && ! grep -q '::warning' "${j}/log" && [ "$(cat "${j}/seconds")" -le 1 ]; then
+  pass "asked and refused: local, notice, no wait"; else fail "asked and refused"; cat "${j}/log" "${j}/out"; fi
+
+# 11c. An unknown key: the controller's word is in the summary, and the step
+#      still waits for the files, within the one wait.
+j="$(ask GHR_BUILDKIT_REQUEST_KEY=stale)"
+if [ "$(out "$j" mode)" = local ] && grep -q 'client certificate' "${j}/out" \
+   && grep -q 'answered 401: no runner holds this key' "${j}/summary" && [ "$(cat "${j}/seconds")" -le 3 ]; then
+  pass "asked with an unknown key: falls back to waiting"; else fail "unknown key"; cat "${j}/log" "${j}/out" "${j}/summary"; fi
+
+# 11d. Nobody answers where the runner was told to ask: the same fallback.
+j="$(ask GHR_BUILDKIT_REQUEST_KEY=given GHR_BUILDKIT_REQUEST_URL="http://127.0.0.1:${closed_port}")"
+if [ "$(out "$j" mode)" = local ] && grep -q 'did not answer' "${j}/summary" && grep -q 'client certificate' "${j}/out"; then
+  pass "controller unreachable: falls back to waiting"; else fail "controller unreachable"; cat "${j}/log" "${j}/out" "${j}/summary"; fi
+
+# 11e. The files the controller pushed win: nothing is asked.
+: > "${work}/controller.log"
+j="$(ask GHR_BUILDKIT_REQUEST_KEY=given GHR_BUILDKIT_CERTS="$certs")"
+if [ ! -s "${work}/controller.log" ] && [ "$(out "$j" certs)" = "$certs" ]; then
+  pass "files already there: nothing asked"; else fail "asked anyway"; cat "${work}/controller.log"; fi
+
 if [ "$fails" -gt 0 ]; then
   echo "${fails} case(s) failed"
   exit 1

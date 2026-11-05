@@ -44,6 +44,13 @@
 # such a stack's production directory by hand, since there is no staging
 # twin to derive it from.
 #
+# A STAGING-ONLY STACK GETS NO PRODUCTION PULL REQUEST. The same fact, read
+# the same way: environments/production/<stack>/ exists or it does not. A
+# client product whose production lives in the client's own deploy
+# repository keeps its staging in ours. A product calls this job once per
+# repository, and each one pins the environments it has. A release skips
+# production where the target has none, and the summary says so.
+#
 # WHAT A PRODUCT'S OWN PULL REQUEST GETS. The images it would pin and the tag
 # it would pin them at, printed. Nothing is pushed (Principle 17, rule D5).
 #
@@ -172,7 +179,7 @@ jobs:
               exit 1
             fi
             release=true
-            echo "- production: \`v${VERSION}\`, by digest, as a pull request" >> "$GITHUB_STEP_SUMMARY"
+            echo "- production: \`v${VERSION}\`, by digest, as a pull request where the stack has a production environment" >> "$GITHUB_STEP_SUMMARY"
           fi
 
           main=false
@@ -332,7 +339,12 @@ jobs:
             echo "- staging: none; ${STACK} is production-only, and a release pins production" >> "$GITHUB_STEP_SUMMARY"
           fi
 
-          if [ "$RELEASE" = "true" ]; then
+          if [ "$RELEASE" = "true" ] && [ ! -d "environments/production/${STACK}" ]; then
+            # A staging-only stack here: its production lives in another
+            # deploy repository, which this product pins in its own call.
+            echo "::notice::${STACK} has no production environment (environments/production/${STACK} does not exist in ${OWNER}/${NAME}), so no production pull request was opened."
+            echo "- production: none; ${STACK} has no production environment in ${OWNER}/${NAME}" >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$RELEASE" = "true" ]; then
             release_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/v${VERSION}"
             open_pin_pr production "pin/${STACK}-v${VERSION}" \
               "Pin ${STACK} production to v${VERSION}" \

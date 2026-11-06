@@ -24,10 +24,14 @@ jobs:
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The same image, by the same digest, that job-ci-conformance runs
+      # over every caller. The two move together.
       - name: Run actionlint
+        env:
+          ACTIONLINT_IMAGE: rhysd/actionlint@sha256:887a259a5a534f3c4f36cb02dca341673c6089431057242cdc931e9f133147e9 # v1.7.7
         run: >
           docker run --rm -v "$PWD:/repo" --workdir /repo
-          rhysd/actionlint:1.7.7 -color
+          "$ACTIONLINT_IMAGE" -color
 
       # check-devkit-drift proves each product's rendered copy matches
       # devkit/. Nothing proved devkit/ is a valid nginx configuration, so a

@@ -14,6 +14,11 @@
 # per scale set (aurum-alpha/workflows#756 holds the contract), so no host is
 # named here. The setup-builder script beside this file says how it decides.
 #
+# A job granted `permissions: id-token: write` gets the farm's client key at
+# once: it proves its repository to the controller with its GitHub Actions ID
+# token. Any other job waits for the key the controller pushes when GitHub
+# reports the job started, which can take most of a minute.
+#
 # A composite action rather than steps copied into each image job, for the
 # reason go-caches is one: the decision had no business differing.
 name: setup-builder
@@ -36,7 +41,15 @@ inputs:
     required: false
     default: ""
   certs-dir:
-    description: Overrides GHR_BUILDKIT_CERTS, the directory the runner controller fills once the job has started, with ca.pem, client.pem and client-key.pem, or with `denied` when this job gets no key. A runner given GHR_BUILDKIT_REQUEST_URL and GHR_BUILDKIT_REQUEST_KEY asks the controller instead, and the answer goes into a directory of the job's own under RUNNER_TEMP.
+    description: >-
+      Overrides GHR_BUILDKIT_CERTS, the directory the runner controller fills
+      once the job has started, with ca.pem, client.pem and client-key.pem, or
+      with `denied` when this job gets no key. A runner given
+      GHR_BUILDKIT_REQUEST_URL, GHR_BUILDKIT_REQUEST_KEY and
+      GHR_BUILDKIT_TOKEN_AUDIENCE asks the controller first. It asks with the
+      job's GitHub Actions ID token, and a key it is given goes into a
+      directory under RUNNER_TEMP. The token needs `permissions: id-token:
+      write` on the calling job. Without it, the job waits for the files.
     required: false
     default: ""
   registry-cache:

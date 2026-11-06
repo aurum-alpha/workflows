@@ -18,6 +18,14 @@
 #                            key instead of waiting for the files
 #   GHR_BUILDKIT_REQUEST_KEY this runner's own key to ask with
 #                            (gha-runner-controller#657)
+#   GHR_BUILDKIT_TOKEN_AUDIENCE
+#                            the audience of the GitHub Actions ID token the
+#                            job proves its repository with
+#                            (gha-runner-controller#668)
+#
+# Asking also needs the Actions runtime's ACTIONS_ID_TOKEN_REQUEST_URL and
+# ACTIONS_ID_TOKEN_REQUEST_TOKEN, which GitHub gives only a job granted
+# `permissions: id-token: write`, and never a fork's pull request.
 #
 # The action's inputs (ENDPOINT, SERVERNAME, CERTS, REGISTRY_CACHE) override
 # them; an empty input falls back to the environment.
@@ -39,6 +47,11 @@ GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/stderr}"
 RUNNER_TEMP="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
 REQUEST_URL="${GHR_BUILDKIT_REQUEST_URL:-}"
 REQUEST_KEY="${GHR_BUILDKIT_REQUEST_KEY:-}"
+AUDIENCE="${GHR_BUILDKIT_TOKEN_AUDIENCE:-}"
+# Seconds allowed for each call made to get a key by asking. The controller
+# answers at once; the longest it takes is fetching GitHub's signing keys
+# when its cache misses, which it bounds at 10s.
+KEY_REQUEST_TIMEOUT="${KEY_REQUEST_TIMEOUT:-15}"
 # The one wait for the key, shared by asking and by watching for the files.
 key_deadline=$((SECONDS + CERTS_WAIT))
 # What asking the controller came to, for the step summary. Empty when the
@@ -73,26 +86,85 @@ json_field() {
   printf '%b' "$v"
 }
 
+# request_timeout prints the seconds one call may take: KEY_REQUEST_TIMEOUT,
+# or less when the one wait for the key has less left, and at least 1.
+request_timeout() {
+  local left=$((key_deadline - SECONDS))
+  [ "$left" -le "$KEY_REQUEST_TIMEOUT" ] || left=$KEY_REQUEST_TIMEOUT
+  [ "$left" -ge 1 ] || left=1
+  echo "$left"
+}
+
+# urlencode S percent-encodes every byte of S but RFC 3986's unreserved ones.
+urlencode() {
+  local LC_ALL=C s="$1" out="" c i
+  for ((i = 0; i < ${#s}; i++)); do
+    c="${s:i:1}"
+    case "$c" in
+      [A-Za-z0-9._~-]) out+="$c" ;;
+      *) printf -v c '%%%02X' "'$c"; out+="$c" ;;
+    esac
+  done
+  printf '%s' "$out"
+}
+
+# mint_id_token FILE writes the request body {"token":"..."} to FILE, 0600,
+# holding this job's GitHub Actions ID token for AUDIENCE. The token names
+# the job's repository and run in GitHub's signature, which the job's own
+# GITHUB_REPOSITORY cannot: a public repository's pull request runs on the
+# same runners, and its author's code can set anything.
+mint_id_token() {
+  if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+    asked="not asked: this job cannot mint a GitHub Actions ID token (the calling job grants no id-token: write)"
+    return 1
+  fi
+  local hdr="$RUNNER_TEMP/setup-builder-oidc.headers" body="$RUNNER_TEMP/setup-builder-oidc.json"
+  local url="$ACTIONS_ID_TOKEN_REQUEST_URL" sep='&' code token
+  [[ "$url" == *\?* ]] || sep='?'
+  (umask 077; printf 'Authorization: Bearer %s\n' "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" > "$hdr"; : > "$body")
+  code=$(curl -sS -o "$body" -w '%{http_code}' --connect-timeout 5 --max-time "$(request_timeout)" \
+      -H "@$hdr" "${url}${sep}audience=$(urlencode "$AUDIENCE")" 2>/dev/null) || code=000
+  rm -f "$hdr"
+  token=$(json_field value "$body")
+  rm -f "$body"
+  if [ "$code" != 200 ] || [ -z "$token" ]; then
+    asked="not asked: GitHub's ID token service answered $code"
+    return 1
+  fi
+  # Nothing here prints the token; the mask keeps anything later from
+  # showing it either.
+  echo "::add-mask::$token"
+  (umask 077; printf '{"token":"%s"}' "$token" > "$1")
+}
+
 # ask_for_key asks the controller for this job's key, when the runner was
 # told where to ask, rather than waiting for GitHub's job-started message to
-# reach it. Its answer goes into a directory of this job's own, which CERTS
-# then names: the three files on 200, `denied` with the reason on 403. Any
-# other answer leaves CERTS alone, and the wait for the files goes on.
+# reach it. The job proves which repository and run it is with its GitHub
+# Actions ID token. On 200 the three files go into a directory of this job's
+# own, which CERTS then names. Any other answer, or none in time, leaves
+# CERTS alone, and the wait for the pushed files goes on: the controller
+# still pushes them on job-started.
 ask_for_key() {
   [ -n "$REQUEST_URL" ] && [ -n "$REQUEST_KEY" ] || return 1
   # The controller already filled the directory: nothing to ask for.
   if [ -e "$CERTS/client-key.pem" ] || [ -e "$CERTS/denied" ]; then return 1; fi
+  if [ -z "$AUDIENCE" ]; then
+    asked="not asked: this runner was given no GHR_BUILDKIT_TOKEN_AUDIENCE"
+    return 1
+  fi
   local dir="$RUNNER_TEMP/setup-builder-certs" body="$RUNNER_TEMP/setup-builder-key.json"
-  local hdr="$RUNNER_TEMP/setup-builder-key.headers" code started=$SECONDS left
+  local hdr="$RUNNER_TEMP/setup-builder-key.headers" req="$RUNNER_TEMP/setup-builder-key.request"
+  local code started=$SECONDS left
+  mint_id_token "$req" || return 1
   rm -rf "$dir"
-  (umask 077; mkdir -p "$dir"; printf 'Authorization: Bearer %s\n' "$REQUEST_KEY" > "$hdr")
-  left=$((key_deadline - SECONDS)); [ "$left" -ge 1 ] || left=1
-  # The bearer goes from a file, so no process listing shows it.
+  (umask 077; mkdir -p "$dir"; printf 'Authorization: Bearer %s\n' "$REQUEST_KEY" > "$hdr"; : > "$body")
+  left=$(request_timeout)
+  # The bearer and the token go from files, so no process listing shows
+  # either.
   code=$(curl -sS -o "$body" -w '%{http_code}' --connect-timeout 5 --max-time "$left" \
-      -X POST -H "@$hdr" -H 'Content-Type: application/json' \
-      --data "{\"repository\":\"${GITHUB_REPOSITORY:-}\",\"run_id\":${GITHUB_RUN_ID:-0}}" \
+      -X POST -H "@$hdr" -H 'Content-Type: application/json' --data-binary "@$req" \
       "${REQUEST_URL%/}/api/v1/buildkit/client-key" 2>/dev/null) || code=000
-  rm -f "$hdr"
+  rm -f "$hdr" "$req"
   case "$code" in
     200)
       local f field
@@ -106,15 +178,20 @@ ask_for_key() {
       rm -f "$body"
       CERTS="$dir"; asked="given by the controller in $((SECONDS - started))s"
       return 0 ;;
-    403)
-      json_field error "$body" > "$dir/denied"; rm -f "$body"
-      CERTS="$dir"; asked="refused by the controller"
-      return 0 ;;
-    000) asked="the controller at $REQUEST_URL did not answer" ;;
+    000) asked="the controller at $REQUEST_URL did not answer (${left}s allowed)" ;;
     *) asked="the controller answered $code: $(json_field error "$body")" ;;
   esac
   rm -f "$body"
   return 1
+}
+
+# got_key: the key by asking, or else the controller's pushed files, within
+# the one wait. The summary's client key line says which.
+got_key() {
+  ask_for_key && return 0
+  certs_arrived || return 1
+  [ -z "$asked" ] || asked="$asked; then the controller pushed its answer"
+  return 0
 }
 
 mode=local
@@ -127,7 +204,7 @@ if [ "$FORK" = true ]; then
   reason="pull request from a fork"
 elif [ -z "$ENDPOINT" ]; then
   reason="this runner was not given a build farm (no GHR_BUILDKIT_ENDPOINT)"
-elif ! { ask_for_key || certs_arrived; }; then
+elif ! got_key; then
   reason="no readable client certificate in $CERTS after ${CERTS_WAIT}s"
   level=warning
 elif [ -e "$CERTS/denied" ]; then

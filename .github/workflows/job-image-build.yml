@@ -552,7 +552,16 @@ jobs:
           file: ${{ inputs.dockerfile }}
           target: ${{ inputs.target }}
           platforms: ${{ matrix.leg.platform }}
-          build-args: ${{ inputs.build_args }}
+          # GHR_RUNNER is how the runner controller's Build farm page names
+          # and links the job behind each build: the farm's build history
+          # keeps the build arguments, and the controller knows which job each
+          # of its runners ran. Only on the farm, where it is read. No
+          # Dockerfile declares it, which BuildKit neither warns about nor lets
+          # into any cache key; it does appear in the image's provenance,
+          # beside the run URL that is already there.
+          build-args: |
+            ${{ inputs.build_args }}
+            ${{ steps.builder.outputs.mode == 'remote' && format('GHR_RUNNER={0}', runner.name) || '' }}
           # Private module installs mount this as id=aurum_read_token. The org
           # read token can clone platform-go and platform-php. An npm install
           # still authenticates with github.token when that secret is absent.

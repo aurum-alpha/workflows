@@ -165,29 +165,47 @@ if [ "$(out "$j" mirrors)" = false ] && [ "$(out "$k" endpoint)" = "tcp://192.0.
 if bash -c "env -i PATH=\"$PATH\" GITHUB_OUTPUT=/dev/null GITHUB_STEP_SUMMARY=/dev/null GHR_BUILDKIT_ENDPOINT=tcp://192.0.2.1:1 GHR_BUILDKIT_CERTS=$certs \"$script\" >/dev/null 2>&1"; then
   pass "exit 0 when the farm is unusable"; else fail "non-zero exit"; fi
 
-# 11. Asking the controller for the key (gha-runner-controller#657). A fake
-#     controller answers each request key its own way, and records what it
-#     was sent.
+# 11. Asking the controller for the key (gha-runner-controller#657, #668). A
+#     fake Actions runtime mints an ID token for the job's bearer, and a fake
+#     controller answers each request key its own way. Both record what they
+#     were sent.
 cat > "${work}/controller.py" <<'EOF2'
-import http.server, json, sys
+import http.server, json, sys, time
 PEM = "-----BEGIN %s-----\nAAAA\n-----END %s-----\n"
+TOKEN = "aaaa.bbbb.cccc"
 class H(http.server.BaseHTTPRequestHandler):
+    def record(self, body=b""):
+        with open(sys.argv[1], "a") as f:
+            f.write(self.command + " " + self.path + " " + self.headers.get("Authorization", "")
+                    + " " + body.decode() + "\n")
+    def answer(self, code, obj):
+        data = json.dumps(obj).encode()
+        self.send_response(code); self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+    # The Actions runtime's ID token endpoint.
+    def do_GET(self):
+        self.record()
+        if self.headers.get("Authorization") != "Bearer runtime-token":
+            return self.answer(401, {"message": "bad runtime token"})
+        self.answer(200, {"count": 1, "value": TOKEN})
     def do_POST(self):
         body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
-        with open(sys.argv[1], "a") as f:
-            f.write(self.path + " " + self.headers.get("Authorization", "") + " " + body.decode() + "\n")
+        self.record(body)
         key = self.headers.get("Authorization", "").removeprefix("Bearer ")
-        code, answer = {
+        if key == "slow":
+            time.sleep(4)
+        if json.loads(body or b"{}").get("token") != TOKEN:
+            return self.answer(400, {"error": 'the body must be {"token":"<GitHub Actions ID token>"}'})
+        code, obj = {
             "given": (200, {"ca_pem": PEM % ("CERTIFICATE", "CERTIFICATE"),
                             "client_cert_pem": PEM % ("CERTIFICATE", "CERTIFICATE"),
                             "client_key_pem": PEM % ("PRIVATE KEY", "PRIVATE KEY")}),
             "refused": (403, {"error": "o/site is a public repository"}),
-        }.get(key, (401, {"error": "no runner holds this key"}))
-        data = json.dumps(answer).encode()
-        self.send_response(code); self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+            "down": (503, {"error": "GitHub's signing keys are out of reach"}),
+        }.get(key, (401, {"error": "no runner holds this request key"}))
+        self.answer(code, obj)
     def log_message(self, *a): pass
-srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
 print(srv.server_address[1], flush=True)
 srv.serve_forever()
 EOF2
@@ -195,45 +213,99 @@ python3 "${work}/controller.py" "${work}/controller.log" > "${work}/controller.p
 pids+=("$!")
 for _ in $(seq 50); do [ -s "${work}/controller.port" ] && break; sleep 0.1; done
 ctl="http://127.0.0.1:$(cat "${work}/controller.port")"
+token="aaaa.bbbb.cccc"
+audience="gha-runner-controller/buildkit-client-key"
 ask() { run CERTS_WAIT=2 GHR_BUILDKIT_ENDPOINT="tcp://127.0.0.1:${closed_port}" \
   GHR_BUILDKIT_CERTS="${work}/never-filled" GHR_BUILDKIT_REQUEST_URL="$ctl" \
-  GITHUB_REPOSITORY=o/app GITHUB_RUN_ID=42 "$@"; }
+  GHR_BUILDKIT_TOKEN_AUDIENCE="$audience" \
+  ACTIONS_ID_TOKEN_REQUEST_URL="${ctl}/token?api-version=2.0" ACTIONS_ID_TOKEN_REQUEST_TOKEN=runtime-token "$@"; }
+mode_of() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
+posted() { grep -c '^POST ' "${work}/controller.log" || true; }
 
-# 11a. Given: the key is written to this job's own directory, which the step
-#      hands on, and the step goes on to the farm at once.
+# 11a. Given: the job mints its ID token for the runner's audience and posts
+#      it with the request key as the bearer. The key is written to this
+#      job's own directory, which the step hands on, and the step goes on to
+#      the farm at once. The token is masked, and no secret is left on disk.
+: > "${work}/controller.log"
 j="$(ask GHR_BUILDKIT_REQUEST_KEY=given)"
 d="$(out "$j" certs)"
 if grep -q 'did not accept a connection' "${j}/out" && [ "$d" = "${j}/temp/setup-builder-certs" ] \
    && grep -q 'BEGIN PRIVATE KEY' "${d}/client-key.pem" && grep -q 'BEGIN CERTIFICATE' "${d}/ca.pem" \
-   && [ "$(stat -c %a "${d}/client-key.pem")" = 600 ] && grep -q 'given by the controller' "${j}/summary" \
+   && [ "$(mode_of "${d}/client-key.pem")" = 600 ] && grep -q 'given by the controller' "${j}/summary" \
    && [ "$(cat "${j}/seconds")" -le 1 ] \
-   && grep -qF '/api/v1/buildkit/client-key Bearer given {"repository":"o/app","run_id":42}' "${work}/controller.log" \
-   && ! ls "${j}/temp" | grep -q 'key.headers'; then
-  pass "asked and given: key in the job's own dir, no wait"; else fail "asked and given"; cat "${j}/log" "${j}/out" "${j}/summary"; fi
+   && grep -qxF "GET /token?api-version=2.0&audience=gha-runner-controller%2Fbuildkit-client-key Bearer runtime-token " "${work}/controller.log" \
+   && grep -qxF "POST /api/v1/buildkit/client-key Bearer given {\"token\":\"${token}\"}" "${work}/controller.log" \
+   && grep -qxF "::add-mask::${token}" "${j}/log" && [ "$(grep -c "$token" "${j}/log")" = 1 ] \
+   && ! grep -q "$token" "${j}/summary" "${j}/out" \
+   && [ "$(ls "${j}/temp")" = setup-builder-certs ]; then
+  pass "asked with an ID token and given: key in the job's own dir, no wait"; else fail "asked and given"; cat "${j}/log" "${j}/out" "${j}/summary" "${work}/controller.log"; ls "${j}/temp"; fi
 
-# 11b. Refused: local at once, with the controller's reason as a notice.
-j="$(ask GHR_BUILDKIT_REQUEST_KEY=refused)"
+# 11b. Refused: the controller's reason goes in the summary, and the step
+#      waits for the files it pushes on job-started, here `denied`.
+pushed="${work}/pushed-denied"; mkdir -p "$pushed"
+( sleep 1; echo "o/site is a public repository" > "${pushed}/denied" ) &
+pusher=$!
+j="$(ask GHR_BUILDKIT_REQUEST_KEY=refused GHR_BUILDKIT_CERTS="$pushed")"
+wait "$pusher"
 if [ "$(out "$j" mode)" = local ] && grep -q 'withheld: o/site is a public repository' "${j}/out" \
-   && grep -q '::notice' "${j}/log" && ! grep -q '::warning' "${j}/log" && [ "$(cat "${j}/seconds")" -le 1 ]; then
-  pass "asked and refused: local, notice, no wait"; else fail "asked and refused"; cat "${j}/log" "${j}/out"; fi
+   && grep -q 'client key: the controller answered 403: o/site is a public repository; then the controller pushed its answer' "${j}/summary" \
+   && grep -q '::notice' "${j}/log" && ! grep -q '::warning' "${j}/log" && [ "$(cat "${j}/seconds")" -le 2 ]; then
+  pass "asked and refused: waits for the push, reason in the summary"; else fail "asked and refused"; cat "${j}/log" "${j}/out" "${j}/summary"; fi
 
-# 11c. An unknown key: the controller's word is in the summary, and the step
-#      still waits for the files, within the one wait.
-j="$(ask GHR_BUILDKIT_REQUEST_KEY=stale)"
-if [ "$(out "$j" mode)" = local ] && grep -q 'client certificate' "${j}/out" \
-   && grep -q 'answered 401: no runner holds this key' "${j}/summary" && [ "$(cat "${j}/seconds")" -le 3 ]; then
-  pass "asked with an unknown key: falls back to waiting"; else fail "unknown key"; cat "${j}/log" "${j}/out" "${j}/summary"; fi
+# 11c. An unknown key, or a farm that is down: the controller's word is in the
+#      summary, and the step still waits for the files, within the one wait.
+for k in stale:'answered 401: no runner holds this request key' down:"answered 503: GitHub's signing keys are out of reach"; do
+  j="$(ask GHR_BUILDKIT_REQUEST_KEY="${k%%:*}")"
+  if [ "$(out "$j" mode)" = local ] && grep -q 'client certificate' "${j}/out" \
+     && grep -qF "${k#*:}" "${j}/summary" && [ "$(cat "${j}/seconds")" -le 3 ]; then
+    pass "asked, ${k%%:*}: falls back to waiting"; else fail "asked, ${k%%:*}"; cat "${j}/log" "${j}/out" "${j}/summary"; fi
+done
 
 # 11d. Nobody answers where the runner was told to ask: the same fallback.
 j="$(ask GHR_BUILDKIT_REQUEST_KEY=given GHR_BUILDKIT_REQUEST_URL="http://127.0.0.1:${closed_port}")"
 if [ "$(out "$j" mode)" = local ] && grep -q 'did not answer' "${j}/summary" && grep -q 'client certificate' "${j}/out"; then
   pass "controller unreachable: falls back to waiting"; else fail "controller unreachable"; cat "${j}/log" "${j}/out" "${j}/summary"; fi
 
-# 11e. The files the controller pushed win: nothing is asked.
+# 11e. A controller that does not answer in time is given up on after
+#      KEY_REQUEST_TIMEOUT, and the pushed key is still used when it lands.
+late2="${work}/late2"; mkdir -p "$late2"
+( sleep 2; : > "${late2}/ca.pem"; : > "${late2}/client.pem"; : > "${late2}/client-key.pem" ) &
+pusher=$!
+j="$(ask GHR_BUILDKIT_REQUEST_KEY=slow KEY_REQUEST_TIMEOUT=1 CERTS_WAIT=5 GHR_BUILDKIT_CERTS="$late2")"
+wait "$pusher"
+if grep -q 'did not answer (1s allowed); then the controller pushed its answer' "${j}/summary" \
+   && grep -q 'did not accept a connection' "${j}/out" && [ "$(out "$j" certs)" = "$late2" ] \
+   && [ "$(cat "${j}/seconds")" -le 3 ]; then
+  pass "controller slow: gives up at the timeout, uses the push"; else fail "controller slow"; cat "${j}/log" "${j}/out" "${j}/summary"; fi
+
+# 11f. The files the controller pushed win: nothing is asked or minted.
 : > "${work}/controller.log"
 j="$(ask GHR_BUILDKIT_REQUEST_KEY=given GHR_BUILDKIT_CERTS="$certs")"
 if [ ! -s "${work}/controller.log" ] && [ "$(out "$j" certs)" = "$certs" ]; then
   pass "files already there: nothing asked"; else fail "asked anyway"; cat "${work}/controller.log"; fi
+
+# 11g. A job that cannot mint an ID token (no id-token: write) asks nothing,
+#      says why, and waits for the files.
+: > "${work}/controller.log"
+j="$(ask GHR_BUILDKIT_REQUEST_KEY=given ACTIONS_ID_TOKEN_REQUEST_URL= ACTIONS_ID_TOKEN_REQUEST_TOKEN=)"
+if [ ! -s "${work}/controller.log" ] && grep -q 'client key: not asked: .*id-token: write' "${j}/summary" \
+   && grep -q 'client certificate' "${j}/out"; then
+  pass "no ID token to mint: nothing asked, waits"; else fail "no ID token"; cat "${j}/summary" "${work}/controller.log"; fi
+
+# 11h. GitHub's token service refuses: nothing is posted, the answer is in
+#      the summary, and the step waits.
+: > "${work}/controller.log"
+j="$(ask GHR_BUILDKIT_REQUEST_KEY=given ACTIONS_ID_TOKEN_REQUEST_TOKEN=wrong)"
+if [ "$(posted)" = 0 ] && grep -q 'not asked: GitHub.s ID token service answered 401' "${j}/summary" \
+   && grep -q 'client certificate' "${j}/out"; then
+  pass "token service refuses: nothing posted, waits"; else fail "token service refuses"; cat "${j}/summary" "${work}/controller.log"; fi
+
+# 11i. A runner given no audience (a controller from before #668) is never
+#      asked: its endpoint takes no token.
+: > "${work}/controller.log"
+j="$(ask GHR_BUILDKIT_REQUEST_KEY=given GHR_BUILDKIT_TOKEN_AUDIENCE=)"
+if [ ! -s "${work}/controller.log" ] && grep -q 'not asked: .*GHR_BUILDKIT_TOKEN_AUDIENCE' "${j}/summary"; then
+  pass "no audience: nothing asked"; else fail "no audience"; cat "${j}/summary" "${work}/controller.log"; fi
 
 if [ "$fails" -gt 0 ]; then
   echo "${fails} case(s) failed"

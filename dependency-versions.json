@@ -582,7 +582,10 @@
   ],
   "images": {
     "alpine/socat": "1.8.1.3",
-    "axllent/mailpit": "v1.32.0",
+    "axllent/mailpit": {
+      "min": "v1.32.0",
+      "max": "v1.33.0"
+    },
     "mysql": {
       "min": "9.1.0",
       "max": "9.7.4"
@@ -592,8 +595,11 @@
     "postgres": "17.11-alpine",
     "quay.io/keycloak/keycloak": {
       "min": "26.8.1-1",
-      "max": "26.8.1-2"
+      "max": "26.8.2-0"
     },
-    "quay.io/oauth2-proxy/oauth2-proxy": "v7.15.5-alpine"
+    "quay.io/oauth2-proxy/oauth2-proxy": {
+      "min": "v7.15.5-alpine",
+      "max": "v7.15.6-alpine"
+    }
   }
 }

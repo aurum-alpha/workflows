@@ -251,6 +251,14 @@ and Keycloak treats that as a query: `view-clients` without `query-clients`
 answers 200 with an empty list, which the adapter reports as the
 application not being registered.
 
+**The admin client also names the `kc-admin-api` scope.** The Admin API
+checks a bearer's audience. The scope adds
+`<issuer origin>/admin/realms/<realm>` to the token, and the admin API refuses a
+token without it with a 401. Keycloak creates the scope in every realm. A
+client that lists its own `defaultClientScopes` gets it only by naming it, as
+every client here does. The render refuses a template whose admin client does
+not name it.
+
 **The provider enforces the access gate at login** (060 AU4). `__REPO__`
 declares one client role, `access`, which is what `grantAppAccess` sets and
 `revokeAppAccess` clears. The realm binds a flow to each of the two

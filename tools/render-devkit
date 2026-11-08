@@ -352,8 +352,14 @@ ADMIN_REALM_ROLES = frozenset({
 })
 
 
+# The Admin API checks a bearer's audience (Keycloak 26.8.2, CVE-2026-19688).
+# The kc-admin-api client scope adds <issuer origin>/admin/realms/<realm> to
+# the token, and a client that lists its default scopes gets it only by name.
+ADMIN_API_SCOPE = "kc-admin-api"
+
+
 def refuse_if_admin_roles_missing(text: str) -> None:
-    """Refuse a realm whose admin service account cannot grant app access."""
+    """Refuse a realm whose admin service account cannot reach the Admin API."""
     try:
         realm = json.loads(text)
     except json.JSONDecodeError as exc:
@@ -380,6 +386,17 @@ def refuse_if_admin_roles_missing(text: str) -> None:
             f"realm-management role(s) {', '.join(missing)}; grantAppAccess "
             "looks up the application client with GET /clients?clientId= and "
             "Keycloak treats that as a query"
+        )
+    scopes: object = None
+    for client in realm.get("clients", []):
+        if client.get("clientId") == "__REPO__-admin":
+            scopes = client.get("defaultClientScopes", [])
+            break
+    if not isinstance(scopes, list) or ADMIN_API_SCOPE not in scopes:
+        raise ValueError(
+            "keycloak/realm-template.json: the __REPO__-admin client must name "
+            f"{ADMIN_API_SCOPE} in defaultClientScopes; Keycloak 26.8.2 and later "
+            "refuse an Admin API token without the audience that scope adds"
         )
 
 

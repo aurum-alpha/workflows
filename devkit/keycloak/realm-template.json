@@ -112,6 +112,7 @@
         "acr",
         "basic",
         "email",
+        "kc-admin-api",
         "profile",
         "roles",
         "web-origins"

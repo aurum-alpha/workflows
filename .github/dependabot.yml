@@ -47,7 +47,3 @@ updates:
       - dependency-name: "pgvector/pgvector"
       - dependency-name: "mysql"
       - dependency-name: "*/mysql"
-      # 26.8.2 refuses the devkit admin client on the Admin API (#794).
-      # Lift this in the change that makes the realm pass on it.
-      - dependency-name: "*keycloak/keycloak"
-        versions: [">= 26.8.2, < 26.8.3"]

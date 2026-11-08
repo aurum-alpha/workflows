@@ -595,7 +595,7 @@
     "postgres": "17.11-alpine",
     "quay.io/keycloak/keycloak": {
       "min": "26.8.1-1",
-      "max": "26.8.1-2"
+      "max": "26.8.2-0"
     },
     "quay.io/oauth2-proxy/oauth2-proxy": {
       "min": "v7.15.5-alpine",

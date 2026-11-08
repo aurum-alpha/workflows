@@ -302,36 +302,45 @@ def check_images(
 
 # An image tag an interval can order: a plain version, or one with a numeric
 # build revision after a dash (keycloak's 26.8.1-1, 26.8.1-2). The revision
-# orders after the version. A word suffix (-alpine, -oracle) names a variant,
-# not a release, so a tag carrying one is never inside an interval.
-IMAGE_TAG = re.compile(r"^(\d+(?:\.\d+)*)(?:-(\d+))?$")
+# orders after the version. A tag can also carry a leading v (v1.32.0) and a
+# word suffix naming a variant (-alpine, -oracle). Those two are the image's
+# spelling, not part of its order: an interval's two ends name the same ones,
+# and a tag inside it carries them too.
+IMAGE_TAG = re.compile(r"^(v?)(\d+(?:\.\d+)*)(?:-(\d+))?(-[a-z][a-z0-9.]*)?$")
+
+
+def image_spelling(tag: str) -> "tuple[str, str] | None":
+    """The prefix and the variant suffix a tag is spelled with."""
+    m = IMAGE_TAG.match(tag)
+    return (m.group(1), m.group(4) or "") if m else None
 
 
 def image_key(tag: str) -> "tuple[tuple[int, ...], int] | None":
     m = IMAGE_TAG.match(tag)
     if not m:
         return None
-    return version_key(m.group(1)), int(m.group(2) or 0)
+    return version_key(m.group(2)), int(m.group(3) or 0)
 
 
 def image_within_max(tag: str, top: str) -> bool:
     """`tag` is at or below `top`. A `top` without a revision admits every
     revision of the versions it names, as `within_max` does."""
-    got, want = image_key(tag), image_key(top)
-    if IMAGE_TAG.match(top).group(2) is None:
-        return within_max(IMAGE_TAG.match(tag).group(1),
-                          IMAGE_TAG.match(top).group(1))
-    return got <= want
+    if IMAGE_TAG.match(top).group(3) is None:
+        return within_max(IMAGE_TAG.match(tag).group(2),
+                          IMAGE_TAG.match(top).group(2))
+    return image_key(tag) <= image_key(top)
 
 
 def image_admits(spec: "str | dict", tag: str) -> bool:
-    """An image entry is one tag, or a {min, max} interval of plain versions,
-    each optionally with a numeric build revision, for an image moving from
-    one release to the next."""
+    """An image entry is one tag, or a {min, max} interval for an image moving
+    from one release to the next. A tag inside the interval is spelled as its
+    two ends are."""
     if isinstance(spec, str):
         return tag == spec
-    key = image_key(tag)
-    return key is not None and key >= image_key(spec["min"]) and \
+    if image_spelling(tag) is None or \
+            image_spelling(tag) != image_spelling(spec["min"]):
+        return False
+    return image_key(tag) >= image_key(spec["min"]) and \
         image_within_max(tag, spec["max"])
 
 
@@ -349,8 +358,11 @@ def validate_images(images: dict) -> None:
                 or not all(isinstance(v, str) and IMAGE_TAG.match(v)
                            for v in spec.values()):
             raise SystemExit(f"{where}: an entry is a tag, or {{min, max}} "
-                             f"of plain versions, each optionally with a "
-                             f"numeric -revision")
+                             f"of versions, each optionally with a numeric "
+                             f"-revision, a leading v and a -variant")
+        if image_spelling(spec["min"]) != image_spelling(spec["max"]):
+            raise SystemExit(f"{where}: min {spec['min']} and max "
+                             f"{spec['max']} name different variants")
         if not image_within_max(spec["min"], spec["max"]):
             raise SystemExit(f"{where}: min {spec['min']} is above max "
                              f"{spec['max']}")

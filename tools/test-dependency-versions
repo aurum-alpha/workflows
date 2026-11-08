@@ -178,8 +178,9 @@ image_case("a suffixed tag is outside a version interval", "9.7.4-oracle", 1,
            "Aurum Alpha standard is [9.1.0, 9.7.4]", MOVING)
 image_case("an image interval whose min is above its max is refused", "9.1.0",
            1, "is above max", {"min": "9.7.4", "max": "9.1.0"})
-image_case("an image interval of a suffixed tag is refused", "9.1.0", 1,
-           "of plain versions", {"min": "9.1.0", "max": "9.7.4-oracle"})
+image_case("an interval whose ends name different variants is refused",
+           "9.1.0", 1, "name different variants",
+           {"min": "9.1.0", "max": "9.7.4-oracle"})
 
 REVISED = {"min": "26.8.1-1", "max": "26.8.1-2"}
 image_case("an interval admits its floor's build revision", "26.8.1-1", 0,
@@ -192,6 +193,17 @@ image_case("the bare version sorts below its first revision", "26.8.1", 1,
            "Aurum Alpha standard is [26.8.1-1, 26.8.1-2]", REVISED)
 image_case("a max with no revision admits every revision of it", "9.7.4-3",
            0, "PASS", MOVING)
+VARIANT = {"min": "v7.15.5-alpine", "max": "v7.15.6-alpine"}
+image_case("an interval admits a v-prefixed variant at its floor",
+           "v7.15.5-alpine", 0, "PASS", VARIANT)
+image_case("an interval admits a v-prefixed variant at its max",
+           "v7.15.6-alpine", 0, "PASS", VARIANT)
+image_case("a variant past its interval fails", "v7.15.7-alpine", 1,
+           "Aurum Alpha standard is [v7.15.5-alpine, v7.15.6-alpine]", VARIANT)
+image_case("a tag of another variant is outside the interval", "v7.15.6", 1,
+           "Aurum Alpha standard is [v7.15.5-alpine, v7.15.6-alpine]", VARIANT)
+image_case("a revision moves into the next version", "26.8.2-0", 0, "PASS",
+           {"min": "26.8.1-1", "max": "26.8.2-0"})
 image_case("an interval whose min revision is above its max is refused",
            "26.8.1-1", 1, "is above max", {"min": "26.8.1-2", "max": "26.8.1-1"})
 

@@ -326,6 +326,29 @@ label writes that name first. A product's own scope labels come next. The
 scope type in Title Case is the last default, and the id after the colon is
 never shown.
 
+### WC7. Every colour the client draws comes from its design system's tokens
+
+**A client styles with its design system's tokens alone.** Each colour it
+draws is a custom property the design system defines. The design system
+gives each role a value for every theme. A client that follows the reader's
+light or dark preference stays legible only if every colour follows it too.
+
+**Three mistakes break that unseen.** An undefined custom property resolves
+to nothing, or to its fallback. A fallback such as `var(--surface, #fff)`
+hides that mistake and pins one theme's colour. A literal in hex, `rgb()` or
+`hsl()` ignores the theme entirely. None of the three fails a build, or a
+review done in light mode.
+
+**So a client writes none of the three.** A role the design system lacks is
+added there first. Artwork that keeps one look in every theme, such as a
+logo, keeps its own colours. The client names those files as
+theme-constant.
+
+**The check reads what the browser receives.** Every `var()` in the built
+bundle resolves to a property the bundle declares. None carries a fallback.
+A colour literal appears only as a custom property's value, where the design
+system defines its tokens. That holds whatever framework built the bundle.
+
 ## The artifacts
 
 Per PC3, under [`contracts/web-client/`](../contracts/web-client/):
@@ -357,3 +380,7 @@ Per PC3, under [`contracts/web-client/`](../contracts/web-client/):
   the edge can. A path handed straight through carries no limit at the
   gateway. The route already lives in the process that answers it. A prefix
   limit on the gateway would also bind health probes.
+- **A gate that reads the client's source.** It would test what the source
+  looks like, which PC4 forbids. It would also break whenever the framework
+  or the file layout changed. The built bundle is what the browser receives,
+  the artifact WC2's proposed gate also reads.

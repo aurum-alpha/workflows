@@ -342,6 +342,21 @@ Rules from [`060-auth.md`](060-auth.md).
 | — | One corpus judges every implementation of the active-grant resolver | each platform module's own tests running [`../contracts/tenancy/resolution.json`](../contracts/tenancy/resolution.json): a fixture, then how a session resolves, how a switch is answered and what the grants view says, each with the outcome AU8 and 092 TH1–TH3 fix. Static, and it needs no service, because the resolver is a pure function of its arguments | **review only** |
 | — | Every name an implementation carries is the vocabulary's | each platform module's own test asserting the names in [`../contracts/platform/vocabulary.json`](../contracts/platform/vocabulary.json) are present under the language's casing and no name outside it is exported for the same concept. A name a module invents is a second answer to a question the file answers once | **review only** |
 | — | Every corpus case a module answers for is named by a test | `check-corpus-coverage`, from `job-ci-conformance`: for each corpus a module lists in `contracts/ANSWERS`, every case id appears in a test file. A loop that runs whatever a corpus hands it names nothing, and a test suite that hand-picks ids executes a different set from the next module's; a table naming every id that the runner asserts is the corpus's whole set satisfies both. A repository with no `ANSWERS` has adopted no corpus and passes | gated¹ |
+## MCP endpoint standard
+
+Rules from [`065-mcp.md`](065-mcp.md).
+
+| # | Rule | Enforced by | Status |
+|---|---|---|---|
+| MC1 | A tool is one route of the service's own API, dispatched in process | the product's coverage test (MC7) proves every tool names a route. That no tool reads the store resists a checker, because a gate reading source for it is the PC4 violation. Review question: *what does this tool's handler call* | **review only** |
+| MC2 | The identity is the person's own token, and the inner request carries the caller's facts | the platform module's dispatch tests: the inner request carries every named fact. The product's act test asserts an event naming the person and their address, in AE10's shape | **review only** |
+| MC3 | Discovery is RFC 9728, and every `401` names the metadata document | the platform module's discovery tests decide the document and the header. A live check against a running stack is one request with no token (proposed) | **review only** |
+| MC4 | The endpoint is stateless Streamable HTTP answering JSON, and it bypasses the edge's sign-in hop | the edge half is visible in the rendered stack: the endpoint's route goes straight to the service. The `405` on any other method is a product test | **review only** |
+| MC5 | A person signs an agent in through the realm's MCP client | `render-devkit` renders the client from `realm.mcp_client`, and `check-devkit-drift` holds the rendered realm to it | gated |
+| MC6 | The endpoint is off until configuration turns it on | a product test: disabled, the endpoint is not mounted; with no identity provider, it is never mounted | **review only** |
+| MC7 | Every route is a tool or a named exclusion, and a test holds the list | the product's coverage test, which walks the router's registered routes | **review only** |
+| MC8 | Every tool states its effect, and outside text is data | the annotation half is a product test over the tool table. That the instructions say outside text is data is a review question | **review only** |
+
 ## Authorization standard
 
 Rules from [`070-rbac.md`](070-rbac.md).

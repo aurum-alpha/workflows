@@ -375,5 +375,6 @@ capability missing from the table is a defect in this document.
 | Presentation, formatting & i18n | `Intl` profile | [`090-web-client.md`](090-web-client.md) WC4 |
 | Frontend observability | Internal contract | [`090-web-client.md`](090-web-client.md) WC5 |
 | Web estate and the front door | Internal contract | [`091-web-estate.md`](091-web-estate.md) |
+| MCP endpoints | MCP Streamable HTTP and RFC 9728 profile | [`065-mcp.md`](065-mcp.md) |
 | Tenant hostnames | Internal contract | [`092-tenant-hostnames.md`](092-tenant-hostnames.md) |
 | Billing | Internal contract | [`075-billing.md`](075-billing.md) |

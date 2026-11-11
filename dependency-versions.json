@@ -554,10 +554,15 @@
     "While a wave moves a runtime, its value is the precision the old and the",
     "new version share, so a repository passes on either side of the move.",
     "The change that completes the wave sets it to the patch every repository",
-    "then carries."
+    "then carries.",
+    "",
+    "`go` is `1.27` while the fleet moves from 1.27.3 to 1.27.4, which fixes",
+    "GO-2026-6859 (an HTTP/1 server crash in net/http's MaxBytesReader that",
+    "govulncheck blocks). It returns to `1.27.4` once every Go repository",
+    "carries it."
   ],
   "runtimes": {
-    "go": "1.27.3",
+    "go": "1.27",
     "node": "26",
     "php": "8.5",
     "python": "3.13"

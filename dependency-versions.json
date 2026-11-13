@@ -556,10 +556,14 @@
     "The change that completes the wave sets it to the patch every repository",
     "then carries.",
     "",
-    "`go` is `1.27` while the fleet moves from 1.27.3 to 1.27.4, which fixes",
-    "GO-2026-6859 (an HTTP/1 server crash in net/http's MaxBytesReader that",
-    "govulncheck blocks). It returns to `1.27.4` once every Go repository",
-    "carries it."
+    "`go` names the minor alone, `1.27`, and stays there between minors. Go",
+    "ships a patch for a security fix every few weeks, and a repository moves",
+    "its go.mod onto one when govulncheck refuses the patch it carries. A",
+    "record pinned to the patch would turn each of those moves red until this",
+    "file followed. A Go patch release makes no breaking change, so two",
+    "repositories a patch apart differ in nothing this record has to hold.",
+    "govulncheck, not this file, is what refuses a vulnerable patch. The value",
+    "moves only to admit the next minor."
   ],
   "runtimes": {
     "go": "1.27",

@@ -9,6 +9,8 @@ exit status and a line of output.
 
 import json
 import pathlib
+import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -242,6 +244,37 @@ if missing:
 else:
     print("  ok  job-test-e2e-playwright carries an image for every "
           "@playwright/test version the record names")
+
+# The catalog's CI checks devkit/ against this record, so a Dependabot bump
+# of a devkit image past its max fails in its own pull request rather than
+# in every product's ci-conformance (#808, #809). That holds only if the
+# checker reads every image devkit/ pins: an image it skipped would pass
+# whatever its tag. So every one of them, held to a tag none carries, fails.
+devkit_images = sorted({
+    m.group(1)
+    for f in (REPO / "devkit").rglob("*")
+    if f.is_file() and f.name.endswith((".yml", ".yaml"))
+    for m in re.finditer(r"^\s*image:\s*([^\s:@]+(?:/[^\s:@]+)*):",
+                         f.read_text(), re.M)
+})
+with tempfile.TemporaryDirectory() as t:
+    tmp = pathlib.Path(t)
+    shutil.copytree(REPO / "devkit", tmp / "root" / "devkit")
+    full = json.loads((REPO / "dependency-versions.json").read_text())
+    held = {**full, "images": {**full["images"],
+                               **{name: "0.0.0" for name in devkit_images}}}
+    rc, out = run(CHECK, "--root", tmp / "root", "--repo", "devkit",
+                  "--versions", record(tmp, held))
+unread = [n for n in devkit_images
+          if f"{n} is " not in out or "standard is 0.0.0" not in out]
+if not devkit_images or rc != 1 or unread:
+    print(f"FAIL  the checker reads every image devkit/ pins: exit {rc}, "
+          f"images {devkit_images}, unread {unread}")
+    print("      " + out.replace("\n", "\n      "))
+    failures += 1
+else:
+    print(f"  ok  the checker reads every image devkit/ pins "
+          f"({len(devkit_images)})")
 
 if failures:
     print(f"\nFAIL: {failures} case(s)")

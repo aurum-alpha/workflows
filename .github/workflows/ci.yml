@@ -139,6 +139,14 @@ jobs:
       - name: Test the dependency version windows
         run: tools/test-dependency-versions
 
+      # The devkit's own pins are inside the record's intervals. Dependabot
+      # bumps devkit/ here, and a bump past an image's max used to merge
+      # green and fail every product's ci-conformance instead (#808, #809):
+      # check-devkit-drift sent them the new pin and check-dependency-versions
+      # refused it. Checked here, the bump fails in its own pull request.
+      - name: The devkit's pins are inside dependency-versions.json
+        run: tools/check-dependency-versions --root . --repo devkit
+
   # setup-builder against a real BuildKit daemon with mTLS, which
   # tools/test-setup-builder cannot stand up: a throwaway CA, a stand-in farm,
   # and the three answers the action has to give. The job's docker CLI talks

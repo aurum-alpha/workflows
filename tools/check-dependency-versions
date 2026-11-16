@@ -28,8 +28,8 @@ It checks FIVE things, for the same reason and against the same file:
   devDependencies  one version of each converged build-time package
   dependencies     one version of each converged RUNTIME package
   runtimes         one Node, Go, PHP and Python, read from each pin file
-  images           one tag for each converged third-party image, or a
-                   {min, max} interval while one moves
+  images           a {min, max} interval for each converged third-party
+                   image, max naming its current minor, or one tag
 
 The last two reach every repository, not only those with a Node unit. Go,
 PHP and Python pin themselves in their own files, and an image is named in a

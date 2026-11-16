@@ -207,6 +207,24 @@ image_case("a revision moves into the next version", "26.8.2-0", 0, "PASS",
 image_case("an interval whose min revision is above its max is refused",
            "26.8.1-1", 1, "is above max", {"min": "26.8.1-2", "max": "26.8.1-1"})
 
+# An image's max names its current minor, so a patch or a rebuild nobody has
+# recorded yet passes, and the next minor waits for max to move.
+MINOR = {"min": "9.1.0", "max": "9.7"}
+image_case("a minor max admits a later patch", "9.7.9", 0, "PASS", MINOR)
+image_case("a minor max admits a later patch's revision", "9.7.9-2", 0,
+           "PASS", MINOR)
+image_case("a minor max refuses the next minor", "9.8.0", 1,
+           "Aurum Alpha standard is [9.1.0, 9.7]", MINOR)
+VARIANT_MINOR = {"min": "v7.15.5-alpine", "max": "v7.15-alpine"}
+image_case("a minor max admits a later patch of its variant",
+           "v7.15.9-alpine", 0, "PASS", VARIANT_MINOR)
+image_case("a minor max refuses the next minor of its variant",
+           "v7.16.0-alpine", 1,
+           "Aurum Alpha standard is [v7.15.5-alpine, v7.15-alpine]",
+           VARIANT_MINOR)
+image_case("a major max admits every release of that major", "17.14-alpine",
+           0, "PASS", {"min": "17.11-alpine", "max": "17-alpine"})
+
 # The e2e job runs each @playwright/test release in its own image. Every
 # version the record admits at either end of the interval needs a line there,
 # or the first repository to move fails in the job rather than here.

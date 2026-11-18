@@ -372,7 +372,7 @@
   "devDependencies": {
     "@playwright/test": {
       "min": "1.64.1",
-      "max": "1.64.1"
+      "max": "1.65.1"
     },
     "@tailwindcss/typography": {
       "min": "0.5.20",
@@ -461,7 +461,7 @@
     },
     "prettier": {
       "min": "3.9.10",
-      "max": "3.9"
+      "max": "3.10"
     },
     "tailwindcss": {
       "min": "4.3.3",

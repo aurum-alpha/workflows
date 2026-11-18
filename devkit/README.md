@@ -425,6 +425,23 @@ authentication event, which a backend refuses as a bearer on its `typ` and
 reads only where its Conventions say so. A map strips the `Bearer` scheme off
 the relying party's response header before the ID token is forwarded.
 
+**Each guarded location also copies the relying party's `Set-Cookie` onto the
+response.** The session lives in the cookie, and oauth2-proxy stores nothing.
+When it refreshes the session past `cookie_refresh`, the new tokens exist only
+in the `Set-Cookie` on its answer to the subrequest. nginx discards a
+subrequest's response headers unless a location names them, so each guarded
+location carries `auth_request_set $auth_cookie $upstream_http_set_cookie` and
+`add_header Set-Cookie $auth_cookie always`. Without them the browser keeps
+the old refresh token and every later request redeems it again. Keycloak
+accepts that. A provider that rotates refresh tokens, Auth0 for one, calls it
+reuse and revokes the session about five minutes after every sign-in
+(KIN-452).
+
+That pair carries one `Set-Cookie`. oauth2-proxy splits a session longer than
+4000 characters into `_0` and `_1`, and nginx joins several `Set-Cookie` lines
+into one that a browser reads as a single cookie. A product whose session
+grows past one cookie needs the server-side session store.
+
 **A named capture in an nginx regex is a variable, everywhere.** The map's
 capture is named `bare_id_token` and nothing else in the file shares the name.
 A capture called `token` silently overwrote the `$token` that

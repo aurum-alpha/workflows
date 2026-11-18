@@ -563,8 +563,9 @@ def routes_text(routes: list[dict], template: str) -> str:
     A route whose next hop is the authentication proxy runs the auth_request
     subrequest, sets the Authorization header to the access token the proxy
     returned as a bearer and X-Forwarded-Id-Token to the ID token beside it
-    (060-auth.md AU2), and sends a page with no session to the sign-in
-    redirect.
+    (060-auth.md AU2), copies the proxy's Set-Cookie onto the response so a
+    refreshed session reaches the browser, and sends a page with no session
+    to the sign-in redirect.
 
     A route handed straight to a service SETS NO Authorization HEADER AT ALL,
     so whatever the client sent arrives intact. That is the whole point: the
@@ -589,7 +590,21 @@ def routes_text(routes: list[dict], template: str) -> str:
         if guarded:
             lines += ["        auth_request     /oauth2/auth;",
                       "        auth_request_set $access_token $upstream_http_x_auth_request_access_token;",
-                      "        auth_request_set $rp_authorization $upstream_http_authorization;"]
+                      "        auth_request_set $rp_authorization $upstream_http_authorization;",
+                      # The relying party keeps the session in the cookie. When
+                      # it refreshes past cookie_refresh, the new tokens exist
+                      # only in the Set-Cookie on the subrequest's answer, and
+                      # nginx drops a subrequest's headers unless told to keep
+                      # them. Without these two lines the browser keeps the old
+                      # refresh token and every later request redeems it again;
+                      # a provider that rotates refresh tokens then revokes the
+                      # session as reuse (KIN-452). `always`, so a refresh that
+                      # rides a 4xx answer still lands. This carries one
+                      # Set-Cookie: nginx joins several into one line, so a
+                      # session past 4000 characters, which the relying party
+                      # splits into _0 and _1, would not survive.
+                      "        auth_request_set $auth_cookie $upstream_http_set_cookie;",
+                      "        add_header Set-Cookie $auth_cookie always;"]
             if entry.get("no_session", "401") == "redirect":
                 lines.append("        error_page 401 = @sign_in;")
             lines.append("")

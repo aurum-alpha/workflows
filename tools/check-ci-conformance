@@ -363,12 +363,14 @@ MAIN_GATE_RE = re.compile(
 CALLEE_NEEDS = {
     "job-image-docker": {"packages": "write"},
     "job-docker-image": {"packages": "write"},
-    "job-image-cached": {"packages": "write"},
+    # Both build through setup-builder, which sends the job's Actions ID token
+    # for the farm's client key (#779).
+    "job-image-cached": {"packages": "write", "id-token": "write"},
     # The split: build stages a digest on every run, publish promotes on main,
     # prune deletes. Only starts is read-only, which is the point of splitting —
     # the combined job took write on every pull request in the portfolio so that one
     # main-only step inside it could push.
-    "job-image-build": {"packages": "write"},
+    "job-image-build": {"packages": "write", "id-token": "write"},
     "job-image-starts": {"packages": "read"},
     "job-image-publish": {"packages": "write"},
     "job-image-prune": {"packages": "write"},

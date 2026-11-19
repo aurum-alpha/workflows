@@ -1,0 +1,851 @@
+#!/usr/bin/env python3
+"""Render the devkit into a repository's dev/ tree.
+
+devkit/ holds the configuration half of the authentication tier as templates:
+a Keycloak realm, an nginx edge, an oauth2-proxy relying party, and the compose
+services that run them. A product renders them once, commits the result under
+dev/, and keeps the result equal to this source.
+
+THE TREE IS dev/ AND NOT deploy/, because every file in it is local
+development: a dev realm, dev ports, a password every persona shares. It is
+never deployed anywhere, and a directory called deploy/ said the one thing
+that is not true of it.
+
+THIS IS THE ONLY IMPLEMENTATION OF THE SUBSTITUTION, and that is the point.
+check-devkit-drift does not carry a second copy of it; it runs this script into
+a temporary directory and compares bytes. Two renderers would drift, and the
+day they disagreed the drift checker would be the thing certifying the drift.
+
+devkit.json at the repository root is the whole input, and it is the product's
+file rather than a rendered one. It names the repository, its port block, the
+services the gateway can reach, and where each path goes. A checker handed one
+clone reproduces the render from it and nothing else. ports.json is not that
+record and must not become one: standards/016-local-development.md keeps
+per-repository gates answerable from a single clone, and a handed-over client
+repository has to keep passing after nothing here can see it.
+
+THE ROUTING TABLE IS THE WHOLE OF THE PRODUCT'S ROUTING. The template holds the
+authentication tier's own endpoints and no others, so nothing here assumes that
+/ is a client and /api/ is a server. A monolith points every upstream at one
+host; a product split into services points them at several; this file cannot
+tell the difference and does not try.
+
+Python 3 and its standard library only.
+
+Render:  tools/render-devkit --target /path/to/repo
+         (or aurum-devkit render --target ., from the installed package)
+         (reads /path/to/repo/devkit.json; cookie profile is local)
+
+         tools/render-devkit --target /path/to/repo --profile prod
+         (production cookie cfg on stdout; the product dev/ tree is not written)
+
+         tools/render-devkit --target /path/to/repo --profile prod --dest PATH
+         (same cfg at PATH, which must not be under dev/)
+
+Exit:    0 rendered, 2 could not
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import pathlib
+import re
+import sys
+
+# The script lives in devkit/bin/, in this repository and in the published
+# @aurum-alpha/devkit package alike, so the templates are its parent's
+# parent wherever it runs. tools/render-devkit is a link to it, and resolve()
+# follows the link.
+DEVKIT = pathlib.Path(__file__).resolve().parent.parent
+
+# Source under devkit/, destination under the target's dev/. The realm is
+# the one file whose name changes: the source is a template and the rendered
+# result is the import document Keycloak reads, so calling both of them
+# realm.json would leave the tree unable to say which it was looking at.
+#
+# product.example.yaml is deliberately absent. It is a worked example of the
+# three services a product defines for itself, and a product that copied it
+# verbatim would be describing someone else's stack.
+RENDERED = (
+    ("keycloak/realm-template.json", "keycloak/realm.json"),
+    ("nginx/edge.conf", "nginx/edge.conf"),
+    ("oauth2-proxy/oauth2-proxy.cfg", "oauth2-proxy/oauth2-proxy.cfg"),
+    ("compose/auth.compose.yaml", "compose/auth.compose.yaml"),
+    ("tools/dev-token", "tools/dev-token"),
+)
+
+RECORD = pathlib.Path("devkit.json")
+OUT = pathlib.Path("dev")
+
+# `auth` is the one hop name the devkit owns, because the devkit is what
+# supplies that service. Every other name belongs to the product.
+AUTH_HOP = "auth"
+LOGOUT_PROXY = "proxy"
+LOGOUT_REALM = "realm"
+LOGOUT_MODES = (LOGOUT_PROXY, LOGOUT_REALM)
+
+# Two cookie profiles, one template. Production is the default a deploy uses
+# (060 AU7 topology A). Local is the HTTP exception (016 LD9). --target
+# writes local into dev/. --profile prod emits the production cookie and
+# never writes dev/.
+COOKIE_PROFILES = ("local", "prod")
+DEFAULT_COOKIE_PROFILE = "local"
+COOKIE_PLACEHOLDER = "__COOKIE__"
+UPSTREAM_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
+UPSTREAM_ADDRESS = re.compile(r"^[A-Za-z0-9.-]+:[0-9]{1,5}$")
+
+# One DNS label, as a tenant host is <label>.localhost. Browsers resolve every
+# *.localhost name to the loopback without a hosts-file entry, which is what
+# lets a product try its tenant hostnames with nothing installed.
+TENANT_LABEL = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
+
+# The offsets 016-local-development.md LD4 fixes. They live here rather than in
+# ports.json because ports.json allocates blocks and says so: "Offsets within a
+# block are fixed by the standard, not by this file."
+OFFSETS = {
+    "__PORT_EDGE__": 0,
+    "__PORT_SERVER__": 1,
+    "__PORT_DB__": 2,
+    "__PORT_IDP__": 6,
+    "__PORT_IDP_MGMT__": 7,
+    "__PORT_MAIL_SMTP__": 10,
+    "__PORT_MAIL_UI__": 11,
+}
+
+BLOCK = 20
+
+PLACEHOLDER = re.compile(r"__[A-Z][A-Z0-9_]*__")
+
+
+def substitutions(repo: str, base: int) -> dict[str, str]:
+    values = {"__REPO__": repo}
+    for name, offset in OFFSETS.items():
+        values[name] = str(base + offset)
+    return values
+
+
+def render(text: str, values: dict[str, str]) -> str:
+    """Substitute textually, longest placeholder first.
+
+    __PORT_IDP__ is a prefix of __PORT_IDP_MGMT__, so a pass in dictionary
+    order would rewrite the first half of the second name and leave `_MGMT__`
+    dangling. Ordering by descending length makes that class of collision
+    impossible rather than remembered, which matters because the next
+    placeholder somebody adds will be a prefix of an existing one and nobody
+    will notice until a port is wrong.
+    """
+    for name in sorted(values, key=len, reverse=True):
+        text = text.replace(name, values[name])
+    return text
+
+
+def unsubstituted(text: str) -> list[str]:
+    """Placeholders the renderer does not know about.
+
+    A new __NAME__ added to a template upstream would otherwise be written into
+    a product's dev/ tree verbatim, and the first thing to notice would be
+    nginx refusing to start. Reported here instead.
+
+    The pattern requires the inside to be upper case, so a cookie-name prefix
+    such as RFC 6265bis's __Host-, should one ever appear in a template, is
+    not read as a placeholder.
+    """
+    return sorted(set(PLACEHOLDER.findall(text)))
+
+
+def read_record(target: pathlib.Path) -> dict:
+    """Read and validate the product's devkit.json.
+
+    Four required keys, and three optional. `repo` and `port_base` are what the
+    substitution needs. `upstreams` names every service the gateway can reach
+    and where it is. `routes` is the routing table: a path, the hop it goes to
+    next, and where that hop forwards to when the hop is the authentication
+    proxy. `tenant_hosts`, optional, lists the labels a product with tenant
+    hostnames serves under .localhost; each becomes a redirect target the
+    realm admits beside the apex (092 TH5), and nothing else changes.
+    `realm`, optional, holds the two realm settings a product may move:
+    `{"registration": true}` lets people self-register at the provider, for a
+    product whose users are whoever signs up, and `{"mcp_client": true}` adds
+    the public client an MCP client signs a person in with. Every other realm
+    setting is the devkit's, and the same in every product. `logout`, optional, is `proxy`
+    (the default) or `realm`: whether /logout ends only this application's
+    session, or the provider's as well.
+
+    Every problem is collected and reported at once, because a product writes
+    this by hand and a checker that stops at the first mistake sends the
+    person back once per line.
+    """
+    path = target / RECORD
+    if not path.is_file():
+        raise ValueError(
+            f"{path} not found. It is the product's own file and names the "
+            "repository, its port block, its upstreams and its routes; "
+            "devkit/README.md carries the shape."
+        )
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{path}: not valid JSON ({exc})") from None
+    if not isinstance(data, dict):
+        raise ValueError(f"{path}: the top level is not an object")
+
+    problems: list[str] = []
+    for key in data:
+        if key not in ("repo", "port_base", "upstreams", "routes", "tenant_hosts", "realm", "logout"):
+            problems.append(f"unknown key {key!r}")
+    if not isinstance(data.get("repo"), str) or not data.get("repo"):
+        problems.append("repo must be the repository name")
+    base = data.get("port_base")
+    if not isinstance(base, int):
+        problems.append("port_base must be the block base from ports.json")
+    elif base % BLOCK:
+        problems.append(f"port_base {base} is not a multiple of {BLOCK}")
+
+    realm = data.get("realm", {})
+    if not isinstance(realm, dict):
+        problems.append("realm must be an object")
+    else:
+        for key, value in realm.items():
+            if key not in REALM_SETTINGS:
+                problems.append(f"realm: unknown setting {key!r}; registration and mcp_client are the ones a product may move")
+            elif not isinstance(value, bool):
+                problems.append(f"realm.{key} must be true or false")
+
+    if "logout" in data:
+        if data["logout"] not in LOGOUT_MODES:
+            problems.append("logout must be proxy or realm")
+    else:
+        data["logout"] = LOGOUT_PROXY
+
+    hosts = data.get("tenant_hosts", [])
+    if not isinstance(hosts, list) or not all(isinstance(h, str) for h in hosts):
+        problems.append("tenant_hosts must be a list of labels, each served as "
+                        "<label>.localhost")
+        hosts = []
+    for label in hosts:
+        if not TENANT_LABEL.match(label):
+            problems.append(f"tenant_hosts: {label!r} is not a hostname label")
+    if len(set(hosts)) != len(hosts):
+        problems.append("tenant_hosts: a label is listed twice")
+
+    upstreams = data.get("upstreams")
+    if not isinstance(upstreams, dict) or not upstreams:
+        problems.append("upstreams must name at least one service")
+        upstreams = {}
+    for name, address in upstreams.items():
+        if name == AUTH_HOP:
+            problems.append(f"upstreams: {AUTH_HOP!r} is the devkit's own hop "
+                            "and cannot be redeclared")
+        elif not UPSTREAM_NAME.match(name):
+            problems.append(f"upstreams: {name!r} is not a usable nginx name")
+        if not isinstance(address, str) or not UPSTREAM_ADDRESS.match(address):
+            problems.append(f"upstreams.{name}: expected host:port")
+
+    routes = data.get("routes")
+    if not isinstance(routes, list) or not routes:
+        problems.append("routes must declare at least one path")
+        routes = []
+    seen: set[tuple[str, str]] = set()
+    used: set[str] = set()
+    for n, entry in enumerate(routes):
+        where = f"routes[{n}]"
+        if not isinstance(entry, dict):
+            problems.append(f"{where}: not an object")
+            continue
+        forms = [f for f in ("exact", "prefix") if f in entry]
+        if len(forms) != 1:
+            problems.append(f"{where}: exactly one of exact or prefix")
+            continue
+        form = forms[0]
+        value = entry[form]
+        if not isinstance(value, str) or not value.startswith("/"):
+            problems.append(f"{where}: {form} must be a path starting with /")
+        elif (form, value) in seen:
+            problems.append(f"{where}: {form} {value} is declared twice")
+        else:
+            seen.add((form, value))
+
+        hop = entry.get("next")
+        if hop == AUTH_HOP:
+            then = entry.get("then")
+            if then is None:
+                problems.append(f"{where}: next is {AUTH_HOP!r}, so then must "
+                                "name where the proxy forwards afterward")
+            elif then not in upstreams:
+                problems.append(f"{where}: then {then!r} is not an upstream")
+            else:
+                used.add(then)
+            answer = entry.get("no_session", "401")
+            if answer not in ("401", "redirect"):
+                problems.append(f"{where}: no_session must be 401 or redirect")
+        elif hop in upstreams:
+            used.add(hop)
+            if "then" in entry:
+                problems.append(f"{where}: then belongs only to a route whose "
+                                f"next is {AUTH_HOP!r}")
+            if "no_session" in entry:
+                problems.append(f"{where}: no_session belongs only to a route "
+                                f"whose next is {AUTH_HOP!r}")
+        else:
+            problems.append(f"{where}: next {hop!r} is neither {AUTH_HOP!r} "
+                            "nor an upstream")
+        for extra in entry:
+            if extra not in (form, "next", "then", "no_session"):
+                problems.append(f"{where}: unknown key {extra!r}")
+
+    for name in upstreams:
+        if name not in used and name != AUTH_HOP:
+            problems.append(f"upstreams.{name}: no route goes there. nginx "
+                            "resolves an upstream's host when it parses, so a "
+                            "service nothing reaches still has to be running.")
+
+    if problems:
+        raise ValueError(f"{path}:\n  " + "\n  ".join(problems))
+    return data
+
+
+def upstreams_text(upstreams: dict[str, str]) -> str:
+    """The nginx upstream blocks, one per service the product named."""
+    return "".join(
+        f"upstream {name} {{\n    server {address};\n}}\n\n"
+        for name, address in upstreams.items()
+    )
+
+
+def edge_hosts(record: dict) -> list[str]:
+    """Every host a browser reaches the edge on: the apex, then each tenant
+    host in the order the product listed them."""
+    return ["localhost"] + [f"{label}.localhost" for label in record.get("tenant_hosts", [])]
+
+
+def realm_hosts(text: str, record: dict) -> str:
+    """Fill the realm's three host lists from the hosts the edge answers on.
+
+    The template keeps them as one quoted token each, so the source stays
+    valid JSON for anything that reads it as JSON, and each token is replaced
+    by the comma-joined quoted values that belong in that position. The
+    relying party derives its callback from the request host, so every host
+    here is one a callback can arrive on, and only those (092 TH5).
+    """
+    port = record["port_base"] + OFFSETS["__PORT_EDGE__"]
+    origins = [f"http://{host}:{port}" for host in edge_hosts(record)]
+    values = {
+        '"__REDIRECT_URIS__"': ", ".join(json.dumps(f"{o}/oauth2/callback") for o in origins),
+        '"__WEB_ORIGINS__"': ", ".join(json.dumps(o) for o in origins),
+        # Keycloak's client attribute is one string, ## between entries.
+        '"__POST_LOGOUT_REDIRECT_URIS__"': json.dumps("##".join(f"{o}/*" for o in origins)),
+    }
+    for token, value in values.items():
+        if token not in text:
+            raise ValueError(f"keycloak/realm-template.json: {token} is missing")
+        text = text.replace(token, value)
+    return text
+
+
+# The admin service account's realm-management roles. AU4's grantAppAccess
+# looks the application client up with GET /clients?clientId=, and Keycloak
+# treats that as a query. view-clients without query-clients answers 200
+# with an empty list, so invite fails after ensureIdentity succeeded.
+ADMIN_REALM_ROLES = frozenset({
+    "manage-users",
+    "view-users",
+    "query-users",
+    "view-clients",
+    "query-clients",
+})
+
+
+# The Admin API checks a bearer's audience (Keycloak 26.8.2, CVE-2026-19688).
+# The kc-admin-api client scope adds <issuer origin>/admin/realms/<realm> to
+# the token, and a client that lists its default scopes gets it only by name.
+ADMIN_API_SCOPE = "kc-admin-api"
+
+
+def refuse_if_admin_roles_missing(text: str) -> None:
+    """Refuse a realm whose admin service account cannot reach the Admin API."""
+    try:
+        realm = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"keycloak/realm-template.json: {exc}") from exc
+    held: set[str] | None = None
+    for user in realm.get("users", []):
+        if user.get("serviceAccountClientId") == "__REPO__-admin":
+            roles = user.get("clientRoles", {}).get("realm-management", [])
+            if not isinstance(roles, list) or any(not isinstance(r, str) for r in roles):
+                raise ValueError(
+                    "keycloak/realm-template.json: the admin service account's "
+                    "realm-management roles must be a list of names"
+                )
+            held = set(roles)
+            break
+    if held is None:
+        raise ValueError(
+            "keycloak/realm-template.json: no service account for __REPO__-admin"
+        )
+    missing = sorted(ADMIN_REALM_ROLES - held)
+    if missing:
+        raise ValueError(
+            "keycloak/realm-template.json: the admin service account is missing "
+            f"realm-management role(s) {', '.join(missing)}; grantAppAccess "
+            "looks up the application client with GET /clients?clientId= and "
+            "Keycloak treats that as a query"
+        )
+    scopes: object = None
+    for client in realm.get("clients", []):
+        if client.get("clientId") == "__REPO__-admin":
+            scopes = client.get("defaultClientScopes", [])
+            break
+    if not isinstance(scopes, list) or ADMIN_API_SCOPE not in scopes:
+        raise ValueError(
+            "keycloak/realm-template.json: the __REPO__-admin client must name "
+            f"{ADMIN_API_SCOPE} in defaultClientScopes; Keycloak 26.8.2 and later "
+            "refuse an Admin API token without the audience that scope adds"
+        )
+
+
+# The realm settings a product may move, each true or false.
+REALM_SETTINGS = ("registration", "mcp_client")
+
+# Where an MCP client's sign-in may return: a loopback listener for a client
+# on the developer's machine, on any port, and the claude.ai connector's
+# callback.
+MCP_REDIRECT_URIS = [
+    "http://127.0.0.1/*",
+    "http://localhost/*",
+    "https://claude.ai/api/mcp/auth_callback",
+]
+
+
+def mcp_client() -> dict:
+    """The public client an MCP client signs a person in with.
+
+    Authorization code with PKCE and no secret, because the client runs where
+    a secret cannot be kept. It is bound to the same browser flow as the
+    application client, so the access gate refuses an identity without the
+    application's role (060 AU4), and its access token carries the
+    application's audience and type, so the product's verifier accepts it
+    unchanged.
+    """
+    return {
+        "clientId": "__REPO__-mcp",
+        "name": "__REPO__ MCP clients, authorization code with PKCE",
+        "enabled": True,
+        "protocol": "openid-connect",
+        "publicClient": True,
+        "standardFlowEnabled": True,
+        "implicitFlowEnabled": False,
+        "directAccessGrantsEnabled": False,
+        "serviceAccountsEnabled": False,
+        "frontchannelLogout": False,
+        "fullScopeAllowed": False,
+        "redirectUris": MCP_REDIRECT_URIS,
+        "webOrigins": [],
+        "attributes": {
+            "pkce.code.challenge.method": "S256",
+            "access.token.header.type.rfc9068": "true",
+        },
+        "authenticationFlowBindingOverrides": {
+            "browser": "aa0000f1-0000-4000-8000-0000000000f1",
+        },
+        "protocolMappers": [
+            {
+                "name": "audience",
+                "protocol": "openid-connect",
+                "protocolMapper": "oidc-audience-mapper",
+                "consentRequired": False,
+                "config": {
+                    "included.client.audience": "__REPO__",
+                    "id.token.claim": "false",
+                    "access.token.claim": "true",
+                    "lightweight.claim": "false",
+                    "introspection.token.claim": "true",
+                },
+            }
+        ],
+        "defaultClientScopes": ["acr", "basic", "email", "profile", "web-origins"],
+        "optionalClientScopes": [],
+    }
+
+
+def realm_settings(text: str, record: dict) -> str:
+    """Apply the realm settings a product may move.
+
+    The template has registration off, which is right for a product whose
+    users are invited (AU4). A product whose users are whoever signs up sets
+    `realm.registration` and the rendered realm has it on. A product serving
+    an MCP endpoint sets `realm.mcp_client` and the rendered realm gains
+    `<repo>-mcp` as its first client. Nothing else in the realm is a
+    product's to change, so nothing else is read.
+    """
+    settings = record.get("realm", {})
+    if settings.get("registration", False):
+        marker = '"registrationAllowed": false'
+        if marker not in text:
+            raise ValueError("realm-template.json: registrationAllowed is not where the renderer expects it")
+        text = text.replace(marker, '"registrationAllowed": true', 1)
+    if settings.get("mcp_client", False):
+        marker = '  "clients": [\n'
+        if marker not in text:
+            raise ValueError("realm-template.json: the clients list is not where the renderer expects it")
+        client = json.dumps(mcp_client(), indent=2).replace("\n", "\n    ")
+        text = text.replace(marker, marker + "    " + client + ",\n", 1)
+    return text
+
+
+def personas_text(realm_template: str) -> str:
+    """Join the realm's identities with keycloak/personas.json into one manifest.
+
+    The realm template says who each persona is at the provider: subject,
+    username, email, name, whether the identity is enabled and verified, and
+    whether it holds the access role. personas.json says what each one is in
+    the application. Neither file is the manifest on its own, and a persona
+    named in one and not the other is a refusal here rather than a seed script
+    that silently writes nothing for it.
+
+    The text carries __REPO__ where the sources do; the caller substitutes.
+    """
+    realm = json.loads(realm_template.replace("__REPO__", "REPO"))
+    meaning = json.loads((DEVKIT / "keycloak" / "personas.json").read_text(encoding="utf-8"))["personas"]
+    identities = [u for u in realm["users"] if not u.get("serviceAccountClientId")]
+    realm_names = {u["username"] for u in identities}
+    meaning_names = set(meaning)
+    if realm_names != meaning_names:
+        only_realm = sorted(realm_names - meaning_names)
+        only_meaning = sorted(meaning_names - realm_names)
+        raise ValueError(
+            "personas: realm-template.json and personas.json name different people; "
+            f"only in the realm: {only_realm}; only in personas.json: {only_meaning}"
+        )
+    out = []
+    for u in identities:
+        out.append({
+            "subject": u["id"],
+            "username": u["username"],
+            "email": u["email"].replace("REPO", "__REPO__"),
+            "name": f'{u["firstName"]} {u["lastName"]}',
+            "provider": {
+                "enabled": u.get("enabled", False),
+                "email_verified": u.get("emailVerified", False),
+                "holds_access": "access" in u.get("clientRoles", {}).get("REPO", []),
+            },
+            "application": meaning[u["username"]]["application"],
+            "exercises": meaning[u["username"]]["exercises"],
+        })
+    manifest = {
+        "$comment": (
+            "RENDERED BY tools/render-devkit FROM devkit/keycloak/realm-template.json AND "
+            "devkit/keycloak/personas.json; DO NOT EDIT. Every persona the local realm holds, "
+            "and what the application's seed writes for each. `provider` is the identity's state "
+            "at Keycloak. `application.user` is whether the application holds a row for it at all; "
+            "`application.grants` are {tenant, role_class}, tenant being a label the product maps to "
+            "its own tenant id or null for the global scope, role_class one of admin, operator, "
+            "member, which the product maps onto its own role names. Every persona shares one "
+            "password, which dev/tools/dev-token knows and devkit/README.md states; a manifest of "
+            "identities carries no credential."
+        ),
+        "personas": out,
+    }
+    return json.dumps(manifest, indent=2, ensure_ascii=False) + "\n"
+
+
+def template_locations(text: str) -> set[tuple[str, str]]:
+    """The locations edge.conf already declares, so a product cannot redeclare one.
+
+    nginx refuses a duplicate location at parse time. This renderer cannot
+    run nginx, so it refuses first, naming the path. An exact and a prefix
+    location on the same path are two locations to nginx, so the form is
+    part of the key.
+    """
+    found = re.findall(r"^\s*location\s+(=\s*)?(/\S*)\s*\{", text, re.M)
+    return {("exact" if eq else "prefix", path) for eq, path in found}
+
+
+def routes_text(routes: list[dict], template: str) -> str:
+    """The nginx locations the routing table renders to.
+
+    A route whose next hop is the authentication proxy runs the auth_request
+    subrequest, sets the Authorization header to the access token the proxy
+    returned as a bearer and X-Forwarded-Id-Token to the ID token beside it
+    (060-auth.md AU2), copies the proxy's Set-Cookie onto the response so a
+    refreshed session reaches the browser, and sends a page with no session
+    to the sign-in redirect.
+
+    A route handed straight to a service SETS NO Authorization HEADER AT ALL,
+    so whatever the client sent arrives intact. That is the whole point: the
+    service authenticates the request itself, and it cannot do that against a
+    header the gateway threw away.
+
+    Every location carries the upgrade headers, because any service may hold a
+    websocket and the map above closes the connection when no upgrade was
+    asked for.
+    """
+    taken = template_locations(template)
+    blocks = []
+    for entry in routes:
+        form = "exact" if "exact" in entry else "prefix"
+        path = entry[form]
+        if (form, path) in taken:
+            raise ValueError(f"{RECORD}: {form} {path} is already a location "
+                             "in the devkit's edge.conf")
+        guarded = entry["next"] == AUTH_HOP
+        upstream = entry["then"] if guarded else entry["next"]
+        lines = [f"    location {'= ' if form == 'exact' else ''}{path} {{"]
+        if guarded:
+            lines += ["        auth_request     /oauth2/auth;",
+                      "        auth_request_set $access_token $upstream_http_x_auth_request_access_token;",
+                      "        auth_request_set $rp_authorization $upstream_http_authorization;",
+                      # The relying party keeps the session in the cookie. When
+                      # it refreshes past cookie_refresh, the new tokens exist
+                      # only in the Set-Cookie on the subrequest's answer, and
+                      # nginx drops a subrequest's headers unless told to keep
+                      # them. Without these two lines the browser keeps the old
+                      # refresh token and every later request redeems it again;
+                      # a provider that rotates refresh tokens then revokes the
+                      # session as reuse (KIN-452). `always`, so a refresh that
+                      # rides a 4xx answer still lands. This carries one
+                      # Set-Cookie: nginx joins several into one line, so a
+                      # session past 4000 characters, which the relying party
+                      # splits into _0 and _1, would not survive.
+                      "        auth_request_set $auth_cookie $upstream_http_set_cookie;",
+                      "        add_header Set-Cookie $auth_cookie always;"]
+            if entry.get("no_session", "401") == "redirect":
+                lines.append("        error_page 401 = @sign_in;")
+            lines.append("")
+        lines += ["        proxy_http_version                 1.1;",
+                  f"        proxy_pass                         http://{upstream};",
+                  "        proxy_set_header Upgrade           $http_upgrade;",
+                  "        proxy_set_header Connection        $connection_upgrade;",
+                  # $http_host and not $host: the edge listens on a port
+                  # block, and $host drops the port, so an application that
+                  # builds a URL from its Host header points at :80.
+                  "        proxy_set_header Host              $http_host;",
+                  "        proxy_set_header X-Real-IP         $remote_addr;",
+                  "        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;",
+                  "        proxy_set_header X-Forwarded-Proto $scheme;"]
+        if guarded:
+            lines.append('        proxy_set_header Authorization     "Bearer $access_token";')
+            lines.append("        proxy_set_header X-Forwarded-Id-Token $id_token;")
+        lines.append("    }")
+        blocks.append("\n".join(lines) + "\n")
+    return "\n".join(blocks) + "\n"
+
+
+def cookie_overlay(profile: str) -> str:
+    """The cookie note, name, secret and Secure line for one profile.
+
+    cookie.local.cfg and cookie.prod.cfg are the two inputs. The rest of
+    oauth2-proxy.cfg is shared. Local keeps today's dev/ bytes: no __Host-,
+    cookie_secure false. Prod is topology A: __Host-<repo>_session, Secure.
+    """
+    if profile not in COOKIE_PROFILES:
+        raise ValueError(f"profile must be {' or '.join(COOKIE_PROFILES)}")
+    path = DEVKIT / "oauth2-proxy" / f"cookie.{profile}.cfg"
+    if not path.is_file():
+        raise FileNotFoundError(f"devkit source not found at {path}")
+    return path.read_text(encoding="utf-8").rstrip("\n")
+
+
+def apply_oauth2_proxy(text: str, record: dict, profile: str) -> str:
+    """Fill the relying-party cfg: whitelist, then the cookie profile."""
+    source = "oauth2-proxy/oauth2-proxy.cfg"
+    if "__WHITELIST_DOMAINS__" not in text:
+        raise ValueError(f"{source}: __WHITELIST_DOMAINS__ is missing")
+    if COOKIE_PLACEHOLDER not in text:
+        raise ValueError(f"{source}: {COOKIE_PLACEHOLDER} is missing")
+    text = text.replace("__WHITELIST_DOMAINS__", whitelist_domains(record))
+    return text.replace(COOKIE_PLACEHOLDER, cookie_overlay(profile))
+
+
+def render_oauth2_proxy(record: dict, profile: str) -> str:
+    """Render oauth2-proxy.cfg for one cookie profile, without writing dev/."""
+    src = DEVKIT / "oauth2-proxy" / "oauth2-proxy.cfg"
+    if not src.is_file():
+        raise FileNotFoundError(f"devkit source not found at {src}")
+    text = apply_oauth2_proxy(src.read_text(encoding="utf-8"), record, profile)
+    values = substitutions(record["repo"], record["port_base"])
+    text = render(text, values)
+    left = unsubstituted(text)
+    if left:
+        raise ValueError(f"oauth2-proxy/oauth2-proxy.cfg: unknown placeholder(s) {', '.join(left)}")
+    return text
+
+
+def whitelist_domains(record: dict) -> str:
+    """The oauth2-proxy rd allowlist.
+
+    Every mode admits the edge. realm also admits the identity provider, so
+    the end-session URL is a legal redirect after the proxy cookie dies.
+    """
+    items = ['"localhost:__PORT_EDGE__"', '".localhost:__PORT_EDGE__"']
+    if record.get("logout", LOGOUT_PROXY) == LOGOUT_REALM:
+        items.append('"localhost:__PORT_IDP__"')
+    return ", ".join(items)
+
+
+def logout_text(record: dict) -> str:
+    """The nginx logout locations, from the logout key.
+
+    proxy (the default) destroys this application's session and sends the
+    person home. realm then sends the browser to the provider's end-session
+    endpoint with id_token_hint, so the provider does not show a confirmation
+    page. `return` cannot live in the same location as that auth_request: it
+    runs in the rewrite phase, before the subrequest, so the hint would be
+    empty and the confirmation page would come back.
+    """
+    if record.get("logout", LOGOUT_PROXY) != LOGOUT_REALM:
+        return (
+            "    # Logout (AU5): destroy this application's proxy session and send the\n"
+            "    # person home. The provider session is left alone: it is shared by every\n"
+            "    # application on this identity provider, and an end-session request would\n"
+            "    # sign them out of all of them. Home must not itself require a session,\n"
+            "    # or the next hop mints a new cookie and they are back in without asking.\n"
+            "    location = /logout {\n"
+            "        return 302 /oauth2/sign_out?rd=$scheme://$http_host/;\n"
+            "    }\n"
+        )
+    rd = (
+        "http%3A%2F%2Flocalhost%3A__PORT_IDP__%2Frealms%2F__REPO__"
+        "%2Fprotocol%2Fopenid-connect%2Flogout%3Fclient_id%3D__REPO__"
+        "%26id_token_hint%3D$id_token"
+        "%26post_logout_redirect_uri%3Dhttp%3A%2F%2F$http_host%2F"
+    )
+    return (
+        "    # Logout (AU5): this product asked to end the provider session too.\n"
+        "    # The person clicks one Log out. The proxy cookie dies, then the\n"
+        "    # browser is sent to the provider's end-session endpoint with\n"
+        "    # id_token_hint, so there is no confirmation page. `return` cannot\n"
+        "    # live in this location: it runs in the rewrite phase, before\n"
+        "    # auth_request, so the hint would always be empty.\n"
+        "    location = /logout {\n"
+        "        auth_request     /oauth2/auth;\n"
+        "        auth_request_set $rp_authorization $upstream_http_authorization;\n"
+        "        error_page 401 = @already_signed_out;\n"
+        "        try_files /this-uri-does-not-exist @do_logout;\n"
+        "    }\n"
+        "    location @already_signed_out {\n"
+        "        return 302 /;\n"
+        "    }\n"
+        "    location @do_logout {\n"
+        f"        return 302 /oauth2/sign_out?rd={rd};\n"
+        "    }\n"
+    )
+
+
+def render_all(target: pathlib.Path, record: dict,
+               profile: str = DEFAULT_COOKIE_PROFILE) -> list[pathlib.Path]:
+    """Write every rendered file, and return the dev-relative paths written.
+
+    check-devkit-drift imports and calls this rather than carrying a second
+    copy of the substitution. Two renderers would drift, and the day they
+    disagreed the drift checker would be the thing certifying the drift.
+
+    The record is passed in rather than read here, because the drift checker
+    renders into a scratch tree while reading the record from the clone it is
+    judging.
+
+    profile is the cookie profile. The product dev/ tree is always the local
+    stack, so the default is local. Production is emitted by
+    render_oauth2_proxy, not here.
+    """
+    values = substitutions(record["repo"], record["port_base"])
+    upstreams = upstreams_text(record["upstreams"])
+    written = []
+    for source, destination in RENDERED:
+        src = DEVKIT / source
+        if not src.is_file():
+            raise FileNotFoundError(f"devkit source not found at {src}")
+        text = src.read_text(encoding="utf-8")
+        if source == "nginx/edge.conf":
+            for token in ("__UPSTREAMS__", "__ROUTES__", "__LOGOUT__"):
+                if token not in text:
+                    raise ValueError(f"{source}: {token} is missing")
+            text = text.replace("__UPSTREAMS__\n", upstreams)
+            text = text.replace("    __LOGOUT__\n", logout_text(record))
+            text = text.replace("    __ROUTES__\n",
+                                routes_text(record["routes"], text))
+        if source == "oauth2-proxy/oauth2-proxy.cfg":
+            text = apply_oauth2_proxy(text, record, profile)
+        if source == "keycloak/realm-template.json":
+            refuse_if_admin_roles_missing(text)
+            text = realm_hosts(text, record)
+            text = realm_settings(text, record)
+            manifest = render(personas_text(text), values)
+            manifest_path = OUT / "personas.json"
+            (target / manifest_path).parent.mkdir(parents=True, exist_ok=True)
+            (target / manifest_path).write_text(manifest, encoding="utf-8")
+            written.append(manifest_path)
+        text = render(text, values)
+        left = unsubstituted(text)
+        if left:
+            raise ValueError(f"{source}: unknown placeholder(s) {', '.join(left)}")
+        relative = OUT / destination
+        out = target / relative
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(text, encoding="utf-8")
+        # A source that is a command stays one when rendered. The drift
+        # checker compares bytes and not modes, so this is for the person
+        # who runs dev/tools/dev-token rather than for the gate.
+        out.chmod(src.stat().st_mode & 0o777)
+        written.append(relative)
+    return written
+
+
+def dest_is_under_dev(path: pathlib.Path, target: pathlib.Path) -> bool:
+    """True when PATH is inside the product dev/ tree.
+
+    --profile prod must not write there. That tree is the local stack, and
+    check-devkit-drift would then expect production cookies in it.
+    """
+    dest_dir = (target / OUT).resolve()
+    try:
+        path.resolve().relative_to(dest_dir)
+    except ValueError:
+        return False
+    return True
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--target", required=True, type=pathlib.Path,
+                    help="the repository to render into, which carries devkit.json")
+    ap.add_argument("--profile", choices=COOKIE_PROFILES,
+                    default=DEFAULT_COOKIE_PROFILE,
+                    help="cookie profile: local writes the dev/ tree; prod writes the relying-party cfg only")
+    ap.add_argument("--dest", type=pathlib.Path,
+                    help="with --profile prod, write the cfg here; default is stdout")
+    args = ap.parse_args()
+
+    try:
+        record = read_record(args.target)
+        if args.profile == "prod":
+            if args.dest is not None and dest_is_under_dev(args.dest, args.target):
+                raise ValueError(
+                    "--dest must not be under the product dev/ tree: that "
+                    "tree is the local stack and is never deployed"
+                )
+            text = render_oauth2_proxy(record, "prod")
+        else:
+            if args.dest is not None:
+                raise ValueError("--dest belongs to --profile prod")
+            written = render_all(args.target, record, profile="local")
+    except (ValueError, FileNotFoundError) as exc:
+        print(exc, file=sys.stderr)
+        return 2
+
+    if args.profile == "prod":
+        if args.dest is None:
+            sys.stdout.write(text)
+        else:
+            args.dest.parent.mkdir(parents=True, exist_ok=True)
+            args.dest.write_text(text, encoding="utf-8")
+            print(f"rendered {args.dest} (profile prod)")
+        return 0
+
+    for relative in written:
+        print(f"rendered {relative}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -346,6 +346,10 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # setup-builder mints the job's Actions ID token to ask the runner
+      # controller for the farm's client key (#779). A called workflow
+      # holds no more than its caller grants.
+      id-token: write
     uses: ./.github/workflows/job-image-build.yml
     with:
       image_name: workflows-canary

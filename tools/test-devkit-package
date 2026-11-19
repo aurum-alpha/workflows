@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+"""The @aurum-alpha/devkit package renders what tools/render-devkit renders.
+
+#819 ships devkit/ as a package whose aurum-devkit command runs the same
+Python renderer. Two facts keep the two honest, and this proves both:
+
+  1. Every directory under devkit/ is in the manifest's `files`, so a
+     template added later is not silently left out of the tarball.
+  2. `aurum-devkit render`, run through node from devkit/bin/, writes the
+     same dev/ tree, byte for byte, as tools/render-devkit, and defaults
+     --target to the working directory.
+
+Python 3, its standard library and node. Exit 0 on a pass, 1 on a failure.
+"""
+
+from __future__ import annotations
+
+import filecmp
+import json
+import pathlib
+import shutil
+import subprocess
+import sys
+import tempfile
+
+TOOLS = pathlib.Path(__file__).resolve().parent
+REPO = TOOLS.parent
+DEVKIT = REPO / "devkit"
+
+RECORD = {
+    "repo": "product",
+    "port_base": 9700,
+    "upstreams": {"app": "server:5000"},
+    "routes": [{"prefix": "/", "next": "auth", "then": "app"}],
+}
+
+
+def product(root: pathlib.Path) -> pathlib.Path:
+    root.mkdir(parents=True)
+    (root / "devkit.json").write_text(json.dumps(RECORD, indent=2) + "\n", encoding="utf-8")
+    return root
+
+
+def tree(root: pathlib.Path) -> list[str]:
+    return sorted(str(p.relative_to(root)) for p in root.rglob("*") if p.is_file())
+
+
+def main() -> int:
+    failures = []
+
+    manifest = json.loads((DEVKIT / "package.json").read_text(encoding="utf-8"))
+    shipped = {f.rstrip("/") for f in manifest["files"]}
+    for d in sorted(p.name for p in DEVKIT.iterdir() if p.is_dir()):
+        if d not in shipped:
+            failures.append(f"devkit/{d}/ is not in package.json `files`; the package would leave it out")
+    for f in manifest["bin"].values():
+        if not (DEVKIT / f).is_file():
+            failures.append(f"bin names {f}, which devkit/ does not hold")
+    print(f"  {'ok' if not failures else 'FAIL'}  the manifest ships every devkit directory")
+
+    if shutil.which("node") is None:
+        failures.append("node is not on PATH; the package's command cannot be proved")
+    else:
+        with tempfile.TemporaryDirectory() as tmp:
+            by_tool = product(pathlib.Path(tmp) / "by-tool")
+            by_package = product(pathlib.Path(tmp) / "by-package")
+            subprocess.run([str(TOOLS / "render-devkit"), "--target", str(by_tool)],
+                           check=True, capture_output=True)
+            run = subprocess.run(["node", str(DEVKIT / "bin" / "aurum-devkit.mjs"), "render"],
+                                 cwd=by_package, capture_output=True, text=True)
+            if run.returncode != 0:
+                failures.append(f"aurum-devkit render exited {run.returncode}: {run.stderr.strip()}")
+            else:
+                a, b = by_tool / "dev", by_package / "dev"
+                if tree(a) != tree(b):
+                    failures.append("aurum-devkit render wrote a different set of files from tools/render-devkit")
+                else:
+                    _, mismatch, errors = filecmp.cmpfiles(a, b, tree(a), shallow=False)
+                    for name in mismatch + errors:
+                        failures.append(f"dev/{name} differs between the package and tools/render-devkit")
+            print(f"  {'ok' if not failures else 'FAIL'}  aurum-devkit render writes what tools/render-devkit writes")
+
+            bad = subprocess.run(["node", str(DEVKIT / "bin" / "aurum-devkit.mjs"), "draw"],
+                                 capture_output=True, text=True)
+            if bad.returncode != 2:
+                failures.append(f"an unknown command exited {bad.returncode}, want 2")
+            print(f"  {'ok' if bad.returncode == 2 else 'FAIL'}  an unknown command is refused")
+
+    for f in failures:
+        print(f"FAIL: {f}")
+    print("PASS" if not failures else "")
+    return 1 if failures else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

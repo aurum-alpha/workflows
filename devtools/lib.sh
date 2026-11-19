@@ -22,3 +22,15 @@ dx_compose() {
   # shellcheck disable=SC2086
   docker compose $profiles "$@"
 }
+
+# The devkit renders dev/ when this product installs it as a package (#819):
+# @aurum-alpha/devkit, a devDependency in the package.json at the root or in
+# one directory below it. A product that still commits dev/ installs none,
+# and nothing here touches its tree.
+dx_render_devkit() {
+  for bin in "$DX_ROOT/node_modules/.bin/aurum-devkit" "$DX_ROOT"/*/node_modules/.bin/aurum-devkit; do
+    [ -x "$bin" ] || continue
+    "$bin" render --target "$DX_ROOT"
+    return
+  done
+}

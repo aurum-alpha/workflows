@@ -40,9 +40,9 @@
     "package, since a 0.x minor may break. oxlint, oxlint-tsgolint and prettier",
     "end at a named minor, because the shared .oxlintrc.json and",
     ".prettierrc.yaml decide their output: raising `max` to the next minor is the",
-    "change that admits it. @playwright/test is exact, min equal to max, because",
-    "job-test-e2e-playwright runs each version in its own pinned image. Moving it",
-    "is setting `max` to the next version once the job carries that image.",
+    "change that admits it. @playwright/test ends at a named minor too: a new",
+    "minor can change how a suite runs. job-test-e2e-playwright pulls the image",
+    "for whatever patch a repository declares, so a patch needs no change here.",
     "",
     "tools/raise-dependency-floors raises `min` once every repository is past it,",
     "so no repository trails. `same_as` names a package a unit must declare at",
@@ -365,14 +365,14 @@
     "Node 26.",
     "",
     "@playwright/test is asserted where present for job-test-e2e-playwright.",
-    "The job runs the suite inside the Playwright Docker image at the same",
-    "version, pinned by digest in the workflow. Bump the package here and the",
-    "image pin in the job together."
+    "The job runs the suite inside the Playwright Docker image for the version",
+    "the repository declares, pulled by the digest mcr.microsoft.com gives its",
+    "tag when the job starts."
   ],
   "devDependencies": {
     "@playwright/test": {
       "min": "1.64.1",
-      "max": "1.65.1"
+      "max": "1.65"
     },
     "@tailwindcss/typography": {
       "min": "0.5.20",

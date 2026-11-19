@@ -30,6 +30,15 @@ products keep a broken edge configuration, passing, until somebody remembered
 to bump each of them one at a time -- which is the drift this exists to catch,
 wearing the costume of a version pin.
 
+AN IMAGE TAG MAY MOVE INSIDE ITS RECORDED INTERVAL (#818). Dependabot bumps
+the devkit's images inside their minor in this repository. Holding every
+product to those bytes would redden all of them for a change none of them
+decides. So a line whose only difference is the tag of an image
+dependency-versions.json records passes when the product's tag is inside that
+interval, read by check-dependency-versions' own image_admits. A tag outside
+it, another image or any other byte still fails, and a product picks up the
+newer tag on its next real render.
+
 A repository with no devkit.json has not adopted the devkit and passes.
 That is the same rule check-lint-configs applies to a repository with no
 .oxlintrc.json, and for the same reason: a checker that only runs when someone
@@ -73,8 +82,48 @@ def renderer(catalog: pathlib.Path):
     return module
 
 
+def versions_checker(catalog: pathlib.Path):
+    """Import tools/check-dependency-versions for its image rules, so a tag
+    is admitted here exactly as it is admitted there."""
+    path = catalog / "tools" / "check-dependency-versions"
+    loader = SourceFileLoader("aurum_check_dependency_versions", str(path))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+class ImageTags:
+    """Masks the tag of a recorded image on a line, where the tag is inside
+    its interval, so two renders that differ only there compare equal."""
+
+    def __init__(self, versions, images: dict):
+        self.versions = versions
+        self.rules = [(versions.image_pattern(name), spec)
+                      for name, spec in images.items()]
+
+    def mask(self, line: str) -> str:
+        for pattern, spec in self.rules:
+            m = pattern.search(line)
+            if m and self.versions.image_admits(spec, m.group(1)):
+                line = line[:m.start(1)] + "<tag>" + line[m.end(1):]
+        return line
+
+    def same(self, want: bytes, got: bytes) -> bool:
+        try:
+            w = want.decode().splitlines()
+            g = got.decode().splitlines()
+        except UnicodeDecodeError:
+            return False
+        if len(w) != len(g):
+            return False
+        return all(a == b or self.mask(a) == self.mask(b)
+                   for a, b in zip(w, g))
+
+
 def check_repo(render, repo_root: pathlib.Path, label: str,
-               verbose: bool) -> tuple[int, int]:
+               verbose: bool, tags: "ImageTags | None" = None
+               ) -> tuple[int, int]:
     """Return (files compared, files that differ)."""
     record = repo_root / RECORD
     if not record.is_file():
@@ -104,9 +153,14 @@ def check_repo(render, repo_root: pathlib.Path, label: str,
                 differ += 1
                 continue
             compared += 1
-            if got_path.read_bytes() == want:
+            got = got_path.read_bytes()
+            if got == want:
                 if verbose:
                     print(f"{label}: identical ({relative})")
+            elif tags is not None and tags.same(want, got):
+                if verbose:
+                    print(f"{label}: identical but for image tags inside "
+                          f"their recorded interval ({relative})")
             else:
                 differ += 1
                 print(f"{label}: DIFFERS from devkit/ ({relative})")
@@ -129,13 +183,19 @@ def main() -> int:
         print(f"devkit not found at {catalog / 'devkit'}", file=sys.stderr)
         return 2
     render = renderer(catalog)
+    versions = versions_checker(catalog)
+    record = catalog / "dependency-versions.json"
+    images = json.loads(record.read_text()).get("images", {}) \
+        if record.is_file() else {}
+    tags = ImageTags(versions, images)
 
     repos = args.repo or sorted(p.name for p in args.root.iterdir() if p.is_dir())
 
     compared = 0
     differ = 0
     for repo in repos:
-        c, d = check_repo(render, args.root / repo, repo, verbose=bool(args.repo))
+        c, d = check_repo(render, args.root / repo, repo,
+                          verbose=bool(args.repo), tags=tags)
         compared += c
         differ += d
 

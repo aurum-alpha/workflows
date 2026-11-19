@@ -158,6 +158,28 @@ jobs:
           path: ${{ env.STORE_PATH }}
           key: ${{ steps.pnpm-store.outputs.cache-primary-key }}
 
+      # A product that installs @aurum-alpha/devkit commits no dev/ (#819):
+      # the stack's auth tier is rendered here, from the package version its
+      # lockfile pins, before compose reads it. A product that still commits
+      # dev/ installs no package, and its tree is used as it stands.
+      - name: Render the devkit from the installed package
+        env:
+          WD: ${{ inputs.workdir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bin="$WD/node_modules/.bin/aurum-devkit"
+          if [ -x "$bin" ]; then
+            "$bin" render --target "$GITHUB_WORKSPACE"
+          elif [ -f devkit.json ] && [ ! -d dev ]; then
+            echo "::error::devkit.json is here and dev/ is not, and $WD installs" \
+                 "no @aurum-alpha/devkit to render it. Add the package as a" \
+                 "devDependency in $WD/package.json (#819)."
+            exit 1
+          else
+            echo "No @aurum-alpha/devkit installed in $WD; using the committed dev/."
+          fi
+
       - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io

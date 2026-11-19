@@ -10,12 +10,15 @@
 # The digest is the handoff from job-image-build — the same sentence
 # job-image-starts and job-image-publish already speak.
 #
-# Browsers come from the Playwright Docker image, pinned by digest with the
-# version in band (085 SB1). That image is chosen over installing browsers on
-# the runner because (1) the browser binaries and system libraries are the
-# ones Microsoft ships for that exact @playwright/test release, (2) the pin
-# is one line per release beside the package, and (3) self-hosted runners stay free
-# of --with-deps root installs that differ between hosts. The suite still runs
+# Browsers come from the Playwright Docker image for the exact
+# @playwright/test release the caller's package.json declares. The job reads
+# the tag's digest from mcr.microsoft.com when it starts and pulls by that
+# digest, so the version is in band and the run uses one set of bytes
+# throughout (085 SB1). That image is chosen over installing browsers on the
+# runner because (1) the browser binaries and system libraries are the ones
+# Microsoft ships for that exact release, (2) a new release needs no change
+# here, and (3) self-hosted runners stay free of --with-deps root installs
+# that differ between hosts. The suite still runs
 # as `pnpm test:e2e`, the canonical command (015-commands.md DC2), inside that
 # container on the host network so it reaches the edge at offset zero (LD4).
 # pnpm is prepared in-container via corepack from package.json's packageManager
@@ -82,18 +85,6 @@ jobs:
       # Read staged digests from ghcr, and private @aurum-alpha packages at
       # install. The job-level block replaces the caller's token grant.
       packages: read
-    env:
-      # One image per @playwright/test release dependency-versions.json
-      # admits, as `version image`. A repository runs the image for the
-      # version its own package.json declares, so moving @playwright/test is
-      # adding the next release's line here and raising `max` there; the old
-      # line leaves once `min` passes it. Digest is the pin; the tag is the
-      # version in band (085 SB1). tools/test-dependency-versions fails a
-      # version the record admits that has no line here.
-      PLAYWRIGHT_IMAGES: |
-        1.64.1 mcr.microsoft.com/playwright:v1.64.1-jammy@sha256:7e9f074b4b69f7c746865936ac7840733cf5dfc957f265a547f331e7b83922d7
-        1.65.0 mcr.microsoft.com/playwright:v1.65.0-jammy@sha256:3abe8253579c7df4f9c4bc1fca6a5ef365120f8e4de818a02a034a54a46564cf
-        1.65.1 mcr.microsoft.com/playwright:v1.65.1-jammy@sha256:b0ee5ce5e14ac42c394c0564a0a30adbda052153c611561bb2d31263593d6dd8
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -166,6 +157,28 @@ jobs:
         with:
           path: ${{ env.STORE_PATH }}
           key: ${{ steps.pnpm-store.outputs.cache-primary-key }}
+
+      # A product that installs @aurum-alpha/devkit commits no dev/ (#819):
+      # the stack's auth tier is rendered here, from the package version its
+      # lockfile pins, before compose reads it. A product that still commits
+      # dev/ installs no package, and its tree is used as it stands.
+      - name: Render the devkit from the installed package
+        env:
+          WD: ${{ inputs.workdir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bin="$WD/node_modules/.bin/aurum-devkit"
+          if [ -x "$bin" ]; then
+            "$bin" render --target "$GITHUB_WORKSPACE"
+          elif [ -f devkit.json ] && [ ! -d dev ]; then
+            echo "::error::devkit.json is here and dev/ is not, and $WD installs" \
+                 "no @aurum-alpha/devkit to render it. Add the package as a" \
+                 "devDependency in $WD/package.json (#819)."
+            exit 1
+          else
+            echo "No @aurum-alpha/devkit installed in $WD; using the committed dev/."
+          fi
 
       - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
@@ -277,13 +290,23 @@ jobs:
         run: |
           set -euo pipefail
           version="$(node -p "require('./${WD}/package.json').devDependencies?.['@playwright/test'] ?? ''")"
-          pinned="$(awk -v v="$version" '$1 == v { print $2 }' <<< "$PLAYWRIGHT_IMAGES")"
-          if [ -z "$pinned" ]; then
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "::error::${WD}/package.json declares @playwright/test" \
-                 "'${version}', and this job carries no image for it." \
-                 "It runs: $(awk '{ print $1 }' <<< "$PLAYWRIGHT_IMAGES" | xargs)."
+                 "'${version}'; this job needs an exact version to pick its image."
             exit 1
           fi
+          tag="mcr.microsoft.com/playwright:v${version}-jammy"
+          digest="$(curl -fsSI \
+            -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json' \
+            "https://mcr.microsoft.com/v2/playwright/manifests/v${version}-jammy" \
+            | tr -d '\r' | awk -F': ' 'tolower($1) == "docker-content-digest" { print $2 }')" || true
+          if [[ "$digest" != sha256:* ]]; then
+            echo "::error::mcr.microsoft.com has no image ${tag} for" \
+                 "@playwright/test ${version}, or did not answer."
+            exit 1
+          fi
+          pinned="${tag}@${digest}"
+          echo "::notice::@playwright/test ${version} runs in ${pinned}"
           if [ -n "${GHR_REGISTRY_CACHE:-}" ] && [[ "$GHR_REGISTRY_CACHE" != *://* ]]; then
             cached="${GHR_REGISTRY_CACHE%/}/${pinned#mcr.microsoft.com/}"
             if docker pull -q "$cached"; then

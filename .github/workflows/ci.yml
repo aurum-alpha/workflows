@@ -139,6 +139,12 @@ jobs:
       - name: Test the dependency version windows
         run: tools/test-dependency-versions
 
+      # check-devkit-drift runs in every product's ci-conformance, and its
+      # one allowance, an image tag inside its recorded interval (#818), has
+      # no caller here that exercises a differing render.
+      - name: Test the devkit drift allowance
+        run: tools/test-devkit-drift
+
       # The devkit's own pins are inside the record's intervals. Dependabot
       # bumps devkit/ here, and a bump past an image's max used to merge
       # green and fail every product's ci-conformance instead (#808, #809):
@@ -146,6 +152,12 @@ jobs:
       # refused it. Checked here, the bump fails in its own pull request.
       - name: The devkit's pins are inside dependency-versions.json
         run: tools/check-dependency-versions --root . --repo devkit
+
+      # devkit/ is also the @aurum-alpha/devkit package (#819). Its command
+      # runs the same renderer, and a template directory left out of the
+      # manifest's files would ship a package that renders less.
+      - name: Test the devkit package
+        run: tools/test-devkit-package
 
   # setup-builder against a real BuildKit daemon with mTLS, which
   # tools/test-setup-builder cannot stand up: a throwaway CA, a stand-in farm,
@@ -482,16 +494,34 @@ jobs:
               fh.write(f"version_changed={'true' if changed else 'false'}\n")
           print(f"version={version} release={changed} stamp={stamp}")
 
+  # devkit/ published as @aurum-alpha/devkit (#819), at the catalog's own
+  # version: packed and proved on every run, published only by the commit
+  # that moves .version. The package comes before the tag, as in the
+  # platform packages: GitHub Packages refuses a version twice, a tag can be
+  # cut again.
+  publish-npm:
+    needs: [conformance, version-read]
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/job-publish-npm-ghp.yml
+    with:
+      version: ${{ needs.version-read.outputs.version }}
+      version_changed: ${{ needs.version-read.outputs.version_changed }}
+      workdir: devkit
+      packages: devkit
+
   version-release:
     # In the rollup, not below it. Needing ci-ok would be a cycle, and a
     # failure after ci-ok had already gone green would block nothing.
     # version-gate is pull-request-only, so on a push it is skipped and that
     # skip is success here. The tag step inside the job still waits for the
     # default branch. ci-ok counts a failure of this job only on that push.
-    needs: [lint, conformance, contract-conformance, secret-scan, version-gate, version-read]
+    needs: [lint, conformance, contract-conformance, secret-scan, version-gate, version-read, publish-npm]
     if: >-
       always()
       && needs.version-read.result == 'success'
+      && needs.publish-npm.result == 'success'
       && needs.lint.result == 'success'
       && needs.conformance.result == 'success'
       && needs.contract-conformance.result == 'success'
@@ -513,7 +543,7 @@ jobs:
     # version_changed, and the release that did not happen would be reported
     # as fine (rule D6). version-release is in here so a failed tag on the
     # default branch turns this check red. A pull request does not count it.
-    needs: [lint, conformance, setup-builder-farm, workflows-canary, workflows-canary-starts, contract-conformance, secret-scan, version-gate, version-read, version-release]
+    needs: [lint, conformance, setup-builder-farm, workflows-canary, workflows-canary-starts, contract-conformance, secret-scan, version-gate, version-read, publish-npm, version-release]
     if: always()
     runs-on: ${{ vars.RUNNER || 'ubuntu-26.04' }}
     steps:

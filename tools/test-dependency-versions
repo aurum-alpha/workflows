@@ -227,23 +227,7 @@ image_case("a minor max refuses the next minor of its variant",
 image_case("a major max admits every release of that major", "17.14-alpine",
            0, "PASS", {"min": "17.11-alpine", "max": "17-alpine"})
 
-# The e2e job runs each @playwright/test release in its own image. Every
-# version the record admits at either end of the interval needs a line there,
-# or the first repository to move fails in the job rather than here.
 REPO = TOOLS.parent
-job = (REPO / ".github/workflows/job-test-e2e-playwright.yml").read_text()
-table = job.split("PLAYWRIGHT_IMAGES: |", 1)[1].split("\n    steps:", 1)[0]
-images = {line.split()[0] for line in table.strip().splitlines()}
-spec = json.loads((REPO / "dependency-versions.json").read_text()
-                  )["devDependencies"]["@playwright/test"]
-missing = sorted({spec["min"], spec["max"]} - images)
-if missing:
-    print(f"FAIL  job-test-e2e-playwright carries an image for every "
-          f"@playwright/test version the record names: missing {missing}")
-    failures += 1
-else:
-    print("  ok  job-test-e2e-playwright carries an image for every "
-          "@playwright/test version the record names")
 
 # The catalog's CI checks devkit/ against this record, so a Dependabot bump
 # of a devkit image past its max fails in its own pull request rather than

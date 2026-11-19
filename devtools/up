@@ -11,6 +11,7 @@ DX_LIB_SOURCE=1
 cd "$DX_ROOT"
 "$DX_ROOT/tools/.dx/host"
 dx_need_docker
+dx_render_devkit
 if [ "${DX_COMPOSE_BAKE:-}" = 0 ]; then
   export COMPOSE_BAKE=false
 fi

@@ -139,6 +139,12 @@ jobs:
       - name: Test the dependency version windows
         run: tools/test-dependency-versions
 
+      # check-devkit-drift runs in every product's ci-conformance, and its
+      # one allowance, an image tag inside its recorded interval (#818), has
+      # no caller here that exercises a differing render.
+      - name: Test the devkit drift allowance
+        run: tools/test-devkit-drift
+
       # The devkit's own pins are inside the record's intervals. Dependabot
       # bumps devkit/ here, and a bump past an image's max used to merge
       # green and fail every product's ci-conformance instead (#808, #809):

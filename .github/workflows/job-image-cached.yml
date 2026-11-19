@@ -50,6 +50,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # setup-builder's ID token for the farm's client key, as job-image-build.
+      id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

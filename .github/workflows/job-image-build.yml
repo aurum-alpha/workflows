@@ -229,6 +229,10 @@ jobs:
       # read-only by default but an explicit permissions block raises it, which
       # is this block.
       packages: write
+      # setup-builder mints the job's Actions ID token and sends it for the
+      # farm's client key (#779). A job-level block replaces the caller's
+      # grant, so a scope left out here is none however the caller set it.
+      id-token: write
     outputs:
       image: ${{ steps.name.outputs.image }}
       slug: ${{ steps.name.outputs.slug }}

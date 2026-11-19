@@ -52,6 +52,24 @@ tools/render-devkit --target ../credit-watch --profile prod --dest /tmp/oauth2-p
 emits the production cookie. It writes to stdout, or to `--dest`. `--dest`
 must not be under `dev/`.
 
+### The package
+
+This directory is also `@aurum-alpha/devkit` on GitHub Packages (#819). It
+publishes at this repository's version, from the commit that moves
+`.version`. A product that installs it as an exact devDependency renders with
+its command instead of a checkout of this repository:
+
+```sh
+pnpm exec aurum-devkit render
+pnpm exec aurum-devkit render --profile prod --dest /tmp/oauth2-proxy.cfg
+```
+
+`--target` defaults to the working directory. The command runs
+`bin/render-devkit`, the same Python script `tools/render-devkit` links to, so
+the two render the same bytes. `tools/test-devkit-package` holds them to
+that. `./dx up` renders from the installed package before it starts the
+stack, when the product has one.
+
 ### The routing table is the whole of the product's routing
 
 `edge.conf` holds the authentication tier's own endpoints and no others. There

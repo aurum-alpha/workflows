@@ -1,0 +1,29 @@
+{
+  "name": "@aurum-alpha/devkit",
+  "version": "0.0.0",
+  "description": "The local authentication tier every Aurum Alpha product runs: a Keycloak realm, an nginx edge, an oauth2-proxy relying party, and the compose services that run them, rendered from a product's devkit.json.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "packageManager": "pnpm@10.34.6",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aurum-alpha/workflows.git",
+    "directory": "devkit"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
+  },
+  "bin": {
+    "aurum-devkit": "./bin/aurum-devkit.mjs"
+  },
+  "files": [
+    "bin/",
+    "compose/",
+    "keycloak/",
+    "nginx/",
+    "oauth2-proxy/",
+    "tools/",
+    "README.md"
+  ]
+}

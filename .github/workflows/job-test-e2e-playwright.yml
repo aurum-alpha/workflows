@@ -23,6 +23,7 @@
 # container on the host network so it reaches the edge at offset zero (LD4).
 # pnpm is prepared in-container via corepack from package.json's packageManager
 # — the host shim is not mounted (it resolves into PNPM_HOME and exits 127).
+# The image may lack corepack (Node 25+ dropped it), so the step installs it.
 name: job-test-e2e-playwright
 
 on:
@@ -331,7 +332,8 @@ jobs:
           # host's `pnpm` from PATH: on runners that also expose a global shim,
           # that wrapper resolves into PNPM_HOME under /usr/local/global and
           # exits 127 inside the container. Prepare package.json's
-          # packageManager with corepack in the image instead.
+          # packageManager with corepack in the image instead, installing
+          # corepack first when the image's Node does not bundle it.
           # Host network: the edge listens on the runner's loopback at offset
           # zero. HOME=/tmp so a non-root uid can write.
           docker run --rm --init --network host \
@@ -348,8 +350,13 @@ jobs:
             "$PLAYWRIGHT_IMAGE" \
             bash -lc 'set -euo pipefail
               mkdir -p "$HOME/.local/bin" "$COREPACK_HOME"
-              corepack enable --install-directory "$HOME/.local/bin"
               export PATH="$HOME/.local/bin:$PATH"
+              # Node 25 and later do not bundle corepack, and the Playwright
+              # images moved to Node 26. Install it when the image lacks it.
+              if ! command -v corepack >/dev/null; then
+                npm install --global --prefix "$HOME/.local" --silent corepack@0.34.0
+              fi
+              corepack enable --install-directory "$HOME/.local/bin"
               corepack prepare --activate
               pnpm test:e2e'
 

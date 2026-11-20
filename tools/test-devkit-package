@@ -80,6 +80,21 @@ def main() -> int:
                         failures.append(f"dev/{name} differs between the package and tools/render-devkit")
             print(f"  {'ok' if not failures else 'FAIL'}  aurum-devkit render writes what tools/render-devkit writes")
 
+            # npm packs every file but bin as 0644, so the package's
+            # dev-token arrives without its exec bit; the render must
+            # make it a command anyway.
+            packed = pathlib.Path(tmp) / "packed"
+            shutil.copytree(DEVKIT, packed / "devkit", symlinks=True)
+            (packed / "devkit" / "tools" / "dev-token").chmod(0o644)
+            by_packed = product(pathlib.Path(tmp) / "by-packed")
+            subprocess.run(["python3", str(packed / "devkit" / "bin" / "render-devkit"),
+                            "--target", str(by_packed)], check=True, capture_output=True)
+            token = by_packed / "dev" / "tools" / "dev-token"
+            ok = token.stat().st_mode & 0o111 == 0o111
+            if not ok:
+                failures.append(f"dev/tools/dev-token rendered from a 0644 source is mode {oct(token.stat().st_mode & 0o777)}, not executable")
+            print(f"  {'ok' if ok else 'FAIL'}  dev/tools/dev-token is executable when the package packed it 0644")
+
             bad = subprocess.run(["node", str(DEVKIT / "bin" / "aurum-devkit.mjs"), "draw"],
                                  capture_output=True, text=True)
             if bad.returncode != 2:

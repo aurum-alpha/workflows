@@ -346,6 +346,32 @@ what a job can contain. Read [`standards/010-ci.md`](standards/010-ci.md)
 before changing anything under `.github/`. In a handed-over repository, read
 the vendored copy.
 
+### 9. Acceptance criteria and the definition of done are checked off on the issue
+
+A tracked issue carries two lists. The acceptance criteria are that story's
+own: what this change must do. The definition of done is general and applies
+to every story.
+
+**The agent working the issue checks off both, on the issue, as it goes.**
+
+The ticked boxes are the proof the story is done, and the reviewer reads them.
+
+- The acceptance criteria become a checklist when the story starts. The
+  agent rewrites them in the issue description before it writes code, one
+  checkbox per criterion. The rewrite changes the form and nothing else: no
+  criterion is dropped, merged, added or reworded.
+- An item is ticked when it is verified, and not before. The test ran, the
+  command passed, the behaviour was seen running. An item is never ticked from
+  the diff alone, and the list is never ticked in one pass at the end.
+- An item that fails is fixed, then ticked. It is not ticked, removed, or
+  reworded to fit what was built.
+- An item only a human can check stays unticked. The agent names each one in
+  a comment on the issue, with the reason it could not check it. The reviewer
+  does those in review.
+
+Every item on both lists is ticked or named in that comment before the issue
+moves to review. The handoff of rule 5 waits for the same.
+
 ## Enforcement
 
 `tools/check-agent-docs` is the gate, running from `job-ci-conformance.yml`

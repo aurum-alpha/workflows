@@ -82,6 +82,40 @@ case("any other changed byte still fails",
      1, "DIFFERS")
 case("an unchanged render passes", lambda s: s, 0, "PASS")
 
+
+
+def installs(repo: pathlib.Path) -> None:
+    (repo / "client").mkdir()
+    (repo / "client" / "package.json").write_text(json.dumps(
+        {"devDependencies": {"@aurum-alpha/devkit": "2.7.0"}}))
+
+
+def package_case(name: str, commit_dev: bool, want_rc: int, want_text: str) -> None:
+    """A product that installs the package (#819), with dev/ committed or not."""
+    global failures
+    with tempfile.TemporaryDirectory() as t:
+        tmp = pathlib.Path(t)
+        repo = product(tmp)
+        installs(repo)
+        git = ["git", "-C", str(repo), "-c", "user.email=t@example.com", "-c", "user.name=t"]
+        subprocess.run(git + ["init", "-q"], check=True)
+        if commit_dev:
+            subprocess.run(git + ["add", "dev"], check=True)
+            subprocess.run(git + ["commit", "-qm", "dev"], check=True)
+        rc, out = check(tmp)
+    if rc != want_rc or want_text not in out:
+        print(f"FAIL  {name}: exit {rc}, wanted {want_rc} and {want_text!r}")
+        print("      " + out.replace("\n", "\n      "))
+        failures += 1
+    else:
+        print(f"  ok  {name}")
+
+
+package_case("a product that installs the package and commits no dev/ passes",
+             False, 0, "renders dev/ from @aurum-alpha/devkit (client/package.json)")
+package_case("a product that installs the package and commits dev/ fails",
+             True, 1, "dev/ is committed")
+
 if failures:
     print(f"\nFAIL: {failures} case(s)")
     sys.exit(1)

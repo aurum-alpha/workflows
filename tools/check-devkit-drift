@@ -39,6 +39,14 @@ interval, read by check-dependency-versions' own image_admits. A tag outside
 it, another image or any other byte still fails, and a product picks up the
 newer tag on its next real render.
 
+A PRODUCT THAT INSTALLS @aurum-alpha/devkit COMMITS NO dev/ (#819). Its
+dev/ is rendered from the package version its lockfile pins, by ./dx up and
+by any CI job that starts its stack, so there is nothing committed to
+compare. Such a product passes while git tracks nothing under dev/, and fails
+if it does: a committed copy is a second answer that the package will not
+keep current. The package is found as a dependency in the package.json at the
+root or one directory below it, where ./dx looks for its command.
+
 A repository with no devkit.json has not adopted the devkit and passes.
 That is the same rule check-lint-configs applies to a repository with no
 .oxlintrc.json, and for the same reason: a checker that only runs when someone
@@ -56,6 +64,7 @@ import importlib.util
 import json
 import os
 import pathlib
+import subprocess
 import sys
 import tempfile
 from importlib.machinery import SourceFileLoader
@@ -121,6 +130,37 @@ class ImageTags:
                    for a, b in zip(w, g))
 
 
+PACKAGE = "@aurum-alpha/devkit"
+
+
+def installed_by(repo_root: pathlib.Path) -> str:
+    """The package.json, relative, that declares the devkit package, or ""."""
+    manifests = [repo_root / "package.json"] + sorted(repo_root.glob("*/package.json"))
+    for manifest in manifests:
+        if "node_modules" in manifest.parts or not manifest.is_file():
+            continue
+        try:
+            doc = json.loads(manifest.read_text())
+        except (OSError, ValueError):
+            continue
+        for field in ("devDependencies", "dependencies"):
+            if PACKAGE in (doc.get(field) or {}):
+                return str(manifest.relative_to(repo_root))
+    return ""
+
+
+def tracked_dev(repo_root: pathlib.Path) -> list[str]:
+    """The files git tracks under dev/. Without git, every file there."""
+    if (repo_root / ".git").exists():
+        out = subprocess.run(["git", "-C", str(repo_root), "ls-files", "--", "dev"],
+                             capture_output=True, text=True, check=False)
+        if out.returncode == 0:
+            return [line for line in out.stdout.splitlines() if line]
+    dev = repo_root / "dev"
+    return sorted(str(p.relative_to(repo_root)) for p in dev.rglob("*") if p.is_file()) \
+        if dev.is_dir() else []
+
+
 def check_repo(render, repo_root: pathlib.Path, label: str,
                verbose: bool, tags: "ImageTags | None" = None
                ) -> tuple[int, int]:
@@ -129,6 +169,18 @@ def check_repo(render, repo_root: pathlib.Path, label: str,
     if not record.is_file():
         if verbose:
             print(f"{label}: no {RECORD} — devkit not adopted, nothing to check")
+        return 0, 0
+
+    manifest = installed_by(repo_root)
+    if manifest:
+        committed = tracked_dev(repo_root)
+        if committed:
+            print(f"{label}: {manifest} installs {PACKAGE}, and dev/ is committed "
+                  f"({len(committed)} file(s)). Remove dev/ from git and add it to "
+                  ".gitignore: ./dx up and CI render it from the package.")
+            return 0, 1
+        if verbose:
+            print(f"{label}: renders dev/ from {PACKAGE} ({manifest}); nothing committed to compare")
         return 0, 0
 
     with tempfile.TemporaryDirectory() as tmp:

@@ -783,10 +783,16 @@ def render_all(target: pathlib.Path, record: dict,
         out = target / relative
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(text, encoding="utf-8")
-        # A source that is a command stays one when rendered. The drift
-        # checker compares bytes and not modes, so this is for the person
-        # who runs dev/tools/dev-token rather than for the gate.
-        out.chmod(src.stat().st_mode & 0o777)
+        # A source that is a command stays one when rendered, and anything
+        # under tools/ is a command whatever mode it arrived with: npm packs
+        # every file but the manifest's bin as 0644, so the installed
+        # package's dev-token is not executable (#819). The drift checker
+        # compares bytes and not modes, so this is for the person and the
+        # CI step that run dev/tools/dev-token rather than for the gate.
+        mode = src.stat().st_mode & 0o777
+        if destination.startswith("tools/"):
+            mode |= 0o755
+        out.chmod(mode)
         written.append(relative)
     return written
 

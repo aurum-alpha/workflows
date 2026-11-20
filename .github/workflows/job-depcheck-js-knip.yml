@@ -211,6 +211,10 @@ jobs:
       # package.json script -- so the list belongs here, next to the jobs that
       # cause it, and not in eleven repos that cannot see the cause.
       #
+      # `@aurum-alpha/devkit` is the same case. `./dx up` and the e2e jobs run
+      # its `aurum-devkit` binary from node_modules (#819), and no script in
+      # the package names it.
+      #
       # `drizzle: false` disables knip's drizzle plugin, which tries to LOAD
       # drizzle.config.ts and dies without a live DATABASE_URL that no
       # lint-shaped job has:
@@ -265,7 +269,7 @@ jobs:
             printf '  "entry": ['
             emit_list "$ENTRY"
             printf '],\n'
-            printf '  "ignoreDependencies": ["oxlint", "oxlint-tsgolint"'
+            printf '  "ignoreDependencies": ["oxlint", "oxlint-tsgolint", "@aurum-alpha/devkit"'
             printf '%s\n' "$EXTRA" | tr ',' '\n' | while IFS= read -r pkg; do
               pkg="$(printf '%s' "$pkg" | tr -d '[:space:]')"
               [ -n "$pkg" ] || continue

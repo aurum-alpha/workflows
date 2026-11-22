@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Assert the devkit's nginx configuration parses.
 
-check-devkit-drift proves a product's rendered copy matches devkit/. Nothing
-proved devkit/ itself is a valid nginx configuration. A typo in edge.conf
-therefore reaches every product that renders it, and the first thing to notice
-is a container that will not start -- on someone's machine, after the change
-that broke it has already been rolled everywhere.
+Every product renders dev/ from the @aurum-alpha/devkit package. Nothing else
+proves devkit/ itself is a valid nginx configuration. A typo in edge.conf
+would ship in the next package release and reach every product that moves its
+pin, and the first thing to notice would be a container that will not start,
+on someone's machine.
 
 This renders the devkit with throwaway inputs and runs `nginx -t` over the
 result. It imports tools/render-devkit rather than substituting placeholders

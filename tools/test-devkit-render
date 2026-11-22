@@ -1,0 +1,79 @@
+#!/usr/bin/env python3
+"""Tests check-devkit-render against throwaway products.
+
+check-devkit-render runs in every product's ci-conformance, and nothing here
+calls it on a product that fails. Each case builds a product with a
+devkit.json, varies one fact, runs the checker, and holds it to an exit status
+and a line of output (#819).
+"""
+
+import json
+import pathlib
+import subprocess
+import sys
+import tempfile
+
+TOOLS = pathlib.Path(__file__).resolve().parent
+CHECK = TOOLS / "check-devkit-render"
+RENDER = TOOLS / "render-devkit"
+
+RECORD = {
+    "repo": "product",
+    "port_base": 9700,
+    "upstreams": {"app": "server:5000"},
+    "routes": [{"prefix": "/", "next": "auth", "then": "app"}],
+}
+
+failures = 0
+
+
+def case(name: str, *, record=RECORD, manifest="client/package.json",
+         commit_dev=False, want_rc: int, want_text: str) -> None:
+    global failures
+    with tempfile.TemporaryDirectory() as t:
+        tmp = pathlib.Path(t)
+        repo = tmp / "product"
+        repo.mkdir()
+        if record is not None:
+            (repo / "devkit.json").write_text(json.dumps(record))
+        if manifest:
+            (repo / manifest).parent.mkdir(parents=True, exist_ok=True)
+            (repo / manifest).write_text(json.dumps(
+                {"devDependencies": {"@aurum-alpha/devkit": "2.7.1"}}))
+        git = ["git", "-C", str(repo), "-c", "user.email=t@example.com",
+               "-c", "user.name=t"]
+        subprocess.run(git + ["init", "-q"], check=True)
+        if commit_dev:
+            subprocess.run([sys.executable, RENDER, "--target", repo],
+                           check=True, capture_output=True)
+            subprocess.run(git + ["add", "dev"], check=True)
+            subprocess.run(git + ["commit", "-qm", "dev"], check=True)
+        p = subprocess.run([sys.executable, CHECK, "--root", tmp, "--repo", "product"],
+                           capture_output=True, text=True)
+        rc, out = p.returncode, p.stdout + p.stderr
+    if rc != want_rc or want_text not in out:
+        print(f"FAIL  {name}: exit {rc}, wanted {want_rc} and {want_text!r}")
+        print("      " + out.replace("\n", "\n      "))
+        failures += 1
+    else:
+        print(f"  ok  {name}")
+
+
+case("a product that installs the package and commits no dev/ passes",
+     want_rc=0, want_text="renders dev/ from @aurum-alpha/devkit (client/package.json)")
+case("the package declared at the root passes",
+     manifest="package.json", want_rc=0, want_text="(package.json)")
+case("a product that commits dev/ fails",
+     commit_dev=True, want_rc=1, want_text="dev/ is committed")
+case("a devkit.json with no package declaring the devkit fails",
+     manifest=None, want_rc=1, want_text="declares @aurum-alpha/devkit")
+case("a devkit.json the renderer refuses fails",
+     record={"repo": "product"}, want_rc=1,
+     want_text="is not a record the renderer accepts")
+case("a repository with no devkit.json passes",
+     record=None, manifest=None, want_rc=0, want_text="devkit not adopted")
+
+if failures:
+    print(f"\nFAIL: {failures} case(s)")
+    sys.exit(1)
+print("\nPASS")

@@ -1,0 +1,165 @@
+#!/usr/bin/env python3
+"""Assert a repository renders its development stack from the devkit package.
+
+devkit/ is the configuration half of the authentication tier: a Keycloak realm,
+an nginx edge, an oauth2-proxy relying party, and the compose services that
+run them. It ships as @aurum-alpha/devkit (#819). A product records its own
+inputs in devkit.json at its root, pins the package as a devDependency, and
+renders dev/ from that pin: ./dx up does it locally, and any CI job that starts
+the stack does it before compose up. Nothing rendered is committed.
+
+So three facts hold for a repository with a devkit.json, and this asserts all
+three:
+
+  1. devkit.json is a record the renderer accepts. It is read by the
+     renderer's own read_record, so a malformed record is reported here in
+     the words a person sees when ./dx up refuses it. There is no second
+     schema to drift from the first.
+  2. A package.json at the root, or one directory below it, declares
+     @aurum-alpha/devkit. That is where ./dx looks for the command. Which
+     version it pins is check-dependency-versions' question, held to a window
+     in dependency-versions.json like every other package.
+  3. Git tracks nothing under dev/. A committed copy is a second answer the
+     package will not keep current, and the reason a devkit change once cost a
+     re-render pull request in every product.
+
+It does not compare a render with anything. The package version a product pins
+is what it renders, and moving that pin is a Dependabot pull request in the
+product, so a change to devkit/ here reddens no product.
+
+A repository with no devkit.json has not adopted the devkit and passes. That
+is the rule check-lint-configs applies to a repository with no .oxlintrc.json,
+and for the same reason: a checker that only runs when someone remembers to
+exclude the right repositories is a checker that stops being run.
+
+A repository handed to a client can no longer install the package. It renders
+once and commits dev/ as part of the handover, and it is no longer a caller of
+this catalog either.
+
+Run against local clones:  tools/check-devkit-render --root /workspace
+Run against one repo:      tools/check-devkit-render --root DIR --repo NAME
+Exit:                      0 conforms, 1 a finding, 2 could not ask
+"""
+
+from __future__ import annotations
+
+import argparse
+import importlib.util
+import json
+import os
+import pathlib
+import subprocess
+import sys
+from importlib.machinery import SourceFileLoader
+
+RECORD = pathlib.Path("devkit.json")
+PACKAGE = "@aurum-alpha/devkit"
+
+
+def renderer(catalog: pathlib.Path):
+    """Import tools/render-devkit as a module, for read_record.
+
+    It has no .py extension because it is a command a person runs, so the
+    loader is named explicitly. Everything below its import guard is
+    definitions, so importing it renders nothing.
+    """
+    path = catalog / "tools" / "render-devkit"
+    loader = SourceFileLoader("aurum_render_devkit", str(path))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def installed_by(repo_root: pathlib.Path) -> str:
+    """The package.json, relative, that declares the devkit package, or ""."""
+    manifests = [repo_root / "package.json"] + sorted(repo_root.glob("*/package.json"))
+    for manifest in manifests:
+        if "node_modules" in manifest.parts or not manifest.is_file():
+            continue
+        try:
+            doc = json.loads(manifest.read_text())
+        except (OSError, ValueError):
+            continue
+        for field in ("devDependencies", "dependencies"):
+            if PACKAGE in (doc.get(field) or {}):
+                return str(manifest.relative_to(repo_root))
+    return ""
+
+
+def tracked_dev(repo_root: pathlib.Path) -> list[str]:
+    """The files git tracks under dev/. Without git, every file there."""
+    if (repo_root / ".git").exists():
+        out = subprocess.run(["git", "-C", str(repo_root), "ls-files", "--", "dev"],
+                             capture_output=True, text=True, check=False)
+        if out.returncode == 0:
+            return [line for line in out.stdout.splitlines() if line]
+    dev = repo_root / "dev"
+    return sorted(str(p.relative_to(repo_root)) for p in dev.rglob("*") if p.is_file()) \
+        if dev.is_dir() else []
+
+
+def check_repo(render, repo_root: pathlib.Path, label: str, verbose: bool) -> int:
+    """Return the number of findings."""
+    if not (repo_root / RECORD).is_file():
+        if verbose:
+            print(f"{label}: no {RECORD} — devkit not adopted, nothing to check")
+        return 0
+
+    findings = 0
+    try:
+        render.read_record(repo_root)
+    except (ValueError, TypeError) as exc:
+        print(f"{label}: {RECORD} is not a record the renderer accepts — {exc}")
+        findings += 1
+
+    manifest = installed_by(repo_root)
+    if not manifest:
+        print(f"{label}: has {RECORD} and no package.json at the root or one "
+              f"directory below declares {PACKAGE}. Add it as a devDependency "
+              "beside the compose file: ./dx up and CI render dev/ from it.")
+        findings += 1
+
+    committed = tracked_dev(repo_root)
+    if committed:
+        print(f"{label}: dev/ is committed ({len(committed)} file(s)). Remove it "
+              f"from git and add it to .gitignore: ./dx up and CI render it from "
+              f"{PACKAGE}.")
+        findings += 1
+
+    if not findings and verbose:
+        print(f"{label}: renders dev/ from {PACKAGE} ({manifest}); nothing committed")
+    return findings
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--root", default="/workspace", type=pathlib.Path)
+    ap.add_argument("--repo", action="append", help="limit to specific repo(s)")
+    args = ap.parse_args()
+
+    # The same override check-lint-configs takes: what the renderer accepts
+    # is a question about the catalog as it is now, not the pinned
+    # standard_ref a caller's rules come from.
+    catalog = pathlib.Path(os.environ.get("AURUM_CATALOG_ROOT")
+                           or pathlib.Path(__file__).resolve().parent.parent)
+    if not (catalog / "tools" / "render-devkit").is_file():
+        print(f"renderer not found at {catalog / 'tools' / 'render-devkit'}",
+              file=sys.stderr)
+        return 2
+    render = renderer(catalog)
+
+    repos = args.repo or sorted(p.name for p in args.root.iterdir() if p.is_dir())
+    findings = sum(check_repo(render, args.root / repo, repo, verbose=bool(args.repo))
+                   for repo in repos)
+
+    if findings:
+        print(f"\nFAIL: {findings} finding(s). A product records devkit.json, "
+              f"pins {PACKAGE}, and commits no dev/.")
+        return 1
+    print(f"\nPASS: every devkit.json renders from {PACKAGE}, with no dev/ committed")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

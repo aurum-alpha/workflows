@@ -105,8 +105,8 @@ cookie against the still-alive provider session.
 
 **`devkit.json` is ingress configuration, and nothing else reads it.** Two
 things open the file: `tools/render-devkit`, which turns it into the four
-rendered files under `dev/`, and `tools/check-devkit-drift`, which renders it
-again to compare bytes. No application process reads it, at startup, at build
+rendered files under `dev/`, and `tools/check-devkit-render`, which asks the
+renderer whether it accepts the record. No application process reads it, at startup, at build
 time or in a test; it is not mounted into a container; no script derives
 anything for the application from it. The `routes` above are nginx's hop
 table and decide which paths pass through `auth_request`, and that is the
@@ -146,10 +146,8 @@ Every problem in the file is reported at once.
 | `__COOKIE__` | The cookie overlay: `cookie.local.cfg` or `cookie.prod.cfg`. `--target` splices local |
 | `"__REDIRECT_URIS__"`, `"__WEB_ORIGINS__"`, `"__POST_LOGOUT_REDIRECT_URIS__"` | The realm's three host lists: the apex and each `tenant_hosts` entry, as callback URIs, origins and post-logout targets. Quoted in the template so the source stays valid JSON |
 
-The first six are textual substitution and nothing else, which is what lets a
-drift checker render the source again and compare bytes. The rest are computed
-from the record by the one renderer, and the drift checker computes them the
-same way because it imports it.
+The first six are textual substitution and nothing else. The rest are computed
+from the record by the one renderer.
 
 It writes `dev/keycloak/realm.json`, `dev/nginx/edge.conf`,
 `dev/oauth2-proxy/oauth2-proxy.cfg`, `dev/compose/auth.compose.yaml` and
@@ -165,11 +163,11 @@ nothing in this repository can see it. So the allocation lives in
 `ports.json`, a person reads the base out of it once, and `devkit.json` carries
 it from then on.
 
-**The renderer is the only implementation of the substitution.**
-[`../tools/check-devkit-drift`](../tools/check-devkit-drift) imports it rather
-than repeating it. It renders into a scratch tree from the record and compares
-bytes. Two renderers would drift, and the day they disagreed the drift checker
-would be the thing certifying the drift.
+**The renderer is the only implementation of the substitution.** It is also
+the only reader of the record's shape. The package's command runs it, and
+[`../tools/check-devkit-render`](../tools/check-devkit-render) imports its
+`read_record` rather than carrying a schema of its own. Two readers of one
+record would drift.
 
 Placeholders are substituted longest name first, so that `__PORT_IDP__`, a
 prefix of `__PORT_IDP_MGMT__`, cannot eat the first half of the longer name.

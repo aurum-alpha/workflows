@@ -367,9 +367,19 @@
     "@playwright/test is asserted where present for job-test-e2e-playwright.",
     "The job runs the suite inside the Playwright Docker image for the version",
     "the repository declares, pulled by the digest mcr.microsoft.com gives its",
-    "tag when the job starts."
+    "tag when the job starts.",
+    "",
+    "@aurum-alpha/devkit is asserted where present (#819). A product renders",
+    "dev/ from the version it pins and commits none of it, so this window is",
+    "what keeps eleven products on one authentication tier. It ends at the",
+    "major: the package's minors and patches keep a product's devkit.json",
+    "valid, and Dependabot moves each product inside the window."
   ],
   "devDependencies": {
+    "@aurum-alpha/devkit": {
+      "min": "2.7.1",
+      "max": "2"
+    },
     "@playwright/test": {
       "min": "1.64.1",
       "max": "1.65"

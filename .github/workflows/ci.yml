@@ -33,9 +33,9 @@ jobs:
           docker run --rm -v "$PWD:/repo" --workdir /repo
           "$ACTIONLINT_IMAGE" -color
 
-      # check-devkit-drift proves each product's rendered copy matches
-      # devkit/. Nothing proved devkit/ is a valid nginx configuration, so a
-      # typo in edge.conf would reach eight products and first show up as a
+      # Every product renders dev/ from the devkit package. Nothing proves
+      # devkit/ is a valid nginx configuration but this, so a typo in
+      # edge.conf would ship in the next release and first show up as a
       # container that will not start.
       #
       # It runs here rather than in job-ci-conformance because the question is
@@ -139,17 +139,16 @@ jobs:
       - name: Test the dependency version windows
         run: tools/test-dependency-versions
 
-      # check-devkit-drift runs in every product's ci-conformance, and its
-      # one allowance, an image tag inside its recorded interval (#818), has
-      # no caller here that exercises a differing render.
-      - name: Test the devkit drift allowance
-        run: tools/test-devkit-drift
+      # check-devkit-render runs in every product's ci-conformance, and no
+      # caller here exercises a product that fails it.
+      - name: Test the devkit render check
+        run: tools/test-devkit-render
 
       # The devkit's own pins are inside the record's intervals. Dependabot
-      # bumps devkit/ here, and a bump past an image's max used to merge
-      # green and fail every product's ci-conformance instead (#808, #809):
-      # check-devkit-drift sent them the new pin and check-dependency-versions
-      # refused it. Checked here, the bump fails in its own pull request.
+      # bumps devkit/ here, and a bump past an image's max would ship in the
+      # next package release and fail every product's ci-conformance when
+      # Dependabot moved its pin (#808, #809). Checked here, the bump fails in
+      # its own pull request.
       - name: The devkit's pins are inside dependency-versions.json
         run: tools/check-dependency-versions --root . --repo devkit
 

@@ -314,27 +314,22 @@ jobs:
         run: .aurum-catalog/tools/check-dev-stack --root .ci-root --repo "$REPO"
         continue-on-error: ${{ inputs.warn_only }}
 
-      # The authentication tier is one set of files rendered into every
-      # product, so eight repositories carry eight copies differing only where
-      # the substitution says they differ. That is the shape check-lint-configs
-      # was written for, and the finding is the same finding: a shared file
-      # edited where it landed rather than where it is owned.
-      #
-      # The comparison renders first, because these copies are not
-      # byte-identical to their source. It renders by calling the same
-      # tools/render-devkit a product renders with, rather than carrying a
-      # second copy of the substitution -- two renderers would drift, and the
-      # day they disagreed this step would be the thing certifying the drift.
+      # The authentication tier is the @aurum-alpha/devkit package, rendered
+      # into dev/ from the product's own devkit.json by ./dx up and by any CI
+      # job that starts the stack (#819). So a product records devkit.json,
+      # pins the package, and commits nothing rendered. The record is read
+      # by the same tools/render-devkit the package runs, so there is no
+      # second schema to drift from the first.
       #
       # A repository that has not adopted the devkit carries no
       # devkit.json and passes, the same way one with no .oxlintrc.json
       # passes above.
-      - name: The rendered devkit is unedited
+      - name: The devkit renders from its package
         if: ${{ !cancelled() }}
         env:
           REPO: ${{ steps.repo.outputs.name }}
           AURUM_CATALOG_ROOT: .aurum-catalog
-        run: .aurum-catalog/tools/check-devkit-drift --root .ci-root --repo "$REPO"
+        run: .aurum-catalog/tools/check-devkit-render --root .ci-root --repo "$REPO"
         continue-on-error: ${{ inputs.warn_only }}
 
       # The platform modules are three implementations of one standard, and

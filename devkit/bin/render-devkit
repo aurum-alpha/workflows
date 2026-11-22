@@ -12,9 +12,9 @@ never deployed anywhere, and a directory called deploy/ said the one thing
 that is not true of it.
 
 THIS IS THE ONLY IMPLEMENTATION OF THE SUBSTITUTION, and that is the point.
-check-devkit-drift does not carry a second copy of it; it runs this script into
-a temporary directory and compares bytes. Two renderers would drift, and the
-day they disagreed the drift checker would be the thing certifying the drift.
+The @aurum-alpha/devkit command runs it, and check-devkit-render imports its
+read_record rather than carrying a second schema for devkit.json. Two readers
+of one record would drift.
 
 devkit.json at the repository root is the whole input, and it is the product's
 file rather than a rendered one. It names the repository, its port block, the
@@ -736,13 +736,9 @@ def render_all(target: pathlib.Path, record: dict,
                profile: str = DEFAULT_COOKIE_PROFILE) -> list[pathlib.Path]:
     """Write every rendered file, and return the dev-relative paths written.
 
-    check-devkit-drift imports and calls this rather than carrying a second
-    copy of the substitution. Two renderers would drift, and the day they
-    disagreed the drift checker would be the thing certifying the drift.
-
-    The record is passed in rather than read here, because the drift checker
-    renders into a scratch tree while reading the record from the clone it is
-    judging.
+    The record is passed in rather than read here, so a caller can render
+    into a scratch tree while reading the record from somewhere else, as
+    check-devkit-nginx and the package's tests do.
 
     profile is the cookie profile. The product dev/ tree is always the local
     stack, so the default is local. Production is emitted by
@@ -786,9 +782,8 @@ def render_all(target: pathlib.Path, record: dict,
         # A source that is a command stays one when rendered, and anything
         # under tools/ is a command whatever mode it arrived with: npm packs
         # every file but the manifest's bin as 0644, so the installed
-        # package's dev-token is not executable (#819). The drift checker
-        # compares bytes and not modes, so this is for the person and the
-        # CI step that run dev/tools/dev-token rather than for the gate.
+        # package's dev-token is not executable (#819), and the person and
+        # the CI step that run dev/tools/dev-token need it to be.
         mode = src.stat().st_mode & 0o777
         if destination.startswith("tools/"):
             mode |= 0o755
@@ -801,7 +796,7 @@ def dest_is_under_dev(path: pathlib.Path, target: pathlib.Path) -> bool:
     """True when PATH is inside the product dev/ tree.
 
     --profile prod must not write there. That tree is the local stack, and
-    check-devkit-drift would then expect production cookies in it.
+    production cookies in it would break sign-in on plain HTTP.
     """
     dest_dir = (target / OUT).resolve()
     try:

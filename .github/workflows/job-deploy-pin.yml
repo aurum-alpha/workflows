@@ -247,6 +247,8 @@ jobs:
           NAME: ${{ steps.plan.outputs.name }}
           SLUG: ${{ steps.token.outputs.app-slug }}
           GH_TOKEN: ${{ steps.token.outputs.token }}
+          # This product's own token, to order two of its commits.
+          PRODUCT_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           git config user.name "${SLUG}[bot]"
@@ -327,8 +329,40 @@ jobs:
             fi
           done <<< "$IMAGES"
 
+          # Main's runs overlap (Principle 6), so an older one can reach this
+          # step after a newer one. The staging pin never moves to an older
+          # commit: the commit the open pin branch names, and the one the
+          # last merged staging pin names, must each be this run's commit or
+          # an ancestor of it. Either one being newer means a later run has
+          # already pinned staging, and this one stands down.
+          staging_is_newer() {
+            local pinned status
+            git fetch --quiet origin main
+            git fetch --quiet origin "refs/heads/pin/staging-${STACK}:refs/remotes/origin/pin/staging-${STACK}" 2>/dev/null || true
+            for pinned in \
+              "$(git log -1 --format=%B "origin/pin/staging-${STACK}" 2>/dev/null | grep -oE '/commit/[0-9a-f]{40}' | head -1 | cut -d/ -f3 || true)" \
+              "$(git log origin/main --format=%s | grep -m1 -E "^Pin ${STACK} staging to ${GITHUB_REPOSITORY#*/}@" | sed -E 's/.*@([0-9a-f]+).*/\1/' || true)"; do
+              [ -n "$pinned" ] || continue
+              case "$GITHUB_SHA" in "$pinned"*) continue ;; esac
+              status=$(curl -fsSL -H "Authorization: Bearer ${PRODUCT_TOKEN}" -H "Accept: application/vnd.github+json" \
+                "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/compare/${pinned}...${GITHUB_SHA}" | jq -r .status) || status=unknown
+              case "$status" in
+                ahead|identical) ;;
+                behind)
+                  echo "::notice title=Staging pin left where it is::staging is pinned to ${pinned::7}, newer than this run's ${SHORT}."
+                  return 0 ;;
+                *)
+                  echo "::warning title=Staging pin left where it is::could not order ${pinned::7} against ${SHORT} (compare said '${status}')."
+                  return 0 ;;
+              esac
+            done
+            return 1
+          }
+
           commit="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
-          if [ -d "environments/staging/${STACK}" ]; then
+          if [ -d "environments/staging/${STACK}" ] && staging_is_newer; then
+            echo "- staging: left at a newer build; this run's ${SHORT} is older" >> "$GITHUB_STEP_SUMMARY"
+          elif [ -d "environments/staging/${STACK}" ]; then
             open_pin_pr staging "pin/staging-${STACK}" \
               "Pin ${STACK} staging to ${GITHUB_REPOSITORY#*/}@${SHORT}" \
               "Built from ${commit} and published as sha-${SHORT}. Merging this deploys it to staging." \

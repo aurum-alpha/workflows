@@ -32,6 +32,7 @@ can disagree eventually will.
 | 4 | Standard runner line | `check-ci-conformance` P4 | gated |
 | 5 | Ephemeral-runner assumptions | — | **review only** |
 | 6 | Concurrency everywhere | `check-ci-conformance` P6 | gated |
+| 6 | A main run has its own concurrency group, so none waits to be replaced | — `check-ci-conformance` P6 reads `cancel-in-progress` only. Review question: *does the group end in `github.run_id` on main*. Moves to gated once every caller carries it | **review only** |
 | 7 | BUILD ONCE | — | **review only** |
 | 8 | No multi-stage prod Dockerfiles | — | **review only** |
 | 9 | Canonical script names | `check-package-scripts` | gated¹ |

@@ -160,16 +160,78 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Main's runs are not serialized (Principle 6): each has its own
+      # concurrency group, so none can be cancelled while it waits, and two
+      # can overlap. A rolling tag must then never move backward, which an
+      # older run finishing after a newer one would do. So `dev` and `latest`
+      # move only when the commit they carry now is this run's commit or an
+      # ancestor of it. Every other tag is fixed to this commit or version
+      # and always publishes, so a release that finishes late still ships
+      # its version.
+      #
+      # The check and the write are seconds apart, and the registry offers no
+      # compare-and-set. Two runs reaching this step inside that window can
+      # still cross; the next merge's run puts the tag right.
       - name: Promote
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           REF: ${{ inputs.image }}@${{ inputs.digest }}
           TAGS: ${{ steps.meta.outputs.tags }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+
+          # The commit a published tag carries, from the label job-image-build
+          # stamps; empty when the tag does not exist yet or carries none.
+          revision_of() {
+            docker buildx imagetools inspect "$1" --format '{{json .Image}}' 2>/dev/null \
+              | jq -r '[.. | objects | .Labels? // empty
+                        | .["org.opencontainers.image.revision"] // empty] | first // empty' \
+              2>/dev/null || true
+          }
+
+          # Whether this run may move a rolling tag: yes when the tag carries
+          # this commit or an ancestor of it, or nothing to compare.
+          may_move() {
+            local tag=$1 have status
+            have=$(revision_of "$tag")
+            if [ -z "$have" ]; then
+              echo "$tag: no revision published yet; moving it."
+              return 0
+            fi
+            if [ "$have" = "$GITHUB_SHA" ]; then
+              echo "$tag: already carries ${GITHUB_SHA::7}."
+              return 0
+            fi
+            status=$(curl -fsSL \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/compare/${have}...${GITHUB_SHA}" \
+              | jq -r .status) || status=unknown
+            case "$status" in
+              ahead|identical)
+                echo "$tag: ${have::7} is an ancestor of ${GITHUB_SHA::7}; moving it."
+                return 0 ;;
+              behind)
+                echo "::notice title=${tag} left where it is::${tag} carries ${have::7}," \
+                     "which is newer than this run's ${GITHUB_SHA::7}. A later main run" \
+                     "already moved it, and moving it here would point it backward."
+                return 1 ;;
+              *)
+                echo "::warning title=${tag} left where it is::Could not order ${have::7}" \
+                     "against ${GITHUB_SHA::7} (compare said '${status}'), so the rolling" \
+                     "tag is not moved rather than risk moving it backward."
+                return 1 ;;
+            esac
+          }
+
           args=()
           while IFS= read -r t; do
-            [ -n "$t" ] && args+=(-t "$t")
+            [ -n "$t" ] || continue
+            case "$t" in
+              *:dev|*:latest) may_move "$t" || continue ;;
+            esac
+            args+=(-t "$t")
           done <<< "$TAGS"
           if [ ${#args[@]} -eq 0 ]; then
             echo "::error::metadata-action produced no tags, so there is nothing to promote."

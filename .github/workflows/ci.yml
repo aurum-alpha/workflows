@@ -11,9 +11,9 @@ on:
   workflow_dispatch:
 
 # Principle 6, which this repo defines and so had better follow: cancel
-# superseded pull-request runs, never the default branch.
+# superseded pull-request runs, never a default-branch run, running or waiting.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.run_id || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:

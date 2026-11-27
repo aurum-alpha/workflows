@@ -459,7 +459,7 @@
     },
     "oxlint": {
       "min": "1.89.0",
-      "max": "1.94"
+      "max": "1.95"
     },
     "oxlint-tsgolint": {
       "min": "7.0.2005",
@@ -606,7 +606,7 @@
     },
     "axllent/mailpit": {
       "min": "v1.32.0",
-      "max": "v1.33"
+      "max": "v1.34"
     },
     "mysql": {
       "min": "9.1.0",
